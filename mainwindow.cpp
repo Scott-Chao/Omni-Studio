@@ -39,12 +39,9 @@ MainWindow::MainWindow(QWidget *parent)
     // 工具栏保存选项
     QAction *saveAction = new QAction("保存", this);
     saveAction->setShortcut(QKeySequence::Save);
+    addAction(saveAction); // 设置快捷键保存
     toolBar->addAction(saveAction);
     connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile); // 设置点击图标保存
-
-    // 设置快捷键保存
-    QShortcut *shortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_S), this);
-    connect(shortcut, &QShortcut::activated, this, &MainWindow::saveFile);
 
     // 设置布局
     m_splitter->addWidget(m_explorer);
