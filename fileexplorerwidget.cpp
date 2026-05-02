@@ -19,7 +19,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_treeView->setModel(m_fileModel);
     m_treeView->setStyleSheet("QTreeView::item { height: 24px; }");
     m_treeView->header()->hide(); // 隐藏表头
-    m_treeView->setIndentation(20); // 调整缩进
+    m_treeView->setIndentation(17); // 调整缩进
     m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头
     m_treeView->hideColumn(1); // 隐藏大小列
     m_treeView->hideColumn(2); // 隐藏类型列
@@ -35,6 +35,7 @@ FileExplorerWidget::~FileExplorerWidget()
 
 void FileExplorerWidget::setRootPath(const QString &path)
 {
+    // 设置根目录
     if (!path.isEmpty()) {
         m_fileModel->setRootPath(path);
         m_treeView->setRootIndex(m_fileModel->index(path));
@@ -43,11 +44,13 @@ void FileExplorerWidget::setRootPath(const QString &path)
 
 QString FileExplorerWidget::rootPath() const
 {
+    // 返回根目录
     return m_fileModel->rootPath();
 }
 
 void FileExplorerWidget::selectFolder()
 {
+    // 选择文件夹
     QString dirPath = QFileDialog::getExistingDirectory(this, "选择文件夹",
                                                         QDir::homePath(),
                                                         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
@@ -58,6 +61,7 @@ void FileExplorerWidget::selectFolder()
 
 void FileExplorerWidget::onTreeViewClicked(const QModelIndex &index)
 {
+    // 点击树视图打开文件
     QString filePath = m_fileModel->filePath(index);
     QFileInfo fileInfo(filePath);
     // 只处理文件（不处理目录），并且扩展名为 .txt 或 .md

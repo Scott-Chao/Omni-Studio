@@ -2,8 +2,11 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QTabWidget>
+#include <QSplitter>
+#include <QFileInfo>
 
-class QSplitter;
+class TabManager;
 class FileExplorerWidget;
 class EditorWidget;
 class SettingsManager;
@@ -24,22 +27,25 @@ public:
 
 private:
     Ui::MainWindow *ui;
-    SettingsManager *m_settings;
+    SettingsManager *m_settings; // 配置信息
     FileExplorerWidget *m_explorer; // 文件浏览器控件
-    QSplitter *m_splitter;
-    EditorWidget *m_editor;
-    QString m_currentFilePath;
-    void saveFile();
+    QSplitter *m_splitter; // 分隔条
+    TabManager *m_tabManager; // 标签页栏
+    QString m_currentFilePath; // 当前打开的文件路径
 
 private slots:
-    void onFileSelected(const QString &filePath); // 处理文件浏览器选中的文件
+    void onFileSelected(const QString &filePath); // 选中文件（打开）
+    void saveFile(); // 保存文件
+    void newFile(); // 新建文件
+    void saveSettings(); // 保存设置
 
 protected:
-    // 重写关闭事件，当用户关闭窗口时自动保存
+    // 当用户关闭窗口时自动保存
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    EditorWidget* currentEditor() const;
+    void updateTabTitle(EditorWidget *editor, bool modified);
     void loadSettings(); // 程序启动时读取配置
-    void saveSettings(); // 程序退出时保存配置
 };
 #endif // MAINWINDOW_H

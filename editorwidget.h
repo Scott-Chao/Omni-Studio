@@ -3,36 +3,50 @@
 
 #include <QWidget>
 #include <QTextEdit>
-#include <QString>
+#include <QTextBrowser>
+#include <QStackedWidget>
+#include <QVBoxLayout>
 
 class EditorWidget : public QWidget
 {
     Q_OBJECT
+
 public:
     explicit EditorWidget(QWidget *parent = nullptr);
 
     // 文件操作
-    bool loadFile(const QString &filePath);      // 加载指定文件
-    bool saveFile();                              // 保存当前文件
-    bool saveAsFile(const QString &filePath);     // 另存为
+    bool loadFile(const QString &filePath);
+    bool saveFile();
+    bool saveAsFile();
 
-    // 获取状态
-    QString currentFilePath() const { return m_filePath; }
+    // 内容访问
     QString toPlainText() const;
-    bool isModified() const;
-
-    // 设置内容
     void setPlainText(const QString &text);
+    bool isModified() const;
     void setModified(bool modified);
+    QString currentFilePath() const { return m_filePath; }
+
+    // 预览模式切换
+    void setPreviewMode(bool preview);
+    bool isPreviewMode() const { return m_previewMode; }
+    void refreshPreview();   // 手动刷新预览（如内容改变后调用）
 
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
     void modificationChanged(bool modified);
 
+private slots:
+    void onTextChanged();
+    void updateModificationChanged();
+
 private:
-    QTextEdit *m_textEdit;
-    QString m_filePath;
+    QStackedWidget *m_stackedWidget;
+    QTextEdit      *m_textEdit;    // 源码编辑
+    QTextBrowser   *m_previewBrowser; // 渲染预览
+
+    QString         m_filePath;
+    bool            m_previewMode;
 };
 
 #endif // EDITORWIDGET_H

@@ -13,13 +13,15 @@ SOURCES += \
     fileexplorerwidget.cpp \
     main.cpp \
     mainwindow.cpp \
-    settingsmanager.cpp
+    settingsmanager.cpp \
+    tabmanager.cpp
 
 HEADERS += \
     editorwidget.h \
     fileexplorerwidget.h \
     mainwindow.h \
-    settingsmanager.h
+    settingsmanager.h \
+    tabmanager.h
 
 FORMS += \
     mainwindow.ui
