@@ -17,7 +17,7 @@ public:
     // 文件操作
     bool loadFile(const QString &filePath);
     bool saveFile();
-    bool saveAsFile();
+    bool saveAsFile(const QString &defaultDir = QString());
 
     // 内容访问
     QString toPlainText() const;
@@ -29,7 +29,7 @@ public:
     // 预览模式切换
     void setPreviewMode(bool preview);
     bool isPreviewMode() const { return m_previewMode; }
-    void refreshPreview();   // 手动刷新预览（如内容改变后调用）
+    void refreshPreview(); // 手动刷新预览（如内容改变后调用）
 
 signals:
     void fileLoaded(const QString &filePath);
@@ -42,7 +42,7 @@ private slots:
 
 private:
     QStackedWidget *m_stackedWidget;
-    QTextEdit      *m_textEdit;    // 源码编辑
+    QTextEdit      *m_textEdit; // 源码编辑
     QTextBrowser   *m_previewBrowser; // 渲染预览
 
     QString         m_filePath;

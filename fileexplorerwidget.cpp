@@ -48,14 +48,16 @@ QString FileExplorerWidget::rootPath() const
     return m_fileModel->rootPath();
 }
 
-void FileExplorerWidget::selectFolder()
+void FileExplorerWidget::selectFolder(const QString &defaultDir)
 {
-    // 选择文件夹
+    // 选择文件夹，支持传入指定文件夹，否则默认为主文件夹
+    QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
     QString dirPath = QFileDialog::getExistingDirectory(this, "选择文件夹",
-                                                        QDir::homePath(),
+                                                        startDir,
                                                         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
     if (!dirPath.isEmpty()) {
         setRootPath(dirPath);
+        emit folderChanged(dirPath);
     }
 }
 

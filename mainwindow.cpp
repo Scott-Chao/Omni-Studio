@@ -37,7 +37,8 @@ MainWindow::MainWindow(QWidget *parent)
     // 打开目录
     QAction *openDirAction = new QAction("打开目录", this);
     toolBar->addAction(openDirAction);
-    connect(openDirAction, &QAction::triggered, m_explorer, &FileExplorerWidget::selectFolder);
+    connect(openDirAction, &QAction::triggered, this, &MainWindow::onOpenFolder); // 点击按钮
+    connect(m_explorer, &FileExplorerWidget::folderChanged, this, &MainWindow::onFolderChanged); // 响应打开路径改变
 
     toolBar->addSeparator();
 
@@ -63,10 +64,7 @@ MainWindow::MainWindow(QWidget *parent)
     saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
     addAction(saveAsAction);
     toolBar->addAction(saveAsAction);
-    connect(saveAsAction, &QAction::triggered, this, [this]() {
-        if (auto *editor = m_tabManager->currentEditor())
-            editor->saveAsFile();
-    });
+    connect(saveAsAction, &QAction::triggered, this, &MainWindow::onSaveFileAs);
 
     toolBar->addSeparator();
 
@@ -142,7 +140,42 @@ void MainWindow::newFile()
 
 void MainWindow::saveFile()
 {
-    m_tabManager->saveCurrentFile();
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor)
+        return;
+    if (editor->currentFilePath().isEmpty()) {
+        onSaveFileAs(); // 无路径情况下另存为，更新记忆路径
+    } else {
+        editor->saveFile(); // 保存已有文件，不修改另存为记忆
+    }
+}
+
+
+void MainWindow::onSaveFileAs()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) return;
+    QString lastSaveDir = m_settings->lastSaveAsFolderPath(QDir::homePath()); // 读取上次另存为目录
+
+    if (editor->saveAsFile(lastSaveDir)) {
+        // 保存成功，获取新目录并立即写回配置
+        QString newFilePath = editor->currentFilePath();
+        QString newDir = QFileInfo(newFilePath).absolutePath();
+        if (!newDir.isEmpty()) {
+            m_settings->setLastSaveAsFolderPath(newDir);
+        }
+    }
+}
+
+// ----- 转发给FileExplorerWidget的槽函数 -----
+void MainWindow::onOpenFolder()
+{
+    m_explorer->selectFolder(m_settings->lastFolderPath(QDir::homePath())); // 将记忆目录传给 selectFolder，对话框将从这里开始浏览
+}
+
+void MainWindow::onFolderChanged(const QString &newPath)
+{
+    m_settings->setLastFolderPath(newPath); // 立即持久化
 }
 
 // ----- 配置读写 -----

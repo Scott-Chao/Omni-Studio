@@ -7,6 +7,7 @@
 static const QString KEY_GEOMETRY    = "window/geometry";
 static const QString KEY_SPLITTER    = "window/splitterState";
 static const QString KEY_LAST_FOLDER = "file/lastFolderPath";
+static const QString KEY_LAST_SAVE_AS_FOLDER = "LastSaveAsFolder";
 
 SettingsManager::SettingsManager(const QString &fileName)
 {
@@ -65,6 +66,18 @@ QString SettingsManager::lastFolderPath(const QString &defaultPath) const
         return defaultPath;
     }
     return path;
+}
+
+void SettingsManager::setLastSaveAsFolderPath(const QString &path)
+{
+    // 设置上次另存为路径
+    m_settings->setValue(KEY_LAST_SAVE_AS_FOLDER, path);
+}
+
+QString SettingsManager::lastSaveAsFolderPath(const QString &defaultPath) const
+{
+    // 返回上次另存为路径
+    return m_settings->value(KEY_LAST_SAVE_AS_FOLDER, defaultPath).toString();
 }
 
 void SettingsManager::clear()

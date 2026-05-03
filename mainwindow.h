@@ -31,13 +31,16 @@ private:
     FileExplorerWidget *m_explorer; // 文件浏览器控件
     QSplitter *m_splitter; // 分隔条
     TabManager *m_tabManager; // 标签页栏
-    QString m_currentFilePath; // 当前打开的文件路径
+    QString m_currentFilePath; // 当前打开的文件路径（文件树）
 
 private slots:
     void onFileSelected(const QString &filePath); // 选中文件（打开）
     void saveFile(); // 保存文件
+    void onSaveFileAs(); // 另存为
     void newFile(); // 新建文件
     void saveSettings(); // 保存设置
+    void onOpenFolder(); // 打开文件夹
+    void onFolderChanged(const QString &newPath); // 记录用户打开的文件夹，实现记忆功能
 
 protected:
     // 当用户关闭窗口时自动保存

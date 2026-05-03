@@ -14,22 +14,18 @@ public:
     explicit FileExplorerWidget(QWidget *parent = nullptr);
     ~FileExplorerWidget();
 
-    // 设置要显示的根目录
-    void setRootPath(const QString &path);
-    // 获取当前根目录
-    QString rootPath() const;
+    void setRootPath(const QString &path); // 设置要显示的根目录
+    QString rootPath() const; // 获取当前根目录
 
 signals:
-    // 当用户点击一个文件时发出信号，参数为文件完整路径
-    void fileClicked(const QString &filePath);
+    void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
+    void folderChanged(const QString &newPath);
 
 public slots:
-    // 弹出文件夹选择对话框，并切换到用户选择的目录
-    void selectFolder();
+    void selectFolder(const QString &defaultDir = QString()); // 弹出文件夹选择对话框，并切换到用户选择的目录
 
 private slots:
-    // 处理树视图的点击事件
-    void onTreeViewClicked(const QModelIndex &index);
+    void onTreeViewClicked(const QModelIndex &index); // 处理树视图的点击事件
 
 private:
     QFileSystemModel *m_fileModel;

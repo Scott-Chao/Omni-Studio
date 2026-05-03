@@ -96,10 +96,12 @@ bool EditorWidget::saveFile()
     return true;
 }
 
-bool EditorWidget::saveAsFile()
+bool EditorWidget::saveAsFile(const QString &defaultDir)
 {
-    // 另存为
-    QString newPath = QFileDialog::getSaveFileName(this, "另存为", "", "Markdown文件 (*.md);;文本文件 (*.txt)");
+    // 确定对话框起始目录，支持传入路径，否则用主文件夹
+    QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
+    QString newPath = QFileDialog::getSaveFileName(this, "另存为", startDir,
+                                                   "Markdown文件 (*.md);;文本文件 (*.txt)");
     if (newPath.isEmpty())
         return false;
     m_filePath = newPath;
