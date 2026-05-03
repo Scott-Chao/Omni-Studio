@@ -18,6 +18,7 @@
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QFileInfo>
+#include <QToolButton>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -26,6 +27,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_explorer(new FileExplorerWidget(this))
     , m_splitter(new QSplitter(Qt::Horizontal, this))
     , m_tabManager(new TabManager(this))
+    , m_zoomLabel(nullptr)
 {
     ui->setupUi(this);
 
@@ -80,6 +82,52 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // 添加缩放项
+    QStatusBar *status = statusBar();
+
+    // 创建缩放相关的 QAction
+    m_zoomOutAction = new QAction(tr("缩小"), this);
+    m_zoomOutAction->setShortcut(QKeySequence("Ctrl+-"));
+    connect(m_zoomOutAction, &QAction::triggered, this, &MainWindow::onZoomOut);
+
+    m_zoomInAction = new QAction(tr("放大"), this);
+    m_zoomInAction->setShortcut(QKeySequence("Ctrl+="));
+    connect(m_zoomInAction, &QAction::triggered, this, &MainWindow::onZoomIn);
+
+    m_zoomResetAction = new QAction(tr("重置缩放"), this);
+    m_zoomResetAction->setShortcut(QKeySequence("Ctrl+0"));
+    connect(m_zoomResetAction, &QAction::triggered, this, &MainWindow::onZoomReset);
+
+    // 创建缩放百分比标签
+    m_zoomLabel = new QLabel("100%");
+    m_zoomLabel->setMinimumWidth(50);
+    m_zoomLabel->setAlignment(Qt::AlignCenter);
+
+    // 把 QAction 包装成 QToolButton，便于放入布局
+    QToolButton *zoomOutBtn = new QToolButton;
+    zoomOutBtn->setDefaultAction(m_zoomOutAction);
+    zoomOutBtn->setText("-");
+
+    QToolButton *zoomInBtn = new QToolButton;
+    zoomInBtn->setDefaultAction(m_zoomInAction);
+    zoomInBtn->setText("+");
+
+    QToolButton *zoomResetBtn = new QToolButton;
+    zoomResetBtn->setDefaultAction(m_zoomResetAction);
+    zoomResetBtn->setText("重置");
+
+    // 将按钮和标签放入一个水平布局的 Widget
+    QWidget *zoomWidget = new QWidget();
+    QHBoxLayout *zoomLayout = new QHBoxLayout(zoomWidget);
+    zoomLayout->setContentsMargins(0, 0, 0, 0);
+    zoomLayout->addWidget(zoomOutBtn);
+    zoomLayout->addWidget(m_zoomLabel);
+    zoomLayout->addWidget(zoomInBtn);
+    zoomLayout->addWidget(zoomResetBtn);
+
+    // 添加到状态栏
+    status->addPermanentWidget(zoomWidget);
+
     // 当切换标签页时，更新预览按钮的选中状态
     connect(m_tabManager, &QTabWidget::currentChanged, this, [previewAction, this](int) {
         EditorWidget *editor = m_tabManager->currentEditor();
@@ -116,6 +164,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitter->addWidget(m_tabManager);
     setCentralWidget(m_splitter);
 
+    // 当标签页切换时，更新缩放标签并重新连接当前编辑器的缩放信号
+    connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
+        updateZoomLabel();
+        connectCurrentEditorZoomSignal();
+    });
+
+    // 初始连接
+    connectCurrentEditorZoomSignal();
+    updateZoomLabel();
+
     // 连接信号：文件树点击 -> 打开文件
     connect(m_explorer, &FileExplorerWidget::fileClicked, this, &MainWindow::onFileSelected);
 
@@ -131,11 +189,19 @@ MainWindow::~MainWindow()
 void MainWindow::onFileSelected(const QString &filePath)
 {
     m_tabManager->openFile(filePath);
+    connectCurrentEditorZoomSignal();
+    updateZoomLabel();
 }
 
 void MainWindow::newFile()
 {
-    m_tabManager->newFile();
+    EditorWidget *current = m_tabManager->currentEditor();
+    EditorWidget *newEditor = m_tabManager->newFile();
+    if (newEditor && current) {
+        newEditor->setZoomFactor(current->zoomFactor());  // 继承当前缩放
+        connectCurrentEditorZoomSignal();
+        updateZoomLabel();
+    }
 }
 
 void MainWindow::saveFile()
@@ -217,5 +283,50 @@ void MainWindow::loadSettings()
         m_splitter->restoreState(splitterData);
     } else {
         m_splitter->setStretchFactor(1, 4);
+    }
+}
+
+// 缩放相关槽函数
+void MainWindow::onZoomIn()
+{
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->zoomIn();
+    }
+}
+
+void MainWindow::onZoomOut()
+{
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->zoomOut();
+    }
+}
+
+void MainWindow::onZoomReset()
+{
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->zoomReset();
+    }
+}
+
+void MainWindow::updateZoomLabel()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (editor) {
+        int percent = qRound(editor->zoomFactor() * 100);
+        m_zoomLabel->setText(QStringLiteral("%1%").arg(percent));
+    } else {
+        m_zoomLabel->setText(QStringLiteral("100%"));
+    }
+}
+
+void MainWindow::connectCurrentEditorZoomSignal()
+{
+    // 断开前一个编辑器的缩放信号连接
+    disconnect(m_editorZoomConnection);
+
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (editor) {
+        m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged,
+                                         this, &MainWindow::updateZoomLabel);
     }
 }

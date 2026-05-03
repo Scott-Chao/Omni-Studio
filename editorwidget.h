@@ -31,10 +31,18 @@ public:
     bool isPreviewMode() const { return m_previewMode; }
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
 
+    // 字体缩放
+    void zoomIn();
+    void zoomOut();
+    void zoomReset();
+    qreal zoomFactor() const;
+    void setZoomFactor(qreal factor);
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
     void modificationChanged(bool modified);
+    void zoomFactorChanged(qreal factor);
 
 private slots:
     void onTextChanged();
@@ -42,11 +50,18 @@ private slots:
 
 private:
     QStackedWidget *m_stackedWidget;
-    QTextEdit      *m_textEdit; // 源码编辑
-    QTextBrowser   *m_previewBrowser; // 渲染预览
+    QTextEdit *m_textEdit; // 源码编辑
+    QTextBrowser *m_previewBrowser; // 渲染预览
+    QString m_filePath;
+    bool m_previewMode;
 
-    QString         m_filePath;
-    bool            m_previewMode;
+private:
+    void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
+    qreal m_zoomFactor = 1.0;
+    int m_baseFontSize = 14;
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
 };
 
 #endif // EDITORWIDGET_H

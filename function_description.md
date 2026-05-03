@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.2）
+## 功能说明文档（v0.0.3）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -7,7 +7,8 @@
 - 关闭文件时提示未保存的修改
 - 同时打开多个文件，显示在标签页栏中
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换
-- **对话框路径记忆**：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
+- 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
+- **字体缩放**：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -21,6 +22,10 @@
 - 协调文件树与标签管理器的联动：当用户在文件树中点击 Markdown/TXT 文件时，通知 `TabManager` 打开或切换到对应文件。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
+- 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换、**以及字体缩放控件（−、百分比标签、+、重置）**。
+- 支持以下快捷键：
+  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换
+  - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
 
 **主要接口（槽函数）**：
 - `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
@@ -30,6 +35,9 @@
 - `void onOpenFolder()`：从配置读取上次打开的目录，调用文件浏览器的 `selectFolder()`。
 - `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。
 - `void loadSettings()` / `void saveSettings()`：配置读写。
+- `void onZoomIn()` / `void onZoomOut()` / `void onZoomReset()`：将缩放操作转发给 `TabManager` 当前激活的 `EditorWidget`。
+- `void updateZoomLabel()`：更新状态栏中的缩放百分比标签。
+- `void connectCurrentEditorZoomSignal()`：在标签切换或创建新编辑器时，连接/重连当前编辑器的 `zoomFactorChanged` 信号，确保百分比标签实时同步。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -38,6 +46,9 @@
 - 工具栏的“保存”动作触发 `saveFile`，转为直接操作编辑器并处理记忆；“另存为”动作触发 `onSaveFileAs`。
 - 标签页的创建、关闭或标题更新，这些职责全部委托给 `TabManager`。
 - 工具栏中添加了“预览模式”按钮（可勾选），用于切换当前编辑器的预览状态。
+- 持有缩放相关的 UI 元素：`QAction`（放大/缩小/重置）和 `QLabel`（百分比），并将它们布局在状态栏中。
+- 监听 `TabManager::currentChanged` 信号，当标签页切换时调用 `updateZoomLabel()` 和 `connectCurrentEditorZoomSignal()`，保持缩放信息与当前编辑器同步。
+- 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建文件会继承当前活动标签的缩放倍率。
 
 ---
 
@@ -82,6 +93,7 @@
 - 管理当前编辑文件的路径和修改状态。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
+- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法，可统一调整编辑器与预览器的字体大小（通过 `applyZoom` 实现）。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过刷新 HTML 并设置默认字体及样式表（强制所有元素继承基准字号）来完成。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)`：加载指定文件，成功后更新内部路径并重置修改标记。
@@ -93,24 +105,21 @@
 - `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。
 - `bool isPreviewMode() const`：返回当前是否为预览模式。
 - `void refreshPreview()`：强制刷新预览内容（将当前 Markdown 源码转换为 HTML 并显示）。
+- `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
+- `qreal zoomFactor() const`：返回当前缩放倍数。
+- `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
 
 **信号**：
 - `void fileLoaded(const QString &filePath)`
 - `void fileSaved(const QString &filePath)`
 - `void modificationChanged(bool modified)`
+- `void zoomFactorChanged(qreal factor)`：当缩放因子改变时发出，供主窗口更新百分比标签。
 
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
-
-**信号**：
-- `void fileLoaded(const QString &filePath)`
-- `void fileSaved(const QString &filePath)`
-- `void modificationChanged(bool modified)`
-
-**协作关系**：
-- 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
-- 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
+- 在构造函数中对 `m_textEdit` 和 `m_previewBrowser` 的 **viewport** 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`，避免 Qt 内置缩放绕开自定义状态管理。
+- `applyZoom` 在模式切换或缩放变化时同步编辑区和预览区的字体；`refreshPreview` 在生成 HTML 时嵌入当前缩放字号，并强制 `pre`、`code` 等元素继承字体大小。
 
 ---
 
@@ -182,4 +191,5 @@
 
 - **标签页样式**：通过 `QTabWidget` 的样式表设置了标签最小高度、左右内边距（`padding: 4px 12px`）、圆角以及选中/悬停背景色，解决了标签左右空位过小的问题。
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（“保存(&S)”、“不保存(&D)”、“取消(&C)”），提示文本中包含当前文件名，且调用 `resize(450, 180)` 增大对话框尺寸，改善了用户体验。
-- **Markdown 预览模式**：在工具栏添加了“预览模式”按钮（快捷键 `Ctrl+Shift+P`），可切换当前文档的源码编辑与渲染预览视图。预览基于 Qt 原生的 `QTextDocument::setMarkdown`（要求 Qt ≥ 5.14），支持 GitHub 风格的 Markdown 方言。
+- **Markdown 预览模式**：在工具栏添加了“预览模式”按钮（快捷键 `Ctrl+Shift+P`），可切换当前文档的源码编辑与渲染预览视图。预览基于 Qt 原生的 `QTextDocument::setMarkdown`，支持 GitHub 风格的 Markdown 方言。
+- **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。

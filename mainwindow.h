@@ -5,6 +5,7 @@
 #include <QTabWidget>
 #include <QSplitter>
 #include <QFileInfo>
+#include <QLabel>
 
 class TabManager;
 class FileExplorerWidget;
@@ -41,6 +42,9 @@ private slots:
     void saveSettings(); // 保存设置
     void onOpenFolder(); // 打开文件夹
     void onFolderChanged(const QString &newPath); // 记录用户打开的文件夹，实现记忆功能
+    void onZoomIn(); // 放大
+    void onZoomOut(); // 缩小
+    void onZoomReset(); // 重置大小
 
 protected:
     // 当用户关闭窗口时自动保存
@@ -50,5 +54,15 @@ private:
     EditorWidget* currentEditor() const;
     void updateTabTitle(EditorWidget *editor, bool modified);
     void loadSettings(); // 程序启动时读取配置
+
+    QAction *m_zoomInAction;
+    QAction *m_zoomOutAction;
+    QAction *m_zoomResetAction;
+    QLabel *m_zoomLabel; // 显示当前缩放百分比
+    QMetaObject::Connection m_editorZoomConnection; // 用来管理当前编辑器的缩放信号连接
+
+    void updateZoomLabel(); // 更新百分比标签
+    void connectCurrentEditorZoomSignal(); // 连接当前编辑器的缩放信号
+
 };
 #endif // MAINWINDOW_H

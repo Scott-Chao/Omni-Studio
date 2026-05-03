@@ -3,16 +3,25 @@
 #include <QTextStream>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QWheelEvent>
+#if QT_CONFIG(gestures)
+#include <QNativeGestureEvent>
+#endif
 
 EditorWidget::EditorWidget(QWidget *parent)
     : QWidget(parent)
     , m_filePath("")
     , m_previewMode(false)
+    , m_zoomFactor(1.0) // 初始化缩放因子
+    , m_baseFontSize(0) // 稍后从字体获取
 {
     // 创建编辑器和预览控件
     m_textEdit = new QTextEdit(this);
     m_previewBrowser = new QTextBrowser(this);
     m_previewBrowser->setOpenExternalLinks(true); // 允许点击链接
+
+    m_textEdit->viewport()->installEventFilter(this);
+    m_previewBrowser->viewport()->installEventFilter(this);
 
     // 堆叠布局：索引0=编辑，索引1=预览
     m_stackedWidget = new QStackedWidget(this);
@@ -23,6 +32,10 @@ EditorWidget::EditorWidget(QWidget *parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_stackedWidget);
     setLayout(layout);
+
+    // 获取基础字体大小
+    QFont baseFont = m_textEdit->font();
+    m_baseFontSize = baseFont.pointSize();
 
     // 当编辑区内容改变时，更新修改标志并刷新预览
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::onTextChanged);
@@ -41,16 +54,27 @@ void EditorWidget::setPreviewMode(bool preview)
     } else {
         m_stackedWidget->setCurrentIndex(0);
     }
+    applyZoom(); // 切换模式后立即应用字体缩放
 }
 
 void EditorWidget::refreshPreview()
 {
     // 获取当前 Markdown 源码
     QString markdown = m_textEdit->toPlainText();
-    // 使用 Qt 的 setMarkdown 进行渲染
-    QTextDocument doc;
-    doc.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
-    m_previewBrowser->setHtml(doc.toHtml());
+
+    // 直接操作预览浏览器的内部文档
+    QTextDocument *doc = m_previewBrowser->document();
+    doc->setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+
+    // 设置文档默认字体为当前编辑器的字体（已缩放）
+    doc->setDefaultFont(m_textEdit->font());
+
+    // 强制定义 body 基准字号，确保标题等相对单位 (em) 正确缩放
+    int pointSize = qRound(m_baseFontSize * m_zoomFactor);
+    doc->setDefaultStyleSheet(
+        QString("body { font-size: %1pt; } "
+                "* { font-size: inherit; }").arg(pointSize)
+        );
 }
 
 void EditorWidget::onTextChanged()
@@ -129,4 +153,84 @@ bool EditorWidget::isModified() const
 void EditorWidget::setModified(bool modified)
 {
     m_textEdit->document()->setModified(modified);
+}
+
+void EditorWidget::applyZoom()
+{
+    int pointSize = qBound(1, qRound(m_baseFontSize * m_zoomFactor), 72);
+
+    // 编辑区：视图字体 + 全文字符格式
+    QFont f = m_textEdit->font();
+    f.setPointSize(pointSize);
+    m_textEdit->setFont(f);
+
+    QTextCursor cursor(m_textEdit->document());
+    cursor.select(QTextCursor::Document);
+    QTextCharFormat fmt;
+    fmt.setFontPointSize(pointSize);
+    cursor.mergeCharFormat(fmt); // 只改变字号，保留加粗等
+
+    // 预览区
+    if (m_previewMode) {
+        refreshPreview();
+    }
+}
+
+void EditorWidget::zoomIn()
+{
+    setZoomFactor(m_zoomFactor + 0.1);
+}
+
+void EditorWidget::zoomOut()
+{
+    setZoomFactor(m_zoomFactor - 0.1);
+}
+
+void EditorWidget::zoomReset()
+{
+    setZoomFactor(1.0);
+}
+
+void EditorWidget::setZoomFactor(qreal factor)
+{
+    // 设置缩放比例
+    factor = qBound(0.5, factor, 3.0); // 允许 50%-300%
+    if (qFuzzyCompare(m_zoomFactor, factor))
+        return;
+    m_zoomFactor = factor;
+    applyZoom();
+    emit zoomFactorChanged(m_zoomFactor);
+}
+
+qreal EditorWidget::zoomFactor() const
+{
+    return m_zoomFactor;
+}
+
+bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
+{
+    if (event->type() == QEvent::Wheel) {
+        QWheelEvent *wheel = static_cast<QWheelEvent*>(event);
+        // 当按下 Ctrl 时，视为缩放操作
+        if (wheel->modifiers() & (Qt::ControlModifier)) {
+            if (wheel->angleDelta().y() > 0)
+                zoomIn();
+            else if (wheel->angleDelta().y() < 0)
+                zoomOut();
+            return true; // 阻止原事件，避免内部缩放
+        }
+    }
+#if QT_CONFIG(gestures)
+    else if (event->type() == QEvent::NativeGesture) {
+        QNativeGestureEvent *gesture = static_cast<QNativeGestureEvent*>(event);
+        if (gesture->gestureType() == Qt::ZoomNativeGesture) {
+            if (gesture->value() > 0)
+                zoomIn();
+            else if (gesture->value() < 0)
+                zoomOut();
+            return true;
+        }
+    }
+#endif
+    return QWidget::eventFilter(obj, event);
 }
