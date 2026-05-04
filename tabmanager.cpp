@@ -2,6 +2,7 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QAbstractButton>
+#include <QDir>
 
 TabManager::TabManager(QWidget *parent)
     : QTabWidget(parent)
@@ -13,10 +14,11 @@ TabManager::TabManager(QWidget *parent)
 
 EditorWidget* TabManager::openFile(const QString &filePath)
 {
+    QString normalized = QFileInfo(filePath).absoluteFilePath();
     // 检查文件是否已经打开，防止重复
     for (int i = 0; i < count(); ++i) {
         EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
-        if (editor && editor->currentFilePath() == filePath) {
+        if (editor && editor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0) {
             setCurrentIndex(i);
             return editor;
         }
@@ -24,8 +26,8 @@ EditorWidget* TabManager::openFile(const QString &filePath)
 
     // 新建标签页并加载文件
     EditorWidget *editor = new EditorWidget(this);
-    if (editor->loadFile(filePath)) {
-        int index = addTab(editor, QFileInfo(filePath).fileName());
+    if (editor->loadFile(normalized)) {   // 传入标准化路径
+        int index = addTab(editor, QFileInfo(normalized).fileName());
         setCurrentIndex(index);
         connectEditorSignals(editor);
         emit tabCountChanged(count());
@@ -185,4 +187,57 @@ void TabManager::updateTabTitle(EditorWidget *editor)
         title += " *";
 
     setTabText(idx, title);
+}
+
+EditorWidget* TabManager::findEditorByPath(const QString &filePath) const {
+    QString normalized = QFileInfo(filePath).absoluteFilePath();
+    for (int i = 0; i < count(); ++i) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
+        if (editor && editor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0)
+            return editor;
+    }
+    return nullptr;
+}
+
+bool TabManager::closeTabByPath(const QString &filePath, bool askSave) {
+    QString normalized = QFileInfo(filePath).absoluteFilePath();
+    for (int i = 0; i < count(); ++i) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
+        if (editor && editor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0) {
+            if (askSave)
+                return closeTab(i);
+            else {
+                editor->setModified(false);
+                return closeTab(i);
+            }
+        }
+    }
+    return true;
+}
+
+QStringList TabManager::allOpenedFilePaths() const {
+    QStringList paths;
+    for (int i = 0; i < count(); ++i) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
+        if (editor && !editor->currentFilePath().isEmpty()) {
+            paths << QDir::fromNativeSeparators(editor->currentFilePath());
+        }
+    }
+    return paths;
+}
+
+void TabManager::updateEditorFilePath(const QString &oldPath, const QString &newPath) {
+    EditorWidget *editor = findEditorByPath(oldPath);
+    if (editor) {
+        editor->setFilePath(newPath);
+        // 更新标签页标题：移除可能存在的星号，显示新文件名
+        int idx = indexOf(editor);
+        if (idx != -1) {
+            QString title = QFileInfo(newPath).fileName();
+            if (editor->isModified())
+                title += " *";
+            setTabText(idx, title);
+            setTabToolTip(idx, newPath);
+        }
+    }
 }

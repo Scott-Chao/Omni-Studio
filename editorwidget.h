@@ -39,11 +39,15 @@ public:
     qreal zoomFactor() const;
     void setZoomFactor(qreal factor);
 
+    void setFilePath(const QString &newPath);  // 更新文件路径（用于重命名后）
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
     void modificationChanged(bool modified);
     void zoomFactorChanged(qreal factor);
+
+    void filePathChanged(const QString &oldPath, const QString &newPath);
 
 private slots:
     void onTextChanged();

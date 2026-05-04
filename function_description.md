@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.4）
+## 功能说明文档（v0.0.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -9,11 +9,7 @@
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
-
-### 问题修复（v0.0.4)
-- 修复了上一个版本中，缩放操作也导致文件被标记为已修改的bug
-- **无实质变更后自动清除修改标记**：当用户修改内容后手动恢复至原始状态时，编辑器会在停止输入 300ms 后自动比较内容并同步更新修改标记。
-- 更新文档，修改其中存在问题的部分
+- **文件树右键菜单**：支持新建文件（与工具栏新建相同）、新建文件夹；对文件/文件夹支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -30,6 +26,7 @@
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
+- 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
 
 **主要接口（槽函数）**：
 - `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
@@ -42,6 +39,7 @@
 - `void onZoomIn()` / `void onZoomOut()` / `void onZoomReset()`：将缩放操作转发给 `TabManager` 当前激活的 `EditorWidget`。
 - `void updateZoomLabel()`：更新状态栏中的缩放百分比标签。
 - `void connectCurrentEditorZoomSignal()`：在标签切换或创建新编辑器时，连接/重连当前编辑器的 `zoomFactorChanged` 信号，确保百分比标签实时同步。
+- `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -75,6 +73,10 @@
 - `void saveCurrentFile()`：保存当前编辑器的内容（无路径时自动调用另存为）。
 - `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。
 - `bool closeAllTabs()`：依次关闭所有标签页，若任何一次 `closeTab` 返回 `false` 则立即停止并返回 `false`。
+- `EditorWidget* findEditorByPath(const QString &filePath) const`：根据文件路径查找已打开的编辑器实例（大小写不敏感）。
+- `bool closeTabByPath(const QString &filePath, bool askSave)`：关闭指定路径的标签页，`askSave` 为 `true` 时弹出保存提示，为 `false` 时强制丢弃修改。
+- `QStringList allOpenedFilePaths() const`：返回所有已打开的文件路径列表（未保存的新建文件除外），路径统一为正斜杠格式。
+- `void updateEditorFilePath(const QString &oldPath, const QString &newPath)`：当文件在外部被重命名时，更新对应编辑器的内部路径及标签标题。
 
 **信号**：
 - `void tabCountChanged(int count)`：当标签数量变化时发出（供外部如窗口标题更新使用）。
@@ -115,12 +117,14 @@
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。
 - `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
+- `void setFilePath(const QString &newPath)`：更新当前编辑器的文件路径（不改变文档内容），用于外部重命名后同步。
 
 **信号**：
 - `void fileLoaded(const QString &filePath)`
 - `void fileSaved(const QString &filePath)`
 - `void modificationChanged(bool modified)`
 - `void zoomFactorChanged(qreal factor)`：当缩放因子改变时发出，供主窗口更新百分比标签。
+- `void filePathChanged(const QString &oldPath, const QString &newPath)`：当文件路径被 `setFilePath` 修改时发出，供标签管理器更新路径关联。
 
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
@@ -135,9 +139,11 @@
 **文件**：`fileexplorerwidget.h` / `fileexplorerwidget.cpp`
 
 **职责**：
-- 封装 `QFileSystemModel` 和 `QTreeView`，提供一个可嵌入的文件树。
-- 支持切换根目录（通过 `setRootPath`）。
-- 过滤显示：只显示文件夹和 `.md` / `.txt` 文件（在信号发出前进行过滤）。
+- 提供右键菜单交互，支持新建文件、新建文件夹、重命名、删除。
+- 启用 `QTreeView` 的内联编辑功能（通过 `EditKeyPressed` 和 `SelectedClicked` 触发器），使重命名直接在树视图中进行。
+- 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
+- 提供 `createNewFolder`、`renameItem`、`deleteItem` 等公共槽函数，封装实际的文件系统操作。
+- 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
 - 发出 `fileClicked` 信号，携带被选中文件的绝对路径。
 - 提供 `selectFolder` 公共槽，弹出目录选择对话框并更新根目录。支持传入初始目录参数，以便对话框从上次记忆的路径开始浏览。
 
@@ -145,10 +151,15 @@
 - `void setRootPath(const QString &path)`：设置文件树显示的根目录。
 - `QString rootPath() const`：返回当前根目录。
 - `void selectFolder(const QString &defaultDir = QString())`：弹出文件夹选择对话框，若 `defaultDir` 不为空则将其作为对话框的起始目录。用户选择后更新根目录并发出 `folderChanged` 信号。
+- `void createNewFolder(const QString &parentDir)`：在指定父目录下创建新文件夹。
+- `void deleteItem(const QString &path, bool isDir)`：删除文件或文件夹（递归删除）。
 
 **信号**：
 - `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录且后缀为 .md/.txt）时发出。
 - `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
+- `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。
+- `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
+- `void itemDeleted(const QString &path)`：在成功删除文件/文件夹后发出。
 
 **协作关系**：
 - 被 `MainWindow` 使用，其 `fileClicked` 信号连接到主窗口的 `onFileSelected` 槽，最终转发给 `TabManager`。
@@ -200,3 +211,5 @@
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
 - **Markdown 预览模式**：在工具栏添加了“预览模式”按钮（快捷键 `Ctrl+Shift+P`），可切换当前文档的源码编辑与渲染预览视图。预览基于 Qt 原生的 `QTextDocument::setMarkdown`，支持 GitHub 风格的 Markdown 方言。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。
+- **文件树右键菜单**：通过 `QMenu` 动态构建，根据点击位置是否有文件/文件夹，显示不同菜单项。重命名采用内联编辑，无需额外对话框。
+- **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。

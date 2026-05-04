@@ -20,9 +20,19 @@ public:
 signals:
     void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
     void folderChanged(const QString &newPath);
+    void requestNewFile(); // 请求创建新文件
+    void requestNewFolder(const QString &parentDir); // 请求在指定目录新建文件夹
+    void requestDelete(const QString &path, bool isDir); // 请求删除
+    void fileRenamed(const QString &oldPath, const QString &newPath); // 重命名成功时发出
+    void itemDeleted(const QString &path); // 删除成功时发出
+    void operationFailed(const QString &errorMsg); // 通用失败信号（可选）
 
 public slots:
     void selectFolder(const QString &defaultDir = QString()); // 弹出文件夹选择对话框，并切换到用户选择的目录
+    void onCustomContextMenu(const QPoint &point); // 右键菜单槽函数
+    void createNewFolder(const QString &parentDir); // 新建文件夹
+    void deleteItem(const QString &path, bool isDir); // 删除文件/文件夹
+    void onFileRenamed(const QString &path, const QString &oldName, const QString &newName); // 响应模型重命名信号
 
 private slots:
     void onTreeViewClicked(const QModelIndex &index); // 处理树视图的点击事件

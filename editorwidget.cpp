@@ -7,6 +7,7 @@
 #if QT_CONFIG(gestures)
 #include <QNativeGestureEvent>
 #endif
+#include <QFileDialog>
 
 EditorWidget::EditorWidget(QWidget *parent)
     : QWidget(parent)
@@ -107,7 +108,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     }
     QTextStream stream(&file);
     setPlainText(stream.readAll());
-    m_filePath = filePath;
+    m_filePath = QFileInfo(filePath).absoluteFilePath();
     m_originalContent = toPlainText();
     setModified(false);
     emit fileLoaded(filePath);
@@ -126,6 +127,7 @@ bool EditorWidget::saveFile()
     }
     QTextStream stream(&file);
     stream << toPlainText();
+    file.close();
     m_originalContent = toPlainText();
     setModified(false); // 保存后清除修改标志
     emit fileSaved(m_filePath);
@@ -136,12 +138,40 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
 {
     // 确定对话框起始目录，支持传入路径，否则用主文件夹
     QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
-    QString newPath = QFileDialog::getSaveFileName(this, "另存为", startDir,
-                                                   "Markdown文件 (*.md);;文本文件 (*.txt)");
+    QFileDialog dialog(this, tr("另存为"), startDir);
+    dialog.setNameFilters({tr("Markdown文件 (*.md)"), tr("文本文件 (*.txt)")});
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setDefaultSuffix("md");
+
+    if (dialog.exec() != QDialog::Accepted)
+        return false;
+
+    const QStringList selectedFiles = dialog.selectedFiles();
+    if (selectedFiles.isEmpty())
+        return false;
+    QString newPath = selectedFiles.first();
     if (newPath.isEmpty())
         return false;
+
+    // 若用户未输入后缀，根据选择的过滤器补充
+    QFileInfo info(newPath);
+    if (info.suffix().isEmpty()) {
+        QString selectedFilter = dialog.selectedNameFilter();
+        if (selectedFilter.contains("*.txt"))
+            newPath += ".txt";
+        else
+            newPath += ".md";
+    }
+
+    newPath = QFileInfo(newPath).absoluteFilePath();
+    QString oldPath = m_filePath;
     m_filePath = newPath;
-    return saveFile();
+
+    if (!saveFile()) {
+        m_filePath = oldPath;
+        return false;
+    }
+    return true;
 }
 
 QString EditorWidget::toPlainText() const
@@ -262,4 +292,16 @@ void EditorWidget::onContentCheckTimeout()
     if (isModified() != contentChanged) {
         setModified(contentChanged);
     }
+}
+
+void EditorWidget::setFilePath(const QString &newPath) {
+    QString normalized = QFileInfo(newPath).absoluteFilePath();
+    if (m_filePath == normalized) return;
+    QString oldPath = m_filePath;
+    m_filePath = normalized;
+    // 更新原始内容副本为当前内容（磁盘文件已改名且内容不变）
+    m_originalContent = toPlainText();
+    emit filePathChanged(oldPath, normalized);
+    // 修改状态不变，但路径改变可能需要重新检查（例如高亮等）
+    emit modificationChanged(isModified());
 }

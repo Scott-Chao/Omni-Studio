@@ -19,6 +19,8 @@
 #include <QMessageBox>
 #include <QFileInfo>
 #include <QToolButton>
+#include <QInputDialog>
+#include <utility>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -177,6 +179,21 @@ MainWindow::MainWindow(QWidget *parent)
     // 连接信号：文件树点击 -> 打开文件
     connect(m_explorer, &FileExplorerWidget::fileClicked, this, &MainWindow::onFileSelected);
 
+    connect(m_explorer, &FileExplorerWidget::requestNewFile, this, &MainWindow::newFile);
+    // 将新建文件夹、重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
+    connect(m_explorer, &FileExplorerWidget::requestNewFolder, m_explorer, &FileExplorerWidget::createNewFolder);
+
+    connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
+
+    // 监听重命名成功信号，更新标签管理器中的路径
+    connect(m_explorer, &FileExplorerWidget::fileRenamed, this, [this](const QString &oldPath, const QString &newPath) {
+        // 更新标签管理器中的路径
+        m_tabManager->updateEditorFilePath(oldPath, newPath);
+    });
+    // 监听操作失败信号，显示错误提示
+    connect(m_explorer, &FileExplorerWidget::operationFailed, this, [this](const QString &errorMsg) {
+        QMessageBox::warning(this, tr("错误"), errorMsg);
+    });
     loadSettings();
 }
 
@@ -329,4 +346,81 @@ void MainWindow::connectCurrentEditorZoomSignal()
         m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged,
                                          this, &MainWindow::updateZoomLabel);
     }
+}
+
+void MainWindow::onRequestDelete(const QString &path, bool isDir)
+{
+    QFileInfo info(path);
+    QString type = isDir ? tr("文件夹") : tr("文件");
+    QString msg;
+
+    // 构建确认消息
+    if (isDir) {
+        // 检查是否有未保存的子文件，以便在消息中添加警告
+        QStringList openedPaths = m_tabManager->allOpenedFilePaths();
+        QString dirPrefix = QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath()) + "/";
+        bool hasUnsaved = false;
+        for (const QString &opened : std::as_const(openedPaths)) {
+            QString openedNormalized = QDir::fromNativeSeparators(opened);
+            if (openedNormalized.startsWith(dirPrefix, Qt::CaseInsensitive)) {
+                EditorWidget *editor = m_tabManager->findEditorByPath(opened);
+                if (editor && editor->isModified()) {
+                    hasUnsaved = true;
+                    break;
+                }
+            }
+        }
+        if (hasUnsaved) {
+            msg = tr("文件夹 \"%1\" 中包含未保存的修改。\n"
+                     "继续删除将丢失这些更改。\n\n"
+                     "确定要删除该文件夹及其所有内容吗？")
+                      .arg(info.fileName());
+        } else {
+            msg = tr("确定要删除文件夹 \"%1\" 及其所有内容吗？\n此操作不可撤销。")
+                      .arg(info.fileName());
+        }
+    } else {
+        // 对于文件，检查是否已打开且已修改
+        EditorWidget *editor = m_tabManager->findEditorByPath(path);
+        if (editor && editor->isModified()) {
+            msg = tr("文件 \"%1\" 有未保存的修改。\n"
+                     "继续删除将丢失这些更改。\n\n"
+                     "确定要删除吗？")
+                      .arg(info.fileName());
+        } else {
+            msg = tr("确定要删除文件 \"%1\" 吗？\n此操作不可撤销。")
+                      .arg(info.fileName());
+        }
+    }
+
+    // 弹出确认对话框
+    int ret = QMessageBox::question(this, tr("确认删除"), msg,
+                                    QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes)
+        return;
+
+    // 标准化路径
+    QString normalizedPath = QFileInfo(path).absoluteFilePath();
+
+    // 关闭相关标签页（强制不保存）
+    if (isDir) {
+        QStringList openedPaths = m_tabManager->allOpenedFilePaths();
+        QStringList toClose;
+        QString dirPrefix = QDir::fromNativeSeparators(normalizedPath) + "/";
+        for (const QString &opened : std::as_const(openedPaths)) {
+            QString openedNormalized = QDir::fromNativeSeparators(opened);
+            if (openedNormalized.startsWith(dirPrefix, Qt::CaseInsensitive))
+                toClose.append(opened);
+        }
+        // 强制关闭（不保存），不弹出保存对话框
+        for (const QString &filePath : std::as_const(toClose)) {
+            m_tabManager->closeTabByPath(filePath, false);
+        }
+    } else {
+        // 强制关闭单个文件（不保存）
+        m_tabManager->closeTabByPath(normalizedPath, false);
+    }
+
+    // 执行删除
+    m_explorer->deleteItem(path, isDir);
 }

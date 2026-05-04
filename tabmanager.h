@@ -26,6 +26,12 @@ public:
     // 关闭所有标签页，若任一取消则返回 false
     bool closeAllTabs();
 
+public:
+    EditorWidget* findEditorByPath(const QString &filePath) const;
+    QStringList allOpenedFilePaths() const;   // 返回所有已打开文件的绝对路径（未保存的新文件除外）
+    bool closeTabByPath(const QString &filePath, bool askSave = true);
+    void updateEditorFilePath(const QString &oldPath, const QString &newPath);
+
 signals:
     void tabCountChanged(int count); // 当标签数量变化时发出
 

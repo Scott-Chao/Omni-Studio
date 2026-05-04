@@ -46,6 +46,11 @@ private slots:
     void onZoomOut(); // 缩小
     void onZoomReset(); // 重置大小
 
+    void onRequestDelete(const QString &path, bool isDir);
+
+private:
+    void closeTabsUnderPath(const QString &dirPath);
+
 protected:
     // 当用户关闭窗口时自动保存
     void closeEvent(QCloseEvent *event) override;
