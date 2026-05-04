@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.5）
+## 功能说明文档（v0.0.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -9,7 +9,10 @@
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
-- **文件树右键菜单**：支持新建文件（与工具栏新建相同）、新建文件夹；对文件/文件夹支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
+- 文件树右键菜单：支持新建文件（与工具栏新建相同）、新建文件夹；对文件/文件夹支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
+
+### 问题修复 v0.0.6
+- 修复了上一个版本中，右键菜单重命名时，显示出现重影的问题。该修复保证了重命名时，原文本不再残留，无重影，且文件/文件夹图标正常显示。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -140,7 +143,11 @@
 
 **职责**：
 - 提供右键菜单交互，支持新建文件、新建文件夹、重命名、删除。
-- 启用 `QTreeView` 的内联编辑功能（通过 `EditKeyPressed` 和 `SelectedClicked` 触发器），使重命名直接在树视图中进行。
+- 启用 `QTreeView` 的内联编辑功能（通过 `EditKeyPressed` 和 `SelectedClicked` 
+- 自定义委托 (NoGhostDelegate)：为了修复原生内联编辑可能出现的“重影”问题（编辑框未完全覆盖原文本导致新旧文字重叠），以及避免编辑时文件图标消失，特实现了自定义委托。
+  - updateEditorGeometry：通过 QStyle::SE_ItemViewItemText 获取精确的文本绘制区域，将编辑框（QLineEdit）仅放置于文本区域，保留图标区域不被遮挡。
+  - paint：在编辑状态下，清空 option.text 后调用基类绘制，保留图标、背景等视觉元素，但不绘制原文本，彻底消除重影。
+  - createEditor：设置编辑框背景不透明（跟随系统调色板或白色背景），去除边框和内边距，确保编辑框视效整洁。
 - 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
 - 提供 `createNewFolder`、`renameItem`、`deleteItem` 等公共槽函数，封装实际的文件系统操作。
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
@@ -163,7 +170,8 @@
 
 **协作关系**：
 - 被 `MainWindow` 使用，其 `fileClicked` 信号连接到主窗口的 `onFileSelected` 槽，最终转发给 `TabManager`。
-- `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。
+- `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。\
+- 内部使用 NoGhostDelegate 附加到 QTreeView，无需外部干预。
 
 ---
 

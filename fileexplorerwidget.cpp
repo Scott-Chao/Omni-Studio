@@ -5,6 +5,55 @@
 #include <QVBoxLayout>
 #include <QMenu>
 #include <QInputDialog>
+#include<QStyledItemDelegate>
+
+class NoGhostDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    // 让编辑框只覆盖文本区域，不覆盖图标区域
+    void updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option,
+                              const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        // 获取文本区域的矩形（相对于视图 viewport）
+        QRect textRect = opt.widget->style()->subElementRect(QStyle::SE_ItemViewItemText, &opt, opt.widget);
+        // 将编辑框移动到文本区域（注意坐标转换）
+        editor->setGeometry(textRect);
+    }
+
+    // 创建编辑器时确保背景不透明，样式干净
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override
+    {
+        QLineEdit *editor = qobject_cast<QLineEdit*>(
+            QStyledItemDelegate::createEditor(parent, option, index));
+        if (editor) {
+            editor->setAutoFillBackground(true);
+            editor->setContentsMargins(0, 0, 0, 0);
+            editor->setFrame(false);
+            // 根据系统主题设置合适的背景色（避免透明）
+            editor->setStyleSheet("background: palette(base);");
+        }
+        return editor;
+    }
+
+    // 编辑时仍然绘制背景和图标，但不绘制文本
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        if (option.state & QStyle::State_Editing) {
+            // 复制一份 option，清空文本，这样基类只会绘制图标、背景等，不会绘制文本
+            QStyleOptionViewItem opt = option;
+            opt.text = QString();
+            QStyledItemDelegate::paint(painter, opt, index);
+            return;
+        }
+        QStyledItemDelegate::paint(painter, option, index);
+    }
+};
 
 FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     : QWidget(parent)
@@ -31,6 +80,8 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 设置编辑触发器：F2 键 或 单击选中后再次单击（类似资源管理器）
     m_treeView->setEditTriggers(QAbstractItemView::EditKeyPressed | QAbstractItemView::SelectedClicked);
+
+    m_treeView->setItemDelegate(new NoGhostDelegate(m_treeView)); // 设置委托
 
     // 连接模型的重命名信号
     connect(m_fileModel, &QFileSystemModel::fileRenamed, this, &FileExplorerWidget::onFileRenamed);
