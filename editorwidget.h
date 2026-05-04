@@ -6,6 +6,7 @@
 #include <QTextBrowser>
 #include <QStackedWidget>
 #include <QVBoxLayout>
+#include <QTimer>
 
 class EditorWidget : public QWidget
 {
@@ -59,6 +60,11 @@ private:
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;
+
+private:
+    QString m_originalContent; // 文件的原始纯文本内容
+    QTimer m_contentCheckTimer; // 计时器，用于延迟内容比较
+    void onContentCheckTimeout(); // 超时后比较内容并更新修改状态
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

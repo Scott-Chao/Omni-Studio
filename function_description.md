@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.3）
+## 功能说明文档（v0.0.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -8,7 +8,12 @@
 - 同时打开多个文件，显示在标签页栏中
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
-- **字体缩放**：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
+- 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
+
+### 问题修复（v0.0.4)
+- 修复了上一个版本中，缩放操作也导致文件被标记为已修改的bug
+- **无实质变更后自动清除修改标记**：当用户修改内容后手动恢复至原始状态时，编辑器会在停止输入 300ms 后自动比较内容并同步更新修改标记。
+- 更新文档，修改其中存在问题的部分
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -17,12 +22,11 @@
 **职责**：
 - 作为应用程序的主窗口，负责整体布局与用户交互。
 - 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter` 等子组件。
-- 管理工具栏、快捷键（如 `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换）。
 - 加载与保存应用程序的全局配置（通过 `SettingsManager`），包括窗口几何、分割条状态、上次访问的目录（打开目录和另存为分别记忆）。
 - 协调文件树与标签管理器的联动：当用户在文件树中点击 Markdown/TXT 文件时，通知 `TabManager` 打开或切换到对应文件。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
-- 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换、**以及字体缩放控件（−、百分比标签、+、重置）**。
+- 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换、以及字体缩放控件（−、百分比标签、+、重置）。
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
@@ -91,9 +95,12 @@
 - 编辑模式使用 `QTextEdit` 编写 Markdown 源码；预览模式使用 `QTextBrowser` 通过 `QTextDocument::setMarkdown` 将源码转为富文本显示。
 - 两种模式通过内部 `QStackedWidget` 切换，共用文件路径和修改状态。
 - 管理当前编辑文件的路径和修改状态。
+  内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免“输入再删除”导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
-- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法，可统一调整编辑器与预览器的字体大小（通过 `applyZoom` 实现）。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过刷新 HTML 并设置默认字体及样式表（强制所有元素继承基准字号）来完成。
+- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法，可统一调整编辑器与预览器的字体大小（通过 `applyZoom` 实现）。
+  编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过刷新 HTML 并设置默认字体及样式表（强制所有元素继承基准字号）来完成。
+  缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)`：加载指定文件，成功后更新内部路径并重置修改标记。
@@ -156,14 +163,14 @@
 **职责**：
 - 封装 `QSettings`，提供统一、类型安全的配置读写接口。
 - 负责管理 `config.ini` 文件的存储位置（默认与可执行文件同目录）。
-- 支持窗口几何信息、拆分条状态、最后访问文件夹路径等持久化。
+- 支持窗口几何信息、拆分条状态、最后打开的文件夹路径、最后另存为的文件夹路径等持久化，两者独立记忆。
 - 提供扩展方法，便于未来添加字体大小、快捷键配置等。
 
 **主要接口**：
 - `void setWindowGeometry(const QByteArray &geometry)` / `QByteArray windowGeometry() const`
 - `void setSplitterState(const QByteArray &state)` / `QByteArray splitterState() const`
 - `void setLastFolderPath(const QString &path)` / `QString lastFolderPath(const QString &defaultPath = QString()) const`
-- `void setEditorFontSize(int size)` / `int editorFontSize(int defaultValue = 12) const`（预留）
+- `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
 - `void clear()`：清除所有设置。
 
 **协作关系**：
@@ -177,7 +184,7 @@
 
 **职责**：
 - 创建 `QApplication` 实例。
-- 调用 `QApplication::setAttribute(Qt::AA_EnableHighDpiScaling)` 启用高 DPI 适配。
+- 根据系统 UI 语言尝试加载并安装对应的翻译文件（`smart-markdown_<locale>.qm`）
 - 创建并显示 `MainWindow` 主窗口。
 - 进入事件循环。
 
@@ -190,6 +197,6 @@
 ### 界面定制细节
 
 - **标签页样式**：通过 `QTabWidget` 的样式表设置了标签最小高度、左右内边距（`padding: 4px 12px`）、圆角以及选中/悬停背景色，解决了标签左右空位过小的问题。
-- **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（“保存(&S)”、“不保存(&D)”、“取消(&C)”），提示文本中包含当前文件名，且调用 `resize(450, 180)` 增大对话框尺寸，改善了用户体验。
+- **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
 - **Markdown 预览模式**：在工具栏添加了“预览模式”按钮（快捷键 `Ctrl+Shift+P`），可切换当前文档的源码编辑与渲染预览视图。预览基于 Qt 原生的 `QTextDocument::setMarkdown`，支持 GitHub 风格的 Markdown 方言。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。

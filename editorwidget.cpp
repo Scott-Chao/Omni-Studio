@@ -43,6 +43,16 @@ EditorWidget::EditorWidget(QWidget *parent)
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::updateModificationChanged);
 
     setPreviewMode(false); // 默认编辑模式
+
+    m_contentCheckTimer.setSingleShot(true);
+    m_contentCheckTimer.setInterval(300); // 设置300ms无文本变化后进行一次内容比较
+    connect(&m_contentCheckTimer, &QTimer::timeout, this, &EditorWidget::onContentCheckTimeout);
+
+    // 当文本编辑器内容变化时，重置计时器
+    connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
+        m_contentCheckTimer.start();
+    });
+    m_originalContent = toPlainText(); // 记录当前内容，用于内容比较
 }
 
 void EditorWidget::setPreviewMode(bool preview)
@@ -98,6 +108,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     QTextStream stream(&file);
     setPlainText(stream.readAll());
     m_filePath = filePath;
+    m_originalContent = toPlainText();
     setModified(false);
     emit fileLoaded(filePath);
     return true;
@@ -115,6 +126,7 @@ bool EditorWidget::saveFile()
     }
     QTextStream stream(&file);
     stream << toPlainText();
+    m_originalContent = toPlainText();
     setModified(false); // 保存后清除修改标志
     emit fileSaved(m_filePath);
     return true;
@@ -152,11 +164,17 @@ bool EditorWidget::isModified() const
 
 void EditorWidget::setModified(bool modified)
 {
-    m_textEdit->document()->setModified(modified);
+    if (m_textEdit->document()->isModified() != modified) {
+        m_textEdit->document()->setModified(modified);
+        emit modificationChanged(modified); // 触发标题更新
+    }
 }
 
 void EditorWidget::applyZoom()
 {
+    bool wasModified = m_textEdit->document()->isModified();
+    QSignalBlocker blocker(m_textEdit->document());
+
     int pointSize = qBound(1, qRound(m_baseFontSize * m_zoomFactor), 72);
 
     // 编辑区：视图字体 + 全文字符格式
@@ -174,6 +192,8 @@ void EditorWidget::applyZoom()
     if (m_previewMode) {
         refreshPreview();
     }
+
+    m_textEdit->document()->setModified(wasModified);
 }
 
 void EditorWidget::zoomIn()
@@ -233,4 +253,13 @@ bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
     }
 #endif
     return QWidget::eventFilter(obj, event);
+}
+
+void EditorWidget::onContentCheckTimeout()
+{
+    // 检查文件内容是否被修改
+    bool contentChanged = (toPlainText() != m_originalContent);
+    if (isModified() != contentChanged) {
+        setModified(contentChanged);
+    }
 }
