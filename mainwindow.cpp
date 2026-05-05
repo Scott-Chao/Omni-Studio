@@ -49,9 +49,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockHistory->hide(); // 默认隐藏历史记录
 
     // 工具栏最左侧插入显示/隐藏面板的按钮
-    QAction *toggleHistoryAction = m_dockHistory->toggleViewAction();
-    toggleHistoryAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogListView)); // 可换成自定义图标
+    toggleHistoryAction = m_dockHistory->toggleViewAction();
     toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
+    toggleHistoryAction->setShortcut(QKeySequence("Ctrl+H"));
 
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
@@ -211,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_explorer, &FileExplorerWidget::operationFailed, this, [this](const QString &errorMsg) {
         QMessageBox::warning(this, tr("错误"), errorMsg);
     });
+    qApp->installEventFilter(this);
 
     loadSettings();
     updatePreviewActionState();
@@ -305,6 +306,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
         return;
     }
     // 所有标签都已安全关闭，保存配置并退出
+    m_historyPanel->saveHistory();
     saveSettings();
     event->accept();
 }
@@ -508,10 +510,23 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
         m_explorer->setRootPath(newRoot);
         m_settings->setLastFolderPath(newRoot);
     }
+    addToRecentFiles(absolutePath); // 记录到历史（置顶）
+    m_dockHistory->hide(); // 隐藏面板
+}
 
-    // 记录到历史（会置顶）
-    addToRecentFiles(absolutePath);
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::MouseButtonPress && m_dockHistory->isVisible()) {
+        QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
+        // 如果点击的是 toggleHistoryAction 对应的按钮，让 toggle 动作自己处理
+        QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
+        if (btn && btn->defaultAction() == toggleHistoryAction)
+            return QMainWindow::eventFilter(watched, event);
 
-    // 隐藏面板
-    m_dockHistory->hide();
+        // 检查点击是否发生在历史面板内部
+        if (!m_dockHistory->isAncestorOf(clickedWidget)) {
+            m_dockHistory->hide();
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }

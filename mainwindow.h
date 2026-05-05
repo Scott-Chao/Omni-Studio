@@ -51,8 +51,8 @@ private slots:
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
 
 protected:
-    // 当用户关闭窗口时自动保存
-    void closeEvent(QCloseEvent *event) override;
+    void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void closeTabsUnderPath(const QString &dirPath);
@@ -76,6 +76,7 @@ private:
     void addToRecentFiles(const QString &filePath);
     HistoryPanel *m_historyPanel;
     QDockWidget *m_dockHistory;
+    QAction *toggleHistoryAction;
 
 };
 #endif // MAINWINDOW_H

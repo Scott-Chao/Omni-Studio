@@ -1,6 +1,7 @@
 #include <QWidget>
 #include <QListWidget>
 #include <QSettings>
+#include <QPushButton>
 #include "settingsmanager.h"
 
 class HistoryPanel : public QWidget {
@@ -16,11 +17,12 @@ signals:
 
 private slots:
     void onItemClicked(QListWidgetItem *item);
+    void clearHistory();
 
 private:
     QListWidget *m_listWidget;
     QStringList m_filePaths; // 按显示顺序的完整路径
     SettingsManager *m_settings;
     static const int MaxHistorySize = 50;
-    void rebuildList();
+    QPushButton *m_clearButton; // 清空按钮
 };
