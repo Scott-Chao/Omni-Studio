@@ -80,6 +80,16 @@ QString SettingsManager::lastSaveAsFolderPath(const QString &defaultPath) const
     return m_settings->value(KEY_LAST_SAVE_AS_FOLDER, defaultPath).toString();
 }
 
+void SettingsManager::setRecentFiles(const QStringList &files) {
+    // 只保留前 MaxRecentFiles 条
+    QStringList trimmed = files.mid(0, MaxRecentFiles);
+    m_settings->setValue("History/recentFiles", trimmed);
+}
+
+QStringList SettingsManager::recentFiles() const {
+    return m_settings->value("History/recentFiles").toStringList();
+}
+
 void SettingsManager::clear()
 {
     // 清空设置

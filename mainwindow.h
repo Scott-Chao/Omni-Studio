@@ -11,6 +11,8 @@ class TabManager;
 class FileExplorerWidget;
 class EditorWidget;
 class SettingsManager;
+class QDockWidget;
+class HistoryPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -45,17 +47,16 @@ private slots:
     void onZoomIn(); // 放大
     void onZoomOut(); // 缩小
     void onZoomReset(); // 重置大小
-
-    void onRequestDelete(const QString &path, bool isDir);
-
-private:
-    void closeTabsUnderPath(const QString &dirPath);
+    void onRequestDelete(const QString &path, bool isDir); // 删除文件/文件夹
+    void onHistoryFileClicked(const QString &filePath); // 打开历史记录
 
 protected:
     // 当用户关闭窗口时自动保存
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    void closeTabsUnderPath(const QString &dirPath);
+
     EditorWidget* currentEditor() const;
     void updateTabTitle(EditorWidget *editor, bool modified);
     void loadSettings(); // 程序启动时读取配置
@@ -71,6 +72,10 @@ private:
     // 预览模式激活状态调整
     QAction *m_previewAction = nullptr;
     void updatePreviewActionState();
+    // 历史记录
+    void addToRecentFiles(const QString &filePath);
+    HistoryPanel *m_historyPanel;
+    QDockWidget *m_dockHistory;
 
 };
 #endif // MAINWINDOW_H

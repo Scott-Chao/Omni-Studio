@@ -4,6 +4,7 @@
 #include "editorwidget.h"
 #include "settingsmanager.h"
 #include "tabmanager.h"
+#include "historypanel.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -21,6 +22,7 @@
 #include <QToolButton>
 #include <QInputDialog>
 #include <utility>
+#include <QDockWidget>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -33,10 +35,32 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // 创建历史记录面板
+    m_historyPanel = new HistoryPanel(m_settings, this);
+    m_historyPanel->loadHistory();
+    connect(m_historyPanel, &HistoryPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
+
+    // 将面板放入 QDockWidget，放在右侧
+    m_dockHistory = new QDockWidget(tr("历史记录"), this);
+    m_dockHistory->setWidget(m_historyPanel);
+    m_dockHistory->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockHistory);
+
+    m_dockHistory->hide(); // 默认隐藏历史记录
+
+    // 工具栏最左侧插入显示/隐藏面板的按钮
+    QAction *toggleHistoryAction = m_dockHistory->toggleViewAction();
+    toggleHistoryAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogListView)); // 可换成自定义图标
+    toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
     toolBar->setFloatable(false);
+
+    // 历史记录
+    toolBar->insertAction(nullptr, toggleHistoryAction);
+    toolBar->insertSeparator(toggleHistoryAction);
 
     // 打开目录
     QAction *openDirAction = new QAction("打开目录", this);
@@ -204,6 +228,7 @@ void MainWindow::onFileSelected(const QString &filePath)
     connectCurrentEditorZoomSignal();
     updateZoomLabel();
     updatePreviewActionState();
+    addToRecentFiles(filePath);
 }
 
 void MainWindow::newFile()
@@ -229,6 +254,7 @@ void MainWindow::saveFile()
         // 保存已有文件，不修改另存为记忆
         if (editor->saveFile()) {
             updatePreviewActionState(); // 刷新预览按钮状态
+            addToRecentFiles(editor->currentFilePath());
         }
     }
 }
@@ -248,6 +274,7 @@ void MainWindow::onSaveFileAs()
             m_settings->setLastSaveAsFolderPath(newDir);
         }
         updatePreviewActionState();
+        addToRecentFiles(newFilePath);
     }
 }
 
@@ -450,4 +477,41 @@ void MainWindow::updatePreviewActionState()
         // 如果是 md 文件，同步按钮的勾选状态以反映当前编辑器的预览模式
         m_previewAction->setChecked(editor->isPreviewMode());
     }
+}
+
+void MainWindow::addToRecentFiles(const QString &filePath)
+{
+    QString cleanPath = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+    if (!cleanPath.isEmpty())
+        m_historyPanel->addFile(cleanPath);
+}
+
+void MainWindow::onHistoryFileClicked(const QString &filePath)
+{
+    if (!QFile::exists(filePath)) {
+        QMessageBox::warning(this, tr("文件不存在"),
+                             tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
+        return;
+    }
+
+    EditorWidget *editor = m_tabManager->openFile(filePath);
+    if (!editor) return;
+
+    // ---- 判断是否需要切换文件树根目录 ----
+    QString absolutePath = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+    QDir rootDir(m_explorer->rootPath());
+    QString relative = rootDir.relativeFilePath(absolutePath);
+
+    // 如果相对路径以 ".." 开头，说明文件在当前根目录之外
+    if (relative.startsWith("..")) {
+        QString newRoot = QFileInfo(absolutePath).absolutePath();
+        m_explorer->setRootPath(newRoot);
+        m_settings->setLastFolderPath(newRoot);
+    }
+
+    // 记录到历史（会置顶）
+    addToRecentFiles(absolutePath);
+
+    // 隐藏面板
+    m_dockHistory->hide();
 }

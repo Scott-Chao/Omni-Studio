@@ -11,6 +11,7 @@ CONFIG += c++17
 SOURCES += \
     editorwidget.cpp \
     fileexplorerwidget.cpp \
+    historypanel.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
@@ -19,6 +20,7 @@ SOURCES += \
 HEADERS += \
     editorwidget.h \
     fileexplorerwidget.h \
+    historypanel.h \
     mainwindow.h \
     settingsmanager.h \
     tabmanager.h

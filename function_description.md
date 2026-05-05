@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.8）
+## 功能说明文档（v0.0.9）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -10,9 +10,12 @@
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
 - 文件树右键菜单：支持新建文件（与工具栏新建相同）、新建文件夹；对文件/文件夹支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
+- 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问
 
-### 新增/优化 v0.0.8
-- 优化标签页拖拽体验：拖拽标签页时，整个标签矩形**始终不超出标签页栏的左右边界**，杜绝标签部分视觉越界的问题。
+### 新增/优化 v0.0.9
+- 新增历史记录功能：工具栏最左侧增加“历史记录”按钮，点击后在右侧显示纵向最近文件列表（最多50条，按打开时间从新到旧排列，自动去重）。
+  历史数据持久化到 `config.ini` 中，程序启动时面板默认隐藏。点击历史记录中的文件可打开对应文件；
+  若文件不在当前文件树根目录下，自动将文件树切换到该文件所在文件夹。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -30,6 +33,7 @@
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换（仅当编辑`.md`文件时可用）
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
+- 管理历史记录面板（`QDockWidget` + `HistoryPanel`），在工具栏最左侧提供显示/隐藏面板的按钮（状态与面板可见性联动）。在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。
 
 **主要接口（槽函数）**：
 - `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
@@ -45,6 +49,7 @@
   同时，在 `connectCurrentEditorZoomSignal()` 中连接当前编辑器的 `filePathChanged` 信号到 `updatePreviewActionState`，以便文件路径（如通过外部重命名或另存为）变化时刷新按钮状态。
 - `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
+- `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -57,6 +62,8 @@
 - 监听 `TabManager::currentChanged` 信号，当标签页切换时调用 `updateZoomLabel()` 和 `connectCurrentEditorZoomSignal()`，保持缩放信息与当前编辑器同步。
 - 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建文件会继承当前活动标签的缩放倍率。
 - 通过 `updatePreviewActionState()` 方法统一控制预览按钮的可见性、启用状态和勾选状态，标签切换、文件路径变化、新建/打开/保存文件时都会调用该方法，确保按钮只在当前文件为 `.md` 时出现。
+- 持有 `HistoryPanel*` 和 `QDockWidget*`，将面板放置于右侧停靠区域，默认隐藏。
+- 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
 
 ---
 
@@ -195,13 +202,42 @@
 - `void setLastFolderPath(const QString &path)` / `QString lastFolderPath(const QString &defaultPath = QString()) const`
 - `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
 - `void clear()`：清除所有设置。
+- `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（最多50条），键名 `History/recentFiles`。
 
 **协作关系**：
 - 仅被 `MainWindow` 使用，在 `loadSettings` 和 `saveSettings` 中调用对应方法。
+- 历史记录面板通过该类存取最近文件列表。
 
 ---
 
-### 6. `main.cpp` - 应用程序入口
+### 6. `HistoryPanel` - 历史记录面板
+
+**文件**：`historypanel.h` / `historypanel.cpp`
+
+**职责**：
+- 以 `QListWidget` 纵向展示用户最近打开的文件列表，顶部为最新打开的文件，底部为最早的文件。
+- 列表上限为 50 条，自动去重：如果打开的文件已在历史中，则将其移动到列表最前端。
+- 提供 `addFile(const QString &filePath)` 公共方法用于添加历史记录，内部自动规范化路径、去重及持久化。
+- 从 `SettingsManager` 加载/保存最近文件列表，通过 `loadHistory()` 和 `saveHistory()` 与配置文件同步。
+- 当用户点击列表中的文件时，发出 `fileClicked(const QString &filePath)` 信号，供主窗口调用打开与目录切换逻辑。
+- 面板自身是一个 `QWidget`，被嵌入 `QDockWidget` 中由主窗口管理显示/隐藏。
+
+**主要接口**：
+- `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。
+- `void loadHistory()` / `void saveHistory()`：从配置读取/保存最近文件列表。
+- `void clear()`：清空历史列表（可选实现）。
+
+**信号**：
+- `void fileClicked(const QString &filePath)`：用户点击某个历史文件时发出。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件。
+- 通过 `SettingsManager` 读写最近文件列表，配置键名称为 `History/recentFiles`。
+- `MainWindow` 在打开文件、另存为等操作成功后调用 `addFile` 以更新历史；同时连接其 `fileClicked` 信号到 `onHistoryFileClicked` 槽，处理文件打开与目录切换。
+
+---
+
+### 7. `main.cpp` - 应用程序入口
 
 **文件**：`main.cpp`
 
@@ -216,6 +252,7 @@
 ### 配置存储说明
 
 - 配置文件名为 `config.ini`，默认保存在 **应用程序可执行文件所在的目录**（通过 `QCoreApplication::applicationDirPath()` 获得）。
+- 最近文件列表：键 `History/recentFiles`，存储为 `QStringList`，按最新在前的顺序保存。
 
 ### 界面定制细节
 
