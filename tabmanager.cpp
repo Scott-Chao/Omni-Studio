@@ -7,8 +7,8 @@
 TabManager::TabManager(QWidget *parent)
     : QTabWidget(parent)
 {
+    setTabBar(new CustomTabBar(this)); // 使用自定义标签栏，提供拖拽边界限制的功能
     setTabsClosable(true);
-    setMovable(true);
     connect(this, &QTabWidget::tabCloseRequested, this, &TabManager::onTabCloseRequested);
 }
 
@@ -240,4 +240,81 @@ void TabManager::updateEditorFilePath(const QString &oldPath, const QString &new
             setTabToolTip(idx, newPath);
         }
     }
+}
+
+CustomTabBar::CustomTabBar(QWidget *parent)
+    : QTabBar(parent)
+{
+    setMovable(true); // 允许用户通过拖拽重新排列标签
+}
+
+void CustomTabBar::mousePressEvent(QMouseEvent *event)
+{
+    QTabBar::mousePressEvent(event); // 先调用基类处理，保证基本的点击/拖拽初始化
+
+    // 记录左键按下时的信息，用于后续拖拽边界计算
+    if (event->button() == Qt::LeftButton) {
+        m_dragIndex = tabAt(event->pos());  // 获取被点击的标签索引
+        if (m_dragIndex != -1) {
+            m_dragPressPos = event->pos();
+
+            // 获取被点标签的几何矩形
+            QRect currentTabRect = tabRect(m_dragIndex);
+            m_dragTabWidth = currentTabRect.width(); // 标签宽度
+            m_dragOffsetX = m_dragPressPos.x() - currentTabRect.left(); // 鼠标相对于标签左边缘的偏移
+
+            // 尚未开始拖拽，等待 move 事件超过阈值
+            m_dragStarted = false;
+            m_dragInProgress = false;
+        } else {
+            m_dragIndex = -1; // 点击空白处，重置
+        }
+    }
+}
+
+void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
+{
+    // 只有当按下左键且指向一个有效标签时才考虑拖拽
+    if (m_dragIndex != -1 && (event->buttons() & Qt::LeftButton)) {
+        // 判断是否超过系统拖拽起始距离，防止轻微抖动触发拖拽
+        if (!m_dragStarted &&
+            (event->pos() - m_dragPressPos).manhattanLength() >= QApplication::startDragDistance())
+        {
+            m_dragStarted = true;
+            m_dragInProgress = true;
+        }
+
+        if (m_dragInProgress) {
+            // 整个被拖标签（宽度 m_dragTabWidth）始终完整出现在标签栏内部，不能越界，鼠标在标签内的偏移量为 m_dragOffsetX
+            int leftBound  = m_dragOffsetX; // 当鼠标 x == m_dragOffsetX 时，标签左边缘刚好对齐栏左侧。
+            int rightBound = width() - (m_dragTabWidth - m_dragOffsetX); // 当鼠标 x == width() - (m_dragTabWidth - m_dragOffsetX) 时，标签右边缘刚好对齐栏右侧。
+
+            QPoint clampedPos = event->pos();
+            clampedPos.setX(qBound(leftBound, clampedPos.x(), rightBound));
+
+            QPoint globalClamped = mapToGlobal(clampedPos); // 同步修正全局坐标，确保浮动标签渲染位置与钳制后的本地坐标一致
+
+            // 构造一个坐标被钳制过的事件副本，转发给基类继续处理拖拽动画和重排逻辑
+            QMouseEvent clampedEvent(
+                event->type(),
+                clampedPos,
+                globalClamped,
+                event->button(),
+                event->buttons(),
+                event->modifiers()
+                );
+            QTabBar::mouseMoveEvent(&clampedEvent);
+            return;
+        }
+    }
+    QTabBar::mouseMoveEvent(event); // 未处于拖拽状态，或拖拽尚未开始，按普通移动处理
+}
+
+void CustomTabBar::mouseReleaseEvent(QMouseEvent *event)
+{
+    QTabBar::mouseReleaseEvent(event); // 调用基类完成标签放置
+    // 重置所有拖拽相关状态
+    m_dragStarted = false;
+    m_dragInProgress = false;
+    m_dragIndex = -1;
 }

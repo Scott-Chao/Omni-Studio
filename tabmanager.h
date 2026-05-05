@@ -3,6 +3,32 @@
 
 #include <QTabWidget>
 #include "editorwidget.h"
+#include <QTabBar>
+#include <QMouseEvent>
+#include <QApplication>
+
+
+// 为了修复默认 QTabBar 拖拽时的视觉问题，改用自定义 CustomTabBar
+// 功能：限制被拖标签整体不超出标签栏左右边界
+class CustomTabBar : public QTabBar
+{
+    Q_OBJECT
+public:
+    explicit CustomTabBar(QWidget *parent = nullptr);
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+
+private:
+    bool m_dragStarted = false;
+    bool m_dragInProgress = false;
+    int  m_dragIndex = -1;
+    QPoint m_dragPressPos;
+    int  m_dragTabWidth = 0; // 被拖标签的宽度
+    int  m_dragOffsetX = 0; // 鼠标在标签内的横向偏移（相对于标签左边缘）
+};
 
 class TabManager : public QTabWidget
 {
