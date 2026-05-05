@@ -73,13 +73,15 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->addSeparator();
 
     // 预览（快捷键Ctrl+Shift+P）
-    QAction *previewAction = new QAction("预览模式", this);
-    previewAction->setShortcut(QKeySequence("Ctrl+Shift+P"));
-    previewAction->setCheckable(true); // 可选中状态，表示当前是否处于预览模式
-    toolBar->addAction(previewAction);
-    connect(previewAction, &QAction::toggled, this, [this](bool checked) {
+    m_previewAction = new QAction("预览模式", this);
+    m_previewAction->setShortcut(QKeySequence("Ctrl+Shift+P"));
+    m_previewAction->setCheckable(true);
+    toolBar->addAction(m_previewAction);
+    connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
+            if (checked && !editor->currentFilePath().toLower().endsWith(".md")) // 仅在 .md 文件中允许使用预览
+                return;
             editor->setPreviewMode(checked);
         }
     });
@@ -131,14 +133,7 @@ MainWindow::MainWindow(QWidget *parent)
     status->addPermanentWidget(zoomWidget);
 
     // 当切换标签页时，更新预览按钮的选中状态
-    connect(m_tabManager, &QTabWidget::currentChanged, this, [previewAction, this](int) {
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor) {
-            previewAction->setChecked(editor->isPreviewMode());
-        } else {
-            previewAction->setChecked(false);
-        }
-    });
+    connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updatePreviewActionState);
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
@@ -182,9 +177,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_explorer, &FileExplorerWidget::requestNewFile, this, &MainWindow::newFile);
     // 将新建文件夹、重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
     connect(m_explorer, &FileExplorerWidget::requestNewFolder, m_explorer, &FileExplorerWidget::createNewFolder);
-
     connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
-
     // 监听重命名成功信号，更新标签管理器中的路径
     connect(m_explorer, &FileExplorerWidget::fileRenamed, this, [this](const QString &oldPath, const QString &newPath) {
         // 更新标签管理器中的路径
@@ -194,7 +187,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_explorer, &FileExplorerWidget::operationFailed, this, [this](const QString &errorMsg) {
         QMessageBox::warning(this, tr("错误"), errorMsg);
     });
+
     loadSettings();
+    updatePreviewActionState();
 }
 
 MainWindow::~MainWindow()
@@ -208,6 +203,7 @@ void MainWindow::onFileSelected(const QString &filePath)
     m_tabManager->openFile(filePath);
     connectCurrentEditorZoomSignal();
     updateZoomLabel();
+    updatePreviewActionState();
 }
 
 void MainWindow::newFile()
@@ -219,6 +215,7 @@ void MainWindow::newFile()
         connectCurrentEditorZoomSignal();
         updateZoomLabel();
     }
+    updatePreviewActionState();
 }
 
 void MainWindow::saveFile()
@@ -229,7 +226,10 @@ void MainWindow::saveFile()
     if (editor->currentFilePath().isEmpty()) {
         onSaveFileAs(); // 无路径情况下另存为，更新记忆路径
     } else {
-        editor->saveFile(); // 保存已有文件，不修改另存为记忆
+        // 保存已有文件，不修改另存为记忆
+        if (editor->saveFile()) {
+            updatePreviewActionState(); // 刷新预览按钮状态
+        }
     }
 }
 
@@ -247,6 +247,7 @@ void MainWindow::onSaveFileAs()
         if (!newDir.isEmpty()) {
             m_settings->setLastSaveAsFolderPath(newDir);
         }
+        updatePreviewActionState();
     }
 }
 
@@ -338,13 +339,11 @@ void MainWindow::updateZoomLabel()
 
 void MainWindow::connectCurrentEditorZoomSignal()
 {
-    // 断开前一个编辑器的缩放信号连接
-    disconnect(m_editorZoomConnection);
-
+    disconnect(m_editorZoomConnection); // 断开前一个编辑器的缩放信号连接
     EditorWidget *editor = m_tabManager->currentEditor();
     if (editor) {
-        m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged,
-                                         this, &MainWindow::updateZoomLabel);
+        m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged, this, &MainWindow::updateZoomLabel); // 监听缩放
+        connect(editor, &EditorWidget::filePathChanged, this, &MainWindow::updatePreviewActionState); // 监听路径变化
     }
 }
 
@@ -423,4 +422,32 @@ void MainWindow::onRequestDelete(const QString &path, bool isDir)
 
     // 执行删除
     m_explorer->deleteItem(path, isDir);
+}
+
+void MainWindow::updatePreviewActionState()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) {
+        // 无编辑器：隐藏且禁用
+        m_previewAction->setVisible(false);
+        m_previewAction->setEnabled(false);
+        return;
+    }
+
+    QString filePath = editor->currentFilePath();
+    // 检查是否为 .md 文件
+    bool isMd = filePath.toLower().endsWith(".md");
+
+    m_previewAction->setVisible(isMd);
+    m_previewAction->setEnabled(isMd);
+
+    if (!isMd && editor->isPreviewMode()) {
+        // 如果不是 md 文件但当前处于预览模式，强制切回编辑模式
+        editor->setPreviewMode(false);
+        // 同步按钮勾选状态
+        m_previewAction->setChecked(false);
+    } else if (isMd) {
+        // 如果是 md 文件，同步按钮的勾选状态以反映当前编辑器的预览模式
+        m_previewAction->setChecked(editor->isPreviewMode());
+    }
 }

@@ -68,6 +68,9 @@ private:
 
     void updateZoomLabel(); // 更新百分比标签
     void connectCurrentEditorZoomSignal(); // 连接当前编辑器的缩放信号
+    // 预览模式激活状态调整
+    QAction *m_previewAction = nullptr;
+    void updatePreviewActionState();
 
 };
 #endif // MAINWINDOW_H
