@@ -82,28 +82,68 @@ void EditorWidget::setPreviewMode(bool preview)
     applyZoom(); // 切换模式后立即应用字体缩放
 }
 
+// void EditorWidget::refreshPreview()
+// {
+//     // 获取当前 Markdown 源码
+//     QString markdown = m_textEdit->toPlainText();
+
+//     // 识别 [[文件名]] 并替换为 Markdown 格式的链接
+//     static QRegularExpression wikiRegExp("\\[\\[([^\\]]+)\\]\\]");
+//     markdown.replace(wikiRegExp, "[\\1](wikilink:\\1)");
+
+//     // 直接操作预览浏览器的内部文档
+//     QTextDocument *doc = m_previewBrowser->document();
+//     doc->setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+
+//     // 设置文档默认字体为当前编辑器的字体（已缩放）
+//     doc->setDefaultFont(m_textEdit->font());
+
+//     // 强制定义 body 基准字号，确保标题等相对单位 (em) 正确缩放
+//     int pointSize = qRound(m_baseFontSize * m_zoomFactor);
+//     doc->setDefaultStyleSheet(
+//         QString("body { font-size: %1pt; } "
+//                 "* { font-size: inherit; }").arg(pointSize)
+//         );
+// }
+
 void EditorWidget::refreshPreview()
 {
-    // 获取当前 Markdown 源码
     QString markdown = m_textEdit->toPlainText();
 
-    // 识别 [[文件名]] 并替换为 Markdown 格式的链接
-    static QRegularExpression wikiRegExp("\\[\\[([^\\]]+)\\]\\]");
-    markdown.replace(wikiRegExp, "[\\1](wikilink:\\1)");
+    // 递归正则：支持任意层配对 []
+    static const QRegularExpression wikiRegExp(
+        QStringLiteral(R"(\[\[((?:[^\[\]]|\[(?1)\])*)\]\])"));
 
-    // 直接操作预览浏览器的内部文档
+    QRegularExpressionMatchIterator it = wikiRegExp.globalMatch(markdown);
+    QString result;
+    int lastPos = 0;
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        result += QStringView(markdown).mid(lastPos, match.capturedStart() - lastPos).toString();
+        QString linkText = match.captured(1);  // 完整的链接文本（含内部方括号）
+
+        // 转义显示文本中的 [ 和 ]，避免破坏 Markdown 链接语法
+        QString escapedText = linkText;
+        escapedText.replace(QLatin1Char('['), QStringLiteral("\\["));
+        escapedText.replace(QLatin1Char(']'), QStringLiteral("\\]"));
+
+        // 对链接目标进行 URL 编码，避免空格/特殊字符破坏 Markdown 链接语法
+        QByteArray encoded = QUrl::toPercentEncoding(linkText);
+        QString encodedTarget = QString::fromLatin1(encoded);
+        result += QStringLiteral("[%1](wikilink:%2)")
+                      .arg(escapedText, encodedTarget);
+        lastPos = match.capturedEnd();
+    }
+    result += QStringView(markdown).mid(lastPos).toString();
+
     QTextDocument *doc = m_previewBrowser->document();
-    doc->setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
-
-    // 设置文档默认字体为当前编辑器的字体（已缩放）
+    doc->setMarkdown(result, QTextDocument::MarkdownDialectGitHub);
     doc->setDefaultFont(m_textEdit->font());
 
-    // 强制定义 body 基准字号，确保标题等相对单位 (em) 正确缩放
     int pointSize = qRound(m_baseFontSize * m_zoomFactor);
     doc->setDefaultStyleSheet(
-        QString("body { font-size: %1pt; } "
-                "* { font-size: inherit; }").arg(pointSize)
-        );
+        QStringLiteral("body { font-size: %1pt; } * { font-size: inherit; }")
+            .arg(pointSize));
 }
 
 void EditorWidget::onTextChanged()
