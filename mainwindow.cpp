@@ -198,9 +198,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 连接信号：文件树点击 -> 打开文件
     connect(m_explorer, &FileExplorerWidget::fileClicked, this, &MainWindow::onFileSelected);
 
-    connect(m_explorer, &FileExplorerWidget::requestNewFile, this, &MainWindow::newFile);
-    // 将新建文件夹、重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
-    connect(m_explorer, &FileExplorerWidget::requestNewFolder, m_explorer, &FileExplorerWidget::createNewFolder);
+    // 将重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
     connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
     // 监听重命名成功信号，更新标签管理器中的路径
     connect(m_explorer, &FileExplorerWidget::fileRenamed, this, [this](const QString &oldPath, const QString &newPath) {
