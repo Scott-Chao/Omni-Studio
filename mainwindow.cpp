@@ -225,7 +225,6 @@ MainWindow::~MainWindow()
 void MainWindow::onFileSelected(const QString &filePath)
 {
     m_tabManager->openFile(filePath);
-    connectCurrentEditorZoomSignal();
     updateZoomLabel();
     updatePreviewActionState();
     addToRecentFiles(filePath);
@@ -237,7 +236,6 @@ void MainWindow::newFile()
     EditorWidget *newEditor = m_tabManager->newFile();
     if (newEditor && current) {
         newEditor->setZoomFactor(current->zoomFactor());  // 继承当前缩放
-        connectCurrentEditorZoomSignal();
         updateZoomLabel();
     }
     updatePreviewActionState();
@@ -374,8 +372,10 @@ void MainWindow::connectCurrentEditorZoomSignal()
     EditorWidget *editor = m_tabManager->currentEditor();
     if (editor) {
         m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged, this, &MainWindow::updateZoomLabel); // 监听缩放
-        connect(editor, &EditorWidget::filePathChanged, this, &MainWindow::updatePreviewActionState); // 监听路径变化
-        connect(editor, &EditorWidget::wikiLinkClicked, this, &MainWindow::onWikiLinkClicked);
+        connect(editor, &EditorWidget::filePathChanged, this,
+                &MainWindow::updatePreviewActionState, Qt::UniqueConnection); // 监听路径变化
+        connect(editor, &EditorWidget::wikiLinkClicked, this,
+                &MainWindow::onWikiLinkClicked, Qt::UniqueConnection);
     }
 }
 
