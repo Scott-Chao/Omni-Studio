@@ -8,6 +8,9 @@
 #include <QNativeGestureEvent>
 #endif
 #include <QFileDialog>
+#include <QRegularExpression>
+#include <QUrl>
+#include <QDesktopServices>
 
 EditorWidget::EditorWidget(QWidget *parent)
     : QWidget(parent)
@@ -19,7 +22,18 @@ EditorWidget::EditorWidget(QWidget *parent)
     // 创建编辑器和预览控件
     m_textEdit = new QTextEdit(this);
     m_previewBrowser = new QTextBrowser(this);
-    m_previewBrowser->setOpenExternalLinks(true); // 允许点击链接
+    m_previewBrowser->setOpenExternalLinks(false); // 禁止自动调用浏览器
+    m_previewBrowser->setOpenLinks(false); // 禁用自动导航
+
+    // 连接预览器的链接点击信号
+    connect(m_previewBrowser, &QTextBrowser::anchorClicked, this, [this](const QUrl &url){
+        if (url.scheme() == "wikilink") {
+            emit wikiLinkClicked(url.path()); // 发出信号，通知主窗口查找文件
+        } else {
+            // 如果是普通网页链接，通过浏览器打开
+            QDesktopServices::openUrl(url);
+        }
+    });
 
     m_textEdit->viewport()->installEventFilter(this);
     m_previewBrowser->viewport()->installEventFilter(this);
@@ -72,6 +86,10 @@ void EditorWidget::refreshPreview()
 {
     // 获取当前 Markdown 源码
     QString markdown = m_textEdit->toPlainText();
+
+    // 识别 [[文件名]] 并替换为 Markdown 格式的链接
+    static QRegularExpression wikiRegExp("\\[\\[([^\\]]+)\\]\\]");
+    markdown.replace(wikiRegExp, "[\\1](wikilink:\\1)");
 
     // 直接操作预览浏览器的内部文档
     QTextDocument *doc = m_previewBrowser->document();

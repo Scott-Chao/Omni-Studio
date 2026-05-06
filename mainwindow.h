@@ -49,6 +49,7 @@ private slots:
     void onZoomReset(); // 重置大小
     void onRequestDelete(const QString &path, bool isDir); // 删除文件/文件夹
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
+    void onWikiLinkClicked(const QString &fileName); // 点击双向链接
 
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存

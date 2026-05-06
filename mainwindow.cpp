@@ -23,6 +23,7 @@
 #include <QInputDialog>
 #include <utility>
 #include <QDockWidget>
+#include <QDirIterator>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -371,6 +372,7 @@ void MainWindow::connectCurrentEditorZoomSignal()
     if (editor) {
         m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged, this, &MainWindow::updateZoomLabel); // 监听缩放
         connect(editor, &EditorWidget::filePathChanged, this, &MainWindow::updatePreviewActionState); // 监听路径变化
+        connect(editor, &EditorWidget::wikiLinkClicked, this, &MainWindow::onWikiLinkClicked);
     }
 }
 
@@ -510,6 +512,58 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
     }
     addToRecentFiles(absolutePath); // 记录到历史（置顶）
     m_dockHistory->hide(); // 隐藏面板
+}
+
+void MainWindow::onWikiLinkClicked(const QString &fileName)
+{
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty()) return;
+
+    QStringList filters;
+    filters << fileName + ".md" << fileName + ".txt" << fileName;
+
+    QDirIterator it(root, filters, QDir::Files, QDirIterator::Subdirectories);
+
+    if (it.hasNext()) {
+        // 找到文件，直接打开
+        QString targetPath = it.next();
+        onFileSelected(targetPath);
+    } else {
+        // 未找到文件，询问是否创建
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(this, tr("自动创建"),
+                                      tr("未找到文件 \"%1\"。\n是否要创建一个新的 Markdown 文件？").arg(fileName),
+                                      QMessageBox::Yes | QMessageBox::No);
+
+        if (reply == QMessageBox::Yes) {
+            QString targetDir;
+            EditorWidget *current = m_tabManager->currentEditor();
+
+            // 优先在当前打开文件所在的目录下创建，如果没有打开文件，则在根目录创建
+            if (current && !current->currentFilePath().isEmpty()) {
+                targetDir = QFileInfo(current->currentFilePath()).absolutePath();
+            } else {
+                targetDir = root;
+            }
+
+            // 拼接完整路径，默认添加 .md 后缀
+            QString newFileName = fileName;
+            if (!newFileName.toLower().endsWith(".md") && !newFileName.toLower().endsWith(".txt")) {
+                newFileName += ".md";
+            }
+            QString newFilePath = targetDir + "/" + newFileName;
+
+            // 执行创建
+            QFile file(newFilePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.close();
+                onFileSelected(newFilePath);
+            } else {
+                QMessageBox::warning(this, tr("创建失败"),
+                                     tr("无法在以下位置创建文件：\n%1").arg(newFilePath));
+            }
+        }
+    }
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)

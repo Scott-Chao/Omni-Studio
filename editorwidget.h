@@ -49,6 +49,8 @@ signals:
 
     void filePathChanged(const QString &oldPath, const QString &newPath);
 
+    void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
+
 private slots:
     void onTextChanged();
     void updateModificationChanged();
