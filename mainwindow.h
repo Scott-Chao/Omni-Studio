@@ -50,6 +50,9 @@ private slots:
     void onRequestDelete(const QString &path, bool isDir); // 删除文件/文件夹
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
+    void buildFileIndex(); // 全量更新索引
+    void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
+    void onFileDeletedInIndex(const QString &path); // 增量更新：删除
 
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存
@@ -78,6 +81,11 @@ private:
     HistoryPanel *m_historyPanel;
     QDockWidget *m_dockHistory;
     QAction *toggleHistoryAction;
+
+    // 键：文件名（不带路径，不带后缀，如 "笔记"）
+    // 值：该文件名对应的所有绝对路径列表（处理同名文件）
+    QMap<QString, QStringList> m_fileIndex;
+    QString findWikiTarget(const QString &fileName); // 向上递归搜索目标文件
 
 };
 #endif // MAINWINDOW_H

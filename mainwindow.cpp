@@ -201,11 +201,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 将重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
     connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
-    // 监听重命名成功信号，更新标签管理器中的路径
-    connect(m_explorer, &FileExplorerWidget::fileRenamed, this, [this](const QString &oldPath, const QString &newPath) {
-        // 更新标签管理器中的路径
-        m_tabManager->updateEditorFilePath(oldPath, newPath);
-    });
+    // 监听重命名成功信号
+    connect(m_explorer, &FileExplorerWidget::fileRenamed, this, &MainWindow::onFileRenamedInIndex);
+    // 监听删除成功信号
+    connect(m_explorer, &FileExplorerWidget::itemDeleted, this, &MainWindow::onFileDeletedInIndex);
     // 监听操作失败信号，显示错误提示
     connect(m_explorer, &FileExplorerWidget::operationFailed, this, [this](const QString &errorMsg) {
         QMessageBox::warning(this, tr("错误"), errorMsg);
@@ -213,6 +212,7 @@ MainWindow::MainWindow(QWidget *parent)
     qApp->installEventFilter(this);
 
     loadSettings();
+    buildFileIndex();
     updatePreviewActionState();
 }
 
@@ -253,6 +253,7 @@ void MainWindow::saveFile()
     } else {
         // 保存已有文件，不修改另存为记忆
         if (editor->saveFile()) {
+            buildFileIndex();
             updatePreviewActionState(); // 刷新预览按钮状态
             addToRecentFiles(editor->currentFilePath());
         }
@@ -273,6 +274,7 @@ void MainWindow::onSaveFileAs()
         if (!newDir.isEmpty()) {
             m_settings->setLastSaveAsFolderPath(newDir);
         }
+        buildFileIndex();
         updatePreviewActionState();
         addToRecentFiles(newFilePath);
     }
@@ -287,6 +289,7 @@ void MainWindow::onOpenFolder()
 void MainWindow::onFolderChanged(const QString &newPath)
 {
     m_settings->setLastFolderPath(newPath); // 立即持久化
+    buildFileIndex();
 }
 
 // ----- 配置读写 -----
@@ -516,17 +519,10 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
 
 void MainWindow::onWikiLinkClicked(const QString &fileName)
 {
-    QString root = m_explorer->rootPath();
-    if (root.isEmpty()) return;
+    QString targetPath = findWikiTarget(fileName);
 
-    QStringList filters;
-    filters << fileName + ".md" << fileName + ".txt" << fileName;
-
-    QDirIterator it(root, filters, QDir::Files, QDirIterator::Subdirectories);
-
-    if (it.hasNext()) {
+    if (!targetPath.isEmpty()) {
         // 找到文件，直接打开
-        QString targetPath = it.next();
         onFileSelected(targetPath);
     } else {
         // 未找到文件，询问是否创建
@@ -543,7 +539,7 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
             if (current && !current->currentFilePath().isEmpty()) {
                 targetDir = QFileInfo(current->currentFilePath()).absolutePath();
             } else {
-                targetDir = root;
+                targetDir = m_explorer->rootPath();
             }
 
             // 拼接完整路径，默认添加 .md 后缀
@@ -566,6 +562,33 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
     }
 }
 
+void MainWindow::buildFileIndex()
+{
+    m_fileIndex.clear();
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty()) return;
+
+    QDirIterator it(root, QStringList() << "*.md" << "*.txt", QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString fullPath = it.next();
+        QFileInfo info(fullPath);
+        QString baseName = info.completeBaseName();
+        m_fileIndex[baseName].append(fullPath);
+    }
+}
+
+void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &newPath)
+{
+    // 更新标签管理器中的路径
+    m_tabManager->updateEditorFilePath(oldPath, newPath);
+    buildFileIndex();
+}
+
+void MainWindow::onFileDeletedInIndex(const QString &path)
+{
+    buildFileIndex();
+}
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
     if (event->type() == QEvent::MouseButtonPress && m_dockHistory->isVisible()) {
@@ -581,4 +604,56 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+QString MainWindow::findWikiTarget(const QString &fileName)
+{
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty()) return QString();
+
+    // 处理显式路径，尝试在根目录下直接拼接
+    QString directPathMd = root + "/" + fileName + ".md";
+    QString directPathTxt = root + "/" + fileName + ".txt";
+    if (QFile::exists(directPathMd)) return QDir::cleanPath(directPathMd);
+    if (QFile::exists(directPathTxt)) return QDir::cleanPath(directPathTxt);
+
+    // 获取当前上下文路径
+    QString currentDir;
+    EditorWidget *currentEditor = m_tabManager->currentEditor();
+    if (currentEditor && !currentEditor->currentFilePath().isEmpty()) {
+        currentDir = QFileInfo(currentEditor->currentFilePath()).absolutePath();
+    } else {
+        currentDir = root;
+    }
+
+    // 尝试在当前目录下查找
+    QString localPath = currentDir + "/" + fileName;
+    if (QFile::exists(localPath + ".md")) return QDir::cleanPath(localPath + ".md");
+
+    // 使用全局索引查询
+    // 提取链接中的文件名部分（例如 A/B 提取出 B）
+    QString baseName = QFileInfo(fileName).completeBaseName();
+    if (m_fileIndex.contains(baseName)) {
+        const QStringList &candidates = m_fileIndex[baseName];
+        if (candidates.isEmpty()) return QString();
+
+        if (candidates.size() == 1) return candidates.first();
+
+        // 如果有多个同名文件，计算路径距离，选择最接近当前目录的一个
+        QString bestMatch = candidates.first();
+        int minDistance = 999;
+
+        for (const QString &path : candidates) {
+            // 计算相对路径的复杂度作为距离
+            QString rel = QDir(currentDir).relativeFilePath(path);
+            int distance = rel.count("/");
+            if (distance < minDistance) {
+                minDistance = distance;
+                bestMatch = path;
+            }
+        }
+        return bestMatch;
+    }
+
+    return QString();
 }
