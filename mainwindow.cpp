@@ -209,6 +209,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_explorer, &FileExplorerWidget::operationFailed, this, [this](const QString &errorMsg) {
         QMessageBox::warning(this, tr("错误"), errorMsg);
     });
+    connect(m_explorer, &FileExplorerWidget::fileRenamed,
+            this, &MainWindow::onFileMovedOrRenamed);
     qApp->installEventFilter(this);
 
     loadSettings();
@@ -656,4 +658,11 @@ QString MainWindow::findWikiTarget(const QString &fileName)
     }
 
     return QString();
+}
+
+void MainWindow::onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)
+{
+    onFileRenamedInIndex(oldPath, newPath); // 更新全局双向链接索引
+    m_tabManager->updatePathsAfterMove(oldPath, newPath); // 更新所有已打开标签页的路径
+    m_historyPanel->replacePath(oldPath, newPath); // 更新历史记录中的路径
 }

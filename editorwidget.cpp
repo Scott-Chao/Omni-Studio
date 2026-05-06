@@ -82,30 +82,6 @@ void EditorWidget::setPreviewMode(bool preview)
     applyZoom(); // 切换模式后立即应用字体缩放
 }
 
-// void EditorWidget::refreshPreview()
-// {
-//     // 获取当前 Markdown 源码
-//     QString markdown = m_textEdit->toPlainText();
-
-//     // 识别 [[文件名]] 并替换为 Markdown 格式的链接
-//     static QRegularExpression wikiRegExp("\\[\\[([^\\]]+)\\]\\]");
-//     markdown.replace(wikiRegExp, "[\\1](wikilink:\\1)");
-
-//     // 直接操作预览浏览器的内部文档
-//     QTextDocument *doc = m_previewBrowser->document();
-//     doc->setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
-
-//     // 设置文档默认字体为当前编辑器的字体（已缩放）
-//     doc->setDefaultFont(m_textEdit->font());
-
-//     // 强制定义 body 基准字号，确保标题等相对单位 (em) 正确缩放
-//     int pointSize = qRound(m_baseFontSize * m_zoomFactor);
-//     doc->setDefaultStyleSheet(
-//         QString("body { font-size: %1pt; } "
-//                 "* { font-size: inherit; }").arg(pointSize)
-//         );
-// }
-
 void EditorWidget::refreshPreview()
 {
     QString markdown = m_textEdit->toPlainText();

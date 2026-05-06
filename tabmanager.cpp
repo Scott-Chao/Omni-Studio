@@ -318,3 +318,26 @@ void CustomTabBar::mouseReleaseEvent(QMouseEvent *event)
     m_dragInProgress = false;
     m_dragIndex = -1;
 }
+
+void TabManager::updatePathsAfterMove(const QString &oldBase, const QString &newBase)
+{
+    for (int i = 0; i < count(); ++i) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
+        if (!editor) continue;
+
+        QString currentPath = editor->currentFilePath();
+        if (currentPath.isEmpty()) continue;
+
+        QString newPath;
+        if (currentPath == oldBase) {
+            newPath = newBase; // 精确匹配（移动的是文件本身）
+        } else if (currentPath.startsWith(oldBase + "/")) {
+            newPath = newBase + currentPath.mid(oldBase.length()); // 文件夹内文件
+        } else {
+            continue;
+        }
+
+        // 更新编辑器内部路径（会触发 filePathChanged 信号，从而更新标签标题等）
+        editor->setFilePath(newPath);
+    }
+}

@@ -53,6 +53,7 @@ private slots:
     void buildFileIndex(); // 全量更新索引
     void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
     void onFileDeletedInIndex(const QString &path); // 增量更新：删除
+    void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath); // 通过文件树进行文件移动
 
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存

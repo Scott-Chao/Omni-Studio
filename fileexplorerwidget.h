@@ -17,6 +17,8 @@ protected:
     bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;
 };
 
+class DragDropTreeView;
+
 class FileExplorerWidget : public QWidget
 {
     Q_OBJECT
@@ -27,6 +29,7 @@ public:
 
     void setRootPath(const QString &path); // 设置要显示的根目录
     QString rootPath() const; // 获取当前根目录
+    bool isDropTargetFolder(const QModelIndex &proxyIndex) const; // 判断某个代理索引是否当前拖拽悬停的文件夹
 
 signals:
     void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
@@ -52,6 +55,9 @@ private:
     void createNewFolderInline(const QString &parentDir);
     void createNewFileInline(const QString &parentDir);
     QSortFilterProxyModel *m_sortProxy;
+    void handleDropEvent(QDropEvent *event);
+    QModelIndexList m_dragSourceIndexes;   // 拖拽开始时选中的索引
+    QModelIndex m_dropTargetIndex;  // 当前拖拽悬停的文件夹代理索引
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.12）
+## 功能说明文档（v0.0.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -12,23 +12,18 @@
 - 文件树右键菜单：支持内联新建文件（`.md`）、新建文件夹；支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
 - 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。
+- 文件树支持拖拽移动，并自动进行路径同步
 
-### 新增/优化 v0.0.12
-- 双向链接渲染：在 `EditorWidget` 渲染预览时，通过正则表达式 `\[\[(.*?)\]\]` 将 WikiLinks 转换为自定义协议链接。
-- 智能跳转与搜索：点击链接后，在当前项目根目录下递归搜索同名文件，支持忽略后缀匹配。
-- 自动创建机制：若跳转目标不存在，弹出确认对话框。确认后在当前编辑文件所在目录（或根目录）下自动新建 `.md` 文件。
-- 协议拦截：通过拦截 `QTextBrowser` 的 `anchorClicked` 信号，实现自定义 `wikilink:` 协议的跳转逻辑。
-- 全局文件索引：程序启动、切换目录、保存文件或执行重命名/删除时，自动构建/更新项目内 `.md` 和 `.txt` 的路径映射表。
-- 智能链路解析：升级 `findWikiTarget` 逻辑，搜索优先级遵循：
-  - 显式路径（如 `[[文件夹/文件名]]`）直接定位。
-  - 当前目录优先匹配。
-  - 全局索引兜底：若存在同名文件，自动计算路径距离，优先匹配“物理位置”最接近当前笔记的文件。
-  - 若文件名内部存在成对的`[]`，也可以正常解析。
-- 全局文件索引：程序启动、切换目录、保存文件或执行重命名/删除时，自动构建/更新项目内 `.md` 和 `.txt` 的路径映射表。
-- 智能链路解析：升级 `findWikiTarget` 逻辑，搜索优先级遵循：
-  - 显式路径（如 `[[文件夹/文件名]]`）直接定位。
-  - 当前目录优先匹配。
-  - 全局索引兜底：若存在同名文件，自动计算路径距离，优先匹配“物理位置”最接近当前笔记的文件。
+### 新增/优化 v0.0.13
+- 支持在文件树中拖拽文件或文件夹到同根目录下的其他文件夹，自动完成物理移动，范围限制在根目录内，不可移出。
+- 拖拽至文件夹时，目标文件夹底部显示蓝色指示条，提供实时视觉反馈。
+- 移动文件夹时，其内部所有子文件随同移动。
+- 路径自动同步：
+  - 若文件已在编辑器中打开，标签页内部路径立即更新为新位置，保存操作将写入新路径。
+  - 历史记录面板中对应条目同步更新，点击可正确打开移动后的文件，避免旧路径残留。
+  - 全局双向链接索引自动刷新，保证 `[[链接]]` 依然有效。
+- 拖拽移动与重命名、删除共享同一 `fileRenamed` 信号通道，不破坏现有功能。
+- 增强 `HistoryPanel` 的路径替换机制，采用重建列表的方式避免 UI 不同步。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -52,6 +47,7 @@
   在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。并通过全局事件过滤器实现点击面板外部自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射，确保双向链接在跨文件夹移动或重命名后依然有效。
+- 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
 
 **主要接口（槽函数）**：
 - `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
@@ -72,6 +68,7 @@
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，实现智能路径解析与就近匹配算法。
 - `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。
+- `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -114,6 +111,7 @@
 - `bool closeTabByPath(const QString &filePath, bool askSave)`：关闭指定路径的标签页，`askSave` 为 `true` 时弹出保存提示，为 `false` 时强制丢弃修改。
 - `QStringList allOpenedFilePaths() const`：返回所有已打开的文件路径列表（未保存的新建文件除外），路径统一为正斜杠格式。
 - `void updateEditorFilePath(const QString &oldPath, const QString &newPath)`：当文件在外部被重命名时，更新对应编辑器的内部路径及标签标题。
+- `void updatePathsAfterMove(const QString &oldBase, const QString &newBase)`：当文件或文件夹被移动时，批量更新所有已打开标签页的路径。支持精确匹配（文件本身）和前缀匹配（文件夹内文件），通过调用 `EditorWidget::setFilePath` 同步内部路径。
 
 **信号**：
 - `void tabCountChanged(int count)`：当标签数量变化时发出（供外部如窗口标题更新使用）。
@@ -193,6 +191,8 @@
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
 - 发出 `fileClicked` 信号，携带被选中文件的绝对路径。
 - 提供 `selectFolder` 公共槽，弹出目录选择对话框并更新根目录。支持传入初始目录参数，以便对话框从上次记忆的路径开始浏览。
+- 支持拖拽移动文件或文件夹（在该树视图内），通过事件过滤器拦截 DragEnter、DragMove、Drop 事件，在符合条件时执行文件系统移动并发送 `fileRenamed` 信号。
+- 拖拽时对目标文件夹提供视觉反馈：通过自定义委托 `NoGhostDelegate` 在悬停文件夹底部绘制蓝色横条。
 
 **主要接口**：
 - `void setRootPath(const QString &path)`：设置文件树显示的根目录。
@@ -201,6 +201,8 @@
 - `void createNewFolderInline(const QString &parentDir)`：在指定父目录下内联新建文件夹，并立即进入重命名状态。
 - `void createNewFileInline(const QString &parentDir)`：在指定父目录下内联新建 `.md` 文件，并立即进入重命名状态。
 - `void deleteItem(const QString &path, bool isDir)`：删除文件或文件夹（递归删除）。
+- `void handleDropEvent(QDropEvent *event)`：处理拖放事件的内部方法，解析源与目标路径，执行文件移动，刷新模型并发送信号。
+- `bool isDropTargetFolder(const QModelIndex &proxyIndex) const`：供自定义委托查询当前索引是否为拖拽目标文件夹。
 
 **信号**：
 - `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录且后缀为 .md/.txt）时发出。
@@ -211,8 +213,9 @@
 
 **协作关系**：
 - 被 `MainWindow` 使用，其 `fileClicked` 信号连接到主窗口的 `onFileSelected` 槽，最终转发给 `TabManager`。
-- `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。\
+- `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。
 - 内部使用 NoGhostDelegate 附加到 QTreeView，无需外部干预。
+- 事件过滤器同时安装于 `m_treeView->viewport()`，确保拖放事件能正确捕获。
 
 ---
 
@@ -257,6 +260,7 @@
 - `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。
 - `void loadHistory()` / `void saveHistory()`：从配置读取/保存最近文件列表。
 - `void clearHistory()`：清空所有历史记录并立即写入配置文件。
+- `void replacePath(const QString &oldBase, const QString &newBase)`：在文件移动后，将历史记录中相关路径更新为新路径，支持精确/前缀匹配，更新后重建 UI 列表并持久化，防止旧路径残留。
 
 **信号**：
 - `void fileClicked(const QString &filePath)`：用户点击某个历史文件时发出。
@@ -298,3 +302,4 @@
 - **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
 - **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H` ）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作。鼠标悬停会有完整路径提示。同时提供清空功能。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
+- **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。

@@ -11,6 +11,7 @@ public:
     void addFile(const QString &filePath); // 加入历史并刷新列表
     void loadHistory(); // 从配置加载并显示
     void saveHistory(); // 持久化到配置
+    void replacePath(const QString &oldBase, const QString &newBase);
 
 signals:
     void fileClicked(const QString &filePath); // 用户点击历史文件

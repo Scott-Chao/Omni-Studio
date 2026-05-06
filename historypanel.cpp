@@ -96,3 +96,33 @@ void HistoryPanel::clearHistory()
         m_settings->setRecentFiles(QStringList());
     }
 }
+
+void HistoryPanel::replacePath(const QString &oldBase, const QString &newBase)
+{
+    const QString oldNorm = QDir::cleanPath(oldBase);
+    const QString newNorm = QDir::cleanPath(newBase);
+
+    bool changed = false;
+    for (int i = 0; i < m_filePaths.size(); ++i) {
+        const QString &cur = m_filePaths.at(i);
+        if (cur == oldNorm) {
+            m_filePaths[i] = newNorm;
+            changed = true;
+        } else if (cur.startsWith(oldNorm + "/")) {
+            m_filePaths[i] = newNorm + cur.mid(oldNorm.length());
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        // 完全重建 UI 列表，确保与 m_filePaths 严格一致
+        m_listWidget->clear();
+        for (const QString &path : std::as_const(m_filePaths)) {
+            QListWidgetItem *item = new QListWidgetItem(QFileInfo(path).fileName());
+            item->setToolTip(path);
+            item->setData(Qt::UserRole, path);
+            m_listWidget->addItem(item);
+        }
+        saveHistory();
+    }
+}

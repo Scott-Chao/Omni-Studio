@@ -10,10 +10,14 @@
 #include <QKeyEvent>
 #include <QApplication>
 #include <QLineEdit>
+#include <QPainter>
 
 class NoGhostDelegate : public QStyledItemDelegate
 {
 public:
+    NoGhostDelegate(FileExplorerWidget *explorer, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), m_explorer(explorer) {}
+
     using QStyledItemDelegate::QStyledItemDelegate;
 
     // 让编辑框只覆盖文本区域，不覆盖图标区域
@@ -56,6 +60,14 @@ public:
             return;
         }
         QStyledItemDelegate::paint(painter, option, index);
+
+        // 额外绘制：如果是当前拖拽目标文件夹，底部画条
+        if (m_explorer && m_explorer->isDropTargetFolder(index)) {
+            QRect r = option.rect;
+            int barHeight = 3;
+            QRect bar(r.left() + 2, r.bottom() - barHeight, r.width() - 4, barHeight);
+            painter->fillRect(bar, QColor("#2196F3"));  // 蓝色
+        }
     }
 
     void setEditorData(QWidget *editor, const QModelIndex &proxyIndex) const override
@@ -89,6 +101,8 @@ public:
             });
         }
     }
+private:
+    FileExplorerWidget *m_explorer;
 };
 
 class DeleteKeyFilter : public QObject {
@@ -142,10 +156,17 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_treeView->hideColumn(2); // 隐藏类型列
     m_treeView->hideColumn(3); // 隐藏修改日期列
 
+    // 允许拖动
+    m_treeView->setDragEnabled(true);
+    m_treeView->setAcceptDrops(true);
+    m_treeView->setDropIndicatorShown(true);
+    m_treeView->setDragDropMode(QAbstractItemView::DragDrop);
+    m_treeView->setDefaultDropAction(Qt::MoveAction);
+
     // 设置编辑触发器：F2 键 或 单击选中后再次单击（类似资源管理器）
     m_treeView->setEditTriggers(QAbstractItemView::EditKeyPressed | QAbstractItemView::SelectedClicked);
 
-    m_treeView->setItemDelegate(new NoGhostDelegate(m_treeView)); // 设置委托
+    m_treeView->setItemDelegate(new NoGhostDelegate(this, m_treeView)); // 设置委托
 
     // 连接模型的重命名信号
     connect(m_fileModel, &QFileSystemModel::fileRenamed, this, &FileExplorerWidget::onFileRenamed);
@@ -157,6 +178,9 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
             this, &FileExplorerWidget::onCustomContextMenu);
 
     m_treeView->installEventFilter(this);
+    m_treeView->viewport()->installEventFilter(this);
+
+    m_dropTargetIndex = QModelIndex();
 }
 
 FileExplorerWidget::~FileExplorerWidget()
@@ -165,31 +189,68 @@ FileExplorerWidget::~FileExplorerWidget()
 
 bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
 {
-    if (obj == m_treeView && event->type() == QEvent::KeyPress) {
-        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
-        if (keyEvent->key() == Qt::Key_Delete) {
-            // 如果焦点在编辑器（如重命名时），不拦截，让 Delete 作为文本删除
-            QWidget *fw = QApplication::focusWidget();
-            if (fw && (fw->parent() == m_treeView->viewport() || fw->parent() == m_treeView)) {
-                if (qobject_cast<QLineEdit*>(fw))
-                    return false;   // 交给内联编辑器处理
+    if (obj == m_treeView || obj == m_treeView->viewport()) {
+        // 接管拖拽事件，阻止 QFileSystemModel 的默认移动
+        if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
+            QDragMoveEvent *de = static_cast<QDragMoveEvent*>(event);
+            if (de->source() == m_treeView) {
+                m_dragSourceIndexes = m_treeView->selectionModel()->selectedRows();
+                // 更新悬停文件夹索引
+                QModelIndex proxyIdx = m_treeView->indexAt(de->position().toPoint());
+                if (proxyIdx.isValid()) {
+                    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIdx);
+                    if (m_fileModel->isDir(srcIdx))
+                        m_dropTargetIndex = proxyIdx;
+                    else
+                        m_dropTargetIndex = QModelIndex();
+                } else {
+                    m_dropTargetIndex = QModelIndex();
+                }
+                m_treeView->viewport()->update();   // 触发重绘
+                de->acceptProposedAction();
+            } else {
+                de->ignore();
             }
+            return true;
+        }
 
-            // 获取当前选中项
-            QModelIndex proxyIndex = m_treeView->currentIndex();
-            if (!proxyIndex.isValid())
-                return false;
+        if (event->type() == QEvent::Drop) {
+            handleDropEvent(static_cast<QDropEvent*>(event));
+            return true;
+        }
 
-            QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
-            QString path = m_fileModel->filePath(sourceIndex);
-            QFileInfo info(path);
+        if (event->type() == QEvent::DragLeave || event->type() == QEvent::Drop) {
+            m_dropTargetIndex = QModelIndex();
+            m_treeView->viewport()->update();
+            // Drop 的具体调用仍由 handleDropEvent 完成（DragLeave 不调用）
+        }
 
-            if (info.isDir() ||
-                info.suffix().toLower() == "md" ||
-                info.suffix().toLower() == "txt")
-            {
-                emit requestDelete(path, info.isDir());
-                return true;
+        if (obj == m_treeView && event->type() == QEvent::KeyPress) {
+            QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+            if (keyEvent->key() == Qt::Key_Delete) {
+                // 如果焦点在编辑器（如重命名时），不拦截，让 Delete 作为文本删除
+                QWidget *fw = QApplication::focusWidget();
+                if (fw && (fw->parent() == m_treeView->viewport() || fw->parent() == m_treeView)) {
+                    if (qobject_cast<QLineEdit*>(fw))
+                        return false;   // 交给内联编辑器处理
+                }
+
+                // 获取当前选中项
+                QModelIndex proxyIndex = m_treeView->currentIndex();
+                if (!proxyIndex.isValid())
+                    return false;
+
+                QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+                QString path = m_fileModel->filePath(sourceIndex);
+                QFileInfo info(path);
+
+                if (info.isDir() ||
+                    info.suffix().toLower() == "md" ||
+                    info.suffix().toLower() == "txt")
+                {
+                    emit requestDelete(path, info.isDir());
+                    return true;
+                }
             }
         }
     }
@@ -416,4 +477,90 @@ bool FileSortProxyModel::lessThan(const QModelIndex &source_left, const QModelIn
     if (leftDir == rightDir)
         return QString::localeAwareCompare(leftInfo.fileName(), rightInfo.fileName()) < 0;
     return leftDir; // 目录在前
+}
+
+void FileExplorerWidget::handleDropEvent(QDropEvent *event)
+{
+    m_dropTargetIndex = QModelIndex();
+    m_treeView->viewport()->update();
+
+    // 用本地副本接管拖拽数据，并清空成员
+    QModelIndexList draggedIndexes = m_dragSourceIndexes;
+    m_dragSourceIndexes.clear();
+
+    if (draggedIndexes.isEmpty() || event->proposedAction() != Qt::MoveAction) {
+        event->ignore();
+        return;
+    }
+
+    QModelIndex targetProxyIndex = m_treeView->indexAt(event->position().toPoint());
+    if (!targetProxyIndex.isValid()) {
+        event->ignore();
+        return;
+    }
+
+    QModelIndex sourceProxyIndex = draggedIndexes.first();   // 用本地副本
+
+    // 映射到源模型
+    QModelIndex targetSourceIndex = m_sortProxy->mapToSource(targetProxyIndex);
+    QModelIndex sourceSourceIndex = m_sortProxy->mapToSource(sourceProxyIndex);
+
+    QString oldPath = QDir::cleanPath(m_fileModel->filePath(sourceSourceIndex));
+    QFileInfo targetInfo(m_fileModel->filePath(targetSourceIndex));
+
+    // 确定目标文件夹（如果目标不是目录，则取其父目录）
+    QString targetDir;
+    if (targetInfo.isDir()) {
+        targetDir = targetInfo.absoluteFilePath();
+    } else {
+        targetDir = targetInfo.absolutePath();
+    }
+    targetDir = QDir::cleanPath(targetDir);
+
+    // 确保目标目录在当前根目录内
+    QString root = QDir::cleanPath(m_fileModel->rootPath());
+    if (!targetDir.startsWith(root, Qt::CaseInsensitive) || oldPath.isEmpty()) {
+        event->ignore();
+        return;
+    }
+
+    // 构建新路径
+    QString newPath = targetDir + "/" + QFileInfo(oldPath).fileName();
+    newPath = QDir::cleanPath(newPath);
+    if (oldPath == newPath) {
+        event->ignore();
+        return;
+    }
+
+    // 检查新路径是否已存在（避免覆盖）
+    if (QFile::exists(newPath)) {
+        event->ignore();
+        return;
+    }
+
+    // 执行文件系统移动
+    QFile file(oldPath);
+    if (!file.rename(newPath)) {
+        event->ignore();
+        return;
+    }
+
+    // 刷新模型以显示新结构
+    m_fileModel->revert();
+
+    // 发出重命名/移动信号，主窗口会同步更新标签页、历史记录等
+    emit fileRenamed(oldPath, newPath);
+
+    event->acceptProposedAction();
+}
+
+bool FileExplorerWidget::isDropTargetFolder(const QModelIndex &proxyIndex) const
+{
+    if (!proxyIndex.isValid() || !m_dropTargetIndex.isValid())
+        return false;
+    // 必须同一个索引且源模型对应的是目录
+    if (proxyIndex != m_dropTargetIndex)
+        return false;
+    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIndex);
+    return m_fileModel->isDir(srcIdx);
 }

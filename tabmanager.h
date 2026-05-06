@@ -51,6 +51,7 @@ public:
     bool closeTab(int index);
     // 关闭所有标签页，若任一取消则返回 false
     bool closeAllTabs();
+    void updatePathsAfterMove(const QString &oldBase, const QString &newBase); // 拖动文件改变路径后更新
 
 public:
     EditorWidget* findEditorByPath(const QString &filePath) const;
