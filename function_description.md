@@ -1,8 +1,8 @@
-## 功能说明文档（v0.0.15）
+## 功能说明文档（v0.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
-- 显示 `.txt` 和 `.md` 文件
+- 支持多种文本文件格式（`.md`、`.txt`、`.c`、`.cpp`、`.py`、`.js`、`.html`、`.css`、`.json`、`.xml` 等 40+ 种常见文本文件扩展名），所有文件均以纯文本形式呈现在编辑器中
 - 文件的新建，保存，另存为操作，支持快捷键
 - 关闭文件时提示未保存的修改
 - 同时打开多个文件，显示在标签页栏中，拖拽标签页时，整个标签矩形始终不超出标签页栏的左右边界
@@ -15,11 +15,11 @@
 - 文件树支持拖拽移动，并自动进行路径同步
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 
-### 修复 v0.0.15
-- 修复文件树内联重命名空名称问题：在 `NoGhostDelegate::setModelData` 中增加名称校验，若用户清空文件名或仅保留扩展名（如 `.md`），自动恢复为原始名称。
-- 删除文件/文件夹时自动清理历史记录：`MainWindow::onFileDeletedInIndex` 中新增 `m_historyPanel->removeFile(path)` 调用，支持精确匹配和文件夹前缀匹配。
-- 历史记录面板失效条目自动清理：当用户点击历史记录中已不存在的文件时，弹出警告后自动从列表中删除该条目。
-- 历史记录持久化策略优化：移除 `removeFile()` 和 `replacePath()` 中的即时 `saveHistory()` 调用，改为仅在程序关闭时统一持久化，减少运行期间的磁盘 I/O。
+### 新增 v0.1
+- **多格式文本文件支持**：引入 `TextFileUtils` 工具命名空间，统一定义 40+ 种常见文本文件扩展名（`md`、`txt`、`c`、`cpp`、`py`、`js`、`html`、`css`、`json`、`xml`、`yaml`、`toml` 等）。文件树中所有文件均可点击打开、右键操作（重命名/删除）和 Delete 键删除，不再限制仅 `.md`/`.txt` 可交互。
+- **全局文件索引扩展**：`MainWindow::buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 的目录扫描范围从 `*.md`/`*.txt` 扩展为所有已知文本类型，使得 `[[Wiki链接]]` 可解析到任意文本文件。
+- **Wiki 链接多扩展名解析**：`findWikiTarget()` 和 `BacklinkIndex::resolveTarget()` 按优先级 `.md` → `.markdown` → `.txt` → 40+ 种扩展名依次尝试匹配，确保向后兼容的同时大幅扩展链接解析范围。
+- **另存为对话框增强**：新增"所有文件 (*)"过滤器，方便保存为任意扩展名。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -29,7 +29,7 @@
 - 作为应用程序的主窗口，负责整体布局与用户交互。
 - 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter` 等子组件。
 - 加载与保存应用程序的全局配置（通过 `SettingsManager`），包括窗口几何、分割条状态、上次访问的目录（打开目录和另存为分别记忆）。
-- 协调文件树与标签管理器的联动：当用户在文件树中点击 Markdown/TXT 文件时，通知 `TabManager` 打开或切换到对应文件。
+- 协调文件树与标签管理器的联动：当用户在文件树中点击任意文件时，通知 `TabManager` 打开或切换到对应文件。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
 - 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换（仅`.md`文件可见）、以及字体缩放控件（−、百分比标签、+、重置）。
@@ -45,7 +45,7 @@
 - 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
   通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
-- 项目索引管理：负责维护全局文件路径映射，确保双向链接在跨文件夹移动或重命名后依然有效。
+- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
 
 **主要接口（槽函数）**：
@@ -66,7 +66,7 @@
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
-- `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，实现智能路径解析与就近匹配算法。
+- `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
 - `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
 
@@ -182,7 +182,7 @@
 **文件**：`fileexplorerwidget.h` / `fileexplorerwidget.cpp`
 
 **职责**：
-- 提供右键菜单交互，支持新建文件、新建文件夹、重命名、删除。
+- 提供右键菜单交互，支持新建文件（默认 `.md`）、新建文件夹、重命名、删除。所有文件均可进行右键操作。
 - 启用 `QTreeView` 的内联编辑功能（通过 `EditKeyPressed` 和 `SelectedClicked` 
 - 自定义委托 (NoGhostDelegate)：为了修复原生内联编辑可能出现的“重影”问题（编辑框未完全覆盖原文本导致新旧文字重叠），以及避免编辑时文件图标消失，特实现了自定义委托。
   - updateEditorGeometry：通过 QStyle::SE_ItemViewItemText 获取精确的文本绘制区域，将编辑框（QLineEdit）仅放置于文本区域，保留图标区域不被遮挡。
@@ -212,7 +212,7 @@
 - `bool isDropTargetFolder(const QModelIndex &proxyIndex) const`：供自定义委托查询当前索引是否为拖拽目标文件夹。
 
 **信号**：
-- `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录且后缀为 .md/.txt）时发出。
+- `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录）时发出。
 - `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
 - `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。
 - `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
@@ -287,7 +287,7 @@
 
 **职责**：
 - 维护反链索引：记录每个目标文件被哪些来源文件通过 `[[链接]]` 语法引用。
-- 全量扫描 `*.md`/`*.txt` 文件，使用与 `EditorWidget::refreshPreview` 一致的递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 提取所有 WikiLink。
+- 全量扫描已知文本类型文件，使用与 `EditorWidget::refreshPreview` 一致的递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 提取所有 WikiLink。
 - 将 WikiLink 解析为实际文件路径，解析策略为：根目录下精确路径匹配 → 通过文件名索引（`completeBaseName`）全局查找 → 多匹配时取最短路径（确定性，不依赖当前编辑器上下文）。
 - 同一文件内多次出现相同的 `[[链接]]` 自动去重，确保每条"来源→目标"关系只记录一次。
 
@@ -340,6 +340,24 @@
 - 根据系统 UI 语言尝试加载并安装对应的翻译文件（`smart-markdown_<locale>.qm`）
 - 创建并显示 `MainWindow` 主窗口。
 - 进入事件循环。
+
+---
+
+### 10. `TextFileUtils` — 文本文件工具命名空间
+
+**文件**：`fileutils.h`
+
+**职责**：
+- 统一定义项目中支持的文本文件扩展名列表（40+ 种），涵盖编程语言、Web、配置、脚本等常见文本格式。
+- 提供三个内联工具函数，供其他模块引用：
+  - `textExtensions()`：返回支持的文本文件扩展名列表（`QStringList`），`.md` 排在首位以保证 Wiki 链接优先匹配 Markdown 文件。
+  - `scanNameFilters()`：返回 `QDirIterator` 所需的名称过滤器列表（如 `*.md`、`*.txt`、`*.cpp` 等）。
+  - `isTextExtension(const QString &suffix)`：判断给定的后缀是否在已知文本扩展名列表中。
+
+**扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
+
+**协作关系**：
+- 被 `MainWindow`、`BacklinkIndex`、`EditorWidget` 引用，用于文件索引构建、Wiki 链接解析和另存为过滤器。
 
 ---
 

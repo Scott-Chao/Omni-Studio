@@ -1,4 +1,5 @@
 #include "backlinkindex.h"
+#include "fileutils.h"
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -14,7 +15,7 @@ void BacklinkIndex::buildIndex(const QString &rootPath, const QMap<QString, QStr
 
     if (rootPath.isEmpty()) return;
 
-    QDirIterator it(rootPath, QStringList() << "*.md" << "*.txt", QDir::Files, QDirIterator::Subdirectories);
+    QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         addFileLinks(it.next(), rootPath, fileIndex);
     }
@@ -120,11 +121,13 @@ void BacklinkIndex::addFileLinks(const QString &filePath, const QString &rootPat
 QString BacklinkIndex::resolveTarget(const QString &linkName, const QString &rootPath,
                                       const QMap<QString, QStringList> &fileIndex) const
 {
-    // 1. Exact path under root
-    QString directMd = rootPath + "/" + linkName + ".md";
-    QString directTxt = rootPath + "/" + linkName + ".txt";
-    if (QFile::exists(directMd)) return QDir::cleanPath(directMd);
-    if (QFile::exists(directTxt)) return QDir::cleanPath(directTxt);
+    // 1. Exact path under root - try known text extensions
+    const QStringList exts = TextFileUtils::textExtensions();
+    for (const QString &ext : exts) {
+        QString directPath = rootPath + "/" + linkName + "." + ext;
+        if (QFile::exists(directPath))
+            return QDir::cleanPath(directPath);
+    }
 
     // 2. Index lookup by base name (same logic as MainWindow::findWikiTarget)
     QString baseName = QFileInfo(linkName).completeBaseName();

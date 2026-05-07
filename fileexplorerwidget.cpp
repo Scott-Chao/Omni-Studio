@@ -279,15 +279,8 @@ bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
 
                 QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
                 QString path = m_fileModel->filePath(sourceIndex);
-                QFileInfo info(path);
-
-                if (info.isDir() ||
-                    info.suffix().toLower() == "md" ||
-                    info.suffix().toLower() == "txt")
-                {
-                    emit requestDelete(path, info.isDir());
-                    return true;
-                }
+                emit requestDelete(path, QFileInfo(path).isDir());
+                return true;
             }
         }
     }
@@ -330,9 +323,8 @@ void FileExplorerWidget::onTreeViewClicked(const QModelIndex &proxyIndex)
     QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
     QString filePath = m_fileModel->filePath(sourceIndex);
     QFileInfo fileInfo(filePath);
-    // 只处理文件（不处理目录），并且扩展名为 .txt 或 .md
-    if (!fileInfo.isDir() &&
-        (fileInfo.suffix().toLower() == "txt" || fileInfo.suffix().toLower() == "md")) {
+    // 只处理文件（不处理目录）
+    if (!fileInfo.isDir()) {
         emit fileClicked(filePath);
     }
 }
@@ -348,9 +340,6 @@ void FileExplorerWidget::onCustomContextMenu(const QPoint &point) {
         path = m_fileModel->filePath(sourceIndex);
         QFileInfo info(path);
         isDir = info.isDir();
-        // 只对文件树中显示的项（文件夹或 .md/.txt）才显示完整菜单
-        if (!isDir && !(info.suffix() == "md" || info.suffix() == "txt"))
-            return;
     } else {
         // 点击空白区域，使用当前根目录作为上下文
         path = rootPath();

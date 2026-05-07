@@ -1,4 +1,5 @@
 #include "editorwidget.h"
+#include "fileutils.h"
 #include <QFile>
 #include <QTextStream>
 #include <QFileDialog>
@@ -173,7 +174,7 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
     // 确定对话框起始目录，支持传入路径，否则用主文件夹
     QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
     QFileDialog dialog(this, tr("另存为"), startDir);
-    dialog.setNameFilters({tr("Markdown文件 (*.md)"), tr("文本文件 (*.txt)")});
+    dialog.setNameFilters({tr("Markdown文件 (*.md)"), tr("文本文件 (*.txt)"), tr("所有文件 (*)")});
     dialog.setAcceptMode(QFileDialog::AcceptSave);
     dialog.setDefaultSuffix("md");
 
@@ -193,7 +194,7 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
         QString selectedFilter = dialog.selectedNameFilter();
         if (selectedFilter.contains("*.txt"))
             newPath += ".txt";
-        else
+        else if (!selectedFilter.contains("(*)"))
             newPath += ".md";
     }
 

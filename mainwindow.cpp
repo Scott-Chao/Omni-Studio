@@ -7,6 +7,7 @@
 #include "historypanel.h"
 #include "backlinkindex.h"
 #include "backlinkspanel.h"
+#include "fileutils.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -583,9 +584,10 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
                 targetDir = m_explorer->rootPath();
             }
 
-            // 拼接完整路径，默认添加 .md 后缀
+            // 拼接完整路径
             QString newFileName = fileName;
-            if (!newFileName.toLower().endsWith(".md") && !newFileName.toLower().endsWith(".txt")) {
+            QFileInfo fi(newFileName);
+            if (fi.suffix().isEmpty() || !TextFileUtils::isTextExtension(fi.suffix())) {
                 newFileName += ".md";
             }
             QString newFilePath = targetDir + "/" + newFileName;
@@ -609,7 +611,7 @@ void MainWindow::buildFileIndex()
     QString root = m_explorer->rootPath();
     if (root.isEmpty()) return;
 
-    QDirIterator it(root, QStringList() << "*.md" << "*.txt", QDir::Files, QDirIterator::Subdirectories);
+    QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString fullPath = it.next();
         QFileInfo info(fullPath);
@@ -666,10 +668,12 @@ QString MainWindow::findWikiTarget(const QString &fileName)
     if (root.isEmpty()) return QString();
 
     // 处理显式路径，尝试在根目录下直接拼接
-    QString directPathMd = root + "/" + fileName + ".md";
-    QString directPathTxt = root + "/" + fileName + ".txt";
-    if (QFile::exists(directPathMd)) return QDir::cleanPath(directPathMd);
-    if (QFile::exists(directPathTxt)) return QDir::cleanPath(directPathTxt);
+    const QStringList exts = TextFileUtils::textExtensions();
+    for (const QString &ext : exts) {
+        QString directPath = root + "/" + fileName + "." + ext;
+        if (QFile::exists(directPath))
+            return QDir::cleanPath(directPath);
+    }
 
     // 获取当前上下文路径
     QString currentDir;
@@ -682,7 +686,10 @@ QString MainWindow::findWikiTarget(const QString &fileName)
 
     // 尝试在当前目录下查找
     QString localPath = currentDir + "/" + fileName;
-    if (QFile::exists(localPath + ".md")) return QDir::cleanPath(localPath + ".md");
+    for (const QString &ext : TextFileUtils::textExtensions()) {
+        if (QFile::exists(localPath + "." + ext))
+            return QDir::cleanPath(localPath + "." + ext);
+    }
 
     // 使用全局索引查询
     // 提取链接中的文件名部分（例如 A/B 提取出 B）
