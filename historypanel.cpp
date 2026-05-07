@@ -48,6 +48,21 @@ void HistoryPanel::addFile(const QString &rawPath)
     }
 }
 
+void HistoryPanel::removeFile(const QString &rawPath)
+{
+    QString filePath = QDir::cleanPath(QFileInfo(rawPath).absoluteFilePath());
+    if (filePath.isEmpty()) return;
+
+    // 是否精确匹配文件或是否为文件夹前缀
+    for (int i = m_filePaths.size() - 1; i >= 0; --i) {
+        const QString &cur = m_filePaths.at(i);
+        if (cur == filePath || cur.startsWith(filePath + "/")) {
+            m_filePaths.removeAt(i);
+            delete m_listWidget->takeItem(i);
+        }
+    }
+}
+
 void HistoryPanel::loadHistory()
 {
     m_filePaths.clear();
@@ -123,6 +138,5 @@ void HistoryPanel::replacePath(const QString &oldBase, const QString &newBase)
             item->setData(Qt::UserRole, path);
             m_listWidget->addItem(item);
         }
-        saveHistory();
     }
 }

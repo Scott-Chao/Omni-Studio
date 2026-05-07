@@ -536,6 +536,7 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
     if (!QFile::exists(filePath)) {
         QMessageBox::warning(this, tr("文件不存在"),
                              tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
+        m_historyPanel->removeFile(filePath);
         return;
     }
 
@@ -630,6 +631,7 @@ void MainWindow::onFileDeletedInIndex(const QString &path)
 {
     buildFileIndex();
     m_backlinkIndex->onFileDeleted(path);
+    m_historyPanel->removeFile(path);
     refreshBacklinks();
 }
 

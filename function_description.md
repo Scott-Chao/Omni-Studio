@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.14）
+## 功能说明文档（v0.0.15）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -9,22 +9,17 @@
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换，仅在打开`.md`文件时可用
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
-- 文件树右键菜单：支持内联新建文件（`.md`）、新建文件夹；支持重命名（内联编辑）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
-- 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问
+- 文件树右键菜单：支持内联新建文件（`.md`）、新建文件夹；支持重命名（内联编辑，空名称自动恢复原名）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
+- 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问。文件删除后自动清理对应历史条目；点击已不存在文件的条目时自动移除。
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。
 - 文件树支持拖拽移动，并自动进行路径同步
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 
-### 新增/优化 v0.0.14
-- 新增反向链接功能：
-  - 新增 `BacklinkIndex` 类维护反链索引：全量扫描 `[[...]]` 语法建立"目标文件 → 来源文件"的逆向映射。
-  - 支持增量更新：文件保存后单文件重扫（`rebuildFile`）、重命名/移动后路径迁移（`onFileRenamed`）、删除后清理（`onFileDeleted`），避免全量重建。
-  - 新增 `BacklinksPanel` 面板，嵌入 `QDockWidget` 中置于窗口右侧，默认隐藏。
-  - 工具栏新增反向链接切换按钮，快捷键 `Ctrl+Shift+B`。
-  - 标签页切换时自动刷新反链列表；文件保存后增量更新索引并刷新面板。
-  - 空状态时显示"无反向链接"占位提示，面板宽度保持稳定（`setMinimumWidth(200)`）。
-  - 同历史记录面板一样支持点击面板外部自动隐藏。
-- 修复 `FileExplorerWidget::fileRenamed` 信号在构造函数中的重复连接问题。
+### 修复 v0.0.15
+- 修复文件树内联重命名空名称问题：在 `NoGhostDelegate::setModelData` 中增加名称校验，若用户清空文件名或仅保留扩展名（如 `.md`），自动恢复为原始名称。
+- 删除文件/文件夹时自动清理历史记录：`MainWindow::onFileDeletedInIndex` 中新增 `m_historyPanel->removeFile(path)` 调用，支持精确匹配和文件夹前缀匹配。
+- 历史记录面板失效条目自动清理：当用户点击历史记录中已不存在的文件时，弹出警告后自动从列表中删除该条目。
+- 历史记录持久化策略优化：移除 `removeFile()` 和 `replacePath()` 中的即时 `saveHistory()` 调用，改为仅在程序关闭时统一持久化，减少运行期间的磁盘 I/O。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -67,12 +62,12 @@
   同时，在 `connectCurrentEditorZoomSignal()` 中连接当前编辑器的 `filePathChanged` 信号到 `updatePreviewActionState`，以便文件路径（如通过外部重命名或另存为）变化时刷新按钮状态。
 - `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
-- `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。
+- `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，实现智能路径解析与就近匹配算法。
-- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。
+- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
 
 **协作关系**：
@@ -194,6 +189,7 @@
   - paint：在编辑状态下，清空 option.text 后调用基类绘制，保留图标、背景等视觉元素，但不绘制原文本，彻底消除重影。
   - createEditor：设置编辑框背景不透明（跟随系统调色板或白色背景），去除边框和内边距，确保编辑框视效整洁。
   - setEditorData：重写以控制初始选中范围。重命名文件夹时全选整个名称；重命名文件时只选中主文件名（不含扩展名）。
+  - setModelData：重写以校验用户输入。若用户清空文件夹名，或清空文件名使其只剩扩展名（如 `.md`），自动恢复为原始名称，防止产生仅含扩展名的无效文件。
 - 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
 - 提供 `createNewFolderInline`、`createNewFileInline`、`deleteItem` 等公共方法，封装实际的文件系统操作。
 - 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。
@@ -268,10 +264,11 @@
 - 界面底部提供一个“清空历史记录”按钮，点击后弹出确认对话框，确认后立即删除所有历史记录并写入空列表到配置。
 
 **主要接口**：
-- `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。
-- `void loadHistory()` / `void saveHistory()`：从配置读取/保存最近文件列表。
-- `void clearHistory()`：清空所有历史记录并立即写入配置文件。
-- `void replacePath(const QString &oldBase, const QString &newBase)`：在文件移动后，将历史记录中相关路径更新为新路径，支持精确/前缀匹配，更新后重建 UI 列表并持久化，防止旧路径残留。
+- `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。操作仅更新内存数据，不立即持久化。
+- `void removeFile(const QString &filePath)`：从历史记录中移除指定文件路径。支持精确文件匹配和文件夹前缀匹配（删除文件夹时一并清理其下所有文件的历史条目）。操作仅更新内存数据，不立即持久化。
+- `void loadHistory()` / `void saveHistory()`：从配置读取/保存最近文件列表。`saveHistory()` 仅在程序关闭时由 `MainWindow::closeEvent` 调用，运行期间不主动写磁盘。
+- `void clearHistory()`：清空所有历史记录并立即写入配置文件（破坏性操作，即时持久化）。
+- `void replacePath(const QString &oldBase, const QString &newBase)`：在文件移动后，将历史记录中相关路径更新为新路径，支持精确/前缀匹配。更新后重建 UI 列表，但不立即持久化（延迟至程序关闭时统一保存）。
 
 **信号**：
 - `void fileClicked(const QString &filePath)`：用户点击某个历史文件时发出。
@@ -279,8 +276,8 @@
 **协作关系**：
 - 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件。
 - 通过 `SettingsManager` 读写最近文件列表，配置键名称为 `History/recentFiles`。
-- `MainWindow` 在打开文件、另存为等操作成功后调用 `addFile` 以更新历史；窗口正常关闭时调用 `saveHistory()` 保存到配置；
-  同时连接其 `fileClicked` 信号到 `onHistoryFileClicked` 槽，处理文件打开与目录切换。
+- `MainWindow` 在打开文件、另存为等操作成功后调用 `addFile` 以更新历史；文件删除时调用 `removeFile` 清理对应条目；文件移动/重命名时调用 `replacePath` 更新路径。所有增删改操作仅更新内存，窗口正常关闭时调用 `saveHistory()` 统一持久化到配置。
+  同时连接其 `fileClicked` 信号到 `onHistoryFileClicked` 槽，处理文件打开与目录切换，若文件不存在则自动清理历史条目。
 
 ---
 
@@ -349,7 +346,7 @@
 ### 配置存储说明
 
 - 配置文件名为 `config.ini`，默认保存在 **应用程序可执行文件所在的目录**（通过 `QCoreApplication::applicationDirPath()` 获得）。
-- 最近文件列表：键 `History/recentFiles`，存储为 `QStringList`，按最新在前的顺序保存。
+- 最近文件列表：键 `History/recentFiles`，存储为 `QStringList`，按最新在前的顺序保存。运行期间仅维护内存数据，程序关闭时统一写入磁盘。
 
 ### 界面定制细节
 
@@ -362,6 +359,6 @@
 - **排序规则**：文件树始终按“文件夹优先、名称升序”排列，且新建或重命名后实时重排。
 - **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
-- **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作。鼠标悬停会有完整路径提示。同时提供清空功能。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
+- **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作（若文件不存在则自动弹出警告并清理该条目）。鼠标悬停会有完整路径提示。同时提供清空功能。文件删除或移动后自动同步更新历史记录。运行期间仅维护内存数据，程序关闭时统一持久化以减少磁盘 I/O。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。

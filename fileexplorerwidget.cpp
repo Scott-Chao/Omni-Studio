@@ -70,6 +70,43 @@ public:
         }
     }
 
+    void setModelData(QWidget *editor, QAbstractItemModel *model,
+                      const QModelIndex &proxyIndex) const override
+    {
+        QLineEdit *lineEdit = qobject_cast<QLineEdit*>(editor);
+        if (!lineEdit) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+
+        QString newText = lineEdit->text().trimmed();
+
+        const QSortFilterProxyModel *proxy = qobject_cast<const QSortFilterProxyModel*>(proxyIndex.model());
+        if (!proxy) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+        const QFileSystemModel *fsModel = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!fsModel) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+
+        QModelIndex sourceIndex = proxy->mapToSource(proxyIndex);
+        QFileInfo info = fsModel->fileInfo(sourceIndex);
+
+        if (info.isDir()) {
+            if (newText.isEmpty())
+                newText = info.fileName();
+        } else {
+            if (newText.isEmpty() || newText.startsWith('.'))
+                newText = info.fileName();
+        }
+
+        lineEdit->setText(newText);
+        QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+    }
+
     void setEditorData(QWidget *editor, const QModelIndex &proxyIndex) const override
     {
         QLineEdit *lineEdit = qobject_cast<QLineEdit*>(editor);
