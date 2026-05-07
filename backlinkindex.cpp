@@ -52,6 +52,17 @@ void BacklinkIndex::onFileRenamed(const QString &oldPath, const QString &newPath
             }
         }
     }
+
+    // Update target references in every forward links value list
+    // 确保后续 rebuildFile → removeFile 能找到正确的 target 进行清理
+    for (auto it = m_forwardLinks.begin(); it != m_forwardLinks.end(); ++it) {
+        QStringList &targets = it.value();
+        for (int i = 0; i < targets.size(); ++i) {
+            if (targets[i] == oldPath) {
+                targets[i] = newPath;
+            }
+        }
+    }
 }
 
 void BacklinkIndex::onFileDeleted(const QString &path)

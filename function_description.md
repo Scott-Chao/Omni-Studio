@@ -1,4 +1,4 @@
-## 功能说明文档（v0.1）
+## 功能说明文档（v0.1.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -10,16 +10,15 @@
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
 - 文件树右键菜单：支持内联新建文件（`.md`）、新建文件夹；支持重命名（内联编辑，空名称自动恢复原名）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
-- 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问。文件删除后自动清理对应历史条目；点击已不存在文件的条目时自动移除。
-- 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。
-- 文件树支持拖拽移动，并自动进行路径同步
+- 历史记录功能：记录之前打开过的文件，通过历史记录面板快速访问。文件删除后自动清理对应历史条目；点击已不存在文件的条目时自动移除。
+- 文件树支持拖拽移动，并自动进行路径同步。
+- 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。文件重命名时，自动更新所有引用文件中的双向链接文本。
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 
-### 新增 v0.1
-- **多格式文本文件支持**：引入 `TextFileUtils` 工具命名空间，统一定义 40+ 种常见文本文件扩展名（`md`、`txt`、`c`、`cpp`、`py`、`js`、`html`、`css`、`json`、`xml`、`yaml`、`toml` 等）。文件树中所有文件均可点击打开、右键操作（重命名/删除）和 Delete 键删除，不再限制仅 `.md`/`.txt` 可交互。
-- **全局文件索引扩展**：`MainWindow::buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 的目录扫描范围从 `*.md`/`*.txt` 扩展为所有已知文本类型，使得 `[[Wiki链接]]` 可解析到任意文本文件。
-- **Wiki 链接多扩展名解析**：`findWikiTarget()` 和 `BacklinkIndex::resolveTarget()` 按优先级 `.md` → `.markdown` → `.txt` → 40+ 种扩展名依次尝试匹配，确保向后兼容的同时大幅扩展链接解析范围。
-- **另存为对话框增强**：新增"所有文件 (*)"过滤器，方便保存为任意扩展名。
+### 新增 v0.1.1
+- **重命名时自动更新双向链接文本**：文件重命名后，所有引用该文件（`[[旧名]]`）的源文件自动将链接文本更新为 `[[新名]]`。使用与预览渲染一致的递归正则精确匹配 `[[...]]` 边界，避免误伤嵌套或相邻链接。若源文件在打开的标签中，优先读取编辑器内容以保留未保存更改。
+- **反向链接索引迁移增强**：`BacklinkIndex::onFileRenamed` 在迁移 `m_backlinks` 的 target key 和 source 路径引用的同时，同步更新 `m_forwardLinks` 中的 target 路径引用，确保后续 `rebuildFile → removeFile` 能正确清理旧关系，避免反链面板中出现重复条目。
+- **Windows 路径规范化修复**：`FileExplorerWidget::onFileRenamed` 改用 `QDir::absoluteFilePath` 替代 `path + QDir::separator() + oldName` 拼接路径，消除 Windows 上 `\` 与 `/` 混用导致 `backlinksFor` 查询不到匹配路径的问题。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -67,8 +66,9 @@
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
-- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
+- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
+- `void updateWikiLinksAfterRename(const QStringList &affectedSources, const QString &oldLinkText, const QString &newLinkText)`：文件重命名后更新所有引用文件中的 wiki 链接文本。从 BacklinkIndex 获取受影响源文件列表，使用 `replaceWikiLinkText` 精确匹配替换 `[[oldLinkText]]` → `[[newLinkText]]`。若源文件在打开的标签中，优先读取 `editor->toPlainText()` 以保留未保存更改，替换后写盘并重新加载编辑器。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -85,7 +85,7 @@
 - 持有 `BacklinkIndex*`、`BacklinksPanel*` 和对应的 `QDockWidget*`，反链面板同样放置在右侧停靠区域，默认隐藏。
   - 在标签页切换时自动调用 `refreshBacklinks()` 更新面板。
   - 在文件保存时调用 `BacklinkIndex::rebuildFile` 增量更新反链索引。
-  - 在文件重命名/移动时调用 `BacklinkIndex::onFileRenamed` 迁移索引路径。
+  - 在文件重命名/移动时调用 `BacklinkIndex::onFileRenamed` 迁移索引路径，并调用 `updateWikiLinksAfterRename` 将所有引用文件中的 `[[旧名]]` 替换为 `[[新名]]`。
   - 在文件删除时调用 `BacklinkIndex::onFileDeleted` 清理索引。
   - 工具栏显示/隐藏按钮通过 `m_dockBacklinks->toggleViewAction()` 实现，行为与历史面板一致。
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
@@ -214,7 +214,7 @@
 **信号**：
 - `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录）时发出。
 - `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
-- `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。
+- `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。路径使用 `QDir::absoluteFilePath` 规范化（统一 `/` 分隔符），确保与 `BacklinkIndex` 存储的路径格式一致。
 - `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
 - `void itemDeleted(const QString &path)`：在成功删除文件/文件夹后发出。
 
@@ -294,7 +294,7 @@
 **主要接口**：
 - `void buildIndex(const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：全量扫描重建索引。
 - `void rebuildFile(const QString &filePath, const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：增量更新单个文件（保存时调用）。
-- `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息，O(1)。
+- `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息。同步更新 `m_backlinks` 的 target key 和值列表中的 source 路径引用，以及 `m_forwardLinks` 值列表中的 target 路径引用，确保后续 `rebuildFile → removeFile` 能找到正确的 target 进行清理。
 - `void onFileDeleted(const QString &path)`：从索引中移除已删除文件，O(1)。
 - `QStringList backlinksFor(const QString &filePath) const`：查询指定文件的来源列表，O(1)。
 

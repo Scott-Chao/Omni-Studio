@@ -56,6 +56,9 @@ private slots:
     void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
     void onFileDeletedInIndex(const QString &path); // 增量更新：删除
     void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath); // 通过文件树进行文件移动
+    void updateWikiLinksAfterRename(const QStringList &affectedSources,
+                                    const QString &oldLinkText,
+                                    const QString &newLinkText); // 重命名时更新所有引用的 wiki 链接文本
 
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存

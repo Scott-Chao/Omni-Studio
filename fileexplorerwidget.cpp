@@ -427,9 +427,9 @@ void FileExplorerWidget::deleteItem(const QString &path, bool isDir)
 
 void FileExplorerWidget::onFileRenamed(const QString &path, const QString &oldName, const QString &newName)
 {
-    // 构造完整旧路径和新路径
-    QString oldFullPath = path + QDir::separator() + oldName;
-    QString newFullPath = path + QDir::separator() + newName;
+    // 使用 QDir::absoluteFilePath 规范化路径（确保与 BacklinkIndex 存储的路径格式一致）
+    QString oldFullPath = QDir(path).absoluteFilePath(oldName);
+    QString newFullPath = QDir(path).absoluteFilePath(newName);
     emit fileRenamed(oldFullPath, newFullPath);
 
     m_sortProxy->invalidate();

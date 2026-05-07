@@ -27,6 +27,32 @@
 #include <utility>
 #include <QDockWidget>
 #include <QDirIterator>
+#include <QRegularExpression>
+
+namespace {
+QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
+{
+    static const QRegularExpression wikiRegExp(
+        QStringLiteral(R"(\[\[((?:[^\[\]]|\[(?1)\])*)\]\])"));
+
+    QString result;
+    int lastPos = 0;
+    QRegularExpressionMatchIterator it = wikiRegExp.globalMatch(content);
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        result += QStringView(content).mid(lastPos, match.capturedStart() - lastPos).toString();
+
+        if (match.captured(1) == oldText) {
+            result += QStringLiteral("[[%1]]").arg(newText);
+        } else {
+            result += match.captured(0);
+        }
+        lastPos = match.capturedEnd();
+    }
+    result += QStringView(content).mid(lastPos).toString();
+    return result;
+}
+} // anonymous namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -629,8 +655,21 @@ void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &new
 {
     // 更新标签管理器中的路径
     m_tabManager->updateEditorFilePath(oldPath, newPath);
+
+    // 在索引迁移前捕获受影响源文件列表
+    QString oldBaseName = QFileInfo(oldPath).completeBaseName();
+    QString newBaseName = QFileInfo(newPath).completeBaseName();
+    QStringList affectedSources;
+    if (oldBaseName != newBaseName) {
+        affectedSources = m_backlinkIndex->backlinksFor(oldPath);
+    }
+
     buildFileIndex();
     m_backlinkIndex->onFileRenamed(oldPath, newPath);
+
+    // 更新所有引用文件中的 [[旧文件名]] 为 [[新文件名]]
+    updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
+
     refreshBacklinks();
 }
 
@@ -640,6 +679,52 @@ void MainWindow::onFileDeletedInIndex(const QString &path)
     m_backlinkIndex->onFileDeleted(path);
     m_historyPanel->removeFile(path);
     refreshBacklinks();
+}
+
+void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
+                                             const QString &oldLinkText,
+                                             const QString &newLinkText)
+{
+    if (affectedSources.isEmpty() || oldLinkText == newLinkText)
+        return;
+
+    QString rootPath = m_explorer->rootPath();
+    for (const QString &srcPath : affectedSources) {
+        // 获取源文件内容（优先用编辑器中的内容，以保留未保存的更改）
+        EditorWidget *editor = m_tabManager->findEditorByPath(srcPath);
+        QString content;
+        if (editor) {
+            content = editor->toPlainText();
+        } else {
+            QFile file(srcPath);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            QTextStream in(&file);
+            content = in.readAll();
+            file.close();
+        }
+
+        // 替换 wiki 链接文本
+        QString newContent = replaceWikiLinkText(content, oldLinkText, newLinkText);
+        if (newContent == content)
+            continue; // 无变化则跳过
+
+        // 写入新内容
+        QFile outFile(srcPath);
+        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
+            continue;
+        QTextStream out(&outFile);
+        out << newContent;
+        outFile.close();
+
+        // 若文件在打开的标签中，从磁盘重新加载以正确更新编辑器状态
+        if (editor) {
+            editor->loadFile(srcPath);
+        }
+
+        // 重建此文件的双向链接索引
+        m_backlinkIndex->rebuildFile(srcPath, rootPath, m_fileIndex);
+    }
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
