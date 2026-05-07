@@ -9,6 +9,8 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    backlinkindex.cpp \
+    backlinkspanel.cpp \
     editorwidget.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
@@ -18,6 +20,8 @@ SOURCES += \
     tabmanager.cpp
 
 HEADERS += \
+    backlinkindex.h \
+    backlinkspanel.h \
     editorwidget.h \
     fileexplorerwidget.h \
     historypanel.h \

@@ -5,6 +5,8 @@
 #include "settingsmanager.h"
 #include "tabmanager.h"
 #include "historypanel.h"
+#include "backlinkindex.h"
+#include "backlinkspanel.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -54,6 +56,22 @@ MainWindow::MainWindow(QWidget *parent)
     toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
     toggleHistoryAction->setShortcut(QKeySequence("Ctrl+H"));
 
+    // 创建反向链接索引与面板
+    m_backlinkIndex = new BacklinkIndex;
+
+    m_backlinksPanel = new BacklinksPanel(this);
+    connect(m_backlinksPanel, &BacklinksPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
+
+    m_dockBacklinks = new QDockWidget(tr("反向链接"), this);
+    m_dockBacklinks->setWidget(m_backlinksPanel);
+    m_dockBacklinks->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockBacklinks);
+    m_dockBacklinks->hide();
+
+    toggleBacklinksAction = m_dockBacklinks->toggleViewAction();
+    toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
+    toggleBacklinksAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -61,6 +79,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 历史记录
     toolBar->insertAction(nullptr, toggleHistoryAction);
+    // 反向链接
+    toolBar->insertAction(nullptr, toggleBacklinksAction);
     toolBar->insertSeparator(toggleHistoryAction);
 
     // 打开目录
@@ -190,6 +210,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
         updateZoomLabel();
         connectCurrentEditorZoomSignal();
+        refreshBacklinks();
     });
 
     // 初始连接
@@ -201,8 +222,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 将重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
     connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
-    // 监听重命名成功信号
-    connect(m_explorer, &FileExplorerWidget::fileRenamed, this, &MainWindow::onFileRenamedInIndex);
     // 监听删除成功信号
     connect(m_explorer, &FileExplorerWidget::itemDeleted, this, &MainWindow::onFileDeletedInIndex);
     // 监听操作失败信号，显示错误提示
@@ -215,6 +234,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     loadSettings();
     buildFileIndex();
+    m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
     updatePreviewActionState();
 }
 
@@ -253,9 +273,11 @@ void MainWindow::saveFile()
     } else {
         // 保存已有文件，不修改另存为记忆
         if (editor->saveFile()) {
-            buildFileIndex();
+            m_backlinkIndex->rebuildFile(editor->currentFilePath(),
+                                         m_explorer->rootPath(), m_fileIndex);
             updatePreviewActionState(); // 刷新预览按钮状态
             addToRecentFiles(editor->currentFilePath());
+            refreshBacklinks(); // 保存后更新反链
         }
     }
 }
@@ -275,8 +297,10 @@ void MainWindow::onSaveFileAs()
             m_settings->setLastSaveAsFolderPath(newDir);
         }
         buildFileIndex();
+        m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
         updatePreviewActionState();
         addToRecentFiles(newFilePath);
+        refreshBacklinks();
     }
 }
 
@@ -290,6 +314,7 @@ void MainWindow::onFolderChanged(const QString &newPath)
 {
     m_settings->setLastFolderPath(newPath); // 立即持久化
     buildFileIndex();
+    m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
 }
 
 // ----- 配置读写 -----
@@ -493,6 +518,19 @@ void MainWindow::addToRecentFiles(const QString &filePath)
         m_historyPanel->addFile(cleanPath);
 }
 
+void MainWindow::refreshBacklinks()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || editor->currentFilePath().isEmpty()) {
+        m_backlinksPanel->showBacklinks({});
+        return;
+    }
+
+    QString filePath = editor->currentFilePath();
+    QStringList sources = m_backlinkIndex->backlinksFor(filePath);
+    m_backlinksPanel->showBacklinks(sources);
+}
+
 void MainWindow::onHistoryFileClicked(const QString &filePath)
 {
     if (!QFile::exists(filePath)) {
@@ -584,25 +622,37 @@ void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &new
     // 更新标签管理器中的路径
     m_tabManager->updateEditorFilePath(oldPath, newPath);
     buildFileIndex();
+    m_backlinkIndex->onFileRenamed(oldPath, newPath);
+    refreshBacklinks();
 }
 
 void MainWindow::onFileDeletedInIndex(const QString &path)
 {
     buildFileIndex();
+    m_backlinkIndex->onFileDeleted(path);
+    refreshBacklinks();
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (event->type() == QEvent::MouseButtonPress && m_dockHistory->isVisible()) {
+    if (event->type() == QEvent::MouseButtonPress) {
         QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
-        // 如果点击的是 toggleHistoryAction 对应的按钮，让 toggle 动作自己处理
         QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
-        if (btn && btn->defaultAction() == toggleHistoryAction)
-            return QMainWindow::eventFilter(watched, event);
 
-        // 检查点击是否发生在历史面板内部
-        if (!m_dockHistory->isAncestorOf(clickedWidget)) {
-            m_dockHistory->hide();
+        // Auto-hide history panel when clicking outside
+        if (m_dockHistory->isVisible()) {
+            if (btn && btn->defaultAction() == toggleHistoryAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (!m_dockHistory->isAncestorOf(clickedWidget))
+                m_dockHistory->hide();
+        }
+
+        // Auto-hide backlinks panel when clicking outside
+        if (m_dockBacklinks->isVisible()) {
+            if (btn && btn->defaultAction() == toggleBacklinksAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (!m_dockBacklinks->isAncestorOf(clickedWidget))
+                m_dockBacklinks->hide();
         }
     }
     return QMainWindow::eventFilter(watched, event);

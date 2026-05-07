@@ -13,6 +13,8 @@ class EditorWidget;
 class SettingsManager;
 class QDockWidget;
 class HistoryPanel;
+class BacklinkIndex;
+class BacklinksPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -82,6 +84,12 @@ private:
     HistoryPanel *m_historyPanel;
     QDockWidget *m_dockHistory;
     QAction *toggleHistoryAction;
+    // 反向链接
+    void refreshBacklinks();
+    BacklinkIndex *m_backlinkIndex;
+    BacklinksPanel *m_backlinksPanel;
+    QDockWidget *m_dockBacklinks;
+    QAction *toggleBacklinksAction;
 
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）

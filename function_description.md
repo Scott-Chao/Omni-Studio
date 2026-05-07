@@ -1,4 +1,4 @@
-## 功能说明文档（v0.0.13）
+## 功能说明文档（v0.0.14）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -13,17 +13,18 @@
 - 历史记录功能，记录之前打开过的文件，通过历史记录面板快速访问
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。
 - 文件树支持拖拽移动，并自动进行路径同步
+- 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 
-### 新增/优化 v0.0.13
-- 支持在文件树中拖拽文件或文件夹到同根目录下的其他文件夹，自动完成物理移动，范围限制在根目录内，不可移出。
-- 拖拽至文件夹时，目标文件夹底部显示蓝色指示条，提供实时视觉反馈。
-- 移动文件夹时，其内部所有子文件随同移动。
-- 路径自动同步：
-  - 若文件已在编辑器中打开，标签页内部路径立即更新为新位置，保存操作将写入新路径。
-  - 历史记录面板中对应条目同步更新，点击可正确打开移动后的文件，避免旧路径残留。
-  - 全局双向链接索引自动刷新，保证 `[[链接]]` 依然有效。
-- 拖拽移动与重命名、删除共享同一 `fileRenamed` 信号通道，不破坏现有功能。
-- 增强 `HistoryPanel` 的路径替换机制，采用重建列表的方式避免 UI 不同步。
+### 新增/优化 v0.0.14
+- 新增反向链接功能：
+  - 新增 `BacklinkIndex` 类维护反链索引：全量扫描 `[[...]]` 语法建立"目标文件 → 来源文件"的逆向映射。
+  - 支持增量更新：文件保存后单文件重扫（`rebuildFile`）、重命名/移动后路径迁移（`onFileRenamed`）、删除后清理（`onFileDeleted`），避免全量重建。
+  - 新增 `BacklinksPanel` 面板，嵌入 `QDockWidget` 中置于窗口右侧，默认隐藏。
+  - 工具栏新增反向链接切换按钮，快捷键 `Ctrl+Shift+B`。
+  - 标签页切换时自动刷新反链列表；文件保存后增量更新索引并刷新面板。
+  - 空状态时显示"无反向链接"占位提示，面板宽度保持稳定（`setMinimumWidth(200)`）。
+  - 同历史记录面板一样支持点击面板外部自动隐藏。
+- 修复 `FileExplorerWidget::fileRenamed` 信号在构造函数中的重复连接问题。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -41,10 +42,13 @@
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 预览切换（仅当编辑`.md`文件时可用）
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
   - `Ctrl+H` 打开/关闭历史记录面板
+  - `Ctrl+Shift+B` 打开/关闭反向链接面板
   - `Delete`：在文件树中选中文件夹/文件时，直接触发删除操作（非重命名状态）
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
 - 管理历史记录面板（`QDockWidget` + `HistoryPanel`），在工具栏最左侧提供显示/隐藏面板的按钮（状态与面板可见性联动）。
   在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。并通过全局事件过滤器实现点击面板外部自动隐藏。
+- 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
+  通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射，确保双向链接在跨文件夹移动或重命名后依然有效。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -66,6 +70,7 @@
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
+- `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，实现智能路径解析与就近匹配算法。
 - `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
@@ -82,8 +87,14 @@
 - 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建文件会继承当前活动标签的缩放倍率。
 - 通过 `updatePreviewActionState()` 方法统一控制预览按钮的可见性、启用状态和勾选状态，标签切换、文件路径变化、新建/打开/保存文件时都会调用该方法，确保按钮只在当前文件为 `.md` 时出现。
 - 持有 `HistoryPanel*` 和 `QDockWidget*`，将面板放置于右侧停靠区域，默认隐藏。
+- 持有 `BacklinkIndex*`、`BacklinksPanel*` 和对应的 `QDockWidget*`，反链面板同样放置在右侧停靠区域，默认隐藏。
+  - 在标签页切换时自动调用 `refreshBacklinks()` 更新面板。
+  - 在文件保存时调用 `BacklinkIndex::rebuildFile` 增量更新反链索引。
+  - 在文件重命名/移动时调用 `BacklinkIndex::onFileRenamed` 迁移索引路径。
+  - 在文件删除时调用 `BacklinkIndex::onFileDeleted` 清理索引。
+  - 工具栏显示/隐藏按钮通过 `m_dockBacklinks->toggleViewAction()` 实现，行为与历史面板一致。
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
-- 安装全局事件过滤器，当历史面板可见时，若鼠标点击发生在面板外部，则隐藏面板。
+- 安装全局事件过滤器，当历史面板或反链面板可见时，若鼠标点击发生在面板外部，则自动隐藏对应面板。工具栏按钮点击不触发隐藏，由 toggle 动作自行处理。
 
 ---
 
@@ -273,7 +284,57 @@
 
 ---
 
-### 7. `main.cpp` - 应用程序入口
+### 7. `BacklinkIndex` - 反向链接索引
+
+**文件**：`backlinkindex.h` / `backlinkindex.cpp`
+
+**职责**：
+- 维护反链索引：记录每个目标文件被哪些来源文件通过 `[[链接]]` 语法引用。
+- 全量扫描 `*.md`/`*.txt` 文件，使用与 `EditorWidget::refreshPreview` 一致的递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 提取所有 WikiLink。
+- 将 WikiLink 解析为实际文件路径，解析策略为：根目录下精确路径匹配 → 通过文件名索引（`completeBaseName`）全局查找 → 多匹配时取最短路径（确定性，不依赖当前编辑器上下文）。
+- 同一文件内多次出现相同的 `[[链接]]` 自动去重，确保每条"来源→目标"关系只记录一次。
+
+**主要接口**：
+- `void buildIndex(const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：全量扫描重建索引。
+- `void rebuildFile(const QString &filePath, const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：增量更新单个文件（保存时调用）。
+- `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息，O(1)。
+- `void onFileDeleted(const QString &path)`：从索引中移除已删除文件，O(1)。
+- `QStringList backlinksFor(const QString &filePath) const`：查询指定文件的来源列表，O(1)。
+
+**内部数据结构**：
+- `QMap<QString, QStringList> m_backlinks`：目标绝对路径 → 来源绝对路径列表。
+- `QMap<QString, QStringList> m_forwardLinks`：来源绝对路径 → 目标绝对路径列表（用于增量更新时的反向清理）。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，所有接口均由 `MainWindow` 在合适的时机调用。
+- 依赖 `MainWindow::m_fileIndex`（文件名→路径映射）进行 WikiLink 目标解析。
+
+---
+
+### 8. `BacklinksPanel` - 反向链接面板
+
+**文件**：`backlinkspanel.h` / `backlinkspanel.cpp`
+
+**职责**：
+- 以 `QListWidget` 纵向展示引用当前文件的来源文件列表。
+- 列表项显示来源文件的文件名，ToolTip 显示完整路径，点击可发出 `fileClicked` 信号供 `MainWindow` 打开该文件。
+- 如果当前文件没有被任何文件引用，显示灰色（`#888`）占位文本"无反向链接"。
+- 面板宽度通过 `setMinimumWidth(200)` 确保稳定，无论是否有反链内容都不会塌缩。
+
+**主要接口**：
+- `void showBacklinks(const QStringList &sourceFiles)`：刷新面板显示内容。
+
+**信号**：
+- `void fileClicked(const QString &filePath)`：用户点击某个来源文件时发出。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件。
+- `MainWindow` 在标签页切换、文件保存等操作后调用 `showBacklinks` 刷新面板。
+- 点击事件复用 `MainWindow::onHistoryFileClicked` 槽，打开文件的同时自动处理文件树目录切换。
+
+---
+
+### 9. `main.cpp` - 应用程序入口
 
 **文件**：`main.cpp`
 
@@ -301,5 +362,6 @@
 - **排序规则**：文件树始终按“文件夹优先、名称升序”排列，且新建或重命名后实时重排。
 - **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
-- **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H` ）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作。鼠标悬停会有完整路径提示。同时提供清空功能。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
+- **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作。鼠标悬停会有完整路径提示。同时提供清空功能。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
+- **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
