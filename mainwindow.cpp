@@ -597,6 +597,11 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
             if (file.open(QIODevice::WriteOnly)) {
                 file.close();
                 onFileSelected(newFilePath);
+
+                // 全量重建索引：所有引用 [[fileName]] 的文件现在都能解析到新建的文件
+                buildFileIndex();
+                m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
+                refreshBacklinks();
             } else {
                 QMessageBox::warning(this, tr("创建失败"),
                                      tr("无法在以下位置创建文件：\n%1").arg(newFilePath));

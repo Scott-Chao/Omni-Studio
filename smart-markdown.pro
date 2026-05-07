@@ -24,6 +24,7 @@ HEADERS += \
     backlinkspanel.h \
     editorwidget.h \
     fileexplorerwidget.h \
+    fileutils.h \
     historypanel.h \
     mainwindow.h \
     settingsmanager.h \
