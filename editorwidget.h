@@ -3,7 +3,7 @@
 
 #include <QWidget>
 #include <QTextEdit>
-#include <QTextBrowser>
+#include <QWebEngineView>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QTimer>
@@ -58,7 +58,7 @@ private slots:
 private:
     QStackedWidget *m_stackedWidget;
     QTextEdit *m_textEdit; // 源码编辑
-    QTextBrowser *m_previewBrowser; // 渲染预览
+    QWebEngineView *m_previewView; // 渲染预览
     QString m_filePath;
     bool m_previewMode;
 

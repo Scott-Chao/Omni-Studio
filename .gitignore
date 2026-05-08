@@ -80,3 +80,13 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
+
+# Build output
+/release/
+/debug/
+
+# Runtime config (user-specific)
+config.ini
+
+# Claude Code
+.claude/

@@ -13,7 +13,7 @@ void BacklinkIndex::buildIndex(const QString &rootPath, const QMap<QString, QStr
     m_backlinks.clear();
     m_forwardLinks.clear();
 
-    if (rootPath.isEmpty()) return;
+    if (rootPath.isEmpty() || rootPath == QDir::rootPath() || rootPath == QDir::homePath()) return;
 
     QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {

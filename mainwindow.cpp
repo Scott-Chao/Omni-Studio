@@ -640,7 +640,8 @@ void MainWindow::buildFileIndex()
 {
     m_fileIndex.clear();
     QString root = m_explorer->rootPath();
-    if (root.isEmpty()) return;
+    if (root.isEmpty() || root == QDir::rootPath() || root == QDir::homePath())
+        return;
 
     QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {

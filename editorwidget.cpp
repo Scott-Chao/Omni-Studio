@@ -12,6 +12,32 @@
 #include <QRegularExpression>
 #include <QUrl>
 #include <QDesktopServices>
+#include <QWebEnginePage>
+#include <functional>
+
+// 自定义 Web 页面：拦截 wikilink 导航
+class PreviewPage : public QWebEnginePage {
+public:
+    std::function<void(const QString &)> onWikiLinkClicked;
+
+    using QWebEnginePage::QWebEnginePage;
+
+protected:
+    bool acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame) override
+    {
+        if (type == NavigationTypeLinkClicked) {
+            if (url.scheme() == QStringLiteral("wikilink")) {
+                QString linkText = QUrl::fromPercentEncoding(url.path().toUtf8());
+                if (onWikiLinkClicked)
+                    onWikiLinkClicked(linkText);
+                return false;
+            }
+            QDesktopServices::openUrl(url);
+            return false;
+        }
+        return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
+    }
+};
 
 EditorWidget::EditorWidget(QWidget *parent)
     : QWidget(parent)
@@ -22,27 +48,21 @@ EditorWidget::EditorWidget(QWidget *parent)
 {
     // 创建编辑器和预览控件
     m_textEdit = new QTextEdit(this);
-    m_previewBrowser = new QTextBrowser(this);
-    m_previewBrowser->setOpenExternalLinks(false); // 禁止自动调用浏览器
-    m_previewBrowser->setOpenLinks(false); // 禁用自动导航
 
-    // 连接预览器的链接点击信号
-    connect(m_previewBrowser, &QTextBrowser::anchorClicked, this, [this](const QUrl &url){
-        if (url.scheme() == "wikilink") {
-            emit wikiLinkClicked(url.path()); // 发出信号，通知主窗口查找文件
-        } else {
-            // 如果是普通网页链接，通过浏览器打开
-            QDesktopServices::openUrl(url);
-        }
-    });
+    m_previewView = new QWebEngineView(this);
+    PreviewPage *previewPage = new PreviewPage(this);
+    previewPage->onWikiLinkClicked = [this](const QString &fileName) {
+        emit wikiLinkClicked(fileName);
+    };
+    m_previewView->setPage(previewPage);
 
     m_textEdit->viewport()->installEventFilter(this);
-    m_previewBrowser->viewport()->installEventFilter(this);
+    m_previewView->installEventFilter(this);
 
     // 堆叠布局：索引0=编辑，索引1=预览
     m_stackedWidget = new QStackedWidget(this);
     m_stackedWidget->addWidget(m_textEdit);
-    m_stackedWidget->addWidget(m_previewBrowser);
+    m_stackedWidget->addWidget(m_previewView);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -85,9 +105,16 @@ void EditorWidget::setPreviewMode(bool preview)
 
 void EditorWidget::refreshPreview()
 {
+    // 1. 读取 HTML 模板
+    QFile tmplFile(QStringLiteral(":/preview/template.html"));
+    if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    QString tmpl = QString::fromUtf8(tmplFile.readAll());
+    tmplFile.close();
+
+    // 2. 处理 WikiLinks：[[linkText]] → [text](wikilink:encodedTarget)
     QString markdown = m_textEdit->toPlainText();
 
-    // 递归正则：支持任意层配对 []
     static const QRegularExpression wikiRegExp(
         QStringLiteral(R"(\[\[((?:[^\[\]]|\[(?1)\])*)\]\])"));
 
@@ -97,14 +124,12 @@ void EditorWidget::refreshPreview()
     while (it.hasNext()) {
         QRegularExpressionMatch match = it.next();
         result += QStringView(markdown).mid(lastPos, match.capturedStart() - lastPos).toString();
-        QString linkText = match.captured(1);  // 完整的链接文本（含内部方括号）
+        QString linkText = match.captured(1);
 
-        // 转义显示文本中的 [ 和 ]，避免破坏 Markdown 链接语法
         QString escapedText = linkText;
         escapedText.replace(QLatin1Char('['), QStringLiteral("\\["));
         escapedText.replace(QLatin1Char(']'), QStringLiteral("\\]"));
 
-        // 对链接目标进行 URL 编码，避免空格/特殊字符破坏 Markdown 链接语法
         QByteArray encoded = QUrl::toPercentEncoding(linkText);
         QString encodedTarget = QString::fromLatin1(encoded);
         result += QStringLiteral("[%1](wikilink:%2)")
@@ -113,14 +138,13 @@ void EditorWidget::refreshPreview()
     }
     result += QStringView(markdown).mid(lastPos).toString();
 
-    QTextDocument *doc = m_previewBrowser->document();
-    doc->setMarkdown(result, QTextDocument::MarkdownDialectGitHub);
-    doc->setDefaultFont(m_textEdit->font());
+    // 3. 转义 </script> 防止提前关闭模板中的 script 标签
+    QString safeContent = result;
+    safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
 
-    int pointSize = qRound(m_baseFontSize * m_zoomFactor);
-    doc->setDefaultStyleSheet(
-        QStringLiteral("body { font-size: %1pt; } * { font-size: inherit; }")
-            .arg(pointSize));
+    // 4. 替换占位符并加载到 WebEngine
+    tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+    m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 }
 
 void EditorWidget::onTextChanged()
@@ -255,7 +279,7 @@ void EditorWidget::applyZoom()
 
     // 预览区
     if (m_previewMode) {
-        refreshPreview();
+        m_previewView->setZoomFactor(m_zoomFactor);
     }
 
     m_textEdit->document()->setModified(wasModified);

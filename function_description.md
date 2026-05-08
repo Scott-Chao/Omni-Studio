@@ -1,4 +1,4 @@
-## 功能说明文档（v0.1.1）
+## 功能说明文档（v0.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -6,7 +6,7 @@
 - 文件的新建，保存，另存为操作，支持快捷键
 - 关闭文件时提示未保存的修改
 - 同时打开多个文件，显示在标签页栏中，拖拽标签页时，整个标签矩形始终不超出标签页栏的左右边界
-- 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换，仅在打开`.md`文件时可用
+- 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换，仅在打开`.md`文件时可用。预览支持 GitHub Flavored Markdown、LaTeX 数学公式和 Mermaid 图表渲染
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
 - 文件树右键菜单：支持内联新建文件（`.md`）、新建文件夹；支持重命名（内联编辑，空名称自动恢复原名）和删除操作，删除前会提示确认，并自动处理已打开文件的关闭。
@@ -15,10 +15,14 @@
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。文件重命名时，自动更新所有引用文件中的双向链接文本。
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 
-### 新增 v0.1.1
-- **重命名时自动更新双向链接文本**：文件重命名后，所有引用该文件（`[[旧名]]`）的源文件自动将链接文本更新为 `[[新名]]`。使用与预览渲染一致的递归正则精确匹配 `[[...]]` 边界，避免误伤嵌套或相邻链接。若源文件在打开的标签中，优先读取编辑器内容以保留未保存更改。
-- **反向链接索引迁移增强**：`BacklinkIndex::onFileRenamed` 在迁移 `m_backlinks` 的 target key 和 source 路径引用的同时，同步更新 `m_forwardLinks` 中的 target 路径引用，确保后续 `rebuildFile → removeFile` 能正确清理旧关系，避免反链面板中出现重复条目。
-- **Windows 路径规范化修复**：`FileExplorerWidget::onFileRenamed` 改用 `QDir::absoluteFilePath` 替代 `path + QDir::separator() + oldName` 拼接路径，消除 Windows 上 `\` 与 `/` 混用导致 `backlinksFor` 查询不到匹配路径的问题。
+### 新增 v0.2
+- **Markdown 预览引擎迁移至 QWebEngineView**：预览模式从 `QTextBrowser` + `QTextDocument::setMarkdown()` 迁移到 `QWebEngineView` + HTML 模板（marked.js），以支持 JavaScript 生态的扩展渲染。编译环境同步从 MinGW 64-bit 切换到 MSVC 2022（Qt WebEngine 在 Windows 上仅支持 MSVC）。
+- **LaTeX 数学公式支持**：内联公式 `$E=mc^2$` 和块级公式 `$$\int_0^\infty e^{-x^2}dx$$` 均可通过 KaTeX 自动渲染为数学格式，同时支持 `\(...\)` 和 `\[...\]` 备用定界符。
+- **Mermaid 图表支持**：` ```mermaid ` 代码块自动渲染为 SVG 图表，支持流程图（graph）、时序图（sequenceDiagram）、甘特图（gantt）等多种图表类型。
+- **WikiLink 拦截机制升级**：预览中的 `[[链接]]` 点击从 `QTextBrowser::anchorClicked` 信号改为自定义 `PreviewPage::acceptNavigationRequest()` 拦截 `wikilink:` scheme，外部链接自动委托系统浏览器打开。
+- **预览缩放机制变更**：从刷新 HTML 字号改为 `QWebEngineView::setZoomFactor()` 原生缩放，整体缩放页面包含 SVG 图表和数学公式，缩放质量更高。
+- **启动安全防护**：`MainWindow::buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 增加对 `QDir::homePath()` 的保护性跳过，防止在无 `config.ini` 时扫描用户主目录数万文件导致启动卡死。
+- **构建环境切换**：从 MinGW 64-bit 迁移到 MSVC 2022，新增 Qt WebEngine、Qt WebChannel、Qt Positioning 三个必需扩展模块。构建命令从 `mingw32-make` 改为 `jom`（多线程 nmake 替代）。详见 `CLAUDE.md`。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -135,16 +139,17 @@
 
 **职责**：
 - 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 两种模式。
-- 编辑模式使用 `QTextEdit` 编写 Markdown 源码；预览模式使用 `QTextBrowser` 通过 `QTextDocument::setMarkdown` 将源码转为富文本显示。
+- 编辑模式使用 `QTextEdit` 编写 Markdown 源码；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
 - 两种模式通过内部 `QStackedWidget` 切换，共用文件路径和修改状态。
 - 管理当前编辑文件的路径和修改状态。
-  内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免“输入再删除”导致的误标记。
+  内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免”输入再删除”导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
-- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法，可统一调整编辑器与预览器的字体大小（通过 `applyZoom` 实现）。
-  编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过刷新 HTML 并设置默认字体及样式表（强制所有元素继承基准字号）来完成。
+- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
-- WikiLink 转换：在渲染预览前通过正则将 `[[Name]]` 转换为超链接，并拦截点击事件以发出跳转信号。
+- WikiLink 转换：在渲染预览前通过正则将 `[[Name]]` 转换为 `<a href=”wikilink:目标”>` 超链接；自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
+- LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
+- Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)`：加载指定文件，成功后更新内部路径并重置修改标记。
@@ -172,8 +177,8 @@
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
-- 在构造函数中对 `m_textEdit` 和 `m_previewBrowser` 的 **viewport** 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`，避免 Qt 内置缩放绕开自定义状态管理。
-- `applyZoom` 在模式切换或缩放变化时同步编辑区和预览区的字体；`refreshPreview` 在生成 HTML 时嵌入当前缩放字号，并强制 `pre`、`code` 等元素继承字体大小。
+- 在构造函数中对 `m_textEdit` 的 **viewport** 和 `m_previewView` 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`，避免 Qt 内置缩放绕开自定义状态管理。
+- `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 `QWebEngineView::setZoomFactor()` 缩放整个预览页面（含 SVG 图表和数学公式）。
 
 ---
 
