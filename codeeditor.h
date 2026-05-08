@@ -19,6 +19,7 @@ public:
 
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
+    void refreshLineNumberArea();
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth() const;

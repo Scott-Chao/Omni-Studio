@@ -355,6 +355,7 @@ void EditorWidget::applyZoom()
         QFont f = m_codeEditor->font();
         f.setPointSize(pointSize);
         m_codeEditor->setFont(f);
+        m_codeEditor->refreshLineNumberArea();
     } else {
         QFont f = m_textEdit->font();
         f.setPointSize(pointSize);

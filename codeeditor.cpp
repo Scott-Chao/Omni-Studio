@@ -106,9 +106,19 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
         QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
 }
 
+void CodeEditor::refreshLineNumberArea()
+{
+    updateLineNumberAreaWidth(0);
+    QRect cr = contentsRect();
+    m_lineNumberArea->setGeometry(
+        QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+    m_lineNumberArea->update();
+}
+
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
     QPainter painter(m_lineNumberArea);
+    painter.setFont(font());
     painter.fillRect(event->rect(), QColor(0x25, 0x25, 0x25));
 
     QTextBlock block = firstVisibleBlock();

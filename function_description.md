@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.6）
+## 功能说明文档（v0.2.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -18,8 +18,9 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - 代码编辑器模式：打开 C/C++ 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 
-### 修复 v0.2.6
-- 修复代码编辑模式下无法保存的问题
+### 修复 v0.2.7
+修复代码编辑器缩放时行号不随之缩放的问题
+- 在 applyZoom() 中 setFont 后显式刷新行号区域（宽度、几何形状、重绘），并在 lineNumberAreaPaintEvent 中用 painter.setFont(font()) 确保绘制字体与编辑器字体一致，而非依赖 QAbstractScrollArea 子组件的字体继承。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -148,7 +149,7 @@
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免”输入再删除”导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
-- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
+- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
 - WikiLink 转换：通过 `processWikiLinks()` 使用正则将 `[[Name]]` 转换为 `[Name](wikilink:编码目标)` 的 Markdown 链接格式，内容通过 base64 编码传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免特殊字符破坏 JS 语法。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
@@ -426,8 +427,9 @@
 - `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器。
 - `QString languageId() const`：返回当前语言 ID。
 - `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
+- `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
-- `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。
+- `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
 
 **内部类 `LineNumberArea`**：
 - 继承 `QWidget`，作为 `CodeEditor` 的子控件。
