@@ -7,6 +7,7 @@
 #include "historypanel.h"
 #include "backlinkindex.h"
 #include "backlinkspanel.h"
+#include "searchpanel.h"
 #include "fileutils.h"
 
 #include <QSplitter>
@@ -99,6 +100,27 @@ MainWindow::MainWindow(QWidget *parent)
     toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
     toggleBacklinksAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
 
+    // 创建搜索面板
+    m_searchPanel = new SearchPanel(this);
+    connect(m_searchPanel, &SearchPanel::resultClicked,
+            this, &MainWindow::onSearchResultClicked);
+
+    m_dockSearch = new QDockWidget(tr("搜索"), this);
+    m_dockSearch->setWidget(m_searchPanel);
+    m_dockSearch->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::LeftDockWidgetArea, m_dockSearch);
+    m_dockSearch->hide();
+
+    toggleSearchAction = m_dockSearch->toggleViewAction();
+    toggleSearchAction->setToolTip(tr("显示/隐藏搜索"));
+    toggleSearchAction->setShortcut(QKeySequence("Ctrl+Shift+F"));
+
+    connect(m_dockSearch, &QDockWidget::visibilityChanged,
+            this, [this](bool visible) {
+        if (visible)
+            m_searchPanel->focusSearchInput();
+    });
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -108,6 +130,8 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->insertAction(nullptr, toggleHistoryAction);
     // 反向链接
     toolBar->insertAction(nullptr, toggleBacklinksAction);
+    // 搜索
+    toolBar->insertAction(nullptr, toggleSearchAction);
     toolBar->insertSeparator(toggleHistoryAction);
 
     // 打开目录
@@ -260,6 +284,7 @@ MainWindow::MainWindow(QWidget *parent)
     qApp->installEventFilter(this);
 
     loadSettings();
+    m_searchPanel->setRootPath(m_explorer->rootPath());
     buildFileIndex();
     m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
     updatePreviewActionState();
@@ -342,6 +367,7 @@ void MainWindow::onFolderChanged(const QString &newPath)
     m_settings->setLastFolderPath(newPath); // 立即持久化
     buildFileIndex();
     m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
+    m_searchPanel->setRootPath(newPath);
 }
 
 // ----- 配置读写 -----
@@ -583,6 +609,22 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
     }
     addToRecentFiles(absolutePath); // 记录到历史（置顶）
     m_dockHistory->hide(); // 隐藏面板
+}
+
+void MainWindow::onSearchResultClicked(const QString &filePath,
+                                        int lineNumber,
+                                        const QString &searchText)
+{
+    if (!QFile::exists(filePath)) {
+        QMessageBox::warning(this, tr("文件不存在"),
+                             tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
+        return;
+    }
+
+    EditorWidget *editor = m_tabManager->openFile(filePath);
+    if (!editor) return;
+
+    editor->scrollToLine(lineNumber, searchText);
 }
 
 void MainWindow::onWikiLinkClicked(const QString &fileName)

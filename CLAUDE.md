@@ -29,6 +29,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── TabManager          → QTabWidget, manages EditorWidget tabs (center)
   │   └── EditorWidget    → QStackedWidget[QTextEdit | QWebEngineView], dual-mode editor
   ├── HistoryPanel        → QDockWidget + QListWidget, recent files (right, hidden by default)
+  ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left, hidden by default)
   ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
   ├── BacklinksPanel      → QDockWidget + QListWidget, backlinks for current file (right, hidden by default)
   ├── SettingsManager     → QSettings wrapper, config.ini persistence
@@ -44,6 +45,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Rename + wiki link update**: `FileExplorerWidget::fileRenamed` → `MainWindow::onFileMovedOrRenamed` → `onFileRenamedInIndex` captures source files linking to old path, updates index, then `updateWikiLinksAfterRename` rewrites `[[oldName]]` → `[[newName]]` in each source file (using `replaceWikiLinkText` with exact wiki-link regex matching). Open editors with unsaved changes are handled by reading from `editor->toPlainText()` instead of disk.
 - **Save**: `MainWindow::saveFile` → `EditorWidget::saveFile` (existing) or `EditorWidget::saveAsFile` (new = uses remembered save-as dir)
 - **Zoom**: any zoom action → `EditorWidget::setZoomFactor` → `applyZoom` (adjusts QTextEdit fonts and QWebEngineView zoom factor) → emits `zoomFactorChanged` → `MainWindow::updateZoomLabel`
+- **Full-text search**: `SearchPanel::performSearch` (300ms debounce on text input) → `QDirIterator` + `TextFileUtils::scanNameFilters` scans all text files → `QTextStream::readLine` streaming match per line → `SearchPanel::resultClicked` → `MainWindow::onSearchResultClicked` → `TabManager::openFile` → `EditorWidget::scrollToLine` (finds line via `QTextBlock`, highlights all matches with `setExtraSelections` gold background)
 
 ### Component Details
 
@@ -54,6 +56,8 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 **TabManager** — Custom `CustomTabBar` (extends QTabBar) constrains drag bounds. `closeTab` shows a custom save prompt dialog. `closeAllTabs` is used for graceful shutdown. `updatePathsAfterMove` handles batch path updates after file tree drag-move operations.
 
 **HistoryPanel** — Max 50 entries, auto-dedup by path. Persisted via `SettingsManager` under `History/recentFiles`. Persistence is deferred to program shutdown only (via `MainWindow::closeEvent`) to reduce disk I/O. `replacePath` rebuilds UI list after file moves. Automatically removes entries for deleted files on next access (shows warning dialog).
+
+**SearchPanel** — Full-text search panel in a left-side `QDockWidget` (toggle: `Ctrl+Shift+F`). Contains `QLineEdit` for keyword input (300ms debounce), `QListWidget` for results (filename + line number + context snippet), and a `QLabel` status bar. On search, uses `QDirIterator` + `TextFileUtils::scanNameFilters()` to recursively scan all text files, reads each file line-by-line via `QTextStream`, and performs case-insensitive `QString::contains` matching. Results are capped at 20 matches per file and 500 total. On result click, emits `resultClicked(filePath, lineNumber, searchText)` → `MainWindow` opens file and calls `EditorWidget::scrollToLine`, which highlights all matching occurrences with gold (`#FFD700`) background via `QTextEdit::setExtraSelections`. Unlike History/Backlinks panels, SearchPanel does NOT auto-hide on outside click (persistent sidebar behavior).
 
 **BacklinkIndex** — Reverse index: absolute path of target file → list of source file paths that link to it via `[[wikilinks]]`. Also maintains a forward index (source → targets) for incremental updates. Uses the same recursive regex `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` as `EditorWidget::refreshPreview`. WikiLink target resolution follows deterministic rules (exact path under root for any known text extension → index lookup by `completeBaseName` → shortest-path tiebreaker), unlike `findWikiTarget` which uses current-editor-context disambiguation. Uses `TextFileUtils::scanNameFilters()` for file scanning and `TextFileUtils::textExtensions()` for target resolution, replacing hardcoded `.md`/`.txt` lists. Supports `buildIndex` (full scan) and incremental `rebuildFile`, `onFileRenamed`, `onFileDeleted`. `onFileRenamed` migrates both backlink keys and forward-link target references to keep `rebuildFile → removeFile` cleanup consistent.
 

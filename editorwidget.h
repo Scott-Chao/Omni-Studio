@@ -27,6 +27,10 @@ public:
     void setModified(bool modified);
     QString currentFilePath() const { return m_filePath; }
 
+    // 搜索导航
+    void scrollToLine(int lineNumber, const QString &highlightText = QString());
+    void clearExtraSelections();
+
     // 预览模式切换
     void setPreviewMode(bool preview);
     bool isPreviewMode() const { return m_previewMode; }

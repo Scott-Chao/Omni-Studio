@@ -15,6 +15,7 @@ class QDockWidget;
 class HistoryPanel;
 class BacklinkIndex;
 class BacklinksPanel;
+class SearchPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -51,6 +52,8 @@ private slots:
     void onZoomReset(); // 重置大小
     void onRequestDelete(const QString &path, bool isDir); // 删除文件/文件夹
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
+    void onSearchResultClicked(const QString &filePath, int lineNumber,
+                               const QString &searchText); // 打开搜索结果
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
     void buildFileIndex(); // 全量更新索引
     void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
@@ -93,6 +96,10 @@ private:
     BacklinksPanel *m_backlinksPanel;
     QDockWidget *m_dockBacklinks;
     QAction *toggleBacklinksAction;
+    // 搜索面板
+    SearchPanel *m_searchPanel;
+    QDockWidget *m_dockSearch;
+    QAction *toggleSearchAction;
 
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）

@@ -13,6 +13,7 @@
 #include <QUrl>
 #include <QDesktopServices>
 #include <QWebEnginePage>
+#include <QTextBlock>
 #include <functional>
 
 // 自定义 Web 页面：拦截 wikilink 导航
@@ -363,4 +364,47 @@ void EditorWidget::setFilePath(const QString &newPath) {
     emit filePathChanged(oldPath, normalized);
     // 修改状态不变，但路径改变可能需要重新检查（例如高亮等）
     emit modificationChanged(isModified());
+}
+
+void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
+{
+    if (m_previewMode) {
+        setPreviewMode(false);
+    }
+
+    QTextBlock block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
+    if (!block.isValid())
+        return;
+
+    QTextCursor cursor(block);
+    m_textEdit->setTextCursor(cursor);
+    m_textEdit->ensureCursorVisible();
+
+    if (!highlightText.isEmpty()) {
+        QList<QTextEdit::ExtraSelection> selections;
+        QTextCursor searchCursor(m_textEdit->document());
+
+        while (true) {
+            QTextCursor found = m_textEdit->document()->find(
+                highlightText, searchCursor);
+            if (found.isNull())
+                break;
+
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(QColor("#FFD700"));
+            sel.format.setForeground(QColor("#000000"));
+            sel.cursor = found;
+            selections.append(sel);
+
+            searchCursor = found;
+            searchCursor.movePosition(QTextCursor::EndOfWord);
+        }
+
+        m_textEdit->setExtraSelections(selections);
+    }
+}
+
+void EditorWidget::clearExtraSelections()
+{
+    m_textEdit->setExtraSelections({});
 }

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2）
+## 功能说明文档（v0.2.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -14,15 +14,10 @@
 - 文件树支持拖拽移动，并自动进行路径同步。
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。文件重命名时，自动更新所有引用文件中的双向链接文本。
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
+- 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 
-### 新增 v0.2
-- **Markdown 预览引擎迁移至 QWebEngineView**：预览模式从 `QTextBrowser` + `QTextDocument::setMarkdown()` 迁移到 `QWebEngineView` + HTML 模板（marked.js），以支持 JavaScript 生态的扩展渲染。编译环境同步从 MinGW 64-bit 切换到 MSVC 2022（Qt WebEngine 在 Windows 上仅支持 MSVC）。
-- **LaTeX 数学公式支持**：内联公式 `$E=mc^2$` 和块级公式 `$$\int_0^\infty e^{-x^2}dx$$` 均可通过 KaTeX 自动渲染为数学格式，同时支持 `\(...\)` 和 `\[...\]` 备用定界符。
-- **Mermaid 图表支持**：` ```mermaid ` 代码块自动渲染为 SVG 图表，支持流程图（graph）、时序图（sequenceDiagram）、甘特图（gantt）等多种图表类型。
-- **WikiLink 拦截机制升级**：预览中的 `[[链接]]` 点击从 `QTextBrowser::anchorClicked` 信号改为自定义 `PreviewPage::acceptNavigationRequest()` 拦截 `wikilink:` scheme，外部链接自动委托系统浏览器打开。
-- **预览缩放机制变更**：从刷新 HTML 字号改为 `QWebEngineView::setZoomFactor()` 原生缩放，整体缩放页面包含 SVG 图表和数学公式，缩放质量更高。
-- **启动安全防护**：`MainWindow::buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 增加对 `QDir::homePath()` 的保护性跳过，防止在无 `config.ini` 时扫描用户主目录数万文件导致启动卡死。
-- **构建环境切换**：从 MinGW 64-bit 迁移到 MSVC 2022，新增 Qt WebEngine、Qt WebChannel、Qt Positioning 三个必需扩展模块。构建命令从 `mingw32-make` 改为 `jom`（多线程 nmake 替代）。详见 `CLAUDE.md`。
+### 新增 v0.2.1
+- **全文搜索面板**：支持在当前目录所有文本文件中检索关键词（快捷键 `Ctrl+Shift+F`）。搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并金色高亮所有匹配关键词。面板位于左侧停靠区域，300ms 输入防抖，不自动隐藏以支持连续点击。新增 `SearchPanel` 组件和 `EditorWidget::scrollToLine` 方法。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -41,12 +36,15 @@
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
+  - `Ctrl+Shift+F` 打开/关闭搜索面板
   - `Delete`：在文件树中选中文件夹/文件时，直接触发删除操作（非重命名状态）
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
 - 管理历史记录面板（`QDockWidget` + `HistoryPanel`），在工具栏最左侧提供显示/隐藏面板的按钮（状态与面板可见性联动）。
   在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。并通过全局事件过滤器实现点击面板外部自动隐藏。
 - 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
   通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
+- 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
+  搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -66,6 +64,7 @@
 - `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
+- `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的点击，打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
@@ -336,7 +335,36 @@
 
 ---
 
-### 9. `main.cpp` - 应用程序入口
+### 9. `SearchPanel` — 全文搜索面板
+
+**文件**：`searchpanel.h` / `searchpanel.cpp`
+
+**职责**：
+- 提供全文搜索功能，在当前根目录下的所有文本文件中检索关键词。
+- 搜索输入支持 300ms 防抖，避免每次按键都触发磁盘扫描。
+- 使用 `QDirIterator` + `TextFileUtils::scanNameFilters()` 递归收集文本文件列表。
+- 使用 `QTextStream::readLine()` 逐行流式读取文件内容，`QString::toLower().contains()` 进行大小写不敏感匹配。
+- 结果上限：每文件最多 20 个匹配，总计最多 500 条结果。
+- 每个结果项展示文件名、行号和上下文片段（自动截断并对齐匹配关键词位置）。
+- 面板置于左侧 `QDockWidget`，默认隐藏（快捷键 `Ctrl+Shift+F`），显示时自动聚焦搜索输入框。
+- 与历史/反链面板不同，搜索面板**不**在点击外部时自动隐藏（持久侧边栏行为）。
+
+**主要接口**：
+- `void setRootPath(const QString &path)`：设置搜索根目录（由 `MainWindow` 在打开文件夹或切换目录时调用）。
+- `void clearSearch()`：清空搜索输入和结果列表。
+- `void focusSearchInput()`：聚焦搜索框并全选内容。
+
+**信号**：
+- `void resultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：用户点击某个搜索结果时发出。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件放置在左侧停靠区域。
+- `MainWindow` 在 `loadSettings` 和 `onFolderChanged` 时调用 `setRootPath` 同步搜索根目录。
+- 搜索结果点击连接到 `MainWindow::onSearchResultClicked` 槽，打开文件并调用 `EditorWidget::scrollToLine` 完成跳转和高亮。
+
+---
+
+### 10. `main.cpp` - 应用程序入口
 
 **文件**：`main.cpp`
 
@@ -348,7 +376,7 @@
 
 ---
 
-### 10. `TextFileUtils` — 文本文件工具命名空间
+### 11. `TextFileUtils` — 文本文件工具命名空间
 
 **文件**：`fileutils.h`
 
@@ -384,4 +412,5 @@
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
 - **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作（若文件不存在则自动弹出警告并清理该条目）。鼠标悬停会有完整路径提示。同时提供清空功能。文件删除或移动后自动同步更新历史记录。运行期间仅维护内存数据，程序关闭时统一持久化以减少磁盘 I/O。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
+- **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。

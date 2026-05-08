@@ -14,6 +14,7 @@ SOURCES += \
     editorwidget.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
+    searchpanel.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
@@ -26,6 +27,7 @@ HEADERS += \
     fileexplorerwidget.h \
     fileutils.h \
     historypanel.h \
+    searchpanel.h \
     mainwindow.h \
     settingsmanager.h \
     tabmanager.h
