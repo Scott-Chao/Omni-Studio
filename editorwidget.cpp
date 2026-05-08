@@ -224,24 +224,27 @@ bool EditorWidget::loadFile(const QString &filePath)
         return false;
     }
     QTextStream stream(&file);
-    setPlainText(stream.readAll());
+    QString content = stream.readAll();
     m_filePath = QFileInfo(filePath).absoluteFilePath();
-    m_originalContent = toPlainText();
-    setModified(false);
 
-    // Auto-detect code file and switch mode
+    // Auto-detect code file and switch mode BEFORE setting text,
+    // so that setPlainText dispatches to the correct editor.
     QString ext = QFileInfo(filePath).suffix().toLower();
     QString lang = LanguageUtils::languageForExtension(ext);
     if (!lang.isEmpty()) {
         m_editorMode = CodeEdit;
         m_codeEditor->setLanguage(lang);
         m_stackedWidget->setCurrentIndex(2);
-        applyZoom();
     } else {
         m_editorMode = MarkdownEdit;
         if (m_stackedWidget->currentIndex() != 0)
             m_stackedWidget->setCurrentIndex(0);
     }
+
+    setPlainText(content);
+    m_originalContent = toPlainText();
+    setModified(false);
+    applyZoom();
 
     emit fileLoaded(filePath);
     return true;
