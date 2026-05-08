@@ -163,14 +163,10 @@ QString EditorWidget::processWikiLinks(const QString &markdown)
         result += QStringView(markdown).mid(lastPos, match.capturedStart() - lastPos).toString();
         QString linkText = match.captured(1);
 
-        QString escapedText = linkText;
-        escapedText.replace(QLatin1Char('['), QStringLiteral("\\["));
-        escapedText.replace(QLatin1Char(']'), QStringLiteral("\\]"));
-
         QByteArray encoded = QUrl::toPercentEncoding(linkText);
         QString encodedTarget = QString::fromLatin1(encoded);
-        result += QStringLiteral("[%1](wikilink:%2)")
-                      .arg(escapedText, encodedTarget);
+        result += QStringLiteral("<a href=\"wikilink:%1\">%2</a>")
+                      .arg(encodedTarget, linkText.toHtmlEscaped());
         lastPos = match.capturedEnd();
     }
     result += QStringView(markdown).mid(lastPos).toString();
