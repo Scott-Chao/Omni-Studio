@@ -1,4 +1,4 @@
-#ifndef EDITORWIDGET_H
+﻿#ifndef EDITORWIDGET_H
 #define EDITORWIDGET_H
 
 #include <QWidget>
@@ -10,6 +10,7 @@
 #include <functional>
 
 class WikiLinkTextEdit;
+class CodeEditor;
 
 class EditorWidget : public QWidget
 {
@@ -36,7 +37,7 @@ public:
 
     // 预览模式切换
     void setPreviewMode(bool preview);
-    bool isPreviewMode() const { return m_previewMode; }
+    bool isPreviewMode() const { return m_editorMode == MarkdownEdit && m_previewMode; }
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
     void updatePreviewContent(std::function<void()> onFinished); // 异步更新预览，完成后回调
 
@@ -67,10 +68,14 @@ private slots:
     void updateModificationChanged();
 
 private:
+    enum EditorMode { MarkdownEdit, CodeEdit };
+    EditorMode m_editorMode = MarkdownEdit;
+
     QStackedWidget *m_stackedWidget;
     WikiLinkTextEdit *m_textEdit; // 源码编辑
     QWebEngineView *m_previewView; // 渲染预览
     QWidget *m_previewContainer; // 暗色容器，遮挡 WebEngine 白底
+    CodeEditor *m_codeEditor; // 代码编辑
     QString m_filePath;
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板

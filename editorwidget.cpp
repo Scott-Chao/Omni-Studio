@@ -1,5 +1,7 @@
-#include "editorwidget.h"
+﻿#include "editorwidget.h"
 #include "wikilinktextedit.h"
+#include "codeeditor.h"
+#include "languageutils.h"
 #include "fileutils.h"
 #include <QFile>
 #include <QTextStream>
@@ -64,6 +66,9 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_textEdit->viewport()->installEventFilter(this);
     m_previewView->installEventFilter(this);
 
+    m_codeEditor = new CodeEditor(this);
+    m_codeEditor->viewport()->installEventFilter(this);
+
     // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
     m_previewContainer = new QWidget(this);
     m_previewContainer->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
@@ -75,6 +80,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_stackedWidget = new QStackedWidget(this);
     m_stackedWidget->addWidget(m_textEdit);
     m_stackedWidget->addWidget(m_previewContainer);
+    m_stackedWidget->addWidget(m_codeEditor);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -85,10 +91,17 @@ EditorWidget::EditorWidget(QWidget *parent)
     QFont baseFont = m_textEdit->font();
     m_baseFontSize = baseFont.pointSize();
 
+    // 同步代码编辑器字体大小
+    QFont codeFont = m_codeEditor->font();
+    codeFont.setPointSize(m_baseFontSize);
+    m_codeEditor->setFont(codeFont);
+
     // 当编辑区内容改变时，更新修改标志并刷新预览
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::onTextChanged);
+    connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::onTextChanged);
     // 当编辑区修改状态变化时发出信号
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::updateModificationChanged);
+    connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::updateModificationChanged);
 
     setPreviewMode(false); // 默认编辑模式
 
@@ -100,11 +113,16 @@ EditorWidget::EditorWidget(QWidget *parent)
     connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
         m_contentCheckTimer.start();
     });
+    connect(m_codeEditor, &QPlainTextEdit::textChanged, this, [this]() {
+        m_contentCheckTimer.start();
+    });
     m_originalContent = toPlainText(); // 记录当前内容，用于内容比较
 }
 
 void EditorWidget::setPreviewMode(bool preview)
 {
+    if (m_editorMode == CodeEdit)
+        return;
     if (preview == m_previewMode)
         return;
     m_previewMode = preview;
@@ -210,6 +228,21 @@ bool EditorWidget::loadFile(const QString &filePath)
     m_filePath = QFileInfo(filePath).absoluteFilePath();
     m_originalContent = toPlainText();
     setModified(false);
+
+    // Auto-detect code file and switch mode
+    QString ext = QFileInfo(filePath).suffix().toLower();
+    QString lang = LanguageUtils::languageForExtension(ext);
+    if (!lang.isEmpty()) {
+        m_editorMode = CodeEdit;
+        m_codeEditor->setLanguage(lang);
+        m_stackedWidget->setCurrentIndex(2);
+        applyZoom();
+    } else {
+        m_editorMode = MarkdownEdit;
+        if (m_stackedWidget->currentIndex() != 0)
+            m_stackedWidget->setCurrentIndex(0);
+    }
+
     emit fileLoaded(filePath);
     return true;
 }
@@ -275,54 +308,67 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
 
 QString EditorWidget::toPlainText() const
 {
-    // 获取文字
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->toPlainText();
     return m_textEdit->toPlainText();
 }
 
 void EditorWidget::setPlainText(const QString &text)
 {
-    m_textEdit->setPlainText(text);
+    if (m_editorMode == CodeEdit)
+        m_codeEditor->setPlainText(text);
+    else
+        m_textEdit->setPlainText(text);
     setModified(false);
 }
 
 bool EditorWidget::isModified() const
 {
-    // 获取修改标识
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->document()->isModified();
     return m_textEdit->document()->isModified();
 }
 
 void EditorWidget::setModified(bool modified)
 {
-    if (m_textEdit->document()->isModified() != modified) {
-        m_textEdit->document()->setModified(modified);
-        emit modificationChanged(modified); // 触发标题更新
+    QTextDocument *doc = (m_editorMode == CodeEdit)
+        ? m_codeEditor->document() : m_textEdit->document();
+    if (doc->isModified() != modified) {
+        doc->setModified(modified);
+        emit modificationChanged(modified);
     }
 }
 
 void EditorWidget::applyZoom()
 {
-    bool wasModified = m_textEdit->document()->isModified();
-    QSignalBlocker blocker(m_textEdit->document());
+    bool wasModified = isModified();
+    QTextDocument *doc = (m_editorMode == CodeEdit)
+        ? m_codeEditor->document() : m_textEdit->document();
+    QSignalBlocker blocker(doc);
 
     int pointSize = qBound(1, qRound(m_baseFontSize * m_zoomFactor), 72);
 
-    // 编辑区：视图字体 + 全文字符格式
-    QFont f = m_textEdit->font();
-    f.setPointSize(pointSize);
-    m_textEdit->setFont(f);
+    if (m_editorMode == CodeEdit) {
+        QFont f = m_codeEditor->font();
+        f.setPointSize(pointSize);
+        m_codeEditor->setFont(f);
+    } else {
+        QFont f = m_textEdit->font();
+        f.setPointSize(pointSize);
+        m_textEdit->setFont(f);
 
-    QTextCursor cursor(m_textEdit->document());
-    cursor.select(QTextCursor::Document);
-    QTextCharFormat fmt;
-    fmt.setFontPointSize(pointSize);
-    cursor.mergeCharFormat(fmt); // 只改变字号，保留加粗等
+        QTextCursor cursor(m_textEdit->document());
+        cursor.select(QTextCursor::Document);
+        QTextCharFormat fmt;
+        fmt.setFontPointSize(pointSize);
+        cursor.mergeCharFormat(fmt);
+    }
 
-    // 预览区
     if (m_previewMode) {
         m_previewView->setZoomFactor(m_zoomFactor);
     }
 
-    m_textEdit->document()->setModified(wasModified);
+    doc->setModified(wasModified);
 }
 
 void EditorWidget::zoomIn()
@@ -398,22 +444,49 @@ void EditorWidget::setFilePath(const QString &newPath) {
     if (m_filePath == normalized) return;
     QString oldPath = m_filePath;
     m_filePath = normalized;
-    // 更新原始内容副本为当前内容（磁盘文件已改名且内容不变）
     m_originalContent = toPlainText();
+
+    // Re-evaluate language on path change (handles save-as extension changes)
+    QString ext = QFileInfo(newPath).suffix().toLower();
+    QString lang = LanguageUtils::languageForExtension(ext);
+    if (!lang.isEmpty()) {
+        m_editorMode = CodeEdit;
+        m_codeEditor->setLanguage(lang);
+        m_stackedWidget->setCurrentIndex(2);
+        applyZoom();
+    } else {
+        m_editorMode = MarkdownEdit;
+        if (m_stackedWidget->currentIndex() != 0)
+            m_stackedWidget->setCurrentIndex(0);
+    }
+
     emit filePathChanged(oldPath, normalized);
-    // 修改状态不变，但路径改变可能需要重新检查（例如高亮等）
     emit modificationChanged(isModified());
 }
 
 void EditorWidget::setFileNames(const QStringList &names)
 {
-    m_textEdit->setFileNames(names);
+    if (m_editorMode != CodeEdit)
+        m_textEdit->setFileNames(names);
 }
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 {
     if (m_previewMode) {
         setPreviewMode(false);
+    }
+
+    if (m_editorMode == CodeEdit) {
+        QTextBlock block = m_codeEditor->document()->findBlockByLineNumber(lineNumber - 1);
+        if (!block.isValid())
+            return;
+        QTextCursor cursor(block);
+        m_codeEditor->setTextCursor(cursor);
+        m_codeEditor->ensureCursorVisible();
+
+        if (!highlightText.isEmpty())
+            m_codeEditor->setSearchHighlights(highlightText);
+        return;
     }
 
     QTextBlock block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
@@ -450,5 +523,8 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 
 void EditorWidget::clearExtraSelections()
 {
-    m_textEdit->setExtraSelections({});
+    if (m_editorMode == CodeEdit)
+        m_codeEditor->clearSearchHighlights();
+    else
+        m_textEdit->setExtraSelections({});
 }

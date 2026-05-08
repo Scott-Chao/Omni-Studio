@@ -1,0 +1,185 @@
+﻿#include "cppsyntaxhighlighter.h"
+
+CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
+    : QSyntaxHighlighter(parent)
+{
+    // --- Keyword format (blue) ---
+    m_keywordFormat.setForeground(QColor(0x56, 0x9C, 0xD6));
+    m_keywordFormat.setFontWeight(QFont::Bold);
+
+    const QStringList keywords = {
+        QStringLiteral("alignas"), QStringLiteral("alignof"), QStringLiteral("and"),
+        QStringLiteral("and_eq"), QStringLiteral("asm"), QStringLiteral("auto"),
+        QStringLiteral("bitand"), QStringLiteral("bitor"), QStringLiteral("break"),
+        QStringLiteral("case"), QStringLiteral("catch"), QStringLiteral("class"),
+        QStringLiteral("compl"), QStringLiteral("concept"), QStringLiteral("const"),
+        QStringLiteral("consteval"), QStringLiteral("constexpr"), QStringLiteral("constinit"),
+        QStringLiteral("const_cast"), QStringLiteral("continue"), QStringLiteral("co_await"),
+        QStringLiteral("co_return"), QStringLiteral("co_yield"), QStringLiteral("decltype"),
+        QStringLiteral("default"), QStringLiteral("delete"), QStringLiteral("do"),
+        QStringLiteral("dynamic_cast"), QStringLiteral("else"), QStringLiteral("enum"),
+        QStringLiteral("explicit"), QStringLiteral("export"), QStringLiteral("extern"),
+        QStringLiteral("false"), QStringLiteral("final"), QStringLiteral("for"),
+        QStringLiteral("friend"), QStringLiteral("goto"), QStringLiteral("if"),
+        QStringLiteral("inline"), QStringLiteral("mutable"), QStringLiteral("namespace"),
+        QStringLiteral("new"), QStringLiteral("noexcept"), QStringLiteral("not"),
+        QStringLiteral("not_eq"), QStringLiteral("nullptr"), QStringLiteral("operator"),
+        QStringLiteral("or"), QStringLiteral("or_eq"), QStringLiteral("override"),
+        QStringLiteral("private"), QStringLiteral("protected"), QStringLiteral("public"),
+        QStringLiteral("register"), QStringLiteral("reinterpret_cast"), QStringLiteral("requires"),
+        QStringLiteral("return"), QStringLiteral("signed"), QStringLiteral("sizeof"),
+        QStringLiteral("static"), QStringLiteral("static_assert"), QStringLiteral("static_cast"),
+        QStringLiteral("struct"), QStringLiteral("switch"), QStringLiteral("template"),
+        QStringLiteral("this"), QStringLiteral("thread_local"), QStringLiteral("throw"),
+        QStringLiteral("true"), QStringLiteral("try"), QStringLiteral("typedef"),
+        QStringLiteral("typeid"), QStringLiteral("typename"), QStringLiteral("union"),
+        QStringLiteral("unsigned"), QStringLiteral("using"), QStringLiteral("virtual"),
+        QStringLiteral("void"), QStringLiteral("volatile"), QStringLiteral("while"),
+        QStringLiteral("xor"), QStringLiteral("xor_eq")
+    };
+
+    for (const QString &kw : keywords) {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
+        rule.format = m_keywordFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Preprocessor format (purple) ---
+    m_preprocessorFormat.setForeground(QColor(0xC5, 0x86, 0xC0));
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("^\\s*#\\s*\\w+"));
+        rule.format = m_preprocessorFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Type format (teal) ---
+    m_typeFormat.setForeground(QColor(0x4E, 0xC9, 0xB0));
+    const QStringList types = {
+        QStringLiteral("bool"), QStringLiteral("char"), QStringLiteral("char16_t"),
+        QStringLiteral("char32_t"), QStringLiteral("char8_t"), QStringLiteral("double"),
+        QStringLiteral("float"), QStringLiteral("int"), QStringLiteral("long"),
+        QStringLiteral("short"), QStringLiteral("size_t"), QStringLiteral("ssize_t"),
+        QStringLiteral("ptrdiff_t"), QStringLiteral("int8_t"), QStringLiteral("int16_t"),
+        QStringLiteral("int32_t"), QStringLiteral("int64_t"), QStringLiteral("uint8_t"),
+        QStringLiteral("uint16_t"), QStringLiteral("uint32_t"), QStringLiteral("uint64_t"),
+        QStringLiteral("wchar_t"), QStringLiteral("std"), QStringLiteral("string"),
+        QStringLiteral("wstring"), QStringLiteral("u16string"), QStringLiteral("u32string"),
+        QStringLiteral("vector"), QStringLiteral("map"), QStringLiteral("set"),
+        QStringLiteral("list"), QStringLiteral("deque"), QStringLiteral("queue"),
+        QStringLiteral("stack"), QStringLiteral("array"), QStringLiteral("tuple"),
+        QStringLiteral("pair"), QStringLiteral("optional"), QStringLiteral("variant"),
+        QStringLiteral("unique_ptr"), QStringLiteral("shared_ptr"), QStringLiteral("weak_ptr"),
+        QStringLiteral("function"), QStringLiteral("string_view"), QStringLiteral("span"),
+        QStringLiteral("initializer_list"), QStringLiteral("mutex"), QStringLiteral("lock_guard"),
+        QStringLiteral("unique_lock"), QStringLiteral("shared_lock"), QStringLiteral("condition_variable"),
+        QStringLiteral("promise"), QStringLiteral("future"), QStringLiteral("atomic"),
+        QStringLiteral("thread"), QStringLiteral("jthread"), QStringLiteral("filesystem"),
+        QStringLiteral("path"), QStringLiteral("error_code"), QStringLiteral("error_category"),
+        QStringLiteral("istream"), QStringLiteral("ostream"), QStringLiteral("iostream"),
+        QStringLiteral("fstream"), QStringLiteral("sstream"), QStringLiteral("stringstream"),
+        QStringLiteral("ifstream"), QStringLiteral("ofstream"), QStringLiteral("QString"),
+        QStringLiteral("QWidget"), QStringLiteral("QObject"), QStringLiteral("QVariant"),
+        QStringLiteral("QList"), QStringLiteral("QVector"), QStringLiteral("QMap"),
+        QStringLiteral("QSet"), QStringLiteral("QHash"), QStringLiteral("QPair"),
+        QStringLiteral("QSharedPointer"), QStringLiteral("QScopedPointer")
+    };
+    for (const QString &t : types) {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(t));
+        rule.format = m_typeFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Number format (green) ---
+    m_numberFormat.setForeground(QColor(0xB5, 0xCE, 0xA8));
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(
+            QStringLiteral("\\b0[xX][0-9a-fA-F]+[']?[0-9a-fA-F]*\\b"  // hex
+                           "|\\b0[bB][01]+[']?[01]*\\b"                  // binary
+                           "|\\b[0-9]+[']?[0-9]*(?:\\.[0-9]+[']?[0-9]*)?(?:[eE][+-]?[0-9]+)?(?:f|F|l|L|u|U|ll|LL|ull|ULL)?\\b"));
+        rule.format = m_numberFormat;
+        m_rules.append(rule);
+    }
+
+    // --- String format (orange-brown) ---
+    m_stringFormat.setForeground(QColor(0xCE, 0x91, 0x78));
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(
+            QStringLiteral(R"("(?:[^"\\]|\\.)*")"));
+        rule.format = m_stringFormat;
+        m_rules.append(rule);
+    }
+    // Char literals
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(
+            QStringLiteral(R"('(?:[^'\\]|\\.)'|'(?:\\.)')"));
+        rule.format = m_stringFormat;
+        m_rules.append(rule);
+    }
+    // Raw string literals
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(
+            QStringLiteral(R"(R"([^(]*)\([^)]*\)\1")"));
+        rule.format = m_stringFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Single-line comment format (dim green) ---
+    m_singleLineCommentFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("//[^\n]*"));
+        rule.format = m_singleLineCommentFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Multi-line comment (block state tracking) ---
+    m_multiLineCommentFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    m_commentStartExpr = QRegularExpression(QStringLiteral("/\\*"));
+    m_commentEndExpr = QRegularExpression(QStringLiteral("\\*/"));
+}
+
+void CppSyntaxHighlighter::highlightBlock(const QString &text)
+{
+    // Apply single-line rules first
+    for (const HighlightingRule &rule : m_rules) {
+        QRegularExpressionMatchIterator it = rule.pattern.globalMatch(text);
+        while (it.hasNext()) {
+            QRegularExpressionMatch match = it.next();
+            setFormat(match.capturedStart(), match.capturedLength(), rule.format);
+        }
+    }
+
+    // Multi-line comment handling
+    setCurrentBlockState(0);
+
+    int startIndex = 0;
+    if (previousBlockState() != 1)
+        startIndex = text.indexOf(m_commentStartExpr);
+
+    while (startIndex >= 0) {
+        QRegularExpressionMatch endMatch = m_commentEndExpr.match(text, startIndex + 2);
+        int endIndex = endMatch.capturedStart();
+        int commentLength;
+        if (endIndex == -1) {
+            setCurrentBlockState(1);
+            commentLength = text.length() - startIndex;
+        } else {
+            commentLength = endIndex - startIndex + endMatch.capturedLength();
+        }
+        setFormat(startIndex, commentLength, m_multiLineCommentFormat);
+
+        if (endIndex == -1)
+            break;
+        startIndex = text.indexOf(m_commentStartExpr, startIndex + commentLength);
+    }
+
+    // Apply preprocessor format last so it overrides keyword/type inside # lines
+    // (already in m_rules, but re-apply to ensure it paints over)
+}

@@ -4,6 +4,9 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
+# Enable UTF-8 source file handling for MSVC
+win32-msvc*: QMAKE_CXXFLAGS += /utf-8
+
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
@@ -11,7 +14,10 @@ CONFIG += c++17
 SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
+    codeeditor.cpp \
+    cppsyntaxhighlighter.cpp \
     editorwidget.cpp \
+    languageutils.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
@@ -24,7 +30,10 @@ SOURCES += \
 HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
+    codeeditor.h \
+    cppsyntaxhighlighter.h \
     editorwidget.h \
+    languageutils.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \
     fileutils.h \

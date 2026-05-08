@@ -27,19 +27,23 @@ main.cpp                  → QApplication + MainWindow bootstrap
 MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots
   ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree panel (left)
   ├── TabManager          → QTabWidget, manages EditorWidget tabs (center)
-  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView], dual-mode editor
-  │       └── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
+  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView | CodeEditor], tri-mode editor
+  │       ├── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
+  │       └── CodeEditor  → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent
   ├── HistoryPanel        → QDockWidget + QListWidget, recent files (right, hidden by default)
   ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left, hidden by default)
   ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
   ├── BacklinksPanel      → QDockWidget + QListWidget, backlinks for current file (right, hidden by default)
   ├── SettingsManager     → QSettings wrapper, config.ini persistence
-  └── TextFileUtils       → Utility (fileutils.h), 40+ text extension list & scan filters
+  ├── TextFileUtils       → Utility (fileutils.h), 40+ text extension list & scan filters
+  ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
+  └── CppSyntaxHighlighter → QSyntaxHighlighter, C/C++ dark-theme highlighting
 ```
 
 ### Key Data Flow
 
-- **File opening**: `FileExplorerWidget::fileClicked` → `MainWindow::onFileSelected` → `TabManager::openFile` → returns `EditorWidget*`
+- **File opening**: `FileExplorerWidget::fileClicked` → `MainWindow::onFileSelected` → `TabManager::openFile` → returns `EditorWidget*`. Mode auto-detected by `EditorWidget::loadFile()`: if extension maps to a known language in `LanguageUtils::languageForExtension()`, switches to `CodeEdit` (page 2 with `CodeEditor` + syntax highlighter); otherwise `MarkdownEdit` (page 0 with `WikiLinkTextEdit`).
+- **Code editing**: `CodeEditor::keyPressEvent` routes Enter→`handleAutoIndent` (auto-indent, `{|}` splits to 3 lines), Tab→`handleTabKey` (insert 4 spaces / indent selection), Backspace→`handleBackspaceIndent` (delete to tab-stop in leading whitespace) then `handleBackspacePairRemoval` (delete empty `{}()` etc.), bracket keys→`handleBracketCompletion` (auto-pair, skip in string/comment) or `handleClosingBracketSkip` (skip over existing bracket). Search highlights stored in `m_searchHighlights` and merged with current-line highlight in `highlightCurrentLine()`.
 - **Bidirectional links**: `[[文件名]]` syntax → regex in `EditorWidget::refreshPreview` converts to `<a href="wikilink:...">` tags → `PreviewPage::acceptNavigationRequest()` intercepts clicks on `wikilink:` scheme → emits `wikiLinkClicked` → `MainWindow::onWikiLinkClicked` → `MainWindow::findWikiTarget` (multi-level filename search) → opens or prompts create
 - **File indexing**: `MainWindow::m_fileIndex` (QMap<filename_no_ext, QStringList<full_paths>>) — rebuilt on folder change, incrementally updated on rename/delete/move. Scans use `TextFileUtils::scanNameFilters()` for 40+ text extensions.
 - **Backlinks**: `TabManager::currentChanged` → `MainWindow::refreshBacklinks` → `BacklinkIndex::backlinksFor(currentFilePath)` → `BacklinksPanel::showBacklinks`. Index updated via full rebuild (`buildIndex`) or per-file incremental (`rebuildFile` / `onFileRenamed` / `onFileDeleted`)
@@ -51,7 +55,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 
 ### Component Details
 
-**EditorWidget** — Dual-mode (source/preview) editor. Preview uses `QWebEngineView` with an HTML template that loads marked.js for Markdown→HTML conversion, KaTeX for LaTeX math rendering, and Mermaid.js for diagram rendering. WikiLink detection happens during preview HTML generation via regex (`[[...]]` → `<a href="wikilink:...">`), intercepted by a custom `QWebEnginePage::acceptNavigationRequest()` override. Zoom factor range: 0.5–3.0, step 0.1. Has a 300ms debounce timer that auto-clears the modified flag if text reverts to original content.
+**EditorWidget** — Tri-mode editor via `QStackedWidget`: page 0 = `WikiLinkTextEdit` (Markdown/generic text), page 1 = `QWebEngineView` container (Markdown preview), page 2 = `CodeEditor` (code files). Mode auto-selected in `loadFile()` via `LanguageUtils::languageForExtension()`. Code mode skips preview toggle (`setPreviewMode` is a no-op). Preview uses an HTML template that loads marked.js for Markdown→HTML conversion, KaTeX for LaTeX math rendering, and Mermaid.js for diagram rendering. WikiLink detection happens during preview HTML generation via regex (`[[...]]` → `<a href="wikilink:...">`), intercepted by a custom `QWebEnginePage::acceptNavigationRequest()` override. Zoom factor range: 0.5–3.0, step 0.1. Has a 300ms debounce timer that auto-clears the modified flag if text reverts to original content. All content access methods (`toPlainText()`, `setPlainText()`, `isModified()`, `setModified()`, `applyZoom()`, `scrollToLine()`, `clearExtraSelections()`) branch on `m_editorMode` enum (`MarkdownEdit` vs `CodeEdit`).
 
 **FileExplorerWidget** — Uses `QFileSystemModel` + `QSortFilterProxyModel` (custom `FileSortProxyModel` for folders-first sort). Custom `NoGhostDelegate` eliminates text ghosting during inline rename; if rename results in empty name, auto-restores original. Supports drag-drop file moving (within root directory only) with visual feedback (blue indicator bar). Delete key triggers removal even from context menu via `DeleteKeyFilter` event filter.
 
@@ -70,6 +74,12 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 **TextFileUtils** (`fileutils.h`) — Header-only utility providing `textExtensions()` (returns 40+ common text file extensions like `md`, `txt`, `cpp`, `py`, `js`, `json`, `xml`, `yaml`, `csv`, etc.) and `scanNameFilters()` (returns `"*." + ext` filters for `QDirIterator`). Used by `BacklinkIndex`, `EditorWidget`, `FileExplorerWidget`, and `MainWindow` to replace hardcoded `.md`/`.txt` file lists.
 
 **WikiLinkTextEdit** (`wikilinktextedit.h/cpp`) — `QTextEdit` subclass with built-in `QCompleter` + `QStringListModel` for `[[wikilink]]` autocomplete. On `[[` detection via `QTextBlock::text()` + `lastIndexOf`, shows a popup listing filenames from `m_fileIndex` (no extension, case-insensitive prefix match). First item auto-selected; arrow keys navigate, Tab accepts and inserts `[[filename]]` with cursor after `]]`. `QCompleter::popup()` positioned at `cursorRect()`. Model populated via `EditorWidget::setFileNames` → `WikiLinkTextEdit::setFileNames`, called from `MainWindow::updateCurrentEditorCompletions` after index rebuilds and tab switches.
+
+**CodeEditor** (`codeeditor.h/cpp`) — `QPlainTextEdit` subclass for code editing. Features: `LineNumberArea` inner `QWidget` for line numbers (`#858585` on `#252525`); auto-indent on Enter (copies leading whitespace, adds level on `{`, splits `{|}` to 3 lines); bracket completion for `{}()[]""''` (wraps selection, skips in string/comment); closing bracket skip-over; backspace pair removal (deletes empty pair); backspace indent deletion (removes `m_indentWidth` spaces at a time in leading whitespace); Tab inserts `indentString()` (4 spaces) or indents selection; current line highlight (`#2A2D2E`); search highlight storage (`m_searchHighlights`, merged with current line in `highlightCurrentLine()` via `setExtraSelections`). Constructor sets dark stylesheet (`#1E1E1E` background), Consolas 12pt monospace font, no-wrap mode. `setLanguage(langId)` installs/replaces `QSyntaxHighlighter` via `LanguageUtils::createHighlighter()`.
+
+**LanguageUtils** (`languageutils.h/cpp`) — Extensible language registry. `LanguageInfo` struct holds display name, extension set, and highlighter factory function. Singleton `languageMap()` returns static `QMap<langId, LanguageInfo>`. Key functions: `languageForExtension(ext)` looks up language by file extension; `isCodeFile(ext)` returns whether extension is registered; `createHighlighter(langId, doc)` invokes the factory. Currently registers one language: `"cpp"` (extensions: `cpp, hpp, cxx, cc, c, h, hxx, hh`) → `CppSyntaxHighlighter`. Adding a language = 1 map entry + 1 highlighter file + `.pro` entries.
+
+**CppSyntaxHighlighter** (`cppsyntaxhighlighter.h/cpp`) — `QSyntaxHighlighter` for C/C++. Dark theme colors: keywords `#569CD6` (bold, includes C++20), preprocessor `#C586C0`, types `#4EC9B0`, strings `#CE9178`, numbers `#B5CEA8`, comments `#6A9955` (single-line `//` and multi-line `/* */` with block-state tracking). Rules stored in `QVector<HighlightingRule>`, applied in priority order.
 
 ### Naming Convention
 

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.4）
+## 功能说明文档（v0.2.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -16,9 +16,13 @@
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
+- 代码编辑器模式：打开 C/C++ 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 
-### 修复 v0.2.4
-- 修复了带 `[]` 的文件在预览模式渲染出错的问题
+### 新增 v0.2.5
+- 新增代码编辑器模式：打开 C/C++ 文件时自动启用，含行号、语法高亮、自动缩进、括号补全、智能退格
+- 花括号换行自动分为三行（`{` + Enter 时分割 `{}` 为三行，光标定位中间行）
+- 退格键在行首空白处按缩进宽度（4空格）删除，而非逐空格删除
+- 新增 `CodeEditor`（代码编辑器控件）、`LanguageUtils`（语言注册表）、`CppSyntaxHighlighter`（C/C++ 语法高亮器）三个组件
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -138,10 +142,11 @@
 **文件**：`editorwidget.h` / `editorwidget.cpp`
 
 **职责**：
-- 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 两种模式。
-- 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）编写 Markdown 源码；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
+- 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 三种模式。
+- Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
+- 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。
-- 两种模式通过内部 `QStackedWidget` 切换：索引 0 = `QTextEdit`（编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`）。
+- 三种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑）。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免”输入再删除”导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
@@ -159,8 +164,11 @@
 - `QString currentFilePath() const`：返回当前正在编辑的文件路径（可能为空）。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：访问编辑器内容。
 - `bool isModified() const` / `void setModified(bool)`：管理文档修改状态。
-- `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。首次切换时加载模板页面（`setHtml`），`loadFinished` 后再切换视图栈；后续切换使用 `runJavaScript` 原地更新，通过回调在 JS 渲染完成后才切换以避免闪烁。
-- `bool isPreviewMode() const`：返回当前是否为预览模式。
+- `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。代码编辑模式下为无操作。首次切换时加载模板页面（`setHtml`），`loadFinished` 后再切换视图栈；后续切换使用 `runJavaScript` 原地更新，通过回调在 JS 渲染完成后才切换以避免闪烁。
+- `bool isPreviewMode() const`：返回当前是否为预览模式（代码编辑模式下始终返回 `false`）。
+- `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
+- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
+- `void clearExtraSelections()`：清除搜索高亮。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
 - `void updatePreviewContent(std::function<void()> onFinished)`：处理 WikiLink → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
 - `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 Markdown 超链接格式（供首次加载和增量更新共用）。
@@ -399,6 +407,95 @@
 
 ---
 
+### 12. `CodeEditor` - 代码编辑器控件
+
+**文件**：`codeeditor.h` / `codeeditor.cpp`
+
+**职责**：
+- 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
+- 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
+- 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。行尾为 `{` 时增加一级缩进。
+- 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
+- 闭合括号跳过（`handleClosingBracketSkip`）：输入右括号时若光标后紧跟相同字符，则跳过而非重复插入。
+- 退格成对删除（`handleBackspacePairRemoval`）：光标位于空括号对中间时，退格同时删除左右括号。
+- 智能退格（`handleBackspaceIndent`）：光标在行首空白区域时，退格删除至前一缩进边界（4 空格为单位）。Tab 字符单独删除一个。
+- Tab 缩进（`handleTabKey`）：插入 4 空格缩进；有选区时批量缩进选中行。
+- 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
+- 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索结果高亮列表（金色 `#FFD700`），与当前行高亮合并后通过 `setExtraSelections` 统一应用。
+- 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
+- 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
+
+**主要接口**：
+- `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器。
+- `QString languageId() const`：返回当前语言 ID。
+- `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
+- `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
+- `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。
+
+**内部类 `LineNumberArea`**：
+- 继承 `QWidget`，作为 `CodeEditor` 的子控件。
+- `sizeHint()` 返回由 `CodeEditor::lineNumberAreaWidth()` 计算的宽度。
+- `paintEvent()` 委托回 `CodeEditor::lineNumberAreaPaintEvent()` 完成绘制。
+
+**协作关系**：
+- 由 `EditorWidget` 创建并管理，作为 `QStackedWidget` 的第 3 页（索引 2）。
+- 通过 `LanguageUtils::createHighlighter()` 获取语法高亮器。
+- `EditorWidget` 在加载文件时根据扩展名判断是否切换到代码模式，并调用 `setLanguage()`。
+
+---
+
+### 13. `LanguageUtils` - 语言注册工具
+
+**文件**：`languageutils.h` / `languageutils.cpp`
+
+**职责**：
+- 提供可扩展的编程语言注册表，通过 `LanguageInfo` 结构定义语言的显示名称、扩展名集合和高亮器工厂函数。
+- 统一入口：其他模块无需了解具体高亮器类，仅通过语言 ID 即可创建高亮器。
+- 扩展点：添加新语言支持仅需创建新的 `QSyntaxHighlighter` 子类并在 `languageMap()` 中添加一条记录即可。
+
+**数据结构 `LanguageInfo`**：
+- `QString displayName`：语言显示名称。
+- `QSet<QString> extensions`：该语言的文件扩展名集合（不含点号，小写）。
+- `std::function<QSyntaxHighlighter*(QTextDocument*)> factory`：高亮器工厂函数。
+
+**主要接口**：
+- `LanguageUtils::languageForExtension(const QString &ext)`：根据文件扩展名（不含点号）查找语言 ID，未找到返回空字符串。
+- `LanguageUtils::isCodeFile(const QString &ext)`：判断扩展名是否为已知代码文件。
+- `LanguageUtils::codeExtensions()`：返回所有注册语言的全部扩展名列表。
+- `LanguageUtils::createHighlighter(const QString &langId, QTextDocument *doc)`：根据语言 ID 创建对应的高亮器实例。
+
+**当前注册语言**：
+| 语言 ID | 显示名称 | 扩展名 |
+|---------|----------|--------|
+| `"cpp"` | C/C++ | cpp, hpp, cxx, cc, c, h, hxx, hh |
+
+**协作关系**：
+- 被 `EditorWidget` 在 `loadFile()` 和 `setFilePath()` 中调用，用于判断文件是否应进入代码编辑模式。
+- 被 `CodeEditor::setLanguage()` 调用以创建语法高亮器。
+
+---
+
+### 14. `CppSyntaxHighlighter` - C/C++ 语法高亮器
+
+**文件**：`cppsyntaxhighlighter.h` / `cppsyntaxhighlighter.cpp`
+
+**职责**：
+- 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
+- 高亮规则按优先级排列（先匹配优先），具体颜色方案：
+  - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。
+  - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
+  - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。
+  - **字符串**（`#CE9178`）：双引号字符串，支持转义字符。
+  - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
+  - **单行注释**（`#6A9955`）：`// ...`
+  - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。
+
+**协作关系**：
+- 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"cpp"` 语言的高亮器实现。
+- 被 `CodeEditor::setLanguage()` 调用并安装到 `QTextDocument` 上。
+
+---
+
 ### 配置存储说明
 
 - 配置文件名为 `config.ini`，默认保存在 **应用程序可执行文件所在的目录**（通过 `QCoreApplication::applicationDirPath()` 获得）。
@@ -408,7 +505,7 @@
 
 - **标签页样式**：通过 `QTabWidget` 的样式表设置了标签最小高度、左右内边距（`padding: 4px 12px`）、圆角以及选中/悬停背景色，解决了标签左右空位过小的问题。
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
-- **Markdown 预览模式**：在工具栏添加了”预览模式”按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
+- **Markdown 预览模式**：在工具栏添加了”预览模式”按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件（包括代码文件）或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
   如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。预览引擎采用延迟初始化避免文件打开时抖动，暗色容器 + 页面背景色双重保障消除切换白屏闪烁，base64 + TextDecoder 确保中文内容正确显示。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
@@ -418,4 +515,5 @@
 - **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作（若文件不存在则自动弹出警告并清理该条目）。鼠标悬停会有完整路径提示。同时提供清空功能。文件删除或移动后自动同步更新历史记录。运行期间仅维护内存数据，程序关闭时统一持久化以减少磁盘 I/O。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
+- **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。

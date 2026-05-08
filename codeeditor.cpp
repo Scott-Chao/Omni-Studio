@@ -1,0 +1,486 @@
+﻿#include "codeeditor.h"
+#include "languageutils.h"
+#include <QPainter>
+#include <QTextBlock>
+#include <QKeyEvent>
+#include <QSyntaxHighlighter>
+
+// ============================================================
+// LineNumberArea
+// ============================================================
+
+LineNumberArea::LineNumberArea(CodeEditor *editor)
+    : QWidget(editor)
+    , m_codeEditor(editor)
+{
+}
+
+QSize LineNumberArea::sizeHint() const
+{
+    return QSize(m_codeEditor->lineNumberAreaWidth(), 0);
+}
+
+void LineNumberArea::paintEvent(QPaintEvent *event)
+{
+    m_codeEditor->lineNumberAreaPaintEvent(event);
+}
+
+// ============================================================
+// CodeEditor
+// ============================================================
+
+CodeEditor::CodeEditor(QWidget *parent)
+    : QPlainTextEdit(parent)
+{
+    // Dark code editor theme
+    setStyleSheet(QStringLiteral(
+        "QPlainTextEdit { background-color: #1E1E1E; color: #D4D4D4; "
+        "selection-background-color: #264F78; }"));
+
+    QFont font(QStringLiteral("Consolas"), 12);
+    font.setStyleHint(QFont::Monospace);
+    setFont(font);
+    setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
+
+    setLineWrapMode(QPlainTextEdit::NoWrap);
+
+    m_lineNumberArea = new LineNumberArea(this);
+
+    connect(this, &QPlainTextEdit::blockCountChanged,
+            this, &CodeEditor::updateLineNumberAreaWidth);
+    connect(this, &QPlainTextEdit::updateRequest,
+            this, &CodeEditor::updateLineNumberArea);
+    connect(this, &QPlainTextEdit::cursorPositionChanged,
+            this, &CodeEditor::highlightCurrentLine);
+
+    updateLineNumberAreaWidth(0);
+    highlightCurrentLine();
+}
+
+void CodeEditor::setLanguage(const QString &langId)
+{
+    if (m_highlighter) {
+        delete m_highlighter;
+        m_highlighter = nullptr;
+    }
+    m_languageId = langId;
+    m_highlighter = LanguageUtils::createHighlighter(langId, document());
+}
+
+// ---- Line number area ----
+
+int CodeEditor::lineNumberAreaWidth() const
+{
+    int digits = 1;
+    int max = qMax(1, blockCount());
+    while (max >= 10) {
+        max /= 10;
+        ++digits;
+    }
+    int space = 10 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    return space;
+}
+
+void CodeEditor::updateLineNumberAreaWidth(int /* newBlockCount */)
+{
+    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+}
+
+void CodeEditor::updateLineNumberArea(const QRect &rect, int dy)
+{
+    if (dy)
+        m_lineNumberArea->scroll(0, dy);
+    else
+        m_lineNumberArea->update(0, rect.y(), m_lineNumberArea->width(), rect.height());
+
+    if (rect.contains(viewport()->rect()))
+        updateLineNumberAreaWidth(0);
+}
+
+void CodeEditor::resizeEvent(QResizeEvent *event)
+{
+    QPlainTextEdit::resizeEvent(event);
+
+    QRect cr = contentsRect();
+    m_lineNumberArea->setGeometry(
+        QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+}
+
+void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
+{
+    QPainter painter(m_lineNumberArea);
+    painter.fillRect(event->rect(), QColor(0x25, 0x25, 0x25));
+
+    QTextBlock block = firstVisibleBlock();
+    int blockNumber = block.blockNumber();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    while (block.isValid() && top <= event->rect().bottom()) {
+        if (block.isVisible() && bottom >= event->rect().top()) {
+            QString number = QString::number(blockNumber + 1);
+            painter.setPen(QColor(0x85, 0x85, 0x85));
+            painter.drawText(0, top, m_lineNumberArea->width() - 4,
+                             fontMetrics().height(),
+                             Qt::AlignRight, number);
+        }
+
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+        ++blockNumber;
+    }
+}
+
+// ---- Current line highlight ----
+
+void CodeEditor::highlightCurrentLine()
+{
+    QList<QTextEdit::ExtraSelection> extraSelections = m_searchHighlights;
+
+    if (!isReadOnly()) {
+        QTextEdit::ExtraSelection selection;
+        selection.format.setBackground(QColor(0x2A, 0x2D, 0x2E));
+        selection.format.setProperty(QTextFormat::FullWidthSelection, true);
+        selection.cursor = textCursor();
+        selection.cursor.clearSelection();
+        extraSelections.append(selection);
+    }
+
+    setExtraSelections(extraSelections);
+}
+
+// ---- Key handling ----
+
+void CodeEditor::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+        handleAutoIndent();
+        return;
+
+    case Qt::Key_Tab:
+        if (handleTabKey(event))
+            return;
+        break;
+
+    case Qt::Key_Backspace:
+        if (handleBackspaceIndent(event))
+            return;
+        if (handleBackspacePairRemoval(event))
+            return;
+        break;
+
+    default:
+        break;
+    }
+
+    // Bracket completion: opening characters
+    QString text = event->text();
+    if (!text.isEmpty() && !event->matches(QKeySequence::Paste)) {
+        if (text == QStringLiteral("{") || text == QStringLiteral("(") ||
+            text == QStringLiteral("[") || text == QStringLiteral("\"") ||
+            text == QStringLiteral("'"))
+        {
+            if (handleBracketCompletion(event))
+                return;
+        }
+        // Closing bracket skip-over
+        if (text == QStringLiteral("}") || text == QStringLiteral(")") ||
+            text == QStringLiteral("]") || text == QStringLiteral("\"") ||
+            text == QStringLiteral("'"))
+        {
+            if (handleClosingBracketSkip(event))
+                return;
+        }
+    }
+
+    QPlainTextEdit::keyPressEvent(event);
+}
+
+// ---- Auto-indent ----
+
+void CodeEditor::handleAutoIndent()
+{
+    QTextCursor cursor = textCursor();
+    QTextBlock block = cursor.block();
+    QString blockText = block.text();
+    int posInBlock = cursor.positionInBlock();
+
+    // Extract leading whitespace from current line
+    int i = 0;
+    while (i < blockText.length() && (blockText.at(i) == QLatin1Char(' ') ||
+                                      blockText.at(i) == QLatin1Char('\t'))) {
+        ++i;
+    }
+    QString indent = blockText.left(i);
+
+    // Split {} into three lines when cursor is between them
+    if (posInBlock > 0 && posInBlock < blockText.length() &&
+        blockText.at(posInBlock - 1) == QLatin1Char('{') &&
+        blockText.at(posInBlock) == QLatin1Char('}'))
+    {
+        QString innerIndent = indent + indentString();
+        cursor.beginEditBlock();
+        cursor.insertText(QStringLiteral("\n") + innerIndent + QStringLiteral("\n") + indent);
+        // Move cursor back to the middle line, at the end of innerIndent
+        for (int k = 0; k < indent.length() + 1; ++k)
+            cursor.movePosition(QTextCursor::Left);
+        cursor.endEditBlock();
+        setTextCursor(cursor);
+        return;
+    }
+
+    // Check if line ends with { — add one more indent level
+    QString trimmed = blockText.trimmed();
+    if (trimmed.endsWith(QLatin1Char('{'))) {
+        indent += indentString();
+    }
+    // If the cursor is before the current indent text, use cursor position for indent
+    if (posInBlock < i) {
+        indent = blockText.left(posInBlock);
+    }
+
+    cursor.beginEditBlock();
+    cursor.insertText(QStringLiteral("\n") + indent);
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+}
+
+// ---- Bracket completion ----
+
+bool CodeEditor::handleBracketCompletion(QKeyEvent *event)
+{
+    if (isCursorInStringOrComment())
+        return false;
+
+    QString opening = event->text();
+    QChar openChar = opening.at(0);
+    QChar closeChar;
+    if (openChar == QLatin1Char('{'))      closeChar = QLatin1Char('}');
+    else if (openChar == QLatin1Char('(')) closeChar = QLatin1Char(')');
+    else if (openChar == QLatin1Char('[')) closeChar = QLatin1Char(']');
+    else if (openChar == QLatin1Char('"')) closeChar = QLatin1Char('"');
+    else if (openChar == QLatin1Char('\'')) closeChar = QLatin1Char('\'');
+    else return false;
+
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection()) {
+        // Wrap selection
+        QString sel = cursor.selectedText();
+        cursor.beginEditBlock();
+        int start = cursor.selectionStart();
+        int end = cursor.selectionEnd();
+        cursor.clearSelection();
+        cursor.setPosition(start);
+        cursor.insertText(opening);
+        cursor.setPosition(end + 1);
+        cursor.insertText(QString(closeChar));
+        cursor.endEditBlock();
+    } else {
+        cursor.beginEditBlock();
+        cursor.insertText(opening + QString(closeChar));
+        cursor.movePosition(QTextCursor::PreviousCharacter);
+        cursor.endEditBlock();
+        setTextCursor(cursor);
+    }
+    return true;
+}
+
+// ---- Closing bracket skip ----
+
+bool CodeEditor::handleClosingBracketSkip(QKeyEvent *event)
+{
+    QString closing = event->text();
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection())
+        return false;
+
+    if (!cursor.atBlockEnd()) {
+        QChar nextChar = document()->characterAt(cursor.position());
+        if (nextChar == closing.at(0)) {
+            cursor.movePosition(QTextCursor::Right);
+            setTextCursor(cursor);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---- Backspace pair removal ----
+
+bool CodeEditor::handleBackspaceIndent(QKeyEvent *event)
+{
+    Q_UNUSED(event);
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection())
+        return false;
+
+    int pos = cursor.position();
+    if (pos == 0)
+        return false;
+
+    QTextBlock block = cursor.block();
+    int posInBlock = cursor.positionInBlock();
+    if (posInBlock == 0)
+        return false;
+
+    // Only in leading whitespace
+    QString textBeforeCursor = block.text().left(posInBlock);
+    if (!textBeforeCursor.trimmed().isEmpty())
+        return false;
+
+    if (block.text().at(posInBlock - 1) == QLatin1Char('\t')) {
+        cursor.deletePreviousChar();
+        return true;
+    }
+
+    // Delete spaces back to previous tab stop
+    int spaceCount = posInBlock % m_indentWidth;
+    if (spaceCount == 0)
+        spaceCount = m_indentWidth;
+
+    cursor.beginEditBlock();
+    for (int j = 0; j < spaceCount; ++j)
+        cursor.deletePreviousChar();
+    cursor.endEditBlock();
+    return true;
+}
+
+bool CodeEditor::handleBackspacePairRemoval(QKeyEvent *event)
+{
+    Q_UNUSED(event);
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection())
+        return false;
+
+    int pos = cursor.position();
+    if (pos == 0)
+        return false;
+
+    QChar leftChar = document()->characterAt(pos - 1);
+    QChar expectedRight;
+
+    if (leftChar == QLatin1Char('{'))      expectedRight = QLatin1Char('}');
+    else if (leftChar == QLatin1Char('(')) expectedRight = QLatin1Char(')');
+    else if (leftChar == QLatin1Char('[')) expectedRight = QLatin1Char(']');
+    else if (leftChar == QLatin1Char('"')) expectedRight = QLatin1Char('"');
+    else if (leftChar == QLatin1Char('\'')) expectedRight = QLatin1Char('\'');
+    else return false;
+
+    if (pos < document()->characterCount() - 1) {
+        QChar rightChar = document()->characterAt(pos);
+        if (rightChar == expectedRight) {
+            cursor.beginEditBlock();
+            cursor.deletePreviousChar();
+            cursor.deleteChar();
+            cursor.endEditBlock();
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---- Tab handling ----
+
+bool CodeEditor::handleTabKey(QKeyEvent *event)
+{
+    Q_UNUSED(event);
+
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection()) {
+        // Indent selected lines
+        QTextDocument *doc = document();
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            QTextCursor blockCursor(block);
+            blockCursor.insertText(indentString());
+        }
+        cursor.endEditBlock();
+    } else {
+        cursor.insertText(indentString());
+    }
+    return true;
+}
+
+// ---- Helpers ----
+
+QString CodeEditor::indentString() const
+{
+    return QString(m_indentWidth, QLatin1Char(' '));
+}
+
+bool CodeEditor::isCursorInStringOrComment() const
+{
+    if (!m_highlighter)
+        return false;
+
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    if (pos <= 0)
+        return false;
+
+    // Check the format at the cursor position.
+    // If the cursor is at the end, check the character just before.
+    int checkPos = (pos == document()->characterCount() - 1) ? pos - 1 : pos;
+    if (checkPos < 0)
+        return false;
+
+    QTextBlock block = document()->findBlock(checkPos);
+    // Use previousBlockState + highlightBlock to get format
+    // Instead, check the actual format list at this position
+    QVector<QTextLayout::FormatRange> formats = block.layout()->formats();
+    int offsetInBlock = checkPos - block.position();
+    for (const auto &fmt : formats) {
+        if (offsetInBlock >= fmt.start && offsetInBlock < fmt.start + fmt.length) {
+            QColor fg = fmt.format.foreground().color();
+            // Check if this is a comment or string color
+            // Comment: #6A9955, String: #CE9178
+            if (fg == QColor(0x6A, 0x99, 0x55) || fg == QColor(0xCE, 0x91, 0x78))
+                return true;
+            break;
+        }
+    }
+    return false;
+}
+
+void CodeEditor::setSearchHighlights(const QString &searchText)
+{
+    m_searchHighlights.clear();
+    QTextDocument *doc = document();
+
+    QTextCursor searchCursor(doc);
+    while (true) {
+        QTextCursor found = doc->find(searchText, searchCursor);
+        if (found.isNull())
+            break;
+
+        QTextEdit::ExtraSelection sel;
+        sel.format.setBackground(QColor("#FFD700"));
+        sel.format.setForeground(QColor("#000000"));
+        sel.cursor = found;
+        m_searchHighlights.append(sel);
+
+        searchCursor = found;
+        searchCursor.movePosition(QTextCursor::EndOfWord);
+    }
+
+    // Merge with current line highlight
+    highlightCurrentLine();
+}
+
+void CodeEditor::clearSearchHighlights()
+{
+    m_searchHighlights.clear();
+    highlightCurrentLine();
+}
