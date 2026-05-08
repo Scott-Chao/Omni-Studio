@@ -3,79 +3,18 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build and Run
-- **Build System**: qmake (Qt 6.11.0)
-- **Compiler**: MSVC 2022 (Visual Studio 2022 Build Tools or Community)
-- **Required Qt Components** (install via `D:\Qt\MaintenanceTool.exe`):
-  - `qt.qt6.6110.win64_msvc2022_64` — Qt 6.11.0 MSVC 2022 base kit
-  - `extensions.qtwebengine.6110.win64_msvc2022_64` — Qt WebEngine (Chromium-based web view)
-  - `extensions.qtwebchannel.6110.win64_msvc2022_64` — Qt WebChannel (WebEngine dependency)
-  - `extensions.qtposition.6110.win64_msvc2022_64` — Qt Positioning (WebEngine dependency)
-  - `tools.qtcreator` — Includes jom.exe (parallel nmake replacement)
-- **Qt Install Path**: `D:\Qt\6.11.0\msvc2022_64`
-- **jom Path**: `D:\Qt\Tools\QtCreator\bin\jom\jom.exe`
-- **Build Directory**: `./build/Desktop_Qt_6_11_0_MSVC2022_64_bit-Debug`
-- **Commands** (all commands MUST run from **"x64 Native Tools Command Prompt for VS 2022"** — see Environment Notes below):
-  - **Configure**: `qmake.exe -r smart-markdown.pro` ("-r" for recursive, needed when QRC resources change)
-  - **Build**: `jom.exe -f Makefile.Release -j22` (parallel build, use thread count after `-j`)
-  - **Build (alternative)**: `nmake` (single-threaded, use if jom unavailable)
-  - **Clean**: `jom.exe -f Makefile.Release clean` or `nmake clean`
-- **Output Executable**: `./release/smart-markdown.exe`
-- **Deployment**: `windeployqt release/smart-markdown.exe --qmldir .` (copies all required DLLs for distribution)
 
-## Environment Notes
+### Prerequisites
+- **Environment**: MUST run from "x64 Native Tools Command Prompt for VS 2022".
+- **System**: Qt 6.11.0 + MSVC 2022.
+- **Build Dir**: `./build/Desktop_Qt_6_11_0_MSVC2022_64_bit-Debug`
+- **Output**: `./release/smart-markdown.exe`
 
-### Critical: Launch Build Commands from VS Command Prompt
-You MUST run qmake, jom/nmake, and windeployqt from the **"x64 Native Tools Command Prompt for VS 2022"** (available in Start Menu → Visual Studio 2022). This sets up the MSVC compiler (cl.exe) in PATH.
-
-If you prefer to run from an ordinary terminal, first run:
-```
-"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-```
-
-Without the VS environment, qmake will fail with: `Project ERROR: msvc-version.conf loaded but QMAKE_MSC_VER isn't set`
-
-### Qt DLLs at Runtime
-When running `smart-markdown.exe` outside the VS command prompt (e.g., double-clicking), the Qt DLL directory must be in PATH:
-```
-set PATH=D:\Qt\6.11.0\msvc2022_64\bin;%PATH%
-```
-Or copy the Visual C++ redistributable DLLs (you may find them in `C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\<version>\x64\Microsoft.VC143.CRT`).
-
-### WebEngine Remote Debugging
-The app sets `QTWEBENGINE_REMOTE_DEBUGGING=9222`. For debugging WebEngine issues, navigate to `http://localhost:9222` in a Chromium-based browser.
-
-### Required Qt Binaries in PATH
-Ensure `D:\Qt\6.11.0\msvc2022_64\bin` is in PATH for qmake and windeployqt to be found.
-
-## Troubleshooting
-
-### QMAKE_MSC_VER not set
-**Symptom**: `Project ERROR: msvc-version.conf loaded but QMAKE_MSC_VER isn't set`
-**Cause**: Running qmake from a regular terminal instead of the VS command prompt.
-**Fix**: Use "x64 Native Tools Command Prompt for VS 2022".
-
-### Unknown module(s) in QT: webenginewidgets
-**Symptom**: qmake fails with "Unknown module(s) in QT: webenginewidgets"
-**Cause**: Qt WebEngine extension not installed, or running in MinGW environment.
-**Fix**: Qt WebEngine on Windows is MSVC-only. Install via Maintenance Tool under Qt 6.11.0 → MSVC 2022 64-bit → Qt WebEngine extension.
-
-### Unknown module(s) in QT: webchannel / positioning
-**Symptom**: qmake fails with "Unknown module(s) in QT: webchannel" or "positioning"
-**Cause**: Missing WebEngine dependencies.
-**Fix**: Install Qt WebChannel and Qt Positioning via Maintenance Tool.
-
-### App hangs on startup with no window
-**Symptom**: Application launches but no window appears.
-**Cause**: `MainWindow::buildFileIndex()` or `BacklinkIndex::buildIndex()` scanning `QDir::homePath()` (tens of thousands of files) because `SettingsManager::lastFolderPath()` defaults to home directory when no `config.ini` exists.
-**Fix**: Both methods have guard clauses (`rootPath == QDir::homePath()` returns early). This should no longer occur.
-
-### LNK1104: cannot open release\smart-markdown.exe
-**Symptom**: Linker fails because exe is in use.
-**Fix**: Kill the running process first: `taskkill /f /im smart-markdown.exe`
-
-### nmake doesn't support -j flag
-**Symptom**: `nmake : fatal error U1065: invalid option 'j'`
-**Fix**: nmake is single-threaded. Use `jom` for parallel builds: `jom -f Makefile.Release -j22`
+### Commands
+- **Configure**: `qmake.exe -r smart-markdown.pro` (re-run when QRC changes)
+- **Build**: `jom.exe -f Makefile.Release -j22` (or `nmake` as fallback)
+- **Clean**: `jom.exe -f Makefile.Release clean` (or `nmake clean`)
+- **Deploy**: `windeployqt release/smart-markdown.exe --qmldir .`
 
 ## Code Architecture
 
