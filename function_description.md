@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.1）
+## 功能说明文档（v0.2.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -18,6 +18,12 @@
 
 ### 新增 v0.2.1
 - **全文搜索面板**：支持在当前目录所有文本文件中检索关键词（快捷键 `Ctrl+Shift+F`）。搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并金色高亮所有匹配关键词。面板位于左侧停靠区域，300ms 输入防抖，不自动隐藏以支持连续点击。新增 `SearchPanel` 组件和 `EditorWidget::scrollToLine` 方法。
+
+### 修复 v0.2.2
+- **预览模式白屏闪烁**：将 QWebEngineView 页面加载从 `EditorWidget` 构造函数延迟至首次切换预览模式，避免每次打开文件时 GPU 进程冷启动导致窗口抖动。新增暗色容器 Widget 包裹 QWebEngineView，配合 `QWebEnginePage::setBackgroundColor()` 双重保障，消除编辑/预览切换时的白屏闪烁。
+- **预览模式中文乱码**：由于 `atob()` 解码 base64 后返回 binary string（每字符对应一个 byte），中文 UTF-8 多字节序列被拆散导致乱码。新增 `renderFromBase64()` 函数使用 `TextDecoder('utf-8')` 正确还原 UTF-8 字符串。
+- **代码重构**：提取 `processWikiLinks()` 方法消除 `setPreviewMode` 与 `updatePreviewContent` 中的 WikiLink 转换重复代码。
+- **构建配置**：`smart-markdown.pro` 配置 `DESTDIR` 使 release/debug 输出到项目根目录下的对应文件夹。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -139,14 +145,15 @@
 **职责**：
 - 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 两种模式。
 - 编辑模式使用 `QTextEdit` 编写 Markdown 源码；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
-- 两种模式通过内部 `QStackedWidget` 切换，共用文件路径和修改状态。
+- 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。
+- 两种模式通过内部 `QStackedWidget` 切换：索引 0 = `QTextEdit`（编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`）。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免”输入再删除”导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
 - 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
-- WikiLink 转换：在渲染预览前通过正则将 `[[Name]]` 转换为 `<a href=”wikilink:目标”>` 超链接；自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
+- WikiLink 转换：通过 `processWikiLinks()` 使用正则将 `[[Name]]` 转换为 `[Name](wikilink:编码目标)` 的 Markdown 链接格式，内容通过 base64 编码传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免特殊字符破坏 JS 语法。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
 - Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
 
@@ -157,9 +164,11 @@
 - `QString currentFilePath() const`：返回当前正在编辑的文件路径（可能为空）。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：访问编辑器内容。
 - `bool isModified() const` / `void setModified(bool)`：管理文档修改状态。
-- `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。
+- `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。首次切换时加载模板页面（`setHtml`），`loadFinished` 后再切换视图栈；后续切换使用 `runJavaScript` 原地更新，通过回调在 JS 渲染完成后才切换以避免闪烁。
 - `bool isPreviewMode() const`：返回当前是否为预览模式。
-- `void refreshPreview()`：强制刷新预览内容（将当前 Markdown 源码转换为 HTML 并显示）。
+- `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
+- `void updatePreviewContent(std::function<void()> onFinished)`：处理 WikiLink → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
+- `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 Markdown 超链接格式（供首次加载和增量更新共用）。
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。
 - `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
@@ -177,6 +186,7 @@
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
 - 在构造函数中对 `m_textEdit` 的 **viewport** 和 `m_previewView` 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`，避免 Qt 内置缩放绕开自定义状态管理。
+- 构造函数不再调用 `initPreviewEngine()`，WebEngine 页面加载延迟至首次 `setPreviewMode(true)` 时执行，避免打开文件时 GPU 进程冷启动造成窗口抖动。
 - `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 `QWebEngineView::setZoomFactor()` 缩放整个预览页面（含 SVG 图表和数学公式）。
 
 ---
@@ -403,8 +413,8 @@
 
 - **标签页样式**：通过 `QTabWidget` 的样式表设置了标签最小高度、左右内边距（`padding: 4px 12px`）、圆角以及选中/悬停背景色，解决了标签左右空位过小的问题。
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
-- **Markdown 预览模式**：在工具栏添加了“预览模式”按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
-  如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。
+- **Markdown 预览模式**：在工具栏添加了”预览模式”按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
+  如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。预览引擎采用延迟初始化避免文件打开时抖动，暗色容器 + 页面背景色双重保障消除切换白屏闪烁，base64 + TextDecoder 确保中文内容正确显示。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
 - **排序规则**：文件树始终按“文件夹优先、名称升序”排列，且新建或重命名后实时重排。

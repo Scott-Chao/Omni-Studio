@@ -7,6 +7,7 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QTimer>
+#include <functional>
 
 class EditorWidget : public QWidget
 {
@@ -35,6 +36,7 @@ public:
     void setPreviewMode(bool preview);
     bool isPreviewMode() const { return m_previewMode; }
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
+    void updatePreviewContent(std::function<void()> onFinished); // 异步更新预览，完成后回调
 
     // 字体缩放
     void zoomIn();
@@ -63,11 +65,14 @@ private:
     QStackedWidget *m_stackedWidget;
     QTextEdit *m_textEdit; // 源码编辑
     QWebEngineView *m_previewView; // 渲染预览
+    QWidget *m_previewContainer; // 暗色容器，遮挡 WebEngine 白底
     QString m_filePath;
     bool m_previewMode;
+    bool m_previewReady = false; // WebEngine 页面是否已加载模板
 
 private:
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
+    QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;
 

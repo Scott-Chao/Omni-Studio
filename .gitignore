@@ -85,6 +85,10 @@ CMakeLists.txt.user*
 /release/
 /debug/
 
+# Build helper scripts (user-specific paths)
+build_msvc.bat
+deploy_msvc.bat
+
 # Runtime config (user-specific)
 config.ini
 

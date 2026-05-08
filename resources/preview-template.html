@@ -150,42 +150,81 @@
   };
   marked.use({ renderer: renderer });
 
-  // Parse markdown
-  const mdContent = document.getElementById('markdown-content').textContent;
-  const html = marked.parse(mdContent);
-  document.getElementById('preview').innerHTML = html;
+  // --- UTF-8 safe base64 decode (atob returns binary string, not UTF-8) ---
+  window.renderFromBase64 = function(b64) {
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    window.renderMarkdown(new TextDecoder('utf-8').decode(bytes));
+  };
 
-  // Render KaTeX math
-  try {
-    renderMathInElement(document.getElementById('preview'), {
-      delimiters: [
-        {left: '$$', right: '$$', display: true},
-        {left: '$', right: '$', display: false},
-        {left: '\\[', right: '\\]', display: true},
-        {left: '\\(', right: '\\)', display: false}
-      ],
-      throwOnError: false
+  // --- Math + Markdown rendering (callable from C++ via runJavaScript) ---
+  window.renderMarkdown = function(mdContent) {
+    var mathBlocks = [];
+
+    function storeMath(latex, displayMode) {
+      var idx = mathBlocks.length;
+      try {
+        mathBlocks[idx] = katex.renderToString(latex.trim(), {
+          displayMode: displayMode,
+          throwOnError: false
+        });
+      } catch (e) {
+        mathBlocks[idx] = '<span style="color:#f88">KaTeX: ' + (e.message || e) + '</span>';
+      }
+      return '\x00MATH' + idx + '\x00';
+    }
+
+    // Process in order: display math first, then inline, to avoid $ matching $$
+    // 1. $$ ... $$  (display math)
+    mdContent = mdContent.replace(/\$\$([\s\S]*?)\$\$/g, function(m, latex) {
+      return storeMath(latex, true);
     });
-  } catch(e) {
-    console.error('KaTeX error:', e);
-  }
+    // 2. \[ ... \]  (display math, alternative)
+    mdContent = mdContent.replace(/\\\[([\s\S]*?)\\\]/g, function(m, latex) {
+      return storeMath(latex, true);
+    });
+    // 3. \( ... \)  (inline math, alternative — before $ to avoid conflicts)
+    mdContent = mdContent.replace(/\\\(([\s\S]*?)\\\)/g, function(m, latex) {
+      return storeMath(latex, false);
+    });
+    // 4. $ ... $  (inline math — single-line, non-greedy)
+    mdContent = mdContent.replace(/\$([^\$\n]+?)\$/g, function(m, latex) {
+      return storeMath(latex, false);
+    });
 
-  // Render Mermaid diagrams
-  (async function() {
-    const mermaidElements = document.querySelectorAll('.mermaid');
-    if (mermaidElements.length > 0) {
-      for (var i = 0; i < mermaidElements.length; i++) {
-        var el = mermaidElements[i];
-        var code = el.textContent.trim();
-        try {
-          var result = await mermaid.render('mermaid-svg-' + i, code);
-          el.innerHTML = result.svg;
-        } catch(err) {
-          el.innerHTML = '<span style="color:#f88">Mermaid: ' + (err.message || err) + '</span>';
+    // Markdown -> HTML (math protected by null-byte placeholders)
+    var html = marked.parse(mdContent);
+
+    // Restore math placeholders with pre-rendered KaTeX HTML
+    for (var i = 0; i < mathBlocks.length; i++) {
+      html = html.split('\x00MATH' + i + '\x00').join(mathBlocks[i]);
+    }
+
+    document.getElementById('preview').innerHTML = html;
+
+    // Render Mermaid diagrams
+    (async function() {
+      const mermaidElements = document.querySelectorAll('.mermaid');
+      if (mermaidElements.length > 0) {
+        for (var i = 0; i < mermaidElements.length; i++) {
+          var el = mermaidElements[i];
+          var code = el.textContent.trim();
+          try {
+            var result = await mermaid.render('mermaid-svg-' + i, code);
+            el.innerHTML = result.svg;
+          } catch(err) {
+            el.innerHTML = '<span style="color:#f88">Mermaid: ' + (err.message || err) + '</span>';
+          }
         }
       }
-    }
-  })();
+    })();
+  };
+
+  // Initial render on page load
+  window.renderMarkdown(document.getElementById('markdown-content').textContent);
 })();
 </script>
 </body>

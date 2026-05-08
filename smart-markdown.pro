@@ -43,6 +43,21 @@ TRANSLATIONS += \
 CONFIG += lrelease
 CONFIG += embed_translations
 
+CONFIG(release, debug|release) {
+    DESTDIR = $$PWD/release
+    OBJECTS_DIR = $$PWD/build/release/obj
+    MOC_DIR = $$PWD/build/release/moc
+    RCC_DIR = $$PWD/build/release/rcc
+    UI_DIR = $$PWD/build/release/ui
+}
+CONFIG(debug, debug|release) {
+    DESTDIR = $$PWD/debug
+    OBJECTS_DIR = $$PWD/build/debug/obj
+    MOC_DIR = $$PWD/build/debug/moc
+    RCC_DIR = $$PWD/build/debug/rcc
+    UI_DIR = $$PWD/build/debug/ui
+}
+
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin

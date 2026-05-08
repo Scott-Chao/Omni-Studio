@@ -14,6 +14,9 @@
 #include <QDesktopServices>
 #include <QWebEnginePage>
 #include <QTextBlock>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QColor>
 #include <functional>
 
 // 自定义 Web 页面：拦截 wikilink 导航
@@ -60,10 +63,17 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_textEdit->viewport()->installEventFilter(this);
     m_previewView->installEventFilter(this);
 
-    // 堆叠布局：索引0=编辑，索引1=预览
+    // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
+    m_previewContainer = new QWidget(this);
+    m_previewContainer->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
+    QVBoxLayout *containerLayout = new QVBoxLayout(m_previewContainer);
+    containerLayout->setContentsMargins(0, 0, 0, 0);
+    containerLayout->addWidget(m_previewView);
+
+    // 堆叠布局：索引0=编辑，索引1=预览容器
     m_stackedWidget = new QStackedWidget(this);
     m_stackedWidget->addWidget(m_textEdit);
-    m_stackedWidget->addWidget(m_previewView);
+    m_stackedWidget->addWidget(m_previewContainer);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -94,28 +104,53 @@ EditorWidget::EditorWidget(QWidget *parent)
 
 void EditorWidget::setPreviewMode(bool preview)
 {
+    if (preview == m_previewMode)
+        return;
     m_previewMode = preview;
+
     if (m_previewMode) {
-        refreshPreview(); // 刷新预览内容
-        m_stackedWidget->setCurrentIndex(1);
+        if (!m_previewReady) {
+            // 首次预览：加载完整模板（setHtml），延迟到 loadFinished 再切换
+            m_previewView->page()->setBackgroundColor(QColor(0x2d, 0x2d, 0x2d));
+
+            QFile tmplFile(QStringLiteral(":/preview/template.html"));
+            if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text))
+                return;
+            QString tmpl = QString::fromUtf8(tmplFile.readAll());
+            tmplFile.close();
+
+            QString safeContent = processWikiLinks(m_textEdit->toPlainText());
+            safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+            tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+            m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
+
+            connect(m_previewView->page(), &QWebEnginePage::loadFinished, this,
+                [this](bool ok) {
+                    disconnect(m_previewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
+                    if (!ok) return;
+                    m_previewReady = true;
+                    m_stackedWidget->setCurrentIndex(1);
+                    applyZoom();
+                });
+        } else {
+            updatePreviewContent([this]() {
+                m_stackedWidget->setCurrentIndex(1);
+                applyZoom();
+            });
+        }
     } else {
         m_stackedWidget->setCurrentIndex(0);
+        applyZoom();
     }
-    applyZoom(); // 切换模式后立即应用字体缩放
 }
 
 void EditorWidget::refreshPreview()
 {
-    // 1. 读取 HTML 模板
-    QFile tmplFile(QStringLiteral(":/preview/template.html"));
-    if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
-    QString tmpl = QString::fromUtf8(tmplFile.readAll());
-    tmplFile.close();
+    updatePreviewContent(nullptr);
+}
 
-    // 2. 处理 WikiLinks：[[linkText]] → [text](wikilink:encodedTarget)
-    QString markdown = m_textEdit->toPlainText();
-
+QString EditorWidget::processWikiLinks(const QString &markdown)
+{
     static const QRegularExpression wikiRegExp(
         QStringLiteral(R"(\[\[((?:[^\[\]]|\[(?1)\])*)\]\])"));
 
@@ -138,14 +173,21 @@ void EditorWidget::refreshPreview()
         lastPos = match.capturedEnd();
     }
     result += QStringView(markdown).mid(lastPos).toString();
+    return result;
+}
 
-    // 3. 转义 </script> 防止提前关闭模板中的 script 标签
-    QString safeContent = result;
+void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
+{
+    QString safeContent = processWikiLinks(m_textEdit->toPlainText());
     safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
 
-    // 4. 替换占位符并加载到 WebEngine
-    tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
-    m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
+    QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
+    m_previewView->page()->runJavaScript(
+        QStringLiteral("window.renderFromBase64('%1')").arg(base64),
+        [this, onFinished](const QVariant &) {
+            if (onFinished)
+                onFinished();
+        });
 }
 
 void EditorWidget::onTextChanged()
