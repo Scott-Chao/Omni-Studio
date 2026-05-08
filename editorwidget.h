@@ -9,6 +9,8 @@
 #include <QTimer>
 #include <functional>
 
+class WikiLinkTextEdit;
+
 class EditorWidget : public QWidget
 {
     Q_OBJECT
@@ -47,6 +49,9 @@ public:
 
     void setFilePath(const QString &newPath);  // 更新文件路径（用于重命名后）
 
+    // WikiLink 自动补全
+    void setFileNames(const QStringList &names);
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
@@ -63,7 +68,7 @@ private slots:
 
 private:
     QStackedWidget *m_stackedWidget;
-    QTextEdit *m_textEdit; // 源码编辑
+    WikiLinkTextEdit *m_textEdit; // 源码编辑
     QWebEngineView *m_previewView; // 渲染预览
     QWidget *m_previewContainer; // 暗色容器，遮挡 WebEngine 白底
     QString m_filePath;

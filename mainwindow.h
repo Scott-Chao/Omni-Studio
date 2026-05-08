@@ -105,6 +105,7 @@ private:
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）
     QMap<QString, QStringList> m_fileIndex;
     QString findWikiTarget(const QString &fileName); // 向上递归搜索目标文件
+    void updateCurrentEditorCompletions(); // 更新当前编辑器的 WikiLink 补全列表
 
 };
 #endif // MAINWINDOW_H

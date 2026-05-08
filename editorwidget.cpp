@@ -1,4 +1,5 @@
 #include "editorwidget.h"
+#include "wikilinktextedit.h"
 #include "fileutils.h"
 #include <QFile>
 #include <QTextStream>
@@ -51,7 +52,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     , m_baseFontSize(0) // 稍后从字体获取
 {
     // 创建编辑器和预览控件
-    m_textEdit = new QTextEdit(this);
+    m_textEdit = new WikiLinkTextEdit(this);
 
     m_previewView = new QWebEngineView(this);
     PreviewPage *previewPage = new PreviewPage(this);
@@ -406,6 +407,11 @@ void EditorWidget::setFilePath(const QString &newPath) {
     emit filePathChanged(oldPath, normalized);
     // 修改状态不变，但路径改变可能需要重新检查（例如高亮等）
     emit modificationChanged(isModified());
+}
+
+void EditorWidget::setFileNames(const QStringList &names)
+{
+    m_textEdit->setFileNames(names);
 }
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)

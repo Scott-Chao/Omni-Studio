@@ -262,6 +262,7 @@ MainWindow::MainWindow(QWidget *parent)
         updateZoomLabel();
         connectCurrentEditorZoomSignal();
         refreshBacklinks();
+        updateCurrentEditorCompletions();
     });
 
     // 初始连接
@@ -691,6 +692,15 @@ void MainWindow::buildFileIndex()
         QFileInfo info(fullPath);
         QString baseName = info.completeBaseName();
         m_fileIndex[baseName].append(fullPath);
+    }
+    updateCurrentEditorCompletions();
+}
+
+void MainWindow::updateCurrentEditorCompletions()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (editor) {
+        editor->setFileNames(m_fileIndex.keys());
     }
 }
 

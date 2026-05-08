@@ -27,7 +27,8 @@ main.cpp                  → QApplication + MainWindow bootstrap
 MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots
   ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree panel (left)
   ├── TabManager          → QTabWidget, manages EditorWidget tabs (center)
-  │   └── EditorWidget    → QStackedWidget[QTextEdit | QWebEngineView], dual-mode editor
+  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView], dual-mode editor
+  │       └── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
   ├── HistoryPanel        → QDockWidget + QListWidget, recent files (right, hidden by default)
   ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left, hidden by default)
   ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
@@ -46,6 +47,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Save**: `MainWindow::saveFile` → `EditorWidget::saveFile` (existing) or `EditorWidget::saveAsFile` (new = uses remembered save-as dir)
 - **Zoom**: any zoom action → `EditorWidget::setZoomFactor` → `applyZoom` (adjusts QTextEdit fonts and QWebEngineView zoom factor) → emits `zoomFactorChanged` → `MainWindow::updateZoomLabel`
 - **Full-text search**: `SearchPanel::performSearch` (300ms debounce on text input) → `QDirIterator` + `TextFileUtils::scanNameFilters` scans all text files → `QTextStream::readLine` streaming match per line → `SearchPanel::resultClicked` → `MainWindow::onSearchResultClicked` → `TabManager::openFile` → `EditorWidget::scrollToLine` (finds line via `QTextBlock`, highlights all matches with `setExtraSelections` gold background)
+- **WikiLink autocomplete**: `WikiLinkTextEdit::keyPressEvent` detects `[[` → `updateCompleter` checks cursor is inside open `[[...` on current line → `QCompleter` with `QStringListModel` (populated from `m_fileIndex.keys()`) shows matching filenames prefix-filtered → `cursorPositionChanged` + arrow keys trigger re-evaluation → Tab inserts `[[filename]]`, cursor after `]]`. File list propagated from `MainWindow::updateCurrentEditorCompletions` called at end of `buildFileIndex()` and on tab switch.
 
 ### Component Details
 
@@ -66,6 +68,8 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 **SettingsManager** — Writes `config.ini` next to the executable. Stores window geometry, splitter state, last open folder path, last save-as folder path, and recent files list.
 
 **TextFileUtils** (`fileutils.h`) — Header-only utility providing `textExtensions()` (returns 40+ common text file extensions like `md`, `txt`, `cpp`, `py`, `js`, `json`, `xml`, `yaml`, `csv`, etc.) and `scanNameFilters()` (returns `"*." + ext` filters for `QDirIterator`). Used by `BacklinkIndex`, `EditorWidget`, `FileExplorerWidget`, and `MainWindow` to replace hardcoded `.md`/`.txt` file lists.
+
+**WikiLinkTextEdit** (`wikilinktextedit.h/cpp`) — `QTextEdit` subclass with built-in `QCompleter` + `QStringListModel` for `[[wikilink]]` autocomplete. On `[[` detection via `QTextBlock::text()` + `lastIndexOf`, shows a popup listing filenames from `m_fileIndex` (no extension, case-insensitive prefix match). First item auto-selected; arrow keys navigate, Tab accepts and inserts `[[filename]]` with cursor after `]]`. `QCompleter::popup()` positioned at `cursorRect()`. Model populated via `EditorWidget::setFileNames` → `WikiLinkTextEdit::setFileNames`, called from `MainWindow::updateCurrentEditorCompletions` after index rebuilds and tab switches.
 
 ### Naming Convention
 

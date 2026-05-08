@@ -12,6 +12,7 @@ SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     editorwidget.cpp \
+    wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
     searchpanel.cpp \
@@ -24,6 +25,7 @@ HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
     editorwidget.h \
+    wikilinktextedit.h \
     fileexplorerwidget.h \
     fileutils.h \
     historypanel.h \

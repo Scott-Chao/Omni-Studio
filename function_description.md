@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.2）
+## 功能说明文档（v0.2.3）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -15,15 +15,10 @@
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。文件重命名时，自动更新所有引用文件中的双向链接文本。
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
+- WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 
-### 新增 v0.2.1
-- **全文搜索面板**：支持在当前目录所有文本文件中检索关键词（快捷键 `Ctrl+Shift+F`）。搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并金色高亮所有匹配关键词。面板位于左侧停靠区域，300ms 输入防抖，不自动隐藏以支持连续点击。新增 `SearchPanel` 组件和 `EditorWidget::scrollToLine` 方法。
-
-### 修复 v0.2.2
-- **预览模式白屏闪烁**：将 QWebEngineView 页面加载从 `EditorWidget` 构造函数延迟至首次切换预览模式，避免每次打开文件时 GPU 进程冷启动导致窗口抖动。新增暗色容器 Widget 包裹 QWebEngineView，配合 `QWebEnginePage::setBackgroundColor()` 双重保障，消除编辑/预览切换时的白屏闪烁。
-- **预览模式中文乱码**：由于 `atob()` 解码 base64 后返回 binary string（每字符对应一个 byte），中文 UTF-8 多字节序列被拆散导致乱码。新增 `renderFromBase64()` 函数使用 `TextDecoder('utf-8')` 正确还原 UTF-8 字符串。
-- **代码重构**：提取 `processWikiLinks()` 方法消除 `setPreviewMode` 与 `updatePreviewContent` 中的 WikiLink 转换重复代码。
-- **构建配置**：`smart-markdown.pro` 配置 `DESTDIR` 使 release/debug 输出到项目根目录下的对应文件夹。
+### 新增 v0.2.3
+- **WikiLink 自动补全**：编辑器中输入 `[[` 时自动弹出文件名补全列表，大小写不敏感前缀过滤，方向键选择，Tab 补全并自动插入 `]]`。基于 `QCompleter` + `QStringListModel`，文件列表由 `MainWindow::m_fileIndex` 自动同步。新建 `WikiLinkTextEdit` 组件（继承 `QTextEdit`）。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -144,7 +139,7 @@
 
 **职责**：
 - 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 两种模式。
-- 编辑模式使用 `QTextEdit` 编写 Markdown 源码；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
+- 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）编写 Markdown 源码；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。
 - 两种模式通过内部 `QStackedWidget` 切换：索引 0 = `QTextEdit`（编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`）。
 - 管理当前编辑文件的路径和修改状态。
