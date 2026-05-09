@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.9）
+## 功能说明文档（v0.2.10）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -18,13 +18,11 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - 代码编辑器模式：打开 C/C++ 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）调用 g++ 或 MSVC 编译当前 C/C++ 文件，并在底部输出面板查看编译信息和程序运行结果。支持运行中终止（Ctrl+Break）。未保存的文件在编译前自动保存为临时文件。
 
-### 新增 v0.2.9
-文件树选中状态同步到当前标签页
-- 切换标签页、打开/关闭文件时，文件树自动选中右侧当前编辑的文件。
-- 如果目标文件所在的父级目录处于折叠状态，自动逐级展开，确保文件在树视图中可见。
-- 通过 `FileExplorerWidget::selectFile()` 实现：文件路径 → QFileSystemModel 源索引 → 排序代理映射 → 父级目录展开 → setCurrentIndex + scrollTo。
-- 通过 `MainWindow::syncFileTreeSelection()` 桥接，在 `QTabWidget::currentChanged` 信号中调用。
+### 新增 v0.2.10
+- 编译运行：在代码编辑模式下，通过 F5/F6/F7/Ctrl+Break 快捷键编译运行 C/C++ 文件，底部输出面板实时显示编译输出和程序运行结果。
+- CompilerUtils（编译器检测工具）、ProcessRunner（进程管线管理器）、OutputPanel（输出面板）三个新组件。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -44,6 +42,8 @@
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
   - `Ctrl+Shift+F` 打开/关闭搜索面板
+  - `F5` 编译运行、`F6` 编译（仅代码文件可用）、`F7` 运行最后编译的程序
+  - `Ctrl+Break` 终止正在运行的编译或程序
   - `Delete`：在文件树中选中文件夹/文件时，直接触发删除操作（非重命名状态）
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
 - 管理历史记录面板（`QDockWidget` + `HistoryPanel`），在工具栏最左侧提供显示/隐藏面板的按钮（状态与面板可见性联动）。
@@ -85,9 +85,9 @@
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
 - 连接文件浏览器的 `fileClicked` 信号到自己的 `onFileSelected` 槽。
 - 连接文件浏览器的 `folderChanged` 信号到 `onFolderChanged`，以在用户通过对话框切换目录时记录路径。
-- 工具栏的“保存”动作触发 `saveFile`，转为直接操作编辑器并处理记忆；“另存为”动作触发 `onSaveFileAs`。
+- 工具栏的"保存"动作触发 `saveFile`，转为直接操作编辑器并处理记忆；"另存为"动作触发 `onSaveFileAs`。
 - 标签页的创建、关闭或标题更新，这些职责全部委托给 `TabManager`。
-- 工具栏中添加了“预览模式”按钮（可勾选），用于切换当前编辑器的预览状态。
+- 工具栏中添加了"预览模式"按钮（可勾选），用于切换当前编辑器的预览状态。
 - 持有缩放相关的 UI 元素：`QAction`（放大/缩小/重置）和 `QLabel`（百分比），并将它们布局在状态栏中。
 - 监听 `TabManager::currentChanged` 信号，当标签页切换时调用 `updateZoomLabel()`、`connectCurrentEditorZoomSignal()` 和 `syncFileTreeSelection()`，保持缩放信息、信号连接以及文件树选中状态与当前编辑器同步。
 - 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建文件会继承当前活动标签的缩放倍率。
@@ -113,7 +113,7 @@
 - 管理多个 `EditorWidget` 实例，每个标签页对应一个打开的文件或新建的未命名文档。
 - 提供统一的接口：打开文件（若已存在则切换）、新建空白文件、保存当前文件、关闭标签页等。
 - 监听每个编辑器的 `modificationChanged` 和 `fileSaved` 信号，自动更新对应标签标题（修改时添加 `*` 号）。
-- 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字“保存”、“不保存”、“取消”）。
+- 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字"保存"、"不保存"、"取消"）。
 - 提供 `closeAllTabs()` 方法，用于主窗口关闭时逐个尝试关闭所有标签页，若任一用户取消则返回 `false` 阻止退出。
 - 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制而不影响原有布局。
 
@@ -151,7 +151,7 @@
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。
 - 三种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑）。
 - 管理当前编辑文件的路径和修改状态。
-  内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免”输入再删除”导致的误标记。
+  内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
 - 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
@@ -204,7 +204,7 @@
 **职责**：
 - 提供右键菜单交互，支持新建文件（默认 `.md`）、新建文件夹、重命名、删除。所有文件均可进行右键操作。
 - 启用 `QTreeView` 的内联编辑功能（通过 `EditKeyPressed` 和 `SelectedClicked` 
-- 自定义委托 (NoGhostDelegate)：为了修复原生内联编辑可能出现的“重影”问题（编辑框未完全覆盖原文本导致新旧文字重叠），以及避免编辑时文件图标消失，特实现了自定义委托。
+- 自定义委托 (NoGhostDelegate)：为了修复原生内联编辑可能出现的"重影"问题（编辑框未完全覆盖原文本导致新旧文字重叠），以及避免编辑时文件图标消失，特实现了自定义委托。
   - updateEditorGeometry：通过 QStyle::SE_ItemViewItemText 获取精确的文本绘制区域，将编辑框（QLineEdit）仅放置于文本区域，保留图标区域不被遮挡。
   - paint：在编辑状态下，清空 option.text 后调用基类绘制，保留图标、背景等视觉元素，但不绘制原文本，彻底消除重影。
   - createEditor：设置编辑框背景不透明（跟随系统调色板或白色背景），去除边框和内边距，确保编辑框视效整洁。
@@ -282,7 +282,7 @@
 - 从 `SettingsManager` 加载/保存最近文件列表，通过 `loadHistory()` 和 `saveHistory()` 与配置文件同步。
 - 当用户点击列表中的文件时，发出 `fileClicked(const QString &filePath)` 信号，供主窗口调用打开与目录切换逻辑。
 - 面板自身是一个 `QWidget`，被嵌入 `QDockWidget` 中由主窗口管理显示/隐藏。
-- 界面底部提供一个“清空历史记录”按钮，点击后弹出确认对话框，确认后立即删除所有历史记录并写入空列表到配置。
+- 界面底部提供一个"清空历史记录"按钮，点击后弹出确认对话框，确认后立即删除所有历史记录并写入空列表到配置。
 
 **主要接口**：
 - `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。操作仅更新内存数据，不立即持久化。
@@ -501,6 +501,57 @@
 
 ---
 
+### 15. `CompilerUtils` — 编译器检测工具
+
+**文件**：`compilerutils.h`
+
+**职责**：
+- 头文件-only 工具命名空间，检测系统中可用的 C/C++ 编译器。
+- `findCompilers()` 返回可用编译器列表：优先检测 g++（通过 `QStandardPaths::findExecutable`），其次检测 MSVC cl.exe（仅在 VS 开发命令提示符环境中）。
+- `getCompileArgs(compilerId, sourceFile, outputFile)` 根据编译器类型生成编译参数：
+  - g++：`-std=c++17 -Wall -Wextra source.cpp -o output.exe`
+  - MSVC：`/std:c++17 /W4 /EHsc source.cpp /Feoutput.exe`
+- `getOutputPath(sourceFile)` 根据源文件路径推导输出的 `.exe` 路径。
+
+---
+
+### 16. `ProcessRunner` — 编译运行管理器
+
+**文件**：`processrunner.h` / `processrunner.cpp`
+
+**职责**：
+- 基于 `QProcess` 的编译→运行两阶段管线管理器。
+- `startCompile(sourceFile)`：启动编译器进程，编译完成后发出 `compileFinished(success)`。
+- `startRun(executable)`：运行可执行文件，完成后发出 `runFinished(exitCode)`。
+- `startCompileAndRun(sourceFile)`：先编译，成功后再自动运行。
+- `stop()`：终止当前正在执行的进程。
+- 实时输出流：通过 `readyReadStandardOutput/Error` 逐行读取并在 `outputReceived(text, isStderr)` 信号中发出。
+
+**信号**：
+- `outputReceived(const QString &text, bool isStderr)`
+- `compileFinished(bool success)`
+- `runFinished(int exitCode)`
+- `processStarted()` / `processStopped()`
+
+---
+
+### 17. `OutputPanel` — 输出面板
+
+**文件**：`outputpanel.h` / `outputpanel.cpp`
+
+**职责**：
+- 底部 `QDockWidget` 的输出面板，深色终端风格，用于显示编译信息和程序运行输出。
+- 只读 `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
+- 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮。
+- `appendOutput(text, isStderr)`：追加输出到面板。
+- `setStatus(status, isError)`：更新状态标签文字和颜色。
+- `setRunning(running)`：启用/禁用终止按钮。
+
+**信号**：
+- `stopRequested()`：用户点击终止按钮时发出。
+
+---
+
 ### 配置存储说明
 
 - 配置文件名为 `config.ini`，默认保存在 **应用程序可执行文件所在的目录**（通过 `QCoreApplication::applicationDirPath()` 获得）。
@@ -510,16 +561,17 @@
 
 - **标签页样式**：通过 `QTabWidget` 的样式表设置了标签最小高度、左右内边距（`padding: 4px 12px`）、圆角以及选中/悬停背景色，解决了标签左右空位过小的问题。
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
-- **Markdown 预览模式**：在工具栏添加了”预览模式”按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件（包括代码文件）或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
+- **Markdown 预览模式**：在工具栏添加了"预览模式"按钮（快捷键 `Ctrl+Shift+P`），**该按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件（包括代码文件）或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。
   如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。预览引擎采用延迟初始化避免文件打开时抖动，暗色容器 + 页面背景色双重保障消除切换白屏闪烁，base64 + TextDecoder 确保中文内容正确显示。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
-- **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。
+- **排序规则**：文件树始终按"文件夹优先、名称升序"排列，且新建或重命名后实时重排。
 - **文件树选中同步**：切换标签页时，文件树自动选中当前编辑的文件，并逐级展开折叠的父目录；新建未保存文件或文件不在当前根目录时，文件树选中状态保持不变。
 - **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
 - **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作（若文件不存在则自动弹出警告并清理该条目）。鼠标悬停会有完整路径提示。同时提供清空功能。文件删除或移动后自动同步更新历史记录。运行期间仅维护内存数据，程序关闭时统一持久化以减少磁盘 I/O。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
+- **编译运行输出面板**：通过 `QDockWidget` 嵌入窗口底部，默认隐藏。输出面板在首次编译/运行时自动弹出。深色终端风格只读文本区域，stdout 白色、stderr 红色。底部状态标签实时反映编译状态（绿色"编译成功"）和程序退出码（如"完成 (代码: 0)"）。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。

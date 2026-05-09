@@ -9,6 +9,9 @@
 #include "backlinkspanel.h"
 #include "searchpanel.h"
 #include "fileutils.h"
+#include "processrunner.h"
+#include "outputpanel.h"
+#include "compilerutils.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -29,6 +32,7 @@
 #include <QDockWidget>
 #include <QDirIterator>
 #include <QRegularExpression>
+#include <QCoreApplication>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -121,6 +125,39 @@ MainWindow::MainWindow(QWidget *parent)
             m_searchPanel->focusSearchInput();
     });
 
+    // ----- 输出面板 -----
+    m_outputPanel = new OutputPanel(this);
+    m_dockOutput = new QDockWidget(tr("输出"), this);
+    m_dockOutput->setWidget(m_outputPanel);
+    m_dockOutput->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::BottomDockWidgetArea, m_dockOutput);
+    m_dockOutput->hide();
+
+    connect(m_outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
+
+    // ----- 编译运行管理器 -----
+    m_processRunner = new ProcessRunner(this);
+    connect(m_processRunner, &ProcessRunner::outputReceived, m_outputPanel, &OutputPanel::appendOutput);
+    connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
+    connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);
+    connect(m_processRunner, &ProcessRunner::processStarted, this, [this]() {
+        m_stopAction->setEnabled(true);
+        m_compileAction->setEnabled(false);
+        m_runAction->setEnabled(false);
+        m_compileRunAction->setEnabled(false);
+        m_outputPanel->setRunning(true);
+    });
+    connect(m_processRunner, &ProcessRunner::processStopped, this, [this]() {
+        m_stopAction->setEnabled(false);
+        m_outputPanel->setRunning(false);
+        // Re-enable buttons based on current tab
+        EditorWidget *editor = m_tabManager->currentEditor();
+        bool isCode = editor && editor->isCodeEdit();
+        m_compileAction->setEnabled(isCode);
+        m_runAction->setEnabled(isCode);
+        m_compileRunAction->setEnabled(isCode);
+    });
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -181,6 +218,39 @@ MainWindow::MainWindow(QWidget *parent)
             editor->setPreviewMode(checked);
         }
     });
+
+    toolBar->addSeparator();
+
+    // 编译 (F6)
+    m_compileAction = new QAction(tr("编译"), this);
+    m_compileAction->setShortcut(QKeySequence("F6"));
+    addAction(m_compileAction);
+    m_compileAction->setEnabled(false);
+    toolBar->addAction(m_compileAction);
+    connect(m_compileAction, &QAction::triggered, this, &MainWindow::onCompile);
+
+    // 运行 (F7)
+    m_runAction = new QAction(tr("运行"), this);
+    m_runAction->setShortcut(QKeySequence("F7"));
+    addAction(m_runAction);
+    m_runAction->setEnabled(false);
+    toolBar->addAction(m_runAction);
+    connect(m_runAction, &QAction::triggered, this, &MainWindow::onRun);
+
+    // 编译运行 (F5)
+    m_compileRunAction = new QAction(tr("编译运行"), this);
+    m_compileRunAction->setShortcut(QKeySequence("F5"));
+    addAction(m_compileRunAction);
+    m_compileRunAction->setEnabled(false);
+    toolBar->addAction(m_compileRunAction);
+    connect(m_compileRunAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
+
+    // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
+    m_stopAction = new QAction(tr("终止"), this);
+    m_stopAction->setShortcut(QKeySequence("Ctrl+Break"));
+    addAction(m_stopAction);
+    m_stopAction->setEnabled(false);
+    connect(m_stopAction, &QAction::triggered, this, &MainWindow::onStopProcess);
 
     // 添加缩放项
     QStatusBar *status = statusBar();
@@ -264,6 +334,14 @@ MainWindow::MainWindow(QWidget *parent)
         syncFileTreeSelection();
         refreshBacklinks();
         updateCurrentEditorCompletions();
+
+        // 更新编译运行按钮状态
+        EditorWidget *editor = m_tabManager->currentEditor();
+        bool isCode = editor && editor->isCodeEdit();
+        bool running = m_processRunner->isRunning();
+        m_compileAction->setEnabled(isCode && !running);
+        m_runAction->setEnabled(isCode && !running);
+        m_compileRunAction->setEnabled(isCode && !running);
     });
 
     // 初始连接
@@ -879,4 +957,120 @@ void MainWindow::onFileMovedOrRenamed(const QString &oldPath, const QString &new
     onFileRenamedInIndex(oldPath, newPath); // 更新全局双向链接索引
     m_tabManager->updatePathsAfterMove(oldPath, newPath); // 更新所有已打开标签页的路径
     m_historyPanel->replacePath(oldPath, newPath); // 更新历史记录中的路径
+}
+
+// ============================================================
+// 编译运行相关槽函数
+// ============================================================
+
+void MainWindow::onCompile()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->isCodeEdit())
+        return;
+
+    QString filePath = editor->currentFilePath();
+    if (filePath.isEmpty() || editor->isModified()) {
+        filePath = saveCodeToTempFile(editor);
+        if (filePath.isEmpty())
+            return;
+    }
+
+    m_dockOutput->show();
+    m_outputPanel->raise();
+    m_outputPanel->clearOutput();
+    m_outputPanel->setStatus(tr("编译中..."));
+    m_processRunner->startCompile(filePath);
+}
+
+void MainWindow::onRun()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor)
+        return;
+
+    if (m_processRunner->lastExecutable().isEmpty()) {
+        // 还没有编译过的可执行文件，转为编译运行
+        onCompileAndRun();
+        return;
+    }
+
+    m_dockOutput->show();
+    m_outputPanel->raise();
+    m_outputPanel->setStatus(tr("运行中..."));
+    m_processRunner->startRun(m_processRunner->lastExecutable());
+}
+
+void MainWindow::onCompileAndRun()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->isCodeEdit())
+        return;
+
+    QString filePath = editor->currentFilePath();
+    if (filePath.isEmpty() || editor->isModified()) {
+        filePath = saveCodeToTempFile(editor);
+        if (filePath.isEmpty())
+            return;
+    }
+
+    m_dockOutput->show();
+    m_outputPanel->raise();
+    m_outputPanel->clearOutput();
+    m_outputPanel->setStatus(tr("编译中..."));
+    m_processRunner->startCompileAndRun(filePath);
+}
+
+void MainWindow::onStopProcess()
+{
+    m_processRunner->stop();
+    m_outputPanel->appendOutput(QStringLiteral("\n--- ") + tr("已终止") + QStringLiteral(" ---\n"), false);
+    m_outputPanel->setStatus(tr("已终止"), true);
+}
+
+void MainWindow::onCompileFinished(bool success)
+{
+    if (success) {
+        m_outputPanel->setStatus(tr("编译成功"));
+    } else {
+        m_outputPanel->setStatus(tr("编译失败"), true);
+    }
+}
+
+void MainWindow::onRunFinished(int exitCode)
+{
+    m_outputPanel->appendOutput(
+        QStringLiteral("\n--- ") + tr("进程退出 (代码: %1)").arg(exitCode) + QStringLiteral(" ---\n"), false);
+    m_outputPanel->setStatus(
+        tr("完成 (代码: %1)").arg(exitCode), exitCode != 0);
+}
+
+QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
+{
+    if (!editor)
+        return {};
+
+    QString rootPath = m_explorer->rootPath();
+    if (rootPath.isEmpty())
+        rootPath = QDir::tempPath();
+
+    QString content = editor->toPlainText();
+    QString filePath = editor->currentFilePath();
+
+    if (filePath.isEmpty()) {
+        // 新建的文件：在根目录下创建临时 .cpp 文件
+        filePath = rootPath + QStringLiteral("/temp_") + QString::number(QCoreApplication::applicationPid())
+                   + QStringLiteral(".cpp");
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return {};
+    QTextStream out(&file);
+    out << content;
+    file.close();
+
+    editor->setFilePath(filePath);
+    editor->setModified(false);
+    return filePath;
 }

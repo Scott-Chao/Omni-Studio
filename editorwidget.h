@@ -52,6 +52,7 @@ public:
 
     // WikiLink 自动补全
     void setFileNames(const QStringList &names);
+    bool isCodeEdit() const { return m_editorMode == CodeEdit; }
 
 signals:
     void fileLoaded(const QString &filePath);

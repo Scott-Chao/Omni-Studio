@@ -37,7 +37,10 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── SettingsManager     → QSettings wrapper, config.ini persistence
   ├── TextFileUtils       → Utility (fileutils.h), 40+ text extension list & scan filters
   ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
-  └── CppSyntaxHighlighter → QSyntaxHighlighter, C/C++ dark-theme highlighting
+  ├── CppSyntaxHighlighter → QSyntaxHighlighter, C/C++ dark-theme highlighting
+  ├── CompilerUtils       → Header-only (compilerutils.h), g++/MSVC detection & compile args
+  ├── ProcessRunner       → QObject managing compile→run QProcess pipeline
+  └── OutputPanel         → Bottom QDockWidget, dark-terminal output with stop/clear buttons
 ```
 
 ### Key Data Flow
@@ -52,6 +55,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Zoom**: any zoom action → `EditorWidget::setZoomFactor` → `applyZoom` (adjusts QTextEdit fonts and QWebEngineView zoom factor) → emits `zoomFactorChanged` → `MainWindow::updateZoomLabel`
 - **Full-text search**: `SearchPanel::performSearch` (300ms debounce on text input) → `QDirIterator` + `TextFileUtils::scanNameFilters` scans all text files → `QTextStream::readLine` streaming match per line → `SearchPanel::resultClicked` → `MainWindow::onSearchResultClicked` → `TabManager::openFile` → `EditorWidget::scrollToLine` (finds line via `QTextBlock`, highlights all matches with `setExtraSelections` gold background)
 - **WikiLink autocomplete**: `WikiLinkTextEdit::keyPressEvent` detects `[[` → `updateCompleter` checks cursor is inside open `[[...` on current line → `QCompleter` with `QStringListModel` (populated from `m_fileIndex.keys()`) shows matching filenames prefix-filtered → `cursorPositionChanged` + arrow keys trigger re-evaluation → Tab inserts `[[filename]]`, cursor after `]]`. File list propagated from `MainWindow::updateCurrentEditorCompletions` called at end of `buildFileIndex()` and on tab switch.
+- **Compile & run**: toolbar F5/F6/F7 → `MainWindow::onCompileAndRun`/`onCompile`/`onRun` → `ProcessRunner` spawns `QProcess` (g++ or MSVC) → stdout/stderr streamed to `OutputPanel` in real-time → on compile success, `.exe` is launched as a second `QProcess` → exit code shown in panel status bar. `CompilerUtils` detects available compilers and generates args (`-std=c++17 -Wall` for g++, `/std:c++17 /W4 /EHsc` for MSVC). Buttons auto-disable while running; Stop (Ctrl+Break) kills the process. Unsaved files are auto-saved to temp `.cpp` before compiling.
 
 ### Component Details
 
@@ -80,6 +84,12 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 **LanguageUtils** (`languageutils.h/cpp`) — Extensible language registry. `LanguageInfo` struct holds display name, extension set, and highlighter factory function. Singleton `languageMap()` returns static `QMap<langId, LanguageInfo>`. Key functions: `languageForExtension(ext)` looks up language by file extension; `isCodeFile(ext)` returns whether extension is registered; `createHighlighter(langId, doc)` invokes the factory. Currently registers one language: `"cpp"` (extensions: `cpp, hpp, cxx, cc, c, h, hxx, hh`) → `CppSyntaxHighlighter`. Adding a language = 1 map entry + 1 highlighter file + `.pro` entries.
 
 **CppSyntaxHighlighter** (`cppsyntaxhighlighter.h/cpp`) — `QSyntaxHighlighter` for C/C++. Dark theme colors: keywords `#569CD6` (bold, includes C++20), preprocessor `#C586C0`, types `#4EC9B0`, strings `#CE9178`, numbers `#B5CEA8`, comments `#6A9955` (single-line `//` and multi-line `/* */` with block-state tracking). Rules stored in `QVector<HighlightingRule>`, applied in priority order.
+
+**CompilerUtils** (`compilerutils.h`) — Header-only utility. `findCompilers()` detects g++ (via `QStandardPaths::findExecutable`) and MSVC cl.exe (when `VSCMD_VER` env var is set). `getCompileArgs(id, src, out)` returns `g++ -std=c++17 -Wall -Wextra` or `cl /std:c++17 /W4 /EHsc` flags. `getOutputPath(src)` derives the `.exe` path from the source file.
+
+**ProcessRunner** (`processrunner.h/cpp`) — `QObject` managing a two-phase compile→run pipeline via sequential `QProcess` instances. `startCompile(source)` compiles via `CompilerUtils::defaultCompiler()`; `startRun(executable)` runs the binary; `startCompileAndRun(source)` does both, auto-transitioning to run on compile success. `stop()` kills the current process. Emits `outputReceived(text, isStderr)` for real-time streaming, `compileFinished(success)`, `runFinished(exitCode)`, `processStarted()`, `processStopped()`.
+
+**OutputPanel** (`outputpanel.h/cpp`) — Bottom `QDockWidget` with a read-only `QPlainTextEdit` (Consolas 10pt, dark bg `#1E1E1E`). stdout in white (`#D4D4D4`), stderr in red (`#F48771`). Status label (green success / red error) and stop/clear buttons. Emits `stopRequested()`.
 
 ### Naming Convention
 

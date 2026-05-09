@@ -15,12 +15,15 @@ SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
+    compilerutils.h \
     cppsyntaxhighlighter.cpp \
     editorwidget.cpp \
     languageutils.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
+    outputpanel.cpp \
+    processrunner.cpp \
     searchpanel.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -31,6 +34,7 @@ HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \
+    compilerutils.h \
     cppsyntaxhighlighter.h \
     editorwidget.h \
     languageutils.h \
@@ -38,6 +42,8 @@ HEADERS += \
     fileexplorerwidget.h \
     fileutils.h \
     historypanel.h \
+    outputpanel.h \
+    processrunner.h \
     searchpanel.h \
     mainwindow.h \
     settingsmanager.h \

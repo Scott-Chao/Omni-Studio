@@ -17,6 +17,8 @@ class HistoryPanel;
 class BacklinkIndex;
 class BacklinksPanel;
 class SearchPanel;
+class ProcessRunner;
+class OutputPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -102,6 +104,23 @@ private:
     SearchPanel *m_searchPanel;
     QDockWidget *m_dockSearch;
     QAction *toggleSearchAction;
+
+    // 编译运行
+    ProcessRunner *m_processRunner;
+    OutputPanel *m_outputPanel;
+    QDockWidget *m_dockOutput;
+    QAction *m_compileAction;
+    QAction *m_runAction;
+    QAction *m_compileRunAction;
+    QAction *m_stopAction;
+
+    void onCompile();
+    void onRun();
+    void onCompileAndRun();
+    void onStopProcess();
+    void onCompileFinished(bool success);
+    void onRunFinished(int exitCode);
+    QString saveCodeToTempFile(EditorWidget *editor);
 
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）
