@@ -18,6 +18,7 @@ public:
     void startCompile(const QString &sourceFile);
     void startRun(const QString &executable);
     void startCompileAndRun(const QString &sourceFile);
+    void startRunPython(const QString &sourceFile);
     void stop();
     bool isRunning() const { return m_currentProcess != nullptr; }
     QString lastExecutable() const { return m_lastExecutable; }

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.10）
+## 功能说明文档（v0.2.11）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -16,13 +16,14 @@
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
-- 代码编辑器模式：打开 C/C++ 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
+- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）调用 g++ 或 MSVC 编译当前 C/C++ 文件，并在底部输出面板查看编译信息和程序运行结果。支持运行中终止（Ctrl+Break）。未保存的文件在编译前自动保存为临时文件。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。输出显示在底部输出面板。支持运行中终止（Ctrl+Break）。未保存的文件在编译/运行前自动保存为临时文件。
 
-### 新增 v0.2.10
-- 编译运行：在代码编辑模式下，通过 F5/F6/F7/Ctrl+Break 快捷键编译运行 C/C++ 文件，底部输出面板实时显示编译输出和程序运行结果。
-- CompilerUtils（编译器检测工具）、ProcessRunner（进程管线管理器）、OutputPanel（输出面板）三个新组件。
+### 新增 v0.2.11
+- Python 语法高亮：关键字、内建类型、装饰器、字符串、注释等深色主题高亮，支持三引号多行字符串。
+- Python 运行支持：F5/F7 直接运行 `.py` 文件（调用 python 解释器），F6 提示不需要编译。`compilerutils.h` 新增 `findPython()`，`ProcessRunner` 新增 `startRunPython()`。
+- PythonSyntaxHighlighter 新组件。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -42,7 +43,7 @@
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
   - `Ctrl+Shift+F` 打开/关闭搜索面板
-  - `F5` 编译运行、`F6` 编译（仅代码文件可用）、`F7` 运行最后编译的程序
+  - `F5` 编译运行（C/C++ 编译后运行，Python 直接运行）、`F6` 编译（仅 C/C++，Python 提示不需要编译）、`F7` 运行
   - `Ctrl+Break` 终止正在运行的编译或程序
   - `Delete`：在文件树中选中文件夹/文件时，直接触发删除操作（非重命名状态）
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
@@ -501,13 +502,36 @@
 
 ---
 
+### 14.5. `PythonSyntaxHighlighter` — Python 语法高亮器
+
+**文件**：`pythonsyntaxhighlighter.h` / `pythonsyntaxhighlighter.cpp`
+
+**职责**：
+- 深色主题 Python 语法高亮，继承 `QSyntaxHighlighter`。
+- 关键字（`def`/`class`/`if`/`for`/`while`/`import` 等）：蓝色 `#569CD6` 加粗。
+- 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：青色 `#4EC9B0`。
+- 常量（`True`/`False`/`None`）：蓝色加粗。
+- 装饰器（`@` 开头）：紫色 `#C586C0`。
+- `self`/`cls`：黄色 `#DCDCAA`。
+- 字符串（普通、f-string、raw string）：橙色 `#CE9178`。
+- 数字：绿色 `#B5CEA8`。
+- 注释（`#` 行）：绿色 `#6A9955`。
+- 三引号字符串（`"""` / `'''`）：绿色，支持跨行块状态跟踪。
+
+**协作关系**：
+- 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"python"` 语言的高亮器实现。
+- 被 `CodeEditor::setLanguage()` 调用并安装到 `QTextDocument` 上。
+
+---
+
 ### 15. `CompilerUtils` — 编译器检测工具
 
 **文件**：`compilerutils.h`
 
 **职责**：
-- 头文件-only 工具命名空间，检测系统中可用的 C/C++ 编译器。
+- 头文件-only 工具命名空间，检测系统中可用的 C/C++ 编译器和 Python 解释器。
 - `findCompilers()` 返回可用编译器列表：优先检测 g++（通过 `QStandardPaths::findExecutable`），其次检测 MSVC cl.exe（仅在 VS 开发命令提示符环境中）。
+- `findPython()` 检测 `python` 或 `python3` 解释器。
 - `getCompileArgs(compilerId, sourceFile, outputFile)` 根据编译器类型生成编译参数：
   - g++：`-std=c++17 -Wall -Wextra source.cpp -o output.exe`
   - MSVC：`/std:c++17 /W4 /EHsc source.cpp /Feoutput.exe`
@@ -520,10 +544,11 @@
 **文件**：`processrunner.h` / `processrunner.cpp`
 
 **职责**：
-- 基于 `QProcess` 的编译→运行两阶段管线管理器。
+- 基于 `QProcess` 的编译→运行两阶段管线管理器（支持 C/C++ 和 Python）。
 - `startCompile(sourceFile)`：启动编译器进程，编译完成后发出 `compileFinished(success)`。
 - `startRun(executable)`：运行可执行文件，完成后发出 `runFinished(exitCode)`。
 - `startCompileAndRun(sourceFile)`：先编译，成功后再自动运行。
+- `startRunPython(sourceFile)`：检测 python 解释器并直接运行 `.py` 源文件。
 - `stop()`：终止当前正在执行的进程。
 - 实时输出流：通过 `readyReadStandardOutput/Error` 逐行读取并在 `outputReceived(text, isStderr)` 信号中发出。
 

@@ -52,6 +52,25 @@ void ProcessRunner::startRun(const QString &executable)
     startProcess(executable, {}, fi.absolutePath());
 }
 
+void ProcessRunner::startRunPython(const QString &sourceFile)
+{
+    stop();
+    m_mode = RunOnly;
+    m_sourceFile = sourceFile;
+
+    CompilerInfo py = CompilerUtils::findPython();
+    if (!py.available) {
+        emit outputReceived(tr("错误: 未检测到 Python 解释器。\n"), true);
+        emit runFinished(-1);
+        return;
+    }
+
+    m_lastExecutable = sourceFile;
+
+    QFileInfo fi(sourceFile);
+    startProcess(py.compilerPath, {sourceFile}, fi.absolutePath());
+}
+
 void ProcessRunner::startCompileAndRun(const QString &sourceFile)
 {
     m_mode = CompileAndRun;

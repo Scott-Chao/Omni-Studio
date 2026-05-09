@@ -24,6 +24,7 @@ SOURCES += \
     historypanel.cpp \
     outputpanel.cpp \
     processrunner.cpp \
+    pythonsyntaxhighlighter.cpp \
     searchpanel.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -44,6 +45,7 @@ HEADERS += \
     historypanel.h \
     outputpanel.h \
     processrunner.h \
+    pythonsyntaxhighlighter.h \
     searchpanel.h \
     mainwindow.h \
     settingsmanager.h \

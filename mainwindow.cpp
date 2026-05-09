@@ -976,6 +976,16 @@ void MainWindow::onCompile()
             return;
     }
 
+    QString ext = QFileInfo(filePath).suffix().toLower();
+    if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+        m_dockOutput->show();
+        m_outputPanel->raise();
+        m_outputPanel->clearOutput();
+        m_outputPanel->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
+        m_outputPanel->setStatus(tr("提示"), false);
+        return;
+    }
+
     m_dockOutput->show();
     m_outputPanel->raise();
     m_outputPanel->clearOutput();
@@ -988,6 +998,24 @@ void MainWindow::onRun()
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor)
         return;
+
+    QString filePath = editor->currentFilePath();
+    if (!filePath.isEmpty()) {
+        QString ext = QFileInfo(filePath).suffix().toLower();
+        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+            if (filePath.isEmpty() || editor->isModified()) {
+                filePath = saveCodeToTempFile(editor);
+                if (filePath.isEmpty())
+                    return;
+            }
+            m_dockOutput->show();
+            m_outputPanel->raise();
+            m_outputPanel->clearOutput();
+            m_outputPanel->setStatus(tr("运行中..."));
+            m_processRunner->startRunPython(filePath);
+            return;
+        }
+    }
 
     if (m_processRunner->lastExecutable().isEmpty()) {
         // 还没有编译过的可执行文件，转为编译运行
@@ -1012,6 +1040,16 @@ void MainWindow::onCompileAndRun()
         filePath = saveCodeToTempFile(editor);
         if (filePath.isEmpty())
             return;
+    }
+
+    QString ext = QFileInfo(filePath).suffix().toLower();
+    if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+        m_dockOutput->show();
+        m_outputPanel->raise();
+        m_outputPanel->clearOutput();
+        m_outputPanel->setStatus(tr("运行中..."));
+        m_processRunner->startRunPython(filePath);
+        return;
     }
 
     m_dockOutput->show();

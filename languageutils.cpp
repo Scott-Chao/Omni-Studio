@@ -1,5 +1,6 @@
 ﻿#include "languageutils.h"
 #include "cppsyntaxhighlighter.h"
+#include "pythonsyntaxhighlighter.h"
 
 namespace LanguageUtils {
 
@@ -13,6 +14,13 @@ const QMap<QString, LanguageInfo> &languageMap()
              QStringLiteral("hxx"), QStringLiteral("hh")},
             [](QTextDocument *doc) -> QSyntaxHighlighter* {
                 return new CppSyntaxHighlighter(doc);
+            }
+        }},
+        {QStringLiteral("python"), {
+            QStringLiteral("Python"),
+            {QStringLiteral("py"), QStringLiteral("pyw"), QStringLiteral("pyx")},
+            [](QTextDocument *doc) -> QSyntaxHighlighter* {
+                return new PythonSyntaxHighlighter(doc);
             }
         }},
     };

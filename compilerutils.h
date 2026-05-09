@@ -46,6 +46,18 @@ inline QList<CompilerInfo> findCompilers()
     return compilers;
 }
 
+inline CompilerInfo findPython()
+{
+    CompilerInfo info;
+    info.id = QStringLiteral("python");
+    info.displayName = QStringLiteral("Python");
+    info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("python"));
+    if (info.compilerPath.isEmpty())
+        info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    info.available = !info.compilerPath.isEmpty();
+    return info;
+}
+
 inline CompilerInfo defaultCompiler()
 {
     QList<CompilerInfo> compilers = findCompilers();
