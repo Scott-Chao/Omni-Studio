@@ -92,5 +92,8 @@ deploy_msvc.bat
 # Runtime config (user-specific)
 config.ini
 
+# Temporary files
+*.tmp
+
 # Claude Code
 .claude/
