@@ -227,6 +227,13 @@ void EditorWidget::updateModificationChanged()
 
 bool EditorWidget::loadFile(const QString &filePath)
 {
+    QString suffix = QFileInfo(filePath).suffix().toLower();
+    if (!suffix.isEmpty() && !TextFileUtils::isTextExtension(suffix)) {
+        QMessageBox::warning(this, tr("无法打开文件"),
+                             tr("不支持的文件类型：.%1\n该文件可能是二进制格式。").arg(suffix));
+        return false;
+    }
+
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return false;
@@ -237,8 +244,7 @@ bool EditorWidget::loadFile(const QString &filePath)
 
     // Auto-detect code file and switch mode BEFORE setting text,
     // so that setPlainText dispatches to the correct editor.
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    QString lang = LanguageUtils::languageForExtension(ext);
+    QString lang = LanguageUtils::languageForExtension(suffix);
     if (!lang.isEmpty()) {
         m_editorMode = CodeEdit;
         m_codeEditor->setLanguage(lang);

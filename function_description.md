@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.12）
+## 功能说明文档（v0.2.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -22,15 +22,8 @@
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 
-### 新增 v0.2.12
-面包屑路径栏与异步索引构建
-- **面包屑路径栏**：文件树顶部新增可点击的路径导航栏，每个目录段为独立按钮。点击祖先目录可快速切换文件树根目录，当前目录高亮为白色不可点击，祖先目录为灰色可点击，`>` 分隔符指示层级关系。路径栏背景色 `#252525`，顶部有 1px 分割线。
-- **FlowLayout 自动换行**：面包屑栏使用自定义 `FlowLayout`（继承 `QLayout`）替代 `QHBoxLayout`。当路径长度超过左侧面板宽度时，面包屑按钮自动换行，不会强制撑宽左侧面板。FlowLayout 支持 `heightForWidth()` 以正确计算所需高度。
-- **异步索引构建**：`buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 的同步调用替换为 `MainWindow::startAsyncIndexBuild()`，使用 `QThread::create()` 将递归文件扫描和反向链接索引构建移至后台线程。UI 在扫描期间保持响应，扫描完成后通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 将结果交付主线程。
-- **索引取消与代际防护**：连续快速切换目录时，旧扫描通过 `std::shared_ptr<std::atomic<bool>>` 取消标志 + `std::atomic<uint64_t>` 扫描代际检测自动丢弃，仅最后发起的扫描结果生效。析构时自动取消进行中的扫描，防止悬空引用。
-- **BacklinkIndex 异步重构**：新增 `BacklinkData` 结构体（`{backlinks, forwardLinks}`），`buildFromPath()` 静态方法在后台线程执行全量扫描并返回独立数据，`setData()` 在主线程通过 `std::move` 原子交换索引数据。`resolveTarget()` 改为静态方法，不依赖实例状态。
-- **根目录保护修正**：`QDir::rootPath()` → `QDir(rootPath).isRoot()`，现在正确拦截所有驱动器根目录（如 `F:\`），而非仅限系统根目录（如 `C:\`）。
-- **文件树同步增强**：`onFolderChanged()` 和 `onHistoryFileClicked()` 中新增 `syncFileTreeSelection()` 调用，确保目录切换或通过历史记录打开文件后，文件树选中状态与当前编辑器保持同步。
+### 修改 v0.2.13
+带后缀的文件中，不支持的文件类型现在打开会弹出提示并拒绝打开。
 
 ### 1. `MainWindow` - 主窗口控制器
 
