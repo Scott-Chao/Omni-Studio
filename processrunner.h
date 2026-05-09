@@ -20,6 +20,7 @@ public:
     void startCompileAndRun(const QString &sourceFile);
     void startRunPython(const QString &sourceFile);
     void stop();
+    void writeInput(const QString &text);
     bool isRunning() const { return m_currentProcess != nullptr; }
     QString lastExecutable() const { return m_lastExecutable; }
 

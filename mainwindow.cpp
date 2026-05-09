@@ -138,6 +138,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 编译运行管理器 -----
     m_processRunner = new ProcessRunner(this);
+    connect(m_outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
     connect(m_processRunner, &ProcessRunner::outputReceived, m_outputPanel, &OutputPanel::appendOutput);
     connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
     connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);

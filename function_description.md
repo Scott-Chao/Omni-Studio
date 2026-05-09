@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.14）
+## 功能说明文档（v0.2.15）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -18,12 +18,15 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。输出显示在底部输出面板。支持运行中终止（Ctrl+Break）。未保存的文件在编译/运行前自动保存为临时文件。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。输出显示在底部输出面板。支持标准输入交互：运行时可直接在输出面板中键盘输入、Ctrl+V/右键粘贴（多行感知）、Ctrl+C 终止进程。未保存的文件在编译/运行前自动保存为临时文件。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 
-### 修复 v0.2.14
-修复代码编辑模式中，python行末输入冒号换行无法自动缩进的问题
+### 新增 v0.2.15
+代码运行时支持输入
+- `eventFilter` — 进程运行时拦截按键：Enter 发送缓冲行、Backspace 本地删除、可打印字符回显+缓冲、Ctrl+C 终止进程、Ctrl+V 触发粘贴、屏蔽方向键等编辑操作
+- `pasteToInput()` — 从剪贴板取文本，统一换行符后按行分割。完整行逐行发送（行间 processEvents() 让进程输出及时回显），最后不完整行缓冲等待 Enter
+- 右键菜单用 `Qt::CustomContextMenu` 策略 + `customContextMenuRequested` 信号（每右键仅触发一次）。运行时直接粘贴，非运行时显示"复制/全选"菜单。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -557,6 +560,7 @@
 - `startCompileAndRun(sourceFile)`：先编译，成功后再自动运行。
 - `startRunPython(sourceFile)`：检测 python 解释器并直接运行 `.py` 源文件。
 - `stop()`：终止当前正在执行的进程。
+- `writeInput(const QString &text)`：向正在运行的进程写入 stdin 数据（自动追加换行符）。
 - 实时输出流：通过 `readyReadStandardOutput/Error` 逐行读取并在 `outputReceived(text, isStderr)` 信号中发出。
 
 **信号**：
@@ -572,15 +576,26 @@
 **文件**：`outputpanel.h` / `outputpanel.cpp`
 
 **职责**：
-- 底部 `QDockWidget` 的输出面板，深色终端风格，用于显示编译信息和程序运行输出。
-- 只读 `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
+- 底部 `QDockWidget` 的输出面板，深色终端风格，用于显示编译信息和程序运行输出，同时支持运行时标准输入交互。
+- `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
+- 进程运行时，输出区域自动变为可编辑，支持终端式直接输入：
+  - 键盘输入：字符实时回显到输出区域，同时缓冲到 `m_inputBuffer`
+  - Enter：将缓冲行通过 `sendInput` 信号发送到进程 stdin，光标换行
+  - Backspace：从缓冲区删除最后一个字符，同时从输出区域移除
+  - Ctrl+V / 右键：直接粘贴（无菜单），支持多行文本。粘贴时完整行逐行发送（每行间调用 `processEvents()` 让输出及时呈现），最后不完整行保留缓冲等待 Enter
+  - Ctrl+C：终止正在运行的进程（emit `stopRequested()`）
+  - 屏蔽方向键、Ctrl+Z 等编辑快捷键，防止破坏输出内容
+- 通过 `eventFilter` 拦截输出编辑器的按键事件实现上述行为。
+- `pasteToInput()`：从剪贴板读取文本，统一换行符（`\r\n` → `\n`），按换行分割后逐行处理。
+- 右键菜单：进程运行时直接粘贴；非运行时显示"复制"和"全选"菜单。
 - 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮。
 - `appendOutput(text, isStderr)`：追加输出到面板。
 - `setStatus(status, isError)`：更新状态标签文字和颜色。
-- `setRunning(running)`：启用/禁用终止按钮。
+- `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲）。
 
 **信号**：
-- `stopRequested()`：用户点击终止按钮时发出。
+- `stopRequested()`：用户点击终止按钮或按 Ctrl+C 时发出。
+- `sendInput(const QString &text)`：用户输入一行数据时发出，由 MainWindow 转发到 ProcessRunner 写入进程 stdin。
 
 ---
 

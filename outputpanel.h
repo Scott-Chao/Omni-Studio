@@ -20,12 +20,21 @@ public:
 
 signals:
     void stopRequested();
+    void sendInput(const QString &text);
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
     QPlainTextEdit *m_outputEdit;
     QLabel *m_statusLabel;
     QPushButton *m_stopBtn;
     QPushButton *m_clearBtn;
+
+    void pasteToInput();
+
+    bool m_acceptingInput = false;
+    QString m_inputBuffer;
 };
 
 #endif // OUTPUTPANEL_H

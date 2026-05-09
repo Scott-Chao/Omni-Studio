@@ -100,6 +100,13 @@ void ProcessRunner::stop()
     }
 }
 
+void ProcessRunner::writeInput(const QString &text)
+{
+    if (m_currentProcess && m_currentProcess->state() == QProcess::Running) {
+        m_currentProcess->write(text.toUtf8() + "\n");
+    }
+}
+
 void ProcessRunner::startProcess(const QString &program,
                                   const QStringList &args,
                                   const QString &workingDir)
