@@ -111,7 +111,7 @@ private:
     // 编译运行
     ProcessRunner *m_processRunner;
     OutputPanel *m_outputPanel;
-    QDockWidget *m_dockOutput;
+    QSplitter *m_rightSplitter;
     QAction *m_compileAction;
     QAction *m_runAction;
     QAction *m_compileRunAction;
@@ -124,6 +124,7 @@ private:
     void onCompileFinished(bool success);
     void onRunFinished(int exitCode);
     QString saveCodeToTempFile(EditorWidget *editor);
+    void showOutputPanel();
 
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）

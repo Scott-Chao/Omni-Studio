@@ -56,12 +56,16 @@ OutputPanel::OutputPanel(QWidget *parent)
     m_clearBtn = new QPushButton(tr("清除"), this);
     m_clearBtn->setFixedWidth(60);
 
+    m_hideBtn = new QPushButton(tr("隐藏"), this);
+    m_hideBtn->setFixedWidth(60);
+
     QHBoxLayout *toolLayout = new QHBoxLayout;
     toolLayout->setContentsMargins(4, 2, 4, 2);
     toolLayout->addWidget(m_statusLabel);
     toolLayout->addStretch();
     toolLayout->addWidget(m_stopBtn);
     toolLayout->addWidget(m_clearBtn);
+    toolLayout->addWidget(m_hideBtn);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -71,6 +75,7 @@ OutputPanel::OutputPanel(QWidget *parent)
 
     connect(m_stopBtn, &QPushButton::clicked, this, &OutputPanel::stopRequested);
     connect(m_clearBtn, &QPushButton::clicked, this, &OutputPanel::clearOutput);
+    connect(m_hideBtn, &QPushButton::clicked, this, &OutputPanel::hideRequested);
 }
 
 void OutputPanel::appendOutput(const QString &text, bool isStderr)

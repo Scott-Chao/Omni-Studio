@@ -128,17 +128,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 输出面板 -----
     m_outputPanel = new OutputPanel(this);
-    m_dockOutput = new QDockWidget(tr("输出"), this);
-    m_dockOutput->setWidget(m_outputPanel);
-    m_dockOutput->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::BottomDockWidgetArea, m_dockOutput);
-    m_dockOutput->hide();
+    m_outputPanel->setMinimumHeight(100);
+    m_outputPanel->hide();
 
     connect(m_outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
-    connect(m_dockOutput, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (!visible && m_processRunner->isRunning()) {
+    connect(m_outputPanel, &OutputPanel::hideRequested, this, [this]() {
+        if (m_processRunner->isRunning())
             onStopProcess();
-        }
+        m_outputPanel->hide();
     });
 
     // ----- 编译运行管理器 -----
@@ -160,8 +157,11 @@ MainWindow::MainWindow(QWidget *parent)
         // Re-enable buttons based on current tab
         EditorWidget *editor = m_tabManager->currentEditor();
         bool isCode = editor && editor->isCodeEdit();
+        m_compileAction->setVisible(isCode);
         m_compileAction->setEnabled(isCode);
+        m_runAction->setVisible(isCode);
         m_runAction->setEnabled(isCode);
+        m_compileRunAction->setVisible(isCode);
         m_compileRunAction->setEnabled(isCode);
     });
 
@@ -232,7 +232,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_compileAction = new QAction(tr("编译"), this);
     m_compileAction->setShortcut(QKeySequence("F6"));
     addAction(m_compileAction);
-    m_compileAction->setEnabled(false);
+    m_compileAction->setVisible(false);
     toolBar->addAction(m_compileAction);
     connect(m_compileAction, &QAction::triggered, this, &MainWindow::onCompile);
 
@@ -240,7 +240,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_runAction = new QAction(tr("运行"), this);
     m_runAction->setShortcut(QKeySequence("F7"));
     addAction(m_runAction);
-    m_runAction->setEnabled(false);
+    m_runAction->setVisible(false);
     toolBar->addAction(m_runAction);
     connect(m_runAction, &QAction::triggered, this, &MainWindow::onRun);
 
@@ -248,7 +248,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_compileRunAction = new QAction(tr("编译运行"), this);
     m_compileRunAction->setShortcut(QKeySequence("F5"));
     addAction(m_compileRunAction);
-    m_compileRunAction->setEnabled(false);
+    m_compileRunAction->setVisible(false);
     toolBar->addAction(m_compileRunAction);
     connect(m_compileRunAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
 
@@ -330,8 +330,15 @@ MainWindow::MainWindow(QWidget *parent)
         "}"
         );
 
+    // 右侧垂直分割线：编辑器在上，输出面板在下
+    m_rightSplitter = new QSplitter(Qt::Vertical, this);
+    m_rightSplitter->addWidget(m_tabManager);
+    m_rightSplitter->addWidget(m_outputPanel);
+    m_rightSplitter->setStretchFactor(0, 2);
+    m_rightSplitter->setStretchFactor(1, 1);
+
     m_splitter->addWidget(m_explorer);
-    m_splitter->addWidget(m_tabManager);
+    m_splitter->addWidget(m_rightSplitter);
     setCentralWidget(m_splitter);
 
     // 当标签页切换时，更新缩放标签并重新连接当前编辑器的缩放信号
@@ -346,8 +353,11 @@ MainWindow::MainWindow(QWidget *parent)
         EditorWidget *editor = m_tabManager->currentEditor();
         bool isCode = editor && editor->isCodeEdit();
         bool running = m_processRunner->isRunning();
+        m_compileAction->setVisible(isCode);
         m_compileAction->setEnabled(isCode && !running);
+        m_runAction->setVisible(isCode);
         m_runAction->setEnabled(isCode && !running);
+        m_compileRunAction->setVisible(isCode);
         m_compileRunAction->setEnabled(isCode && !running);
     });
 
@@ -1033,16 +1043,16 @@ void MainWindow::onCompile()
 
     QString ext = QFileInfo(filePath).suffix().toLower();
     if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-        m_dockOutput->show();
-        m_outputPanel->raise();
+        showOutputPanel();
+
         m_outputPanel->clearOutput();
         m_outputPanel->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
         m_outputPanel->setStatus(tr("提示"), false);
         return;
     }
 
-    m_dockOutput->show();
-    m_outputPanel->raise();
+    showOutputPanel();
+
     m_outputPanel->clearOutput();
     m_outputPanel->setStatus(tr("编译中..."));
     m_processRunner->startCompile(filePath);
@@ -1063,8 +1073,8 @@ void MainWindow::onRun()
                 if (filePath.isEmpty())
                     return;
             }
-            m_dockOutput->show();
-            m_outputPanel->raise();
+            showOutputPanel();
+    
             m_outputPanel->clearOutput();
             m_outputPanel->setStatus(tr("运行中..."));
             m_processRunner->startRunPython(filePath);
@@ -1078,8 +1088,8 @@ void MainWindow::onRun()
         return;
     }
 
-    m_dockOutput->show();
-    m_outputPanel->raise();
+    showOutputPanel();
+
     m_outputPanel->setStatus(tr("运行中..."));
     m_processRunner->startRun(m_processRunner->lastExecutable());
 }
@@ -1099,16 +1109,16 @@ void MainWindow::onCompileAndRun()
 
     QString ext = QFileInfo(filePath).suffix().toLower();
     if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-        m_dockOutput->show();
-        m_outputPanel->raise();
+        showOutputPanel();
+
         m_outputPanel->clearOutput();
         m_outputPanel->setStatus(tr("运行中..."));
         m_processRunner->startRunPython(filePath);
         return;
     }
 
-    m_dockOutput->show();
-    m_outputPanel->raise();
+    showOutputPanel();
+
     m_outputPanel->clearOutput();
     m_outputPanel->setStatus(tr("编译中..."));
     m_processRunner->startCompileAndRun(filePath);
@@ -1166,4 +1176,14 @@ QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
     editor->setFilePath(filePath);
     editor->setModified(false);
     return filePath;
+}
+
+void MainWindow::showOutputPanel()
+{
+    m_outputPanel->setVisible(true);
+    int total = m_rightSplitter->height();
+    if (total > 0) {
+        int outputH = total / 3;
+        m_rightSplitter->setSizes({total - outputH, outputH});
+    }
 }
