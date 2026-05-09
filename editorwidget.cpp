@@ -65,6 +65,10 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     m_textEdit->viewport()->installEventFilter(this);
     m_previewView->installEventFilter(this);
+    QTimer::singleShot(0, this, [this]() {
+        if (QWidget *fp = m_previewView->focusProxy())
+            fp->installEventFilter(this);
+    });
 
     m_codeEditor = new CodeEditor(this);
     m_codeEditor->viewport()->installEventFilter(this);
@@ -149,6 +153,10 @@ void EditorWidget::setPreviewMode(bool preview)
                     if (!ok) return;
                     m_previewReady = true;
                     m_stackedWidget->setCurrentIndex(1);
+                    // WebEngine 内部的 focus proxy 在页面加载后才确定，
+                    // 需要在其上安装事件过滤器才能捕获预览区的 Ctrl+滚轮缩放
+                    if (QWidget *fp = m_previewView->focusProxy())
+                        fp->installEventFilter(this);
                     applyZoom();
                 });
         } else {

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.7）
+## 功能说明文档（v0.2.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -18,9 +18,10 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - 代码编辑器模式：打开 C/C++ 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 
-### 修复 v0.2.7
-修复代码编辑器缩放时行号不随之缩放的问题
-- 在 applyZoom() 中 setFont 后显式刷新行号区域（宽度、几何形状、重绘），并在 lineNumberAreaPaintEvent 中用 painter.setFont(font()) 确保绘制字体与编辑器字体一致，而非依赖 QAbstractScrollArea 子组件的字体继承。
+### 修复 v0.2.8
+修复预览模式下两个问题：
+- 预览模式下缩放时，右下角缩放比例标签不更新
+- 预览模式下缩小时，内容居中而非左对齐
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -186,7 +187,7 @@
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
-- 在构造函数中对 `m_textEdit` 的 **viewport** 和 `m_previewView` 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`，避免 Qt 内置缩放绕开自定义状态管理。
+- 在构造函数中对 `m_textEdit` 的 **viewport**、`m_codeEditor` 的 **viewport** 和 `m_previewView` 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`。其中 `m_previewView` 额外通过 `QTimer::singleShot` 延迟安装到其 `focusProxy()`（Chromium 内部输入控件），并在首次页面 `loadFinished` 后重新安装，确保预览区的 Ctrl+滚轮缩放也能被正确拦截。
 - 构造函数不再调用 `initPreviewEngine()`，WebEngine 页面加载延迟至首次 `setPreviewMode(true)` 时执行，避免打开文件时 GPU 进程冷启动造成窗口抖动。
 - `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 `QWebEngineView::setZoomFactor()` 缩放整个预览页面（含 SVG 图表和数学公式）。
 
