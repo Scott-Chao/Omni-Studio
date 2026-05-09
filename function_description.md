@@ -18,7 +18,7 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。
@@ -62,7 +62,7 @@
   通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
 - 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
-- 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
+- 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程执行文件扫描和反向链接索引构建，使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
@@ -75,7 +75,7 @@
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
 - `void onOpenFolder()`：从配置读取上次打开的目录，调用文件浏览器的 `selectFolder()`。
 - `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。
-- `void loadSettings()` / `void saveSettings()`：配置读写。
+- `void loadSettings()` / `void saveSettings()`：配置读写。`loadSettings()` 中若无保存分割状态，默认设置左侧文件树与右侧编辑区拉伸比例为 1:4。
 - `void onZoomIn()` / `void onZoomOut()` / `void onZoomReset()`：将缩放操作转发给 `TabManager` 当前激活的 `EditorWidget`。
 - `void updateZoomLabel()`：更新状态栏中的缩放百分比标签。
 - `void connectCurrentEditorZoomSignal()`：在标签切换或创建新编辑器时，连接/重连当前编辑器的 `zoomFactorChanged` 信号，确保百分比标签实时同步。
@@ -161,7 +161,7 @@
 - 封装文本编辑功能，支持 **Markdown 源码编辑** 与 **渲染预览** 三种模式。
 - Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
 - 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
-- 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。
+- 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。
 - 三种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑）。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
@@ -169,7 +169,7 @@
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
 - 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
-- WikiLink 转换：通过 `processWikiLinks()` 使用正则将 `[[Name]]` 转换为 `[Name](wikilink:编码目标)` 的 Markdown 链接格式，内容通过 base64 编码传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免特殊字符破坏 JS 语法。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
+- WikiLink 转换：`processWikiLinks()` 使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">` 格式的 Markdown 链接，链接目标通过 `QUrl::toPercentEncoding` 编码，避免特殊字符破坏 HTML/JS 语法。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
 - Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
 
@@ -187,7 +187,7 @@
 - `void clearExtraSelections()`：清除搜索高亮。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
 - `void updatePreviewContent(std::function<void()> onFinished)`：处理 WikiLink → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
-- `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 Markdown 超链接格式（供首次加载和增量更新共用）。
+- `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 `<a href="wikilink:...">` HTML 超链接格式（供首次加载和增量更新共用）。
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。
 - `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
@@ -224,7 +224,7 @@
   - setEditorData：重写以控制初始选中范围。重命名文件夹时全选整个名称；重命名文件时只选中主文件名（不含扩展名）。
   - setModelData：重写以校验用户输入。若用户清空文件夹名，或清空文件名使其只剩扩展名（如 `.md`），自动恢复为原始名称，防止产生仅含扩展名的无效文件。
 - 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
-- 提供 `createNewFolderInline`、`createNewFileInline`、`deleteItem` 等公共方法，封装实际的文件系统操作。
+- 提供 `deleteItem` 等公共方法，封装实际的文件系统操作。内联新建/重命名由内部方法处理。
 - 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。
 - 重写 `eventFilter`，监听 `Delete` 键，在非编辑状态下直接对选中项发起删除请求。
 - 右键菜单中使用 `DeleteKeyFilter` 事件过滤器，支持在菜单弹出时按 `Delete` 键触发删除。
@@ -240,10 +240,7 @@
 - `QString rootPath() const`：返回当前根目录。
 - `void selectFolder(const QString &defaultDir = QString())`：弹出文件夹选择对话框，若 `defaultDir` 不为空则将其作为对话框的起始目录。用户选择后更新根目录并发出 `folderChanged` 信号。
 - `void selectFile(const QString &filePath)`：在文件树中选中指定路径的文件，并自动展开所有折叠的父级目录，确保文件可见。空路径或无效路径时静默返回（例如新建未保存文件、文件不在当前根目录内）。
-- `void createNewFolderInline(const QString &parentDir)`：在指定父目录下内联新建文件夹，并立即进入重命名状态。
-- `void createNewFileInline(const QString &parentDir)`：在指定父目录下内联新建 `.md` 文件，并立即进入重命名状态。
 - `void deleteItem(const QString &path, bool isDir)`：删除文件或文件夹（递归删除）。
-- `void handleDropEvent(QDropEvent *event)`：处理拖放事件的内部方法，解析源与目标路径，执行文件移动，刷新模型并发送信号。
 - `bool isDropTargetFolder(const QModelIndex &proxyIndex) const`：供自定义委托查询当前索引是否为拖拽目标文件夹。
 
 **信号**：
@@ -423,7 +420,7 @@
   - `scanNameFilters()`：返回 `QDirIterator` 所需的名称过滤器列表（如 `*.md`、`*.txt`、`*.cpp` 等）。
   - `isTextExtension(const QString &suffix)`：判断给定的后缀是否在已知文本扩展名列表中。
 
-**扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
+**扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`pyx`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
 
 **协作关系**：
 - 被 `MainWindow`、`BacklinkIndex`、`EditorWidget` 引用，用于文件索引构建、Wiki 链接解析和另存为过滤器。
@@ -492,6 +489,7 @@
 | 语言 ID | 显示名称 | 扩展名 |
 |---------|----------|--------|
 | `"cpp"` | C/C++ | cpp, hpp, cxx, cc, c, h, hxx, hh |
+| `"python"` | Python | py, pyw, pyx |
 
 **协作关系**：
 - 被 `EditorWidget` 在 `loadFile()` 和 `setFilePath()` 中调用，用于判断文件是否应进入代码编辑模式。
@@ -640,11 +638,12 @@
 - `discoverTests()` 扫描测试文件夹，匹配同名的 `.in`/`.out` 文件对。
 - 编译阶段：使用 `CompilerUtils` 检测编译器，spawn `QProcess` 编译源文件。
 - 测试阶段：对每个用例 spawn `QProcess` 运行可执行文件，写入 `.in` 内容到 stdin，捕获 stdout，逐行 `.trimmed()` 对比（OJ 风格，去尾部空行）。
-- 超时控制：每个用例 1000ms（`QTimer::singleShot`），超时标记 TLE。
+- 超时控制：每个用例 1000ms（复用 `QTimer`，`setSingleShot(true)`），超时标记 TLE。
 - 内存监控：100ms 定时器轮询子进程峰值内存（`OpenProcess` + `GetProcessMemoryInfo(PeakWorkingSetSize)`），超过 65536KB 标记 MLE 并杀进程。
 - `m_testHandled` 标志位防止超时和进程结束双重触发。
 
 **信号**：
+- `judgeOutput(const QString &text, bool isStderr)`：引擎运行过程中的日志输出。
 - `compileFinished(bool success, QString errorOutput)`
 - `testStarted(int index, QString name)`
 - `testFinished(int index, TestResult result)`

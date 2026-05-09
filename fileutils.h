@@ -11,7 +11,7 @@ inline QStringList textExtensions()
     static const QStringList exts = {
         "md", "markdown", "txt",
         "c", "cpp", "cxx", "cc", "h", "hpp", "hxx", "hh",
-        "cs", "java", "py", "pyw", "js", "jsx", "ts", "tsx", "mjs",
+        "cs", "java", "py", "pyw", "pyx", "js", "jsx", "ts", "tsx", "mjs",
         "rs", "go", "rb", "php", "swift", "kt", "kts",
         "html", "htm", "css", "scss", "sass", "less",
         "xml", "svg", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
