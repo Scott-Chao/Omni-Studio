@@ -135,6 +135,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockOutput->hide();
 
     connect(m_outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
+    connect(m_dockOutput, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (!visible && m_processRunner->isRunning()) {
+            onStopProcess();
+        }
+    });
 
     // ----- 编译运行管理器 -----
     m_processRunner = new ProcessRunner(this);
