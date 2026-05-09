@@ -1090,6 +1090,7 @@ void MainWindow::onRun()
 
     showOutputPanel();
 
+    m_outputPanel->clearOutput();
     m_outputPanel->setStatus(tr("运行中..."));
     m_processRunner->startRun(m_processRunner->lastExecutable());
 }

@@ -191,28 +191,22 @@ void OutputPanel::pasteToInput()
     if (text.isEmpty())
         return;
 
-    // Normalize line endings and split
-    QStringList lines = text.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).split(QLatin1Char('\n'));
+    // Normalize line endings
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 
-    for (int i = 0; i < lines.size(); ++i) {
-        QTextCursor cursor = m_outputEdit->textCursor();
-        cursor.movePosition(QTextCursor::End);
-
-        if (i < lines.size() - 1) {
-            // Complete line: echo, send to process, then yield event loop
-            m_inputBuffer += lines[i];
-            cursor.insertText(lines[i] + QStringLiteral("\n"));
-            emit sendInput(m_inputBuffer);
-            m_inputBuffer.clear();
-            m_outputEdit->setTextCursor(cursor);
-            m_outputEdit->ensureCursorVisible();
-            QCoreApplication::processEvents();
-        } else {
-            // Last line (may be incomplete): echo, buffer, cursor stays at end
-            m_inputBuffer += lines[i];
-            cursor.insertText(lines[i]);
-            m_outputEdit->setTextCursor(cursor);
-            m_outputEdit->ensureCursorVisible();
-        }
+    // Echo the pasted text to display, ensure trailing newline for visual separation
+    QTextCursor cursor = m_outputEdit->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(text);
+    if (!text.endsWith(QLatin1Char('\n'))) {
+        cursor.insertText(QStringLiteral("\n"));
     }
+    m_outputEdit->setTextCursor(cursor);
+    m_outputEdit->ensureCursorVisible();
+
+    // Send all at once (writeInput appends \n for final line termination)
+    emit sendInput(text);
+
+    // Discard any partial buffer — paste replaces pending input
+    m_inputBuffer.clear();
 }
