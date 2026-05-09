@@ -33,6 +33,7 @@
 #include <QDirIterator>
 #include <QRegularExpression>
 #include <QCoreApplication>
+#include <QThread>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -365,13 +366,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     loadSettings();
     m_searchPanel->setRootPath(m_explorer->rootPath());
-    buildFileIndex();
-    m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
+    startAsyncIndexBuild();
     updatePreviewActionState();
 }
 
 MainWindow::~MainWindow()
 {
+    if (m_scanCancelled)
+        m_scanCancelled->store(true);
     delete ui;
 }
 
@@ -445,9 +447,9 @@ void MainWindow::onOpenFolder()
 void MainWindow::onFolderChanged(const QString &newPath)
 {
     m_settings->setLastFolderPath(newPath); // 立即持久化
-    buildFileIndex();
-    m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
+    startAsyncIndexBuild();
     m_searchPanel->setRootPath(newPath);
+    syncFileTreeSelection(); // 若当前编辑文件在新根目录内，自动选中
 }
 
 // ----- 配置读写 -----
@@ -697,6 +699,7 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
         QString newRoot = QFileInfo(absolutePath).absolutePath();
         m_explorer->setRootPath(newRoot);
         m_settings->setLastFolderPath(newRoot);
+        syncFileTreeSelection();
     }
     addToRecentFiles(absolutePath); // 记录到历史（置顶）
     m_dockHistory->hide(); // 隐藏面板
@@ -758,9 +761,7 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
                 onFileSelected(newFilePath);
 
                 // 全量重建索引：所有引用 [[fileName]] 的文件现在都能解析到新建的文件
-                buildFileIndex();
-                m_backlinkIndex->buildIndex(m_explorer->rootPath(), m_fileIndex);
-                refreshBacklinks();
+                startAsyncIndexBuild();
             } else {
                 QMessageBox::warning(this, tr("创建失败"),
                                      tr("无法在以下位置创建文件：\n%1").arg(newFilePath));
@@ -773,7 +774,7 @@ void MainWindow::buildFileIndex()
 {
     m_fileIndex.clear();
     QString root = m_explorer->rootPath();
-    if (root.isEmpty() || root == QDir::rootPath() || root == QDir::homePath())
+    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath())
         return;
 
     QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
@@ -784,6 +785,54 @@ void MainWindow::buildFileIndex()
         m_fileIndex[baseName].append(fullPath);
     }
     updateCurrentEditorCompletions();
+}
+
+void MainWindow::startAsyncIndexBuild()
+{
+    // Cancel any in-flight scan
+    if (m_scanCancelled)
+        m_scanCancelled->store(true);
+    m_scanCancelled = std::make_shared<std::atomic<bool>>(false);
+    uint64_t scanId = ++m_scanId;
+
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath()) {
+        m_fileIndex.clear();
+        m_backlinkIndex->setData({});
+        updateCurrentEditorCompletions();
+        return;
+    }
+
+    auto cancelled = m_scanCancelled;
+    QThread::create([this, cancelled, scanId, root]() {
+        // Phase 1: Build file index
+        QMap<QString, QStringList> fileIndex;
+        QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            if (cancelled->load()) return;
+            QString fullPath = it.next();
+            QFileInfo info(fullPath);
+            fileIndex[info.completeBaseName()].append(fullPath);
+        }
+        if (cancelled->load()) return;
+
+        // Phase 2: Build backlink index
+        BacklinkIndex::BacklinkData backlinkData =
+            BacklinkIndex::buildFromPath(root, fileIndex);
+        if (cancelled->load()) return;
+
+        // Deliver results to main thread
+        QMetaObject::invokeMethod(this, [this, scanId,
+                                         fileIndex = std::move(fileIndex),
+                                         data = std::move(backlinkData)]() mutable {
+            if (scanId != m_scanId.load()) return; // Stale
+            m_fileIndex = std::move(fileIndex);
+            m_backlinkIndex->setData(std::move(data));
+            updateCurrentEditorCompletions();
+            refreshBacklinks();
+        }, Qt::QueuedConnection);
+    })->start();
 }
 
 void MainWindow::updateCurrentEditorCompletions()

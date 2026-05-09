@@ -13,12 +13,62 @@ void BacklinkIndex::buildIndex(const QString &rootPath, const QMap<QString, QStr
     m_backlinks.clear();
     m_forwardLinks.clear();
 
-    if (rootPath.isEmpty() || rootPath == QDir::rootPath() || rootPath == QDir::homePath()) return;
+    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath()) return;
 
     QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         addFileLinks(it.next(), rootPath, fileIndex);
     }
+}
+
+BacklinkIndex::BacklinkData BacklinkIndex::buildFromPath(const QString &rootPath,
+                                                         const QMap<QString, QStringList> &fileIndex)
+{
+    BacklinkData data;
+
+    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath())
+        return data;
+
+    // Same recursive regex used in EditorWidget::refreshPreview
+    static const QRegularExpression wikiRegExp(
+        QStringLiteral(R"(\[\[((?:[^\[\]]|\[(?1)\])*)\]\])"));
+
+    QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString filePath = it.next();
+
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            continue;
+
+        QTextStream in(&file);
+        QString content = in.readAll();
+        file.close();
+
+        QSet<QString> targets;
+        QRegularExpressionMatchIterator mit = wikiRegExp.globalMatch(content);
+        while (mit.hasNext()) {
+            QRegularExpressionMatch match = mit.next();
+            QString resolved = resolveTarget(match.captured(1), rootPath, fileIndex);
+            if (!resolved.isEmpty() && resolved != filePath)
+                targets.insert(resolved);
+        }
+
+        if (!targets.isEmpty()) {
+            QStringList targetsList = targets.values();
+            for (const QString &target : targetsList)
+                data.backlinks[target].append(filePath);
+            data.forwardLinks[filePath] = std::move(targetsList);
+        }
+    }
+
+    return data;
+}
+
+void BacklinkIndex::setData(BacklinkData data)
+{
+    m_backlinks = std::move(data.backlinks);
+    m_forwardLinks = std::move(data.forwardLinks);
 }
 
 void BacklinkIndex::rebuildFile(const QString &filePath, const QString &rootPath,
@@ -130,7 +180,7 @@ void BacklinkIndex::addFileLinks(const QString &filePath, const QString &rootPat
 }
 
 QString BacklinkIndex::resolveTarget(const QString &linkName, const QString &rootPath,
-                                      const QMap<QString, QStringList> &fileIndex) const
+                                      const QMap<QString, QStringList> &fileIndex)
 {
     // 1. Exact path under root - try known text extensions
     const QStringList exts = TextFileUtils::textExtensions();

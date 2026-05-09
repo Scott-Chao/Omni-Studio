@@ -18,6 +18,7 @@ SOURCES += \
     compilerutils.h \
     cppsyntaxhighlighter.cpp \
     editorwidget.cpp \
+    flowlayout.cpp \
     languageutils.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
@@ -38,6 +39,7 @@ HEADERS += \
     compilerutils.h \
     cppsyntaxhighlighter.h \
     editorwidget.h \
+    flowlayout.h \
     languageutils.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \

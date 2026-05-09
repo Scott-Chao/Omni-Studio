@@ -6,6 +6,8 @@
 #include <QTreeView>
 #include <QString>
 #include <QSortFilterProxyModel>
+#include <QPushButton>
+#include "flowlayout.h"
 
 class FileSortProxyModel : public QSortFilterProxyModel
 {
@@ -59,6 +61,11 @@ private:
     void handleDropEvent(QDropEvent *event);
     QModelIndexList m_dragSourceIndexes;   // 拖拽开始时选中的索引
     QModelIndex m_dropTargetIndex;  // 当前拖拽悬停的文件夹代理索引
+
+    // 面包屑路径栏
+    QWidget *m_breadcrumb;
+    FlowLayout *m_breadcrumbLayout;
+    void updateBreadcrumb();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

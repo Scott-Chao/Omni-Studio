@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QPainter>
+#include <QLabel>
 
 class NoGhostDelegate : public QStyledItemDelegate
 {
@@ -169,6 +170,17 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     // 设置布局，使树视图填满当前控件
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // 面包屑路径栏
+    m_breadcrumb = new QWidget(this);
+    m_breadcrumb->setStyleSheet(QStringLiteral(
+        "background-color: #252525; border-bottom: 1px solid #3c3c3c;"
+    ));
+    m_breadcrumbLayout = new FlowLayout(m_breadcrumb, -1, 1, 1);
+    m_breadcrumbLayout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(m_breadcrumb);
+
     layout->addWidget(m_treeView);
     setLayout(layout);
 
@@ -296,12 +308,93 @@ void FileExplorerWidget::setRootPath(const QString &path)
         QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
         m_treeView->setRootIndex(proxyRoot);
     }
+    updateBreadcrumb();
 }
 
 QString FileExplorerWidget::rootPath() const
 {
     // 返回根目录
     return m_fileModel->rootPath();
+}
+
+void FileExplorerWidget::updateBreadcrumb()
+{
+    // 清除旧的面包屑按钮
+    QLayoutItem *child;
+    while ((child = m_breadcrumbLayout->takeAt(0)) != nullptr) {
+        if (child->widget())
+            child->widget()->deleteLater();
+        delete child;
+    }
+
+    QString path = rootPath();
+    if (path.isEmpty())
+        return;
+
+    // 从叶到根收集路径段
+    QStringList segments;
+    QDir dir(path);
+    while (!dir.isRoot()) {
+        QString name = dir.dirName();
+        if (!name.isEmpty())
+            segments.prepend(name);
+        dir.cdUp();
+    }
+    // 添加根段（如 "F:\" 或 "/"）
+    QString rootDisplay = QDir::toNativeSeparators(dir.absolutePath());
+    segments.prepend(rootDisplay);
+
+    if (segments.isEmpty())
+        return;
+
+    // 构建累积路径（使用 QDir 格式的正斜杠）
+    QString accumulated;
+    int count = segments.size();
+    for (int i = 0; i < count; ++i) {
+        if (i > 0) {
+            QLabel *sep = new QLabel(QStringLiteral(">"));
+            sep->setStyleSheet(QStringLiteral("color: #858585; background: transparent; border: none;"));
+            sep->setFixedWidth(16);
+            sep->setAlignment(Qt::AlignCenter);
+            m_breadcrumbLayout->addWidget(sep);
+        }
+
+        // 构建到此段为止的绝对路径
+        if (i == 0) {
+            accumulated = dir.absolutePath(); // 根路径的规范形式
+        } else {
+            accumulated = QDir::cleanPath(accumulated + QDir::separator() + segments[i]);
+        }
+
+        bool isLast = (i == count - 1);
+
+        QPushButton *btn = new QPushButton(segments[i]);
+        btn->setFlat(true);
+        btn->setCursor(isLast ? Qt::ArrowCursor : Qt::PointingHandCursor);
+        btn->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: transparent;"
+            "  border: none;"
+            "  color: %1;"
+            "  padding: 2px 6px;"
+            "  border-radius: 3px;"
+            "  font-size: 12px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: #3c3c3c;"
+            "}"
+        ).arg(isLast ? QStringLiteral("#ffffff") : QStringLiteral("#b0b0b0")));
+
+        if (!isLast) {
+            QString targetPath = QDir::cleanPath(accumulated);
+            connect(btn, &QPushButton::clicked, this, [this, targetPath]() {
+                setRootPath(targetPath);
+                emit folderChanged(targetPath);
+            });
+        }
+
+        m_breadcrumbLayout->addWidget(btn);
+    }
 }
 
 void FileExplorerWidget::selectFolder(const QString &defaultDir)

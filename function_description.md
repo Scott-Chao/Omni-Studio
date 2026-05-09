@@ -1,4 +1,4 @@
-## 功能说明文档（v0.2.11）
+## 功能说明文档（v0.2.12）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -19,11 +19,18 @@
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。输出显示在底部输出面板。支持运行中终止（Ctrl+Break）。未保存的文件在编译/运行前自动保存为临时文件。
+- 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
+- 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 
-### 新增 v0.2.11
-- Python 语法高亮：关键字、内建类型、装饰器、字符串、注释等深色主题高亮，支持三引号多行字符串。
-- Python 运行支持：F5/F7 直接运行 `.py` 文件（调用 python 解释器），F6 提示不需要编译。`compilerutils.h` 新增 `findPython()`，`ProcessRunner` 新增 `startRunPython()`。
-- PythonSyntaxHighlighter 新组件。
+### 新增 v0.2.12
+面包屑路径栏与异步索引构建
+- **面包屑路径栏**：文件树顶部新增可点击的路径导航栏，每个目录段为独立按钮。点击祖先目录可快速切换文件树根目录，当前目录高亮为白色不可点击，祖先目录为灰色可点击，`>` 分隔符指示层级关系。路径栏背景色 `#252525`，顶部有 1px 分割线。
+- **FlowLayout 自动换行**：面包屑栏使用自定义 `FlowLayout`（继承 `QLayout`）替代 `QHBoxLayout`。当路径长度超过左侧面板宽度时，面包屑按钮自动换行，不会强制撑宽左侧面板。FlowLayout 支持 `heightForWidth()` 以正确计算所需高度。
+- **异步索引构建**：`buildFileIndex()` 和 `BacklinkIndex::buildIndex()` 的同步调用替换为 `MainWindow::startAsyncIndexBuild()`，使用 `QThread::create()` 将递归文件扫描和反向链接索引构建移至后台线程。UI 在扫描期间保持响应，扫描完成后通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 将结果交付主线程。
+- **索引取消与代际防护**：连续快速切换目录时，旧扫描通过 `std::shared_ptr<std::atomic<bool>>` 取消标志 + `std::atomic<uint64_t>` 扫描代际检测自动丢弃，仅最后发起的扫描结果生效。析构时自动取消进行中的扫描，防止悬空引用。
+- **BacklinkIndex 异步重构**：新增 `BacklinkData` 结构体（`{backlinks, forwardLinks}`），`buildFromPath()` 静态方法在后台线程执行全量扫描并返回独立数据，`setData()` 在主线程通过 `std::move` 原子交换索引数据。`resolveTarget()` 改为静态方法，不依赖实例状态。
+- **根目录保护修正**：`QDir::rootPath()` → `QDir(rootPath).isRoot()`，现在正确拦截所有驱动器根目录（如 `F:\`），而非仅限系统根目录（如 `C:\`）。
+- **文件树同步增强**：`onFolderChanged()` 和 `onHistoryFileClicked()` 中新增 `syncFileTreeSelection()` 调用，确保目录切换或通过历史记录打开文件后，文件树选中状态与当前编辑器保持同步。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -54,7 +61,7 @@
 - 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
-- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。
+- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程执行文件扫描和反向链接索引构建，使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
 
 **主要接口（槽函数）**：
@@ -75,7 +82,8 @@
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
 - `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的点击，打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
-- `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系。
+- `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系（同步版本，保留用于重命名/删除后的即时更新）。
+- `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建和反向链接扫描。支持取消令牌（`std::shared_ptr<std::atomic<bool>>`）和扫描代际（`std::atomic<uint64_t>`）保护。完成后通过 `Qt::QueuedConnection` 将结果交付主线程并刷新补全列表与反向链接面板。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
 - `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
@@ -221,6 +229,7 @@
 - 提供 `selectFolder` 公共槽，弹出目录选择对话框并更新根目录。支持传入初始目录参数，以便对话框从上次记忆的路径开始浏览。
 - 支持拖拽移动文件或文件夹（在该树视图内），通过事件过滤器拦截 DragEnter、DragMove、Drop 事件，在符合条件时执行文件系统移动并发送 `fileRenamed` 信号。
 - 拖拽时对目标文件夹提供视觉反馈：通过自定义委托 `NoGhostDelegate` 在悬停文件夹底部绘制蓝色横条。
+- 在构造函数中创建顶部面包屑路径栏（`m_breadcrumb`），使用 `FlowLayout` 布局实现路径过长时的自动换行。`setRootPath()` 调用时自动更新面包屑。`updateBreadcrumb()` 方法从叶到根收集路径段，反转后依次创建 `QPushButton`，当前目录白色不可点击，祖先目录灰色可点击跳转，段之间用灰色 `>` 标签分隔。
 
 **主要接口**：
 - `void setRootPath(const QString &path)`：设置文件树显示的根目录。
@@ -312,17 +321,22 @@
 - 全量扫描已知文本类型文件，使用与 `EditorWidget::refreshPreview` 一致的递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 提取所有 WikiLink。
 - 将 WikiLink 解析为实际文件路径，解析策略为：根目录下精确路径匹配 → 通过文件名索引（`completeBaseName`）全局查找 → 多匹配时取最短路径（确定性，不依赖当前编辑器上下文）。
 - 同一文件内多次出现相同的 `[[链接]]` 自动去重，确保每条"来源→目标"关系只记录一次。
+- 支持后台线程安全的异步全量扫描：通过 `BacklinkData` 结构体 + `static buildFromPath()` 在后台线程执行扫描并返回独立数据，`setData()` 在主线程通过 `std::move` 原子交换索引。
 
 **主要接口**：
-- `void buildIndex(const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：全量扫描重建索引。
+- `void buildIndex(const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：全量扫描重建索引（同步版本）。
+- `static BacklinkData buildFromPath(const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：静态方法，在调用线程中执行全量扫描，返回包含 `backlinks` 和 `forwardLinks` 的 `BacklinkData` 结构体。用于 `MainWindow::startAsyncIndexBuild()` 的后台线程扫描。
+- `void setData(BacklinkData data)`：通过 `std::move` 原子替换内部索引数据，仅在主线程调用，无需加锁。
 - `void rebuildFile(const QString &filePath, const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：增量更新单个文件（保存时调用）。
 - `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息。同步更新 `m_backlinks` 的 target key 和值列表中的 source 路径引用，以及 `m_forwardLinks` 值列表中的 target 路径引用，确保后续 `rebuildFile → removeFile` 能找到正确的 target 进行清理。
 - `void onFileDeleted(const QString &path)`：从索引中移除已删除文件，O(1)。
 - `QStringList backlinksFor(const QString &filePath) const`：查询指定文件的来源列表，O(1)。
+- `static QString resolveTarget(const QString &linkName, const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：静态方法，将 WikiLink 文本解析为目标文件绝对路径（不依赖实例状态，可在后台线程安全调用）。
 
 **内部数据结构**：
 - `QMap<QString, QStringList> m_backlinks`：目标绝对路径 → 来源绝对路径列表。
 - `QMap<QString, QStringList> m_forwardLinks`：来源绝对路径 → 目标绝对路径列表（用于增量更新时的反向清理）。
+- `BacklinkData` 结构体：包含 `backlinks` 和 `forwardLinks` 两个 `QMap`，作为异步扫描的返回值，将后台线程的扫描结果与实例状态解耦。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有，所有接口均由 `MainWindow` 在合适的时机调用。
@@ -577,6 +591,29 @@
 
 ---
 
+### 18. `FlowLayout` - 流式布局组件
+
+**文件**：`flowlayout.h` / `flowlayout.cpp`
+
+**职责**：
+- 继承 `QLayout`，实现类似 Java `FlowLayout` 的自动换行布局。当一行空间不足以容纳下一个子控件时，自动将其放置到下一行。
+- 支持 `heightForWidth()`：根据给定的宽度计算所需总高度，与 Qt 布局系统集成以正确分配垂直空间。
+- 支持通过 `horizontalSpacing()` 和 `verticalSpacing()` 返回控件间距（可用户指定或从样式派生）。
+- `doLayout(const QRect &rect, bool testOnly)` 为核心布局函数：遍历所有子项，按水平方向排列，检测到超出右边界时换行。`testOnly=true` 时仅计算高度不移动控件（供 `heightForWidth()` 使用）。
+- 子项可见性自动管理：布局时将所有子控件的可见性设为 `true`。
+
+**主要接口**：
+- `FlowLayout(QWidget *parent, int margin, int hSpacing, int vSpacing)`：构造函数，可指定边距和水平/垂直间距。
+- `void addItem(QLayoutItem *item)` / `QLayoutItem *itemAt(int index)` / `QLayoutItem *takeAt(int index)`：布局项管理。
+- `int heightForWidth(int width) const`：给定宽度计算所需高度。
+- `Qt::Orientations expandingDirections() const`：返回 0（不向任何方向扩展）。
+- `bool hasHeightForWidth() const`：返回 `true`。
+
+**协作关系**：
+- 被 `FileExplorerWidget` 用于面包屑路径栏布局，使长路径自动换行而不会强制撑宽左侧面板。
+
+---
+
 ### 配置存储说明
 
 - 配置文件名为 `config.ini`，默认保存在 **应用程序可执行文件所在的目录**（通过 `QCoreApplication::applicationDirPath()` 获得）。
@@ -590,7 +627,8 @@
   如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。预览引擎采用延迟初始化避免文件打开时抖动，暗色容器 + 页面背景色双重保障消除切换白屏闪烁，base64 + TextDecoder 确保中文内容正确显示。
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
-- **排序规则**：文件树始终按"文件夹优先、名称升序"排列，且新建或重命名后实时重排。
+- **面包屑路径栏**：位于文件树顶部，深色背景（`#252525`），底部有 1px 分割线（`#3c3c3c`）。按钮扁平无边框，当前目录白色、祖先目录灰色（`#b0b0b0`），悬停时背景变为 `#3c3c3c`。段之间用灰色 `>` 标签（`#858585`）分隔。使用 `FlowLayout` 实现自动换行。
+- **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。
 - **文件树选中同步**：切换标签页时，文件树自动选中当前编辑的文件，并逐级展开折叠的父目录；新建未保存文件或文件不在当前根目录时，文件树选中状态保持不变。
 - **删除确认对话框**：删除前弹出 `QMessageBox::question`，根据是否存在未保存修改提供差异化提示文本。
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。

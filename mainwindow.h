@@ -7,6 +7,8 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QMap>
+#include <atomic>
+#include <memory>
 
 class TabManager;
 class FileExplorerWidget;
@@ -59,6 +61,7 @@ private slots:
                                const QString &searchText); // 打开搜索结果
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
     void buildFileIndex(); // 全量更新索引
+    void startAsyncIndexBuild(); // 异步版本，避免大目录卡死 UI
     void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
     void onFileDeletedInIndex(const QString &path); // 增量更新：删除
     void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath); // 通过文件树进行文件移动
@@ -125,6 +128,8 @@ private:
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）
     QMap<QString, QStringList> m_fileIndex;
+    std::shared_ptr<std::atomic<bool>> m_scanCancelled;
+    std::atomic<uint64_t> m_scanId{0};
     QString findWikiTarget(const QString &fileName); // 向上递归搜索目标文件
     void updateCurrentEditorCompletions(); // 更新当前编辑器的 WikiLink 补全列表
 
