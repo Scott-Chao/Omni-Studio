@@ -242,9 +242,10 @@ void CodeEditor::handleAutoIndent()
         return;
     }
 
-    // Check if line ends with { — add one more indent level
+    // Check if line ends with { (C-style) or : (Python) — add one more indent level
     QString trimmed = blockText.trimmed();
-    if (trimmed.endsWith(QLatin1Char('{'))) {
+    bool pythonColon = (m_languageId == QStringLiteral("python") && trimmed.endsWith(QLatin1Char(':')));
+    if (trimmed.endsWith(QLatin1Char('{')) || pythonColon) {
         indent += indentString();
     }
     // If the cursor is before the current indent text, use cursor position for indent
