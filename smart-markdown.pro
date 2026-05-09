@@ -23,6 +23,8 @@ SOURCES += \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
+    judgeengine.cpp \
+    judgepanel.cpp \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
@@ -45,6 +47,8 @@ HEADERS += \
     fileexplorerwidget.h \
     fileutils.h \
     historypanel.h \
+    judgeengine.h \
+    judgepanel.h \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \

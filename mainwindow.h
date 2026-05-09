@@ -21,6 +21,7 @@ class BacklinksPanel;
 class SearchPanel;
 class ProcessRunner;
 class OutputPanel;
+class JudgePanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -117,12 +118,18 @@ private:
     QAction *m_compileRunAction;
     QAction *m_stopAction;
 
+    // 本地评测
+    JudgePanel *m_judgePanel;
+    QDockWidget *m_dockJudge;
+    QAction *m_toggleJudgeAction;
+
     void onCompile();
     void onRun();
     void onCompileAndRun();
     void onStopProcess();
     void onCompileFinished(bool success);
     void onRunFinished(int exitCode);
+    void onJudgeRunAll();
     QString saveCodeToTempFile(EditorWidget *editor);
     void showOutputPanel();
 

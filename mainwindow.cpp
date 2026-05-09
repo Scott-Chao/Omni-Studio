@@ -11,6 +11,7 @@
 #include "fileutils.h"
 #include "processrunner.h"
 #include "outputpanel.h"
+#include "judgepanel.h"
 #include "compilerutils.h"
 
 #include <QSplitter>
@@ -165,6 +166,21 @@ MainWindow::MainWindow(QWidget *parent)
         m_compileRunAction->setEnabled(isCode);
     });
 
+    // ----- 本地评测面板 -----
+    m_judgePanel = new JudgePanel(this);
+    m_dockJudge = new QDockWidget(tr("代码评测"), this);
+    m_dockJudge->setWidget(m_judgePanel);
+    m_dockJudge->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockJudge);
+    m_dockJudge->hide();
+
+    m_toggleJudgeAction = m_dockJudge->toggleViewAction();
+    m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
+    m_toggleJudgeAction->setShortcut(QKeySequence("Ctrl+Shift+J"));
+
+    connect(m_judgePanel, &JudgePanel::runAllRequested,
+            this, &MainWindow::onJudgeRunAll);
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -176,6 +192,8 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->insertAction(nullptr, toggleBacklinksAction);
     // 搜索
     toolBar->insertAction(nullptr, toggleSearchAction);
+    // 代码评测
+    toolBar->insertAction(nullptr, m_toggleJudgeAction);
     toolBar->insertSeparator(toggleHistoryAction);
 
     // 打开目录
@@ -1147,6 +1165,37 @@ void MainWindow::onRunFinished(int exitCode)
         QStringLiteral("\n--- ") + tr("进程退出 (代码: %1)").arg(exitCode) + QStringLiteral(" ---\n"), false);
     m_outputPanel->setStatus(
         tr("完成 (代码: %1)").arg(exitCode), exitCode != 0);
+}
+
+void MainWindow::onJudgeRunAll()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->isCodeEdit()) {
+        QMessageBox::information(this, tr("提示"),
+                                  tr("请打开一个代码文件进行评测。"));
+        return;
+    }
+
+    // Save current code to file (or temp file if unsaved)
+    QString filePath = editor->currentFilePath();
+    if (filePath.isEmpty() || editor->isModified()) {
+        filePath = saveCodeToTempFile(editor);
+        if (filePath.isEmpty())
+            return;
+    }
+
+    // Ensure test folder is set
+    if (m_judgePanel->testFolder().isEmpty()) {
+        QMessageBox::information(this, tr("提示"),
+                                  tr("请先在评测面板中选择测试用例文件夹。"));
+        return;
+    }
+
+    // Show and raise the judge dock
+    m_dockJudge->show();
+    m_dockJudge->raise();
+
+    m_judgePanel->runJudge(filePath);
 }
 
 QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
