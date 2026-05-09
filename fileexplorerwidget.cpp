@@ -317,6 +317,31 @@ void FileExplorerWidget::selectFolder(const QString &defaultDir)
     }
 }
 
+void FileExplorerWidget::selectFile(const QString &filePath)
+{
+    if (filePath.isEmpty())
+        return;
+
+    QModelIndex sourceIndex = m_fileModel->index(filePath);
+    if (!sourceIndex.isValid())
+        return;
+
+    QModelIndex proxyIndex = m_sortProxy->mapFromSource(sourceIndex);
+    if (!proxyIndex.isValid())
+        return;
+
+    // 展开所有父级目录，确保目标文件可见
+    QModelIndex parent = proxyIndex.parent();
+    QModelIndex rootIdx = m_treeView->rootIndex();
+    while (parent.isValid() && parent != rootIdx) {
+        m_treeView->setExpanded(parent, true);
+        parent = parent.parent();
+    }
+
+    m_treeView->setCurrentIndex(proxyIndex);
+    m_treeView->scrollTo(proxyIndex, QAbstractItemView::EnsureVisible);
+}
+
 void FileExplorerWidget::onTreeViewClicked(const QModelIndex &proxyIndex)
 {
     // 点击树视图打开文件

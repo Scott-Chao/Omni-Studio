@@ -29,6 +29,7 @@ public:
 
     void setRootPath(const QString &path); // 设置要显示的根目录
     QString rootPath() const; // 获取当前根目录
+    void selectFile(const QString &filePath); // 选中并展开到指定文件
     bool isDropTargetFolder(const QModelIndex &proxyIndex) const; // 判断某个代理索引是否当前拖拽悬停的文件夹
 
 signals:

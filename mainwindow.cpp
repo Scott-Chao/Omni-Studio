@@ -261,6 +261,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
         updateZoomLabel();
         connectCurrentEditorZoomSignal();
+        syncFileTreeSelection();
         refreshBacklinks();
         updateCurrentEditorCompletions();
     });
@@ -458,6 +459,17 @@ void MainWindow::connectCurrentEditorZoomSignal()
         connect(editor, &EditorWidget::wikiLinkClicked, this,
                 &MainWindow::onWikiLinkClicked, Qt::UniqueConnection);
     }
+}
+
+void MainWindow::syncFileTreeSelection()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor)
+        return;
+    QString filePath = editor->currentFilePath();
+    if (filePath.isEmpty())
+        return;
+    m_explorer->selectFile(filePath);
 }
 
 void MainWindow::onRequestDelete(const QString &path, bool isDir)

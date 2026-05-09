@@ -73,6 +73,7 @@ private:
 
     EditorWidget* currentEditor() const;
     void updateTabTitle(EditorWidget *editor, bool modified);
+    void syncFileTreeSelection(); // 将文件树选中同步到当前标签页
     void loadSettings(); // 程序启动时读取配置
 
     QAction *m_zoomInAction;
