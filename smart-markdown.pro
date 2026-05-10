@@ -1,4 +1,4 @@
-QT       += core gui webenginewidgets
+QT       += core gui webenginewidgets network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -17,6 +17,7 @@ SOURCES += \
     codeeditor.cpp \
     compilerutils.h \
     cppsyntaxhighlighter.cpp \
+    crawler.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
     languageutils.cpp \
@@ -25,6 +26,8 @@ SOURCES += \
     historypanel.cpp \
     judgeengine.cpp \
     judgepanel.cpp \
+    logindialog.cpp \
+    openjudgewindow.cpp \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
@@ -40,6 +43,7 @@ HEADERS += \
     codeeditor.h \
     compilerutils.h \
     cppsyntaxhighlighter.h \
+    crawler.h \
     editorwidget.h \
     flowlayout.h \
     languageutils.h \
@@ -49,6 +53,8 @@ HEADERS += \
     historypanel.h \
     judgeengine.h \
     judgepanel.h \
+    logindialog.h \
+    openjudgewindow.h \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \

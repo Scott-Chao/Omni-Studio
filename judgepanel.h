@@ -19,10 +19,12 @@ public:
     explicit JudgePanel(QWidget *parent = nullptr);
 
     QString testFolder() const;
+    void setTestFolder(const QString &path);
     void runJudge(const QString &sourceFile);
 
 signals:
     void runAllRequested();
+    void openJudgeRequested();
 
 public slots:
     void onTestStarted(int index, const QString &testName);
@@ -47,6 +49,7 @@ private:
 
     QLineEdit *m_folderEdit;
     QPushButton *m_browseBtn;
+    QPushButton *m_openJudgeBtn;
     QTableWidget *m_table;
     QPlainTextEdit *m_detailEdit;
     QLabel *m_summaryLabel;

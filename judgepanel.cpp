@@ -40,10 +40,23 @@ void JudgePanel::setupUi()
     m_browseBtn = new QPushButton(tr("浏览..."), this);
     m_browseBtn->setFixedWidth(80);
 
-    QHBoxLayout *folderLayout = new QHBoxLayout;
+    m_openJudgeBtn = new QPushButton(tr("从Openjudge获取"), this);
+
+    QVBoxLayout *folderLayout = new QVBoxLayout;
     folderLayout->setContentsMargins(4, 4, 4, 0);
-    folderLayout->addWidget(m_folderEdit, 1);
-    folderLayout->addWidget(m_browseBtn);
+    folderLayout->setSpacing(4);
+
+    QHBoxLayout *folderRow1 = new QHBoxLayout;
+    folderRow1->setContentsMargins(0, 0, 0, 0);
+    folderRow1->addWidget(m_folderEdit, 1);
+    folderRow1->addWidget(m_browseBtn);
+
+    QHBoxLayout *folderRow2 = new QHBoxLayout;
+    folderRow2->setContentsMargins(0, 0, 0, 0);
+    folderRow2->addWidget(m_openJudgeBtn, 1);
+
+    folderLayout->addLayout(folderRow1);
+    folderLayout->addLayout(folderRow2);
 
     // ---- Results table ----
     m_table = new QTableWidget(0, 5, this);
@@ -115,6 +128,8 @@ void JudgePanel::setupUi()
     // ---- Internal connections ----
     connect(m_browseBtn, &QPushButton::clicked,
             this, &JudgePanel::onBrowseClicked);
+    connect(m_openJudgeBtn, &QPushButton::clicked,
+            this, [this]() { emit openJudgeRequested(); });
     connect(m_runAllBtn, &QPushButton::clicked,
             this, &JudgePanel::onRunAllClicked);
     connect(m_stopBtn, &QPushButton::clicked,
@@ -124,6 +139,12 @@ void JudgePanel::setupUi()
 QString JudgePanel::testFolder() const
 {
     return m_folderEdit->text().trimmed();
+}
+
+void JudgePanel::setTestFolder(const QString &path)
+{
+    m_folderEdit->setText(path);
+    clearResults();
 }
 
 void JudgePanel::runJudge(const QString &sourceFile)
@@ -159,6 +180,7 @@ void JudgePanel::setInteractive(bool enabled)
     m_stopBtn->setEnabled(!enabled);
     m_folderEdit->setEnabled(enabled);
     m_browseBtn->setEnabled(enabled);
+    m_openJudgeBtn->setEnabled(enabled);
 }
 
 // ---- Slots ----

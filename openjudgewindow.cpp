@@ -1,0 +1,677 @@
+#include "openjudgewindow.h"
+#include "logindialog.h"
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QListWidget>
+#include <QTextBrowser>
+#include <QLabel>
+#include <QPushButton>
+#include <QMessageBox>
+#include <QFont>
+#include <QFrame>
+#include <QTimer>
+#include <QUrlQuery>
+#include <QPainter>
+#include <QStyledItemDelegate>
+#include <QRegularExpression>
+#include <QDir>
+#include <QFile>
+#include <QTextStream>
+#include <QStandardPaths>
+#include <QDateTime>
+
+// ===== HomeworkDelegate: draws deadline right-aligned =====
+class HomeworkDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+
+        QString deadline = index.data(Qt::UserRole + 1).toString();
+        if (deadline.isEmpty())
+            return;
+
+        painter->save();
+        painter->setPen(QColor(0x88, 0x88, 0x88));
+        QFont f = painter->font();
+        f.setPointSize(qMax(f.pointSize() - 1, 8));
+        painter->setFont(f);
+
+        QRect r = option.rect.adjusted(0, 0, -10, 0);
+        QString elided = painter->fontMetrics().elidedText(deadline, Qt::ElideLeft, r.width() / 2);
+        painter->drawText(r, Qt::AlignRight | Qt::AlignVCenter, elided);
+        painter->restore();
+    }
+};
+
+// ===== HTML wrapping helper (dark theme) =====
+static QString wrapHtml(const QString &body)
+{
+    QString html = QStringLiteral(
+        "<html><head><meta charset=\"utf-8\"><style>"
+        "body{background:#1E1E1E;color:#D4D4D4;font-family:'Microsoft YaHei',sans-serif;font-size:10pt;}"
+        "pre{background:#2D2D30;padding:12px;border:1px solid #555;font-family:Consolas,monospace;color:#D4D4D4;}"
+        "a{color:#569CD6;}"
+        "</style></head><body>");
+    html += body;
+    html += QStringLiteral("</body></html>");
+    return html;
+}
+
+// ======================================================================
+// Constructor
+// ======================================================================
+
+OpenJudgeWindow::OpenJudgeWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , m_crawler(new Crawler(this))
+    , m_listWidget(new QListWidget)
+    , m_statusLabel(new QLabel)
+    , m_refreshBtn(new QPushButton(QStringLiteral("刷新")))
+    , m_backBtn(new QPushButton(QStringLiteral("← 返回")))
+    , m_selectBtn(new QPushButton(QStringLiteral("选择此题目")))
+    , m_stackedWidget(new QStackedWidget)
+    , m_detailPage(new QWidget)
+    , m_sectionList(new QListWidget)
+    , m_sectionContent(new QTextBrowser)
+{
+    setWindowTitle(QStringLiteral("OpenJudge 题目浏览"));
+    resize(900, 650);
+
+    setupUi();
+
+    // --- Crawler signals ---
+    connect(m_crawler, &Crawler::loginSuccess, this, &OpenJudgeWindow::onLoginSuccess);
+    connect(m_crawler, &Crawler::loginFailed, this, &OpenJudgeWindow::onLoginFailed);
+    connect(m_crawler, &Crawler::mainPageReady, this, &OpenJudgeWindow::onMainPageReady);
+    connect(m_crawler, &Crawler::pastPageReady, this, &OpenJudgeWindow::onPastPageReady);
+    connect(m_crawler, &Crawler::homeworkProblemsReady, this, &OpenJudgeWindow::onHomeworkProblemsReady);
+    connect(m_crawler, &Crawler::problemDetailReady, this, &OpenJudgeWindow::onProblemDetailReady);
+    connect(m_crawler, &Crawler::networkError, this, &OpenJudgeWindow::onNetworkError);
+
+    // --- UI signals ---
+    connect(m_listWidget, &QListWidget::itemClicked, this, &OpenJudgeWindow::onItemClicked);
+    connect(m_sectionList, &QListWidget::itemClicked, this, &OpenJudgeWindow::onSectionClicked);
+    connect(m_refreshBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onRefresh);
+    connect(m_backBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onBack);
+    connect(m_prevPageBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onPrevPage);
+    connect(m_nextPageBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onNextPage);
+    connect(m_selectBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onSelectClicked);
+
+    // Show login dialog on startup
+    QTimer::singleShot(100, this, &OpenJudgeWindow::onReLogin);
+}
+
+// ======================================================================
+// UI Construction — dark theme
+// ======================================================================
+
+static QString buttonStyle()
+{
+    return QStringLiteral(
+        "QPushButton { background: #3E3E42; color: #D4D4D4; border: 1px solid #555; "
+        "border-radius: 3px; padding: 4px 12px; } "
+        "QPushButton:hover { background: #505050; } "
+        "QPushButton:disabled { color: #666; }");
+}
+
+void OpenJudgeWindow::setupUi()
+{
+    setStyleSheet(QStringLiteral(
+        "QMainWindow { background: #2D2D30; }"
+        "QWidget { background: #2D2D30; color: #D4D4D4; }"
+    ));
+
+    // --- Top toolbar ---
+    auto *toolbar = new QWidget;
+    toolbar->setStyleSheet(QStringLiteral("QWidget { background: #333337; }"));
+    auto *toolbarLayout = new QHBoxLayout(toolbar);
+    toolbarLayout->setContentsMargins(12, 8, 12, 8);
+
+    m_statusLabel->setVisible(false);
+
+    // Select button — wide, prominent, in toolbar
+    m_selectBtn->setMinimumWidth(140);
+    m_selectBtn->setStyleSheet(
+        "QPushButton { background: #0078D4; color: white; font-weight: bold; "
+        "border: none; border-radius: 4px; padding: 6px 20px; } "
+        "QPushButton:hover { background: #1E90FF; } "
+        "QPushButton:disabled { background: #3E3E42; color: #666; }");
+    m_selectBtn->setVisible(false);
+
+    m_refreshBtn->setStyleSheet(buttonStyle());
+    m_refreshBtn->setEnabled(false);
+    m_backBtn->setStyleSheet(buttonStyle());
+    m_backBtn->setVisible(false);
+
+    auto *loginBtn = new QPushButton(QStringLiteral("登录"));
+    loginBtn->setStyleSheet(buttonStyle());
+    connect(loginBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onReLogin);
+
+    toolbarLayout->addWidget(m_selectBtn);
+    toolbarLayout->addWidget(m_backBtn);
+    toolbarLayout->addStretch();
+    toolbarLayout->addWidget(m_refreshBtn);
+    toolbarLayout->addWidget(loginBtn);
+
+    // --- Separator ---
+    auto *separator = new QFrame;
+    separator->setFrameShape(QFrame::HLine);
+    separator->setFrameShadow(QFrame::Sunken);
+    separator->setStyleSheet(QStringLiteral("QFrame { color: #555; }"));
+
+    // --- Setup stacked widget pages ---
+    setupDetailPage();
+
+    // Page 0: list + pagination
+    {
+        auto *listPage = new QWidget;
+        auto *listLayout = new QVBoxLayout(listPage);
+        listLayout->setContentsMargins(0, 0, 0, 0);
+        listLayout->addWidget(m_listWidget, 1);
+
+        m_paginationBar = new QWidget;
+        auto *paginationLayout = new QHBoxLayout(m_paginationBar);
+        paginationLayout->setContentsMargins(8, 4, 8, 4);
+        m_prevPageBtn = new QPushButton(QStringLiteral("上一页"));
+        m_nextPageBtn = new QPushButton(QStringLiteral("下一页"));
+        m_pageLabel = new QLabel(QStringLiteral("第 1 页"));
+        m_pageLabel->setStyleSheet(QStringLiteral("color: #D4D4D4;"));
+        m_pageLabel->setAlignment(Qt::AlignCenter);
+        m_prevPageBtn->setStyleSheet(buttonStyle());
+        m_nextPageBtn->setStyleSheet(buttonStyle());
+        paginationLayout->addStretch();
+        paginationLayout->addWidget(m_prevPageBtn);
+        paginationLayout->addWidget(m_pageLabel);
+        paginationLayout->addWidget(m_nextPageBtn);
+        paginationLayout->addStretch();
+        m_paginationBar->setVisible(false);
+
+        listLayout->addWidget(m_paginationBar);
+        m_stackedWidget->addWidget(listPage);         // page 0: list + pagination
+    }
+    m_stackedWidget->addWidget(m_detailPage);          // page 1: problem detail
+
+    // --- Central widget ---
+    auto *centralWidget = new QWidget;
+    auto *centralLayout = new QVBoxLayout(centralWidget);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(0);
+    centralLayout->addWidget(toolbar);
+    centralLayout->addWidget(separator);
+    centralLayout->addWidget(m_stackedWidget, 1);
+    setCentralWidget(centralWidget);
+
+    // --- Style the list ---
+    m_listWidget->setFont(QFont("Microsoft YaHei", 10));
+    m_listWidget->setSpacing(4);
+    m_listWidget->setCursor(Qt::PointingHandCursor);
+    m_listWidget->setAlternatingRowColors(false);
+    m_listWidget->setItemDelegate(new HomeworkDelegate(m_listWidget));
+    m_listWidget->setStyleSheet(
+        "QListWidget { color: #D4D4D4; background: #252526; border: none; }"
+        "QListWidget::item { padding: 6px 12px; }"
+        "QListWidget::item:hover { background: #2A2D2E; }"
+        "QListWidget::item:selected { background: #264F78; color: white; }"
+    );
+}
+
+void OpenJudgeWindow::setupDetailPage()
+{
+    auto *layout = new QHBoxLayout(m_detailPage);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // Left: section list — tight fit to content
+    m_sectionList->setFont(QFont("Microsoft YaHei", 10));
+    m_sectionList->setFixedWidth(100);
+    m_sectionList->setSpacing(2);
+    m_sectionList->setCursor(Qt::PointingHandCursor);
+    m_sectionList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_sectionList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_sectionList->setStyleSheet(
+        "QListWidget { color: #D4D4D4; background: #252526; border: none; }"
+        "QListWidget::item { padding: 6px 8px; }"
+        "QListWidget::item:hover { background: #2A2D2E; }"
+        "QListWidget::item:selected { background: #264F78; color: white; }"
+    );
+
+    // Right: content browser
+    m_sectionContent->setFont(QFont("Microsoft YaHei", 10));
+    m_sectionContent->setOpenExternalLinks(true);
+    m_sectionContent->setStyleSheet(
+        "QTextBrowser { padding: 16px; background: #1E1E1E; border: none; color: #D4D4D4; }"
+    );
+    m_sectionContent->document()->setDefaultStyleSheet(QStringLiteral(
+        "pre { background-color: #2D2D30; padding: 12px; "
+        "border: 1px solid #555; font-family: Consolas, monospace; color: #D4D4D4; }"
+        "body { color: #D4D4D4; }"
+    ));
+
+    layout->addWidget(m_sectionList);
+    layout->addWidget(m_sectionContent, 1);
+}
+
+// ======================================================================
+// View switching
+// ======================================================================
+
+void OpenJudgeWindow::showListPage()
+{
+    m_stackedWidget->setCurrentIndex(0);
+    m_selectBtn->setVisible(false);
+}
+
+void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
+{
+    m_sectionList->clear();
+    m_sectionContent->clear();
+
+    for (const auto &sec : detail.sections) {
+        auto *item = new QListWidgetItem(sec.heading);
+        item->setData(Qt::UserRole, sec.contentHtml);
+        item->setSizeHint(QSize(0, 32));
+        m_sectionList->addItem(item);
+    }
+
+    if (!detail.sections.isEmpty()) {
+        m_sectionList->setCurrentRow(0);
+        m_sectionContent->setHtml(wrapHtml(detail.sections.first().contentHtml));
+    }
+
+    m_stackedWidget->setCurrentIndex(1);
+}
+
+// ======================================================================
+// Login / auth
+// ======================================================================
+
+void OpenJudgeWindow::onReLogin()
+{
+    LoginDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted) {
+        m_statusLabel->setText(QStringLiteral("正在登录..."));
+        m_refreshBtn->setEnabled(false);
+        m_listWidget->clear();
+        m_crawler->login(dlg.username(), dlg.password());
+    } else {
+        m_statusLabel->setText(QStringLiteral("跳过登录，正在获取页面..."));
+        m_crawler->fetchMainPage();
+    }
+}
+
+void OpenJudgeWindow::onLoginSuccess()
+{
+    m_statusLabel->setText(QStringLiteral("登录成功，正在获取作业列表..."));
+}
+
+void OpenJudgeWindow::onLoginFailed(const QString &error)
+{
+    m_statusLabel->setText(QStringLiteral("登录失败"));
+    QMessageBox::warning(this, QStringLiteral("登录失败"), error);
+    m_refreshBtn->setEnabled(true);
+}
+
+// ======================================================================
+// Main page (two-section: ongoing + past)
+// ======================================================================
+
+void OpenJudgeWindow::onMainPageReady(const QList<HomeworkItem> &ongoing,
+                                       const QList<HomeworkItem> &past,
+                                       const PageInfo &pastPage)
+{
+    m_ongoingItems = ongoing;
+    m_pastPageInfo = pastPage;
+    m_viewState = OJ_HOMEWORK_LIST;
+    m_refreshBtn->setEnabled(true);
+    m_refreshBtn->setText(QStringLiteral("刷新"));
+    m_backBtn->setVisible(false);
+
+    if (!pastPage.url.isEmpty()) {
+        m_pastItems.clear();
+        rebuildListView();
+        m_crawler->fetchPastPage(pastPage.url);
+    } else {
+        m_pastItems = past;
+        rebuildListView();
+    }
+}
+
+void OpenJudgeWindow::onPastPageReady(const QList<HomeworkItem> &past,
+                                       const PageInfo &pageInfo)
+{
+    m_pastItems = past;
+    m_pastPageInfo = pageInfo;
+    if (m_viewState == OJ_HOMEWORK_LIST)
+        rebuildListView();
+}
+
+// ======================================================================
+// Pagination
+// ======================================================================
+
+void OpenJudgeWindow::onPrevPage()
+{
+    if (!m_pastPageInfo.hasPrev) return;
+
+    QUrl url(m_pastPageInfo.url);
+    QUrlQuery query(url);
+    int newPage = m_pastPageInfo.currentPage - 1;
+    query.removeAllQueryItems(QStringLiteral("page"));
+    if (newPage > 1)
+        query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
+    url.setQuery(query);
+
+    m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
+    m_refreshBtn->setEnabled(false);
+    m_crawler->fetchPastPage(url.toString());
+}
+
+void OpenJudgeWindow::onNextPage()
+{
+    if (!m_pastPageInfo.hasNext) return;
+
+    QUrl url(m_pastPageInfo.url);
+    QUrlQuery query(url);
+    int newPage = m_pastPageInfo.currentPage + 1;
+    query.removeAllQueryItems(QStringLiteral("page"));
+    query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
+    url.setQuery(query);
+
+    m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
+    m_refreshBtn->setEnabled(false);
+    m_crawler->fetchPastPage(url.toString());
+}
+
+// ======================================================================
+// Rebuild two-section list view
+// ======================================================================
+
+void OpenJudgeWindow::rebuildListView()
+{
+    showListPage();
+    m_listWidget->clear();
+
+    // --- 进行中的作业 ---
+    if (!m_ongoingItems.isEmpty()) {
+        auto *header = new QListWidgetItem(QStringLiteral("=== 进行中的作业 ==="));
+        header->setFlags(header->flags() & ~Qt::ItemIsSelectable);
+        header->setForeground(QColor("#569CD6"));
+        QFont boldFont = m_listWidget->font();
+        boldFont.setBold(true);
+        header->setFont(boldFont);
+        m_listWidget->addItem(header);
+
+        for (const auto &item : m_ongoingItems) {
+            auto *listItem = new QListWidgetItem(item.title);
+            listItem->setData(Qt::UserRole, item.url);
+            listItem->setData(Qt::UserRole + 1, item.deadline);
+            listItem->setSizeHint(QSize(0, 36));
+            m_listWidget->addItem(listItem);
+        }
+    }
+
+    // --- 已结束的作业 ---
+    if (!m_pastItems.isEmpty()) {
+        // Add a small spacer between sections
+        if (!m_ongoingItems.isEmpty()) {
+            auto *spacer = new QListWidgetItem(QString());
+            spacer->setFlags(Qt::NoItemFlags);
+            spacer->setSizeHint(QSize(0, 8));
+            m_listWidget->addItem(spacer);
+        }
+
+        auto *header = new QListWidgetItem(QStringLiteral("=== 已结束的作业 ==="));
+        header->setFlags(header->flags() & ~Qt::ItemIsSelectable);
+        header->setForeground(QColor("#569CD6"));
+        QFont boldFont = m_listWidget->font();
+        boldFont.setBold(true);
+        header->setFont(boldFont);
+        m_listWidget->addItem(header);
+
+        for (const auto &item : m_pastItems) {
+            auto *listItem = new QListWidgetItem(item.title);
+            listItem->setData(Qt::UserRole, item.url);
+            listItem->setSizeHint(QSize(0, 36));
+            m_listWidget->addItem(listItem);
+        }
+    }
+
+    // Empty state
+    if (m_ongoingItems.isEmpty() && m_pastItems.isEmpty()) {
+        auto *emptyItem = new QListWidgetItem(QStringLiteral("(暂无作业条目)"));
+        emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
+        emptyItem->setForeground(QColor("#888"));
+        m_listWidget->addItem(emptyItem);
+    }
+
+    // Pagination bar
+    m_pageLabel->setText(QStringLiteral("第 %1 页").arg(m_pastPageInfo.currentPage));
+    m_prevPageBtn->setEnabled(m_pastPageInfo.hasPrev);
+    m_nextPageBtn->setEnabled(m_pastPageInfo.hasNext);
+    m_paginationBar->setVisible(!m_pastItems.isEmpty() || !m_pastPageInfo.url.isEmpty());
+}
+
+// ======================================================================
+// Homework problems
+// ======================================================================
+
+void OpenJudgeWindow::onHomeworkProblemsReady(const QString &homeworkTitle,
+                                               const QList<HomeworkItem> &problems)
+{
+    showListPage();
+    m_listWidget->clear();
+    m_problemItems = problems;
+    m_currentHomeworkTitle = homeworkTitle;
+    m_viewState = OJ_PROBLEM_LIST;
+    m_backBtn->setVisible(true);
+    m_refreshBtn->setText(QStringLiteral("刷新"));
+    m_refreshBtn->setEnabled(true);
+    m_statusLabel->setText(QString::fromUtf8("题目列表 - %1 (%2 题)")
+                           .arg(homeworkTitle).arg(problems.size()));
+
+    if (problems.isEmpty()) {
+        auto *emptyItem = new QListWidgetItem(QStringLiteral("(该作业暂无题目)"));
+        emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
+        emptyItem->setForeground(QColor("#888"));
+        m_listWidget->addItem(emptyItem);
+        return;
+    }
+
+    for (const auto &problem : problems) {
+        auto *listItem = new QListWidgetItem(problem.title);
+        listItem->setData(Qt::UserRole, problem.url);
+        listItem->setSizeHint(QSize(0, 36));
+        m_listWidget->addItem(listItem);
+    }
+}
+
+// ======================================================================
+// Problem detail
+// ======================================================================
+
+void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
+{
+    m_currentProblem = detail;
+    m_viewState = OJ_PROBLEM_DETAIL;
+    m_backBtn->setVisible(true);
+    m_refreshBtn->setText(QStringLiteral("刷新"));
+    m_refreshBtn->setEnabled(true);
+    m_statusLabel->setText(detail.title);
+
+    showDetailPage(detail);
+    m_selectBtn->setVisible(true);
+    m_selectBtn->setEnabled(true);
+}
+
+void OpenJudgeWindow::onNetworkError(const QString &error)
+{
+    m_statusLabel->setText(QStringLiteral("网络错误"));
+    QMessageBox::critical(this, QStringLiteral("网络错误"),
+                          QStringLiteral("无法连接到服务器:\n") + error);
+    m_refreshBtn->setText(QStringLiteral("刷新"));
+    m_refreshBtn->setEnabled(true);
+}
+
+// ======================================================================
+// Item / section clicks
+// ======================================================================
+
+void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
+{
+    QString url = item->data(Qt::UserRole).toString();
+    if (url.isEmpty()) return;
+
+    if (m_viewState == OJ_HOMEWORK_LIST) {
+        m_currentHomeworkUrl = url;
+        m_viewState = OJ_PROBLEM_LIST;
+        m_backBtn->setVisible(true);
+        m_refreshBtn->setText(QStringLiteral("加载中..."));
+        m_refreshBtn->setEnabled(false);
+        m_statusLabel->setText(QStringLiteral("正在加载题目..."));
+        m_crawler->fetchHomeworkProblems(url);
+    } else if (m_viewState == OJ_PROBLEM_LIST) {
+        m_currentProblemUrl = url;
+        m_refreshBtn->setText(QStringLiteral("加载中..."));
+        m_refreshBtn->setEnabled(false);
+        m_statusLabel->setText(QStringLiteral("正在加载题目详情..."));
+        m_crawler->fetchProblemDetail(url);
+    }
+}
+
+void OpenJudgeWindow::onSectionClicked(QListWidgetItem *item)
+{
+    QString content = item->data(Qt::UserRole).toString();
+    m_sectionContent->setHtml(wrapHtml(content));
+}
+
+// ======================================================================
+// Navigation
+// ======================================================================
+
+void OpenJudgeWindow::onBack()
+{
+    if (m_viewState == OJ_PROBLEM_DETAIL) {
+        m_viewState = OJ_PROBLEM_LIST;
+        m_backBtn->setVisible(true);
+        m_refreshBtn->setText(QStringLiteral("刷新"));
+        m_refreshBtn->setEnabled(true);
+        m_selectBtn->setVisible(false);
+        m_statusLabel->setText(QString::fromUtf8("题目列表 - %1").arg(m_currentHomeworkTitle));
+        showListPage();
+        onHomeworkProblemsReady(m_currentHomeworkTitle, m_problemItems);
+    } else if (m_viewState == OJ_PROBLEM_LIST) {
+        m_viewState = OJ_HOMEWORK_LIST;
+        m_backBtn->setVisible(false);
+        m_refreshBtn->setText(QStringLiteral("刷新"));
+        m_refreshBtn->setEnabled(true);
+        rebuildListView();
+    }
+}
+
+void OpenJudgeWindow::onRefresh()
+{
+    m_refreshBtn->setEnabled(false);
+    m_refreshBtn->setText(QStringLiteral("加载中..."));
+
+    if (m_viewState == OJ_PROBLEM_LIST && !m_currentHomeworkUrl.isEmpty()) {
+        m_statusLabel->setText(QStringLiteral("正在刷新题目列表..."));
+        m_crawler->fetchHomeworkProblems(m_currentHomeworkUrl);
+    } else if (m_viewState == OJ_PROBLEM_DETAIL && !m_currentProblemUrl.isEmpty()) {
+        m_statusLabel->setText(QStringLiteral("正在刷新题目详情..."));
+        m_crawler->fetchProblemDetail(m_currentProblemUrl);
+    } else {
+        m_statusLabel->setText(QStringLiteral("正在刷新..."));
+        m_backBtn->setVisible(false);
+        m_selectBtn->setVisible(false);
+        m_viewState = OJ_HOMEWORK_LIST;
+        m_crawler->fetchMainPage();
+    }
+}
+
+// ======================================================================
+// Sample extraction
+// ======================================================================
+
+QStringList OpenJudgeWindow::extractPreBlocks(const QString &html)
+{
+    QStringList result;
+    QRegularExpression preRx(
+        QStringLiteral("<pre[^>]*>(.*?)</pre>"),
+        QRegularExpression::DotMatchesEverythingOption
+        | QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatchIterator it = preRx.globalMatch(html);
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+        QString content = Crawler::decodeHtmlEntities(match.captured(1).trimmed());
+        result.append(content);
+    }
+    return result;
+}
+
+QVector<OpenJudgeWindow::SamplePair>
+OpenJudgeWindow::extractSamples(const ProblemDetail &detail)
+{
+    QStringList inputs, outputs;
+    for (const auto &sec : detail.sections) {
+        bool isInput = sec.heading.contains(QStringLiteral("样例"))
+                       && sec.heading.contains(QStringLiteral("输入"));
+        bool isOutput = sec.heading.contains(QStringLiteral("样例"))
+                        && sec.heading.contains(QStringLiteral("输出"));
+        if (isInput)
+            inputs.append(extractPreBlocks(sec.contentHtml));
+        else if (isOutput)
+            outputs.append(extractPreBlocks(sec.contentHtml));
+    }
+
+    int count = qMin(inputs.size(), outputs.size());
+    QVector<SamplePair> samples;
+    for (int i = 0; i < count; ++i)
+        samples.append({inputs[i], outputs[i]});
+    return samples;
+}
+
+QString OpenJudgeWindow::writeSamplesToCache(const QVector<SamplePair> &samples)
+{
+    QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QString cacheDir = tempRoot + QStringLiteral("/SM-OJ-")
+                       + QString::number(QDateTime::currentSecsSinceEpoch());
+    QDir().mkpath(cacheDir);
+
+    for (int i = 0; i < samples.size(); ++i) {
+        QString baseName = QStringLiteral("test%1").arg(i + 1);
+        // Write .in
+        QFile inFile(cacheDir + QLatin1Char('/') + baseName + QStringLiteral(".in"));
+        if (inFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream ts(&inFile);
+            ts << samples[i].input;
+            ts.flush();
+        }
+        // Write .out
+        QFile outFile(cacheDir + QLatin1Char('/') + baseName + QStringLiteral(".out"));
+        if (outFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream ts(&outFile);
+            ts << samples[i].output;
+            ts.flush();
+        }
+    }
+    return cacheDir;
+}
+
+void OpenJudgeWindow::onSelectClicked()
+{
+    QVector<SamplePair> samples = extractSamples(m_currentProblem);
+    if (samples.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("提示"),
+            QStringLiteral("该题目没有找到样例输入/输出数据。"));
+        return;
+    }
+    QString folderPath = writeSamplesToCache(samples);
+    emit sampleSelected(folderPath);
+}

@@ -12,6 +12,7 @@
 #include "processrunner.h"
 #include "outputpanel.h"
 #include "judgepanel.h"
+#include "openjudgewindow.h"
 #include "compilerutils.h"
 
 #include <QSplitter>
@@ -194,6 +195,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_judgePanel, &JudgePanel::runAllRequested,
             this, &MainWindow::onJudgeRunAll);
+    connect(m_judgePanel, &JudgePanel::openJudgeRequested,
+            this, &MainWindow::onOpenJudgeRequested);
 
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
@@ -1210,6 +1213,25 @@ void MainWindow::onJudgeRunAll()
     m_dockJudge->raise();
 
     m_judgePanel->runJudge(filePath);
+}
+
+void MainWindow::onOpenJudgeRequested()
+{
+    if (!m_openJudgeWindow) {
+        m_openJudgeWindow = new OpenJudgeWindow(this);
+        connect(m_openJudgeWindow, &OpenJudgeWindow::sampleSelected,
+                this, &MainWindow::onOpenJudgeSampleSelected);
+    }
+    m_openJudgeWindow->show();
+    m_openJudgeWindow->raise();
+    m_openJudgeWindow->activateWindow();
+}
+
+void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
+{
+    m_judgePanel->setTestFolder(folderPath);
+    m_dockJudge->show();
+    m_dockJudge->raise();
 }
 
 QString MainWindow::saveCodeToTempFile(EditorWidget *editor)

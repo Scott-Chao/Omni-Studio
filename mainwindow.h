@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QMap>
+#include <QPointer>
 #include <atomic>
 #include <memory>
 
@@ -22,6 +23,7 @@ class SearchPanel;
 class ProcessRunner;
 class OutputPanel;
 class JudgePanel;
+class OpenJudgeWindow;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -123,6 +125,9 @@ private:
     QDockWidget *m_dockJudge;
     QAction *m_toggleJudgeAction;
 
+    // OpenJudge 窗口（单例）
+    QPointer<OpenJudgeWindow> m_openJudgeWindow;
+
     void onCompile();
     void onRun();
     void onCompileAndRun();
@@ -130,6 +135,8 @@ private:
     void onCompileFinished(bool success);
     void onRunFinished(int exitCode);
     void onJudgeRunAll();
+    void onOpenJudgeRequested();
+    void onOpenJudgeSampleSelected(const QString &folderPath);
     QString saveCodeToTempFile(EditorWidget *editor);
     void showOutputPanel();
 
