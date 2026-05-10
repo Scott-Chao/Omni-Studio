@@ -86,7 +86,7 @@ void JudgePanel::setupUi()
         "  selection-background-color: #264F78;"
         "  border: 1px solid #3c3c3c;"
         "}"));
-    m_detailEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    m_detailEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_detailEdit->setPlaceholderText(tr("点击失败的测试用例查看对比详情"));
 
     // ---- Bottom bar ----
