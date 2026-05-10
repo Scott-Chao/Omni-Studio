@@ -32,6 +32,7 @@ SOURCES += \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
     searchpanel.cpp \
+    submissionpanel.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
@@ -59,6 +60,7 @@ HEADERS += \
     processrunner.h \
     pythonsyntaxhighlighter.h \
     searchpanel.h \
+    submissionpanel.h \
     mainwindow.h \
     settingsmanager.h \
     tabmanager.h

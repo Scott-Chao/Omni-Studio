@@ -7,6 +7,7 @@
 #include <QList>
 #include <QString>
 #include <QUrl>
+#include <QTimer>
 
 struct HomeworkItem {
     QString title;
@@ -31,6 +32,14 @@ struct PageInfo {
     bool hasNext = false;
 };
 
+struct SubmissionResult {
+    QString runId;
+    QString status;       // e.g. "Accepted", "Wrong Answer", "Compile Error", etc.
+    int timeMs = -1;
+    int memoryKb = 0;
+    QString compileError; // CE detail text
+};
+
 class Crawler : public QObject
 {
     Q_OBJECT
@@ -42,6 +51,13 @@ public:
     void fetchHomeworkProblems(const QString &url);
     void fetchProblemDetail(const QString &url);
     void fetchPastPage(const QString &url);
+
+    // Submission API
+    void submitCode(const QString &problemUrl, const QString &sourceCode, int languageId);
+    void fetchSubmissionStatus(const QString &statusPageUrl);
+    void fetchCompileError(const QString &ceUrl);
+    void stopPolling();
+    void clearCookies();
 
     static QString decodeHtmlEntities(const QString &html);
     static QString stripHtmlTags(const QString &html);
@@ -59,6 +75,11 @@ signals:
     void problemDetailReady(const ProblemDetail &detail);
     void networkError(const QString &error);
 
+    // Submission signals
+    void submissionResultReady(const SubmissionResult &result);
+    void submissionFailed(const QString &error);
+    void submitPollTimeout();
+
 private:
     QNetworkAccessManager *m_manager;
     QString m_baseUrl;
@@ -69,12 +90,26 @@ private:
     void onLoginFinished(QNetworkReply *reply);
     void onMainPageFinished(QNetworkReply *reply);
 
+    // Submission internals
+    void onSubmitPageFinished(QNetworkReply *reply, const QString &problemUrl,
+                              const QString &sourceCode, int languageId);
+    void doPollSubmissionStatus();
+    void onCompileErrorPageFinished(QNetworkReply *reply, SubmissionResult &result);
+
     QString extractCsrfToken(const QString &html);
     void parseMainPage(const QString &html,
                        QList<HomeworkItem> &ongoing,
                        QList<HomeworkItem> &past,
                        PageInfo &pastPage);
     ProblemDetail parseProblemDetail(const QString &html);
+
+    QTimer *m_pollTimer = nullptr;
+    int m_pollCount = 0;
+    QString m_pollStatusUrl;
+    static constexpr int kMaxPollCount = 15;
+    QString m_pendingRunId;
+    QString m_pendingCeUrl;
+    bool m_isLoginFlow = false;
 };
 
 #endif // CRAWLER_H

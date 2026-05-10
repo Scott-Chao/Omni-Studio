@@ -13,6 +13,7 @@
 #include "outputpanel.h"
 #include "judgepanel.h"
 #include "openjudgewindow.h"
+#include "submissionpanel.h"
 #include "compilerutils.h"
 #include "languageutils.h"
 
@@ -198,6 +199,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onJudgeRunAll);
     connect(m_judgePanel, &JudgePanel::openJudgeRequested,
             this, &MainWindow::onOpenJudgeRequested);
+    connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
+            this, &MainWindow::onSubmitToOpenJudge);
 
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
@@ -1225,6 +1228,14 @@ void MainWindow::onOpenJudgeRequested()
         m_openJudgeWindow = new OpenJudgeWindow(this);
         connect(m_openJudgeWindow, &OpenJudgeWindow::sampleSelected,
                 this, &MainWindow::onOpenJudgeSampleSelected);
+        connect(m_openJudgeWindow, &OpenJudgeWindow::loginStateChanged,
+                this, &MainWindow::onOpenJudgeLoginStateChanged);
+        connect(m_openJudgeWindow, &OpenJudgeWindow::submissionResultReady,
+                this, &MainWindow::onSubmissionResultReady);
+        connect(m_openJudgeWindow, &OpenJudgeWindow::submissionFailed,
+                this, [this](const QString &error) {
+            QMessageBox::warning(this, tr("提交失败"), error);
+        });
     }
     m_openJudgeWindow->show();
     m_openJudgeWindow->raise();
@@ -1236,6 +1247,103 @@ void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
     m_judgePanel->setTestFolder(folderPath);
     m_dockJudge->show();
     m_dockJudge->raise();
+}
+
+void MainWindow::onSubmitToOpenJudge()
+{
+    // 1. Check if OpenJudge window exists and is logged in
+    if (!m_openJudgeWindow || !m_openJudgeWindow->isLoggedIn()) {
+        QMessageBox::information(this, tr("提示"),
+            tr("请先登录 OpenJudge"));
+        onOpenJudgeRequested();
+        // Delay-trigger login dialog
+        QTimer::singleShot(500, this, [this]() {
+            if (m_openJudgeWindow)
+                m_openJudgeWindow->onReLogin();
+        });
+        return;
+    }
+
+    // 2. Check if there's a code file open
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->isCodeEdit()) {
+        QMessageBox::information(this, tr("提示"),
+            tr("请打开一个代码文件进行提交"));
+        return;
+    }
+
+    // 3. Get code and determine language
+    QString code = editor->toPlainText();
+    if (code.trimmed().isEmpty()) {
+        QMessageBox::information(this, tr("提示"),
+            tr("代码内容为空"));
+        return;
+    }
+
+    // Save unsaved content first
+    QString filePath = editor->currentFilePath();
+    if (filePath.isEmpty() || editor->isModified()) {
+        filePath = saveCodeToTempFile(editor);
+        if (filePath.isEmpty()) {
+            QMessageBox::warning(this, tr("错误"),
+                tr("无法保存代码文件"));
+            return;
+        }
+    }
+
+    QString ext = QFileInfo(filePath).suffix().toLower();
+
+    // Map to OpenJudge language IDs (typical values for cxsjsx.openjudge.cn)
+    int langId = 1; // default: G++
+    if (ext == QStringLiteral("c"))
+        langId = 0;  // GCC
+    else if (ext == QStringLiteral("cc") || ext == QStringLiteral("cxx"))
+        langId = 1;  // G++
+    else if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw"))
+        langId = 6;  // Python 3
+
+    // 4. Submit through OpenJudgeWindow
+    m_openJudgeWindow->submitCurrentProblem(code, langId);
+
+    // 5. Show a brief status message in the judge panel
+    m_dockJudge->show();
+    m_dockJudge->raise();
+}
+
+void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
+{
+    // Hide the output panel if it's visible
+    m_outputPanel->hide();
+
+    // Create the submit result panel on first use
+    if (!m_submitResultPanel) {
+        m_submitResultPanel = new SubmitResultPanel(this);
+        // Insert it into the right splitter, positioned where output panel is
+        int outputIdx = m_rightSplitter->indexOf(m_outputPanel);
+        m_rightSplitter->insertWidget(outputIdx, m_submitResultPanel);
+        connect(m_submitResultPanel, &SubmitResultPanel::hideRequested, this, [this]() {
+            m_submitResultPanel->hide();
+        });
+    }
+
+    m_submitResultPanel->showResult(result);
+    m_submitResultPanel->setVisible(true);
+
+    // Resize splitter to give the result panel 1/3 height
+    int total = m_rightSplitter->height();
+    if (total > 0) {
+        int panelH = total / 3;
+        m_rightSplitter->setSizes({total - panelH, panelH});
+    }
+}
+
+void MainWindow::onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username)
+{
+    Q_UNUSED(username);
+    // Can be used to update UI state when login state changes
+    if (loggedIn) {
+        // Could show a status bar message
+    }
 }
 
 QString MainWindow::saveCodeToTempFile(EditorWidget *editor)

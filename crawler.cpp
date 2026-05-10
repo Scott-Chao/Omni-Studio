@@ -10,6 +10,9 @@
 #include <QTextStream>
 #include <QCoreApplication>
 #include <QTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 
 static const QByteArray kUserAgent = QByteArrayLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
@@ -49,14 +52,46 @@ void Crawler::login(const QString &username, const QString &password)
     m_username = username;
     m_password = password;
 
-    QUrl url(m_baseUrl + "/login/");
-    QNetworkRequest request(url);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    debugLog(QStringLiteral("login: fetching login page to establish session"));
 
-    QNetworkReply *reply = m_manager->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        onLoginPageFinished(reply);
+    // Step 1: fetch the login page to get session cookie (PHPSESSID)
+    QString loginPageUrl = m_baseUrl + QStringLiteral("/auth/login/");
+    QNetworkRequest pageReq(loginPageUrl);
+    pageReq.setRawHeader("User-Agent", kUserAgent);
+    pageReq.setTransferTimeout(15000);
+
+    QNetworkReply *pageReply = m_manager->get(pageReq);
+    connect(pageReply, &QNetworkReply::finished, this, [this, pageReply]() {
+        pageReply->deleteLater();
+
+        if (pageReply->error() != QNetworkReply::NoError) {
+            debugLog(QStringLiteral("login: login page error: %1").arg(pageReply->errorString()));
+            emit loginFailed(QStringLiteral("无法访问登录页面: ") + pageReply->errorString());
+            return;
+        }
+
+        debugLog(QStringLiteral("login: login page loaded, session cookie established"));
+
+        // Step 2: POST credentials to JSON API
+        QUrl apiUrl(m_baseUrl + QStringLiteral("/api/auth/login/"));
+        QNetworkRequest apiReq(apiUrl);
+        apiReq.setHeader(QNetworkRequest::ContentTypeHeader,
+                         QByteArrayLiteral("application/x-www-form-urlencoded"));
+        apiReq.setRawHeader("User-Agent", kUserAgent);
+        apiReq.setRawHeader("X-Requested-With", QByteArrayLiteral("XMLHttpRequest"));
+        apiReq.setRawHeader("Referer", (m_baseUrl + "/auth/login/").toUtf8());
+
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("email"), m_username);
+        query.addQueryItem(QStringLiteral("password"), m_password);
+
+        QByteArray postData = query.toString(QUrl::FullyEncoded).toUtf8();
+        debugLog(QStringLiteral("login: POSTing credentials to /api/auth/login/"));
+
+        QNetworkReply *lr = m_manager->post(apiReq, postData);
+        connect(lr, &QNetworkReply::finished, this, [this, lr]() {
+            onLoginFinished(lr);
+        });
     });
 }
 
@@ -128,6 +163,14 @@ void Crawler::fetchHomeworkProblems(const QString &url)
 
             QStringList segments = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
             if (segments.size() < 2) continue;
+
+            // Skip non-problem path segments (user profile, auth, etc.)
+            static const QSet<QString> kSkipPathSegments = {
+                QStringLiteral("user"), QStringLiteral("profile"), QStringLiteral("member"),
+                QStringLiteral("auth"), QStringLiteral("login"), QStringLiteral("register"),
+                QStringLiteral("password"), QStringLiteral("forget")
+            };
+            if (kSkipPathSegments.contains(segments.first())) continue;
 
             QString lastSeg = segments.last();
 
@@ -319,6 +362,8 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
+        debugLog(QStringLiteral("onLoginPageFinished: NETWORK ERROR getting /login/ -- %1").arg(reply->errorString()));
+        debugLog(QStringLiteral("onLoginPageFinished: falling back to main page login flow"));
         QUrl url(m_baseUrl);
         QNetworkRequest request(url);
         request.setRawHeader("User-Agent", kUserAgent);
@@ -330,6 +375,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
             QString csrf = extractCsrfToken(html);
 
             if (!csrf.isEmpty()) {
+                debugLog(QStringLiteral("onLoginPageFinished fallback: CSRF found on main page, POSTing login"));
                 QUrlQuery query;
                 query.addQueryItem(QStringLiteral("username"), m_username);
                 query.addQueryItem(QStringLiteral("password"), m_password);
@@ -348,6 +394,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
                     onLoginFinished(lr);
                 });
             } else {
+                debugLog(QStringLiteral("onLoginPageFinished fallback: no CSRF found on main page, treating as public content"));
                 // No login form – content is public
                 QList<HomeworkItem> ongoing, past;
                 PageInfo pastPage;
@@ -361,8 +408,11 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
         return;
     }
 
+    debugLog(QStringLiteral("onLoginPageFinished: /login/ page loaded OK, replyUrl=%1").arg(reply->url().toString()));
     QString html = QString::fromUtf8(reply->readAll());
     QString csrf = extractCsrfToken(html);
+    debugLog(QStringLiteral("onLoginPageFinished: CSRF token found=%1, token=%2")
+        .arg(!csrf.isEmpty()).arg(csrf.left(20)));
 
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("username"), m_username);
@@ -387,14 +437,49 @@ void Crawler::onLoginFinished(QNetworkReply *reply)
 {
     reply->deleteLater();
 
-    QUrl url(m_baseUrl);
-    QNetworkRequest request(url);
-    request.setRawHeader("User-Agent", kUserAgent);
+    if (reply->error() != QNetworkReply::NoError) {
+        debugLog(QStringLiteral("onLoginFinished: NETWORK ERROR: %1").arg(reply->errorString()));
+        emit loginFailed(QStringLiteral("网络错误: ") + reply->errorString());
+        return;
+    }
 
-    QNetworkReply *mainReply = m_manager->get(request);
-    connect(mainReply, &QNetworkReply::finished, this, [this, mainReply]() {
-        onMainPageFinished(mainReply);
-    });
+    QByteArray data = reply->readAll();
+    debugLog(QStringLiteral("onLoginFinished: response='%1'")
+        .arg(QString::fromUtf8(data.left(200))));
+
+    // Parse JSON response
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        debugLog(QStringLiteral("onLoginFinished: JSON parse error: %1").arg(parseError.errorString()));
+        emit loginFailed(QStringLiteral("登录返回数据异常"));
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+    QString result = obj.value(QStringLiteral("result")).toString();
+
+    if (result == QStringLiteral("SUCCESS")) {
+        debugLog(QStringLiteral("onLoginFinished: login SUCCESS"));
+        emit loginSuccess();
+
+        // Fetch the main page to populate the contest list
+        QUrl url(m_baseUrl);
+        QNetworkRequest request(url);
+        request.setRawHeader("User-Agent", kUserAgent);
+        request.setTransferTimeout(15000);
+        QNetworkReply *mainReply = m_manager->get(request);
+        connect(mainReply, &QNetworkReply::finished, this, [this, mainReply]() {
+            onMainPageFinished(mainReply);
+        });
+    } else {
+        QString message = obj.value(QStringLiteral("message")).toString();
+        if (message.isEmpty())
+            message = QStringLiteral("登录失败，请检查用户名和密码");
+        debugLog(QStringLiteral("onLoginFinished: login FAILED: %1").arg(message));
+        emit loginFailed(message);
+    }
 }
 
 void Crawler::onMainPageFinished(QNetworkReply *reply)
@@ -409,15 +494,42 @@ void Crawler::onMainPageFinished(QNetworkReply *reply)
     QUrl redirectedUrl = reply->url();
     QString html = QString::fromUtf8(reply->readAll());
 
-    if (redirectedUrl.path().contains(QLatin1String("/login"))
-        || html.contains(QStringLiteral("请输入用户名"))
-        || html.contains(QStringLiteral("登录")))
-    {
-        emit loginFailed(QStringLiteral("登录失败，请检查用户名和密码"));
-        return;
-    }
+    // Login detection only runs during the login confirmation flow
+    if (m_isLoginFlow) {
+        m_isLoginFlow = false;
 
-    emit loginSuccess();
+        bool urlIsLogin = redirectedUrl.path().contains(QLatin1String("/login"));
+        bool hasLoginError = html.contains(QStringLiteral("用户名或密码错误"))
+                             || html.contains(QStringLiteral("请输入正确的用户名"));
+        bool hasLoginForm = html.contains(QStringLiteral("请输入用户名"))
+                            || html.contains(QStringLiteral("type=\"password\""))
+                            || html.contains(QStringLiteral("name=\"password\""));
+
+        // Only check username indicator if m_username is non-empty
+        bool usernameInHtml = !m_username.isEmpty() && html.contains(m_username);
+        bool hasLoggedInIndicator = usernameInHtml
+                                    || html.contains(QStringLiteral(">退出<"))
+                                    || html.contains(QStringLiteral(">注销<"))
+                                    || html.contains(QStringLiteral(">退出登录<"))
+                                    || html.contains(QStringLiteral(">注销用户<"));
+        debugLog(QStringLiteral("onMainPageFinished: urlPath=%1, urlIsLogin=%2, hasLoginError=%3, hasLoginForm=%4, hasLoggedInIndicator=%5")
+            .arg(redirectedUrl.path()).arg(urlIsLogin).arg(hasLoginError).arg(hasLoginForm).arg(hasLoggedInIndicator));
+
+        if (urlIsLogin || hasLoginError) {
+            debugLog(QStringLiteral("onMainPageFinished: login FAILED (url or error)"));
+            emit loginFailed(QStringLiteral("登录失败，请检查用户名和密码"));
+            return;
+        }
+
+        if (hasLoginForm && !hasLoggedInIndicator) {
+            debugLog(QStringLiteral("onMainPageFinished: login FAILED (form without login)"));
+            emit loginFailed(QStringLiteral("登录失败，请检查用户名和密码"));
+            return;
+        }
+
+        debugLog(QStringLiteral("onMainPageFinished: login SUCCESS"));
+        emit loginSuccess();
+    }
 
     QList<HomeworkItem> ongoing, past;
     PageInfo pastPage;
@@ -611,6 +723,39 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
         .arg(html.contains(QStringLiteral("<h3")))
         .arg(html.contains(QStringLiteral("<pre"))));
 
+    // Log form elements on the problem page (may contain language select for submit)
+    {
+        QRegularExpression selRx(QStringLiteral("<select[^>]*>(.*?)</select>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        QRegularExpressionMatchIterator selIt = selRx.globalMatch(html);
+        while (selIt.hasNext()) {
+            QRegularExpressionMatch selM = selIt.next();
+            QRegularExpression nameRx(QStringLiteral("name=\"([^\"]+)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch nameM = nameRx.match(selM.captured(0));
+            QString selName = nameM.hasMatch() ? nameM.captured(1) : "(unnamed)";
+            debugLog(QStringLiteral("  PROBLEM PAGE select name='%1'").arg(selName));
+            QRegularExpression optRx(QStringLiteral("<option[^>]*value=\"([^\"]*)\"[^>]*>([^<]+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(0));
+            while (optIt.hasNext()) {
+                QRegularExpressionMatch optM = optIt.next();
+                bool selected = optM.captured(0).contains(QLatin1String("selected"));
+                debugLog(QStringLiteral("    option value='%1'%2 text='%3'")
+                    .arg(optM.captured(1), selected ? QStringLiteral(" [SELECTED]") : QString(), optM.captured(2).trimmed()));
+            }
+        }
+        QRegularExpression formRx(QStringLiteral("<form[^>]*action=\"([^\"]*)\"[^>]*method=\"([^\"]*)\""),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatchIterator formIt = formRx.globalMatch(html);
+        while (formIt.hasNext()) {
+            QRegularExpressionMatch formM = formIt.next();
+            if (!formM.captured(1).contains(QLatin1String("search")))
+                debugLog(QStringLiteral("  PROBLEM PAGE form action='%1' method=%2")
+                    .arg(formM.captured(1)).arg(formM.captured(2)));
+        }
+    }
+
     static const QStringList kSectionKeywords = {
         QStringLiteral("样例输入"),
         QStringLiteral("样例输出"),
@@ -750,4 +895,612 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             .arg(sec.contentHtml.contains(QStringLiteral("<pre"))));
 
     return detail;
+}
+
+// ======================================================================
+// Submission API
+// ======================================================================
+
+void Crawler::submitCode(const QString &problemUrl, const QString &sourceCode, int languageId)
+{
+    debugLog(QStringLiteral("submitCode: problemUrl=%1 lang=%2").arg(problemUrl).arg(languageId));
+
+    QString submitUrl = problemUrl;
+    if (!submitUrl.endsWith(QLatin1Char('/')))
+        submitUrl += QLatin1Char('/');
+    submitUrl += QStringLiteral("submit/");
+
+    QNetworkRequest request(submitUrl);
+    request.setRawHeader("User-Agent", kUserAgent);
+    request.setTransferTimeout(15000);
+
+    QNetworkReply *reply = m_manager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, problemUrl, sourceCode, languageId]() {
+        onSubmitPageFinished(reply, problemUrl, sourceCode, languageId);
+    });
+}
+
+void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemUrl,
+                                    const QString &sourceCode, int languageId)
+{
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        debugLog(QStringLiteral("onSubmitPageFinished error: %1").arg(reply->errorString()));
+        emit submissionFailed(QStringLiteral("无法访问提交页面: ") + reply->errorString());
+        return;
+    }
+
+    QString html = QString::fromUtf8(reply->readAll());
+    QString csrf = extractCsrfToken(html);
+
+    debugLog(QStringLiteral("onSubmitPageFinished: CSRF found=%1").arg(!csrf.isEmpty()));
+
+    // Log the submit page form fields to understand expected parameter names
+    {
+        QRegularExpression taRx(QStringLiteral("<textarea[^>]*name=\"([^\"]+)\""),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch taM = taRx.match(html);
+        if (taM.hasMatch())
+            debugLog(QStringLiteral("  textarea name='%1'").arg(taM.captured(1)));
+
+        // Log ALL <select> elements and their options
+        QRegularExpression selRx(QStringLiteral("<select[^>]*>(.*?)</select>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        QRegularExpressionMatchIterator selIt = selRx.globalMatch(html);
+        while (selIt.hasNext()) {
+            QRegularExpressionMatch selM = selIt.next();
+            QRegularExpression nameRx(QStringLiteral("name=\"([^\"]+)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch nameM = nameRx.match(selM.captured(0));
+            QString selName = nameM.hasMatch() ? nameM.captured(1) : "(unnamed)";
+            debugLog(QStringLiteral("  select name='%1'").arg(selName));
+            QRegularExpression optRx(QStringLiteral("<option[^>]*value=\"([^\"]*)\"[^>]*>([^<]+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(0));
+            while (optIt.hasNext()) {
+                QRegularExpressionMatch optM = optIt.next();
+                bool selected = optM.captured(0).contains(QLatin1String("selected"));
+                debugLog(QStringLiteral("    option value='%1'%2 text='%3'")
+                    .arg(optM.captured(1), selected ? QStringLiteral(" [SELECTED]") : QString(), optM.captured(2).trimmed()));
+            }
+        }
+
+        // Log ALL <input> elements (not just hidden) - use a more flexible regex for multiline
+        QRegularExpression inputRx(QStringLiteral("<input[^>]*>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        QRegularExpressionMatchIterator inputIt = inputRx.globalMatch(html);
+        while (inputIt.hasNext()) {
+            QRegularExpressionMatch iM = inputIt.next();
+            QString tag = iM.captured(0);
+            QString name, type, value;
+            QRegularExpression nameRx(QStringLiteral("name\\s*=\\s*\"([^\"]+)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch nameM = nameRx.match(tag);
+            if (nameM.hasMatch()) name = nameM.captured(1); else continue; // skip inputs without name
+            QRegularExpression typeRx(QStringLiteral("type\\s*=\\s*\"([^\"]+)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch typeM = typeRx.match(tag);
+            if (typeM.hasMatch()) type = typeM.captured(1);
+            QRegularExpression valRx(QStringLiteral("value\\s*=\\s*\"([^\"]*)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch valM = valRx.match(tag);
+            if (valM.hasMatch()) value = valM.captured(1);
+            debugLog(QStringLiteral("  input name='%1' type='%2' value='%3'")
+                .arg(name, type, value.left(40)));
+        }
+
+        // Find ALL forms (not just the submit form)
+        QRegularExpression formRx(QStringLiteral("<form[^>]*action=\"([^\"]*)\"[^>]*method=\"([^\"]*)\""),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatchIterator formIt = formRx.globalMatch(html);
+        while (formIt.hasNext()) {
+            QRegularExpressionMatch formM = formIt.next();
+            if (!formM.captured(1).contains(QLatin1String("search")))
+                debugLog(QStringLiteral("  form action='%1' method=%2")
+                    .arg(formM.captured(1)).arg(formM.captured(2)));
+        }
+    }
+    // PHP-based OpenJudge (PHPSESSID) uses /api/solution/submitv2/ with base64-encoded source
+
+    // Extract hidden fields and language radio from the submit form
+    QString contestId, problemNumber, languageValue;
+    {
+        QRegularExpression ciRx(QStringLiteral("<input[^>]*name=\"contestId\"[^>]*value=\"([^\"]+)\""),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch ciM = ciRx.match(html);
+        if (ciM.hasMatch()) contestId = ciM.captured(1);
+
+        QRegularExpression pnRx(QStringLiteral("<input[^>]*name=\"problemNumber\"[^>]*value=\"([^\"]+)\""),
+            QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch pnM = pnRx.match(html);
+        if (pnM.hasMatch()) problemNumber = pnM.captured(1);
+
+        // Extract language radio button value (use checked one, or first one)
+        // Log the raw HTML around language for debugging
+        {
+            qsizetype langPos = html.indexOf(QLatin1String("name=\"language\""), 0, Qt::CaseInsensitive);
+            if (langPos < 0) langPos = html.indexOf(QLatin1String("name=language"), 0, Qt::CaseInsensitive);
+            if (langPos >= 0) {
+                qsizetype start = qMax(qsizetype(0), langPos - 60);
+                qsizetype end = qMin(html.length(), langPos + 100);
+                QString snippet = html.mid(start, end - start);
+                snippet.replace(QLatin1Char('\n'), QLatin1Char(' '));
+                snippet.replace(QLatin1Char('\r'), QLatin1Char(' '));
+                debugLog(QStringLiteral("  language input raw HTML: ...%1...").arg(snippet.trimmed()));
+            } else {
+                debugLog(QStringLiteral("  'name=\"language\"' NOT FOUND in HTML"));
+            }
+        }
+        QRegularExpression langRx(QStringLiteral(
+            "<input[^>]*name=\"language\"[^>]*type=\"radio\"[^>]*value=\"([^\"]+)\"[^>]*>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        QRegularExpressionMatchIterator langIt = langRx.globalMatch(html);
+        QString firstLangValue;
+        while (langIt.hasNext()) {
+            QRegularExpressionMatch langM = langIt.next();
+            QString tag = langM.captured(0);
+            QString val = langM.captured(1);
+            if (firstLangValue.isEmpty()) firstLangValue = val;
+            if (tag.contains(QLatin1String("checked"))) {
+                languageValue = val;
+                debugLog(QStringLiteral("  language radio (checked) value='%1'").arg(val));
+            } else {
+                debugLog(QStringLiteral("  language radio value='%1'").arg(val));
+            }
+        }
+        if (languageValue.isEmpty()) {
+            languageValue = firstLangValue;
+            if (!languageValue.isEmpty())
+                debugLog(QStringLiteral("  using first language radio value='%1'").arg(languageValue));
+        }
+        if (languageValue.isEmpty()) {
+            // Fallback: more flexible regex - just find name="language" and capture value
+            QRegularExpression fallbackRx(QStringLiteral("name=\"language\"[^>]*value=\"([^\"]+)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch fallbackM = fallbackRx.match(html);
+            if (fallbackM.hasMatch()) {
+                languageValue = fallbackM.captured(1);
+                debugLog(QStringLiteral("  using fallback language value='%1'").arg(languageValue));
+            }
+        }
+        if (languageValue.isEmpty()) {
+            // Fallback: use caller-provided languageId
+            debugLog(QStringLiteral("  no language radio found, using caller lang=%1").arg(languageId));
+            languageValue = QString::number(languageId);
+        }
+    }
+
+    // POST to the JSON API endpoint
+    QString apiUrl = m_baseUrl + QStringLiteral("/api/solution/submitv2/");
+    QNetworkRequest apiReq(apiUrl);
+    apiReq.setHeader(QNetworkRequest::ContentTypeHeader,
+                     QByteArrayLiteral("application/x-www-form-urlencoded"));
+    apiReq.setRawHeader("User-Agent", kUserAgent);
+    apiReq.setRawHeader("X-Requested-With", QByteArrayLiteral("XMLHttpRequest"));
+    apiReq.setRawHeader("Referer", problemUrl.toUtf8());
+
+    // Build POST body manually to ensure proper percent-encoding.
+    // Using QUrlQuery would leave '+' in base64 unencoded, but in
+    // application/x-www-form-urlencoded '+' means space, corrupting the
+    // source.  We also skip sourceEncode=base64 since some contest
+    // instances (GCC/G++) fail to decode it, resulting in empty source.
+    QByteArray postData;
+    postData += "source=" + QUrl::toPercentEncoding(QString::fromUtf8(sourceCode.toUtf8()));
+    postData += "&contestId=" + QUrl::toPercentEncoding(contestId);
+    postData += "&problemNumber=" + QUrl::toPercentEncoding(problemNumber);
+    postData += "&language=" + QUrl::toPercentEncoding(languageValue);
+    debugLog(QStringLiteral("onSubmitPageFinished: POSTing code to %1 (contest=%2, problem=%3, lang=%4)")
+        .arg(apiUrl, contestId, problemNumber, languageValue));
+    debugLog(QStringLiteral("  raw POST data: %1").arg(QString::fromUtf8(postData.left(500))));
+
+    QNetworkReply *postReply = m_manager->post(apiReq, postData);
+    connect(postReply, &QNetworkReply::finished, this, [this, postReply, problemUrl]() {
+        postReply->deleteLater();
+
+        if (postReply->error() != QNetworkReply::NoError) {
+            debugLog(QStringLiteral("submitCode POST error: %1").arg(postReply->errorString()));
+            emit submissionFailed(QStringLiteral("提交失败: ") + postReply->errorString());
+            return;
+        }
+
+        QByteArray responseData = postReply->readAll();
+        debugLog(QStringLiteral("submitCode POST done: url=%1 response='%2'")
+            .arg(postReply->url().toString(), QString::fromUtf8(responseData.left(300))));
+
+        // Parse JSON response (PHP API returns JSON)
+        QJsonParseError jsonErr;
+        QJsonDocument doc = QJsonDocument::fromJson(responseData, &jsonErr);
+        if (jsonErr.error == QJsonParseError::NoError && doc.isObject()) {
+            QJsonObject obj = doc.object();
+            QString result = obj.value(QStringLiteral("result")).toString();
+            debugLog(QStringLiteral("submitCode API: result=%1").arg(result));
+            if (result == QStringLiteral("SUCCESS")) {
+                // Use the redirect URL from API response to track the submission
+                QString redirectUrl = obj.value(QStringLiteral("redirect")).toString();
+                if (!redirectUrl.isEmpty()) {
+                    m_pollStatusUrl = redirectUrl;
+                    debugLog(QStringLiteral("submitCode: using redirect URL for polling: %1").arg(m_pollStatusUrl));
+                } else {
+                    // Fallback: construct status URL
+                    QUrl base(problemUrl);
+                    QString path = base.path();
+                    while (path.endsWith(QLatin1Char('/')))
+                        path.chop(1);
+                    int lastSlash = path.lastIndexOf(QLatin1Char('/'));
+                    if (lastSlash > 0)
+                        path = path.left(lastSlash);
+                    m_pollStatusUrl = base.scheme() + QStringLiteral("://") + base.host() + path + QStringLiteral("/status/");
+                    debugLog(QStringLiteral("submitCode: constructed statusUrl=%1").arg(m_pollStatusUrl));
+                }
+                m_pollCount = 0;
+                m_pendingRunId.clear();
+                m_pendingCeUrl.clear();
+                if (!m_pollTimer) {
+                    m_pollTimer = new QTimer(this);
+                    connect(m_pollTimer, &QTimer::timeout, this, &Crawler::doPollSubmissionStatus);
+                }
+                doPollSubmissionStatus();
+                m_pollTimer->start(2000);
+                return;
+            } else {
+                QString msg = obj.value(QStringLiteral("message")).toString();
+                if (msg.isEmpty()) msg = QStringLiteral("提交被拒绝");
+                debugLog(QStringLiteral("submitCode API ERROR: %1").arg(msg));
+                emit submissionFailed(msg);
+                return;
+            }
+        }
+
+        // Fallback: treat as HTML (old Django behavior)
+        QString responseHtml = QString::fromUtf8(responseData);
+        QString statusUrl;
+        if (postReply->url().path().contains(QLatin1String("status")))
+            statusUrl = postReply->url().toString();
+
+        if (statusUrl.isEmpty()) {
+            QUrl base(problemUrl);
+            QString path = base.path();
+            while (path.endsWith(QLatin1Char('/')))
+                path.chop(1);
+            int lastSlash = path.lastIndexOf(QLatin1Char('/'));
+            if (lastSlash > 0)
+                path = path.left(lastSlash);
+            statusUrl = base.scheme() + QStringLiteral("://") + base.host() + path + QStringLiteral("/status/");
+        }
+
+        debugLog(QStringLiteral("submitCode: statusUrl=%1").arg(statusUrl));
+
+        m_pollStatusUrl = statusUrl;
+        m_pollCount = 0;
+        m_pendingRunId.clear();
+        m_pendingCeUrl.clear();
+
+        if (!m_pollTimer) {
+            m_pollTimer = new QTimer(this);
+            connect(m_pollTimer, &QTimer::timeout, this, &Crawler::doPollSubmissionStatus);
+        }
+
+        doPollSubmissionStatus();
+        m_pollTimer->start(2000);
+    });
+}
+
+void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
+{
+    debugLog(QStringLiteral("fetchSubmissionStatus: %1").arg(statusPageUrl));
+
+    QNetworkRequest request(statusPageUrl);
+    request.setRawHeader("User-Agent", kUserAgent);
+    request.setTransferTimeout(15000);
+
+    QNetworkReply *reply = m_manager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            debugLog(QStringLiteral("fetchSubmissionStatus error: %1").arg(reply->errorString()));
+            return;
+        }
+
+        QString html = QString::fromUtf8(reply->readAll());
+
+        QRegularExpression trRx(QStringLiteral("<tr[^>]*>(.*?)</tr>"),
+            QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+        QRegularExpressionMatchIterator trIt = trRx.globalMatch(html);
+
+        SubmissionResult result;
+        bool found = false;
+
+        while (trIt.hasNext()) {
+            QRegularExpressionMatch trMatch = trIt.next();
+            QString rowHtml = trMatch.captured(1);
+
+            QRegularExpression tdRx(QStringLiteral("<td[^>]*>(.*?)</td>"),
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+            QRegularExpressionMatchIterator tdIt = tdRx.globalMatch(rowHtml);
+
+            QStringList cells;
+            while (tdIt.hasNext()) {
+                QRegularExpressionMatch tdMatch = tdIt.next();
+                cells.append(tdMatch.captured(1).trimmed());
+            }
+
+            if (cells.size() < 6)
+                continue;
+
+            // cells[0] = submit-user (format "studentID-name")
+            // cells[1] = class, cells[2] = title, cells[3] = result
+            // cells[4] = memory, cells[5] = time
+            QString fullUser = stripHtmlTags(cells.value(0)).trimmed();
+            // Extract student ID from "2500012947-宋睿宇(dxz)" format
+            QString userId = fullUser.section(QLatin1Char('-'), 0, 0).trimmed();
+            if (userId.isEmpty())
+                continue;
+
+            if (!m_username.isEmpty() && userId != m_username)
+                continue;
+
+            QString resultHtml = cells.value(3);
+            QString resultText = stripHtmlTags(resultHtml).trimmed();
+
+            if (resultText.contains(QStringLiteral("Pending"))
+                || resultText.contains(QStringLiteral("Judging"))
+                || resultText.contains(QStringLiteral("Waiting")))
+                continue;
+
+            found = true;
+
+            // Extract run ID from solution link: /hw202613/solution/52509098/
+            {
+                static const QRegularExpression solRx(QStringLiteral("/solution/(\\d+)/"));
+                QRegularExpressionMatch solMatch = solRx.match(resultHtml);
+                if (solMatch.hasMatch())
+                    result.runId = solMatch.captured(1);
+            }
+
+            result.status = resultText;
+
+            QString timeStr = stripHtmlTags(cells.value(5)).trimmed();
+            timeStr.remove(QStringLiteral("ms"));
+            bool ok = false;
+            int t = timeStr.toInt(&ok);
+            if (ok) result.timeMs = t;
+
+            QString memStr = stripHtmlTags(cells.value(4)).trimmed();
+            memStr.remove(QStringLiteral("kB"), Qt::CaseInsensitive);
+            ok = false;
+            int m = memStr.toInt(&ok);
+            if (ok) result.memoryKb = m;
+
+            QRegularExpression ceLinkRx(QStringLiteral("<a\\s+href=\"([^\"]+compile[^\"-]*error[^\"]*)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch ceMatch = ceLinkRx.match(resultHtml);
+            if (ceMatch.hasMatch()) {
+                m_pendingCeUrl = ceMatch.captured(1);
+                if (m_pendingCeUrl.startsWith(QLatin1Char('/')))
+                    m_pendingCeUrl = m_baseUrl + m_pendingCeUrl;
+                debugLog(QStringLiteral("CE url found: %1").arg(m_pendingCeUrl));
+            }
+
+            break;
+        }
+
+        if (found) {
+            if (!m_pendingCeUrl.isEmpty()) {
+                QNetworkRequest ceReq(m_pendingCeUrl);
+                ceReq.setRawHeader("User-Agent", kUserAgent);
+                ceReq.setTransferTimeout(15000);
+                QNetworkReply *ceReply = m_manager->get(ceReq);
+                connect(ceReply, &QNetworkReply::finished, this, [this, ceReply, result]() mutable {
+                    onCompileErrorPageFinished(ceReply, result);
+                });
+            } else {
+                emit submissionResultReady(result);
+            }
+        }
+    });
+}
+
+void Crawler::doPollSubmissionStatus()
+{
+    m_pollCount++;
+    debugLog(QStringLiteral("doPollSubmissionStatus: attempt %1/%2")
+        .arg(m_pollCount).arg(kMaxPollCount));
+
+    if (m_pollCount > kMaxPollCount) {
+        m_pollTimer->stop();
+        emit submitPollTimeout();
+        return;
+    }
+
+    QNetworkRequest request(m_pollStatusUrl);
+    request.setRawHeader("User-Agent", kUserAgent);
+    request.setTransferTimeout(15000);
+
+    QNetworkReply *reply = m_manager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            debugLog(QStringLiteral("doPollSubmissionStatus network error: %1").arg(reply->errorString()));
+            return;
+        }
+
+        QString html = QString::fromUtf8(reply->readAll());
+
+        // Extract body text (strip HTML) for parsing
+        QString text;
+        {
+            QRegularExpression bodyRx(QStringLiteral("<body[^>]*>(.*)</body>"),
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+            QRegularExpressionMatch bodyM = bodyRx.match(html);
+            if (bodyM.hasMatch()) {
+                QString bodyContent = bodyM.captured(1);
+                text = bodyContent;
+                text.replace(QRegularExpression(QStringLiteral("<script[^>]*>.*?</script>")), QString());
+                text.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>")), QString());
+                text.replace(QRegularExpression(QStringLiteral("<[^>]*>")), QString());
+                text = decodeHtmlEntities(text);
+                text.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
+                text = text.trimmed();
+                debugLog(QStringLiteral("  BODY_TEXT=%1").arg(text.left(500)));
+            } else {
+                debugLog(QStringLiteral("  BODY not found in HTML"));
+            }
+        }
+
+        SubmissionResult result;
+        bool found = false;
+
+        // Parse solution page text for submission status
+        // Expected format: "状态: Accepted" or "状态: Waiting"
+        {
+            // Status is ASCII text (e.g. "Accepted", "Compile Error") - stop at Chinese char
+            QRegularExpression statusRx(QStringLiteral(u"状态:\\s*([A-Za-z\\s]+?)\\s+[^A-Za-z]"));
+            QRegularExpressionMatch statusM = statusRx.match(text);
+            if (statusM.hasMatch()) {
+                QString statusText = statusM.captured(1).trimmed();
+
+                debugLog(QStringLiteral("  raw status='%1'").arg(statusText));
+
+                // Check if still pending
+                if (statusText.contains(QStringLiteral("Waiting"))
+                    || statusText.contains(QStringLiteral("Judging"))
+                    || statusText.contains(QStringLiteral("Pending"))) {
+                    // Still pending — timer will fire again
+                    return;
+                }
+
+                result.status = statusText;
+                found = true;
+            } else {
+                debugLog(QStringLiteral("  status not found in text"));
+            }
+        }
+
+        if (found) {
+            // Extract Run ID from URL: /solution/NUMBER/
+            {
+                QRegularExpression runIdRx(QStringLiteral("/solution/(\\d+)/"));
+                QRegularExpressionMatch runIdM = runIdRx.match(html);
+                if (runIdM.hasMatch())
+                    result.runId = runIdM.captured(1);
+            }
+
+            // Extract time: "时间: 23ms"
+            {
+                QRegularExpression timeRx(QStringLiteral(u"时间:\\s*(\\d+)\\s*ms"));
+                QRegularExpressionMatch timeM = timeRx.match(text);
+                if (timeM.hasMatch())
+                    result.timeMs = timeM.captured(1).toInt();
+            }
+
+            // Extract memory: "内存: 7272kB"
+            {
+                QRegularExpression memRx(QStringLiteral(u"内存:\\s*(\\d+)\\s*kB"));
+                QRegularExpressionMatch memM = memRx.match(text);
+                if (memM.hasMatch())
+                    result.memoryKb = memM.captured(1).toInt();
+            }
+
+            // Check for Compile Error link
+            {
+                QRegularExpression ceLinkRx(QStringLiteral("compile[^\"\\s]*error[^\"\\s]*",
+                    QRegularExpression::CaseInsensitiveOption));
+                QRegularExpressionMatch ceMatch = ceLinkRx.match(html);
+                if (ceMatch.hasMatch()) {
+                    QRegularExpression hrefRx(QStringLiteral("href=\"([^\"]*%1[^\"]*)\"").arg(ceMatch.captured(0)),
+                        QRegularExpression::CaseInsensitiveOption);
+                    QRegularExpressionMatch hrefM = hrefRx.match(html);
+                    if (hrefM.hasMatch()) {
+                        m_pendingCeUrl = hrefM.captured(1);
+                        if (m_pendingCeUrl.startsWith(QLatin1Char('/')))
+                            m_pendingCeUrl = m_baseUrl + m_pendingCeUrl;
+                        debugLog(QStringLiteral("  CE url=%1").arg(m_pendingCeUrl));
+                    }
+                }
+            }
+
+            m_pollTimer->stop();
+            if (!m_pendingCeUrl.isEmpty()) {
+                QNetworkRequest ceReq(m_pendingCeUrl);
+                ceReq.setRawHeader("User-Agent", kUserAgent);
+                ceReq.setTransferTimeout(15000);
+                QNetworkReply *ceReply = m_manager->get(ceReq);
+                connect(ceReply, &QNetworkReply::finished, this, [this, ceReply, result]() mutable {
+                    onCompileErrorPageFinished(ceReply, result);
+                });
+            } else {
+                emit submissionResultReady(result);
+            }
+        }
+    });
+}
+
+void Crawler::onCompileErrorPageFinished(QNetworkReply *reply, SubmissionResult &result)
+{
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        debugLog(QStringLiteral("onCompileErrorPageFinished error: %1").arg(reply->errorString()));
+        emit submissionResultReady(result);
+        return;
+    }
+
+    QString html = QString::fromUtf8(reply->readAll());
+    debugLog(QStringLiteral("onCompileErrorPageFinished: html len=%1").arg(html.length()));
+
+    QRegularExpression preRx(QStringLiteral("<pre[^>]*>(.*?)</pre>"),
+        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch preMatch = preRx.match(html);
+    if (preMatch.hasMatch()) {
+        result.compileError = decodeHtmlEntities(preMatch.captured(1).trimmed());
+    } else {
+        result.compileError = stripHtmlTags(html);
+    }
+
+    debugLog(QStringLiteral("CE error text: %1 chars").arg(result.compileError.size()));
+    emit submissionResultReady(result);
+}
+
+void Crawler::fetchCompileError(const QString &ceUrl)
+{
+    QNetworkRequest request(ceUrl);
+    request.setRawHeader("User-Agent", kUserAgent);
+    request.setTransferTimeout(15000);
+
+    QNetworkReply *reply = m_manager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            emit submissionFailed(QStringLiteral("获取编译错误详情失败: ") + reply->errorString());
+            return;
+        }
+
+        QString html = QString::fromUtf8(reply->readAll());
+        SubmissionResult result;
+        QRegularExpression preRx(QStringLiteral("<pre[^>]*>(.*?)</pre>"),
+            QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch preMatch = preRx.match(html);
+        if (preMatch.hasMatch())
+            result.compileError = decodeHtmlEntities(preMatch.captured(1).trimmed());
+        else
+            result.compileError = stripHtmlTags(html);
+
+        emit submissionResultReady(result);
+    });
+}
+
+void Crawler::stopPolling()
+{
+    if (m_pollTimer)
+        m_pollTimer->stop();
+    m_pollCount = 0;
+}
+
+void Crawler::clearCookies()
+{
+    m_manager->setCookieJar(new QNetworkCookieJar(m_manager));
 }

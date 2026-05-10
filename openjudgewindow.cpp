@@ -104,6 +104,18 @@ OpenJudgeWindow::OpenJudgeWindow(QWidget *parent)
     connect(m_nextPageBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onNextPage);
     connect(m_selectBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onSelectClicked);
 
+    // --- Crawler submission signals (forwarded) ---
+    connect(m_crawler, &Crawler::submissionResultReady,
+            this, &OpenJudgeWindow::submissionResultReady);
+    connect(m_crawler, &Crawler::submissionFailed, this, [this](const QString &error) {
+        m_refreshBtn->setEnabled(true);
+        m_statusLabel->setText(QStringLiteral("提交失败"));
+        emit submissionFailed(error);
+    });
+    connect(m_crawler, &Crawler::submitPollTimeout, this, [this]() {
+        m_statusLabel->setText(QStringLiteral("提交结果获取超时"));
+    });
+
     // Show login dialog on startup
     QTimer::singleShot(100, this, &OpenJudgeWindow::onReLogin);
 }
@@ -150,15 +162,20 @@ void OpenJudgeWindow::setupUi()
     m_backBtn->setStyleSheet(buttonStyle());
     m_backBtn->setVisible(false);
 
-    auto *loginBtn = new QPushButton(QStringLiteral("登录"));
-    loginBtn->setStyleSheet(buttonStyle());
-    connect(loginBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onReLogin);
+    m_userLabel = new QLabel;
+    m_userLabel->setVisible(false);
+    m_userLabel->setStyleSheet(QStringLiteral("color: #52C41A; font-weight: bold; padding: 0 8px;"));
+
+    m_loginBtn = new QPushButton(QStringLiteral("登录"));
+    m_loginBtn->setStyleSheet(buttonStyle());
+    connect(m_loginBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onLoginLogoutClicked);
 
     toolbarLayout->addWidget(m_selectBtn);
     toolbarLayout->addWidget(m_backBtn);
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(m_refreshBtn);
-    toolbarLayout->addWidget(loginBtn);
+    toolbarLayout->addWidget(m_userLabel);
+    toolbarLayout->addWidget(m_loginBtn);
 
     // --- Separator ---
     auto *separator = new QFrame;
@@ -296,6 +313,7 @@ void OpenJudgeWindow::onReLogin()
 {
     LoginDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) {
+        m_username = dlg.username();
         m_statusLabel->setText(QStringLiteral("正在登录..."));
         m_refreshBtn->setEnabled(false);
         m_listWidget->clear();
@@ -308,14 +326,54 @@ void OpenJudgeWindow::onReLogin()
 
 void OpenJudgeWindow::onLoginSuccess()
 {
+    m_isLoggedIn = true;
+    m_loginBtn->setText(QStringLiteral("退出登录"));
+    m_userLabel->setText(QStringLiteral("用户: %1").arg(m_username));
+    m_userLabel->setVisible(true);
     m_statusLabel->setText(QStringLiteral("登录成功，正在获取作业列表..."));
+    emit loginStateChanged(true, m_username);
 }
 
 void OpenJudgeWindow::onLoginFailed(const QString &error)
 {
+    m_isLoggedIn = false;
+    m_username.clear();
     m_statusLabel->setText(QStringLiteral("登录失败"));
     QMessageBox::warning(this, QStringLiteral("登录失败"), error);
     m_refreshBtn->setEnabled(true);
+}
+
+void OpenJudgeWindow::onLoginLogoutClicked()
+{
+    if (m_isLoggedIn)
+        onLogoutClicked();
+    else
+        onReLogin();
+}
+
+void OpenJudgeWindow::onLogoutClicked()
+{
+    m_isLoggedIn = false;
+    m_username.clear();
+    m_loginBtn->setText(QStringLiteral("登录"));
+    m_userLabel->clear();
+    m_userLabel->setVisible(false);
+
+    // Clear cookies
+    m_crawler->clearCookies();
+
+    m_statusLabel->setText(QStringLiteral("已退出登录"));
+    m_refreshBtn->setText(QStringLiteral("刷新"));
+    m_refreshBtn->setEnabled(false);
+    m_backBtn->setVisible(false);
+    m_selectBtn->setVisible(false);
+    m_viewState = OJ_HOMEWORK_LIST;
+    m_listWidget->clear();
+
+    emit loginStateChanged(false, QString());
+
+    // Reload main page anonymously
+    m_crawler->fetchMainPage();
 }
 
 // ======================================================================
@@ -530,6 +588,14 @@ void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
 
     if (m_viewState == OJ_HOMEWORK_LIST) {
         m_currentHomeworkUrl = url;
+        // Check if this homework is ongoing by looking up the URL in m_ongoingItems
+        m_currentHomeworkOngoing = false;
+        for (const auto &item : m_ongoingItems) {
+            if (item.url == url) {
+                m_currentHomeworkOngoing = true;
+                break;
+            }
+        }
         m_viewState = OJ_PROBLEM_LIST;
         m_backBtn->setVisible(true);
         m_refreshBtn->setText(QStringLiteral("加载中..."));
@@ -674,4 +740,22 @@ void OpenJudgeWindow::onSelectClicked()
     }
     QString folderPath = writeSamplesToCache(samples);
     emit sampleSelected(folderPath);
+}
+
+void OpenJudgeWindow::submitCurrentProblem(const QString &sourceCode, int languageId)
+{
+    if (!m_isLoggedIn) {
+        m_statusLabel->setText(QStringLiteral("请先登录"));
+        return;
+    }
+    if (m_currentProblemUrl.isEmpty()) {
+        m_statusLabel->setText(QStringLiteral("请先选择一道题目"));
+        return;
+    }
+    if (!m_currentHomeworkOngoing) {
+        emit submissionFailed(QStringLiteral("该作业已结束，无法提交"));
+        return;
+    }
+    m_statusLabel->setText(QStringLiteral("正在提交..."));
+    m_crawler->submitCode(m_currentProblemUrl, sourceCode, languageId);
 }

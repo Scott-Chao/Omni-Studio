@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.1）
+## 功能说明文档（v0.4.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -22,10 +22,16 @@
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
-- OpenJudge 题目爬虫集成：通过评测面板的"从Openjudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹，实现从 OpenJudge 直接获取题目进行本地评测。
+- OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
+- OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。
+- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
+- 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 
-### 新增 v0.4.1
-Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py` 等代码块添加 ▶ Run 按钮，点击后通过 `runblock:` scheme 拦截 + JS 数据传递，将代码提取为临时文件并通过 `ProcessRunner` 执行，输出显示在 OutputPanel。支持 Python 直接运行和 C++ 编译运行。
+### 新增 v0.4.2
+支持本地提交代码到OpenJudge并获取结果
+- OpenJudge 登录状态管理：OpenJudge 窗口工具栏增加登录/退出登录按钮和用户名标签。登录成功→按钮变"退出登录"并显示绿色用户名；登录失败→弹窗提示；退出登录→清除 Cookie 并匿名重载主页。
+- OpenJudge 代码提交：评测面板增加"提交到OpenJudge"按钮，通过 `Crawler::submitCode()` 获取提交页面字段并 POST 到 PHP JSON API（`/api/solution/submitv2/`），QTimer 轮询结果页面直至判定完成（30s 超时）。
+- 提交结果面板：新建 `SubmitResultPanel`（`submissionpanel.h/cpp`），嵌入右侧分割区替换 OutputPanel 位置，显示 AC/WA/TLE/CE/PE/OLE 等状态及用时/内存。CE 时折叠显示编译错误日志。支持隐藏按钮。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -659,7 +665,8 @@ Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py
 **职责**：
 - 评测面板 UI，嵌入 `QDockWidget`，在右侧停靠区域，默认隐藏。
 - 顶部第一行：文件夹选择行（`QLineEdit` + "浏览..." 按钮）。
-- 顶部第二行："从Openjudge获取" 按钮，点击 emit `openJudgeRequested()` 信号，由 `MainWindow` 创建/激活 `OpenJudgeWindow`。
+- 顶部第二行："从OpenJudge获取" 按钮，点击 emit `openJudgeRequested()` 信号，由 `MainWindow` 创建/激活 `OpenJudgeWindow`。
+- 顶部第三行："提交到OpenJudge" 按钮，点击 emit `submitToOpenJudgeRequested()` 信号，由 `MainWindow::onSubmitToOpenJudge()` 处理。
 - 中部：5 列 `QTableWidget`（#、测试用例、结果、耗时(ms)、内存(KB)），结果列按状态码着色：AC 绿色（`#52C41A`）、WA 红色（`#E74C3C`）、TLE 蓝色（`#3498DB`）、MLE 紫色（`#9B59B6`）、RE 橙色（`#F39C12`）。
 - 中下部：`QPlainTextEdit` 详情区，点击失败行显示状态码、峰值内存、预期输出与实际输出。
 - 底部：摘要 `QLabel` + "运行全部" / "停止" 按钮。
@@ -667,6 +674,7 @@ Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py
 - `setTestFolder(path)` 设置文件夹路径并自动清除已有结果，供 OpenJudge 集成使用。
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
 - 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
+- 信号 `submitToOpenJudgeRequested()` 由 `MainWindow::onSubmitToOpenJudge()` 处理，执行代码提交流程。
 
 ---
 
@@ -678,13 +686,16 @@ Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py
 
 **职责**：
 - 基于 `QNetworkAccessManager` + `QNetworkCookieJar` 的 HTTP 爬虫，目标站点 `http://cxsjsx.openjudge.cn`。
-- 支持 CSRF 登录流程：先 GET `/login/` 提取 token，再 POST 提交用户名密码，最后 GET 主页验证登录状态。
+- **登录流程**（PHP JSON API）：先 GET `/auth/login/` 建立 PHPSESSID 会话，再 POST 凭据到 `/api/auth/login/`（`email` + `password` 参数），解析 JSON 响应 `{"result":"SUCCESS"}`，成功后 GET 主页验证登录状态（检测用户名、退出链接等指标）。失败时自动回退到 CSRF 旧版登录（GET `/login/` → 提取 token → POST）。
 - `fetchMainPage()` 获取主页 HTML，`parseMainPage()` 解析"进行中的作业"（`<ul class="current-contest">`）和"已结束的作业"（`<div class="past-contest">`）两部分，提取作业条目和"更多"分页链接。
 - `fetchPastPage(url)` 获取 `/contests/past` 分页，解析比赛链接（匹配关键词 `hw`、`practise`、`midexam`、`pool`、`contest`），支持分页导航。
-- `fetchHomeworkProblems(url)` 获取指定作业的题目列表，过滤导航链接（排名、状态、提交等），保留题目编号链接，去重排序。
+- `fetchHomeworkProblems(url)` 获取指定作业的题目列表，过滤导航链接（排名、状态、提交等），自动跳过 user/profile/auth 等非题目路径段，保留题目编号链接，去重排序。
 - `fetchProblemDetail(url)` 获取题目详情 HTML，`parseProblemDetail()` 使用双策略（`<dt>/<dd>` 主策略 + `<h3>` 回退策略）提取章节（描述、输入、输出、样例输入、样例输出、提示），保留原始 HTML 结构供渲染。
+- **代码提交**：`submitCode(problemUrl, sourceCode, languageId)` 先 GET 提交页面（`problemUrl/submit/`），解析隐藏字段 contestId、problemNumber 和 language radio 值，手动拼接 POST body（百分号编码，不使用 QUrlQuery 以避免 `+` → 空格问题），POST 到 `/api/solution/submitv2/`。发送原始源码而非 base64 编码，以避免某些竞赛实例的 base64 解码 bug 导致源码为空。
+- **结果轮询**：解析 JSON 响应中的 `redirect` URL 作为 `m_pollStatusUrl`，通过 QTimer（2s 间隔，最多 15 次 = 30s 超时）轮询解决方案页面。`doPollSubmissionStatus()` 提取 body 纯文本，用正则解析 `状态: Accepted`、`时间: 23ms`、`内存: 7272kB`。检测到 CE 时自动获取编译错误详情。
 - 静态工具方法 `decodeHtmlEntities()` 和 `stripHtmlTags()`（public static），供 `OpenJudgeWindow` 的样例提取使用。
-- 调试日志写入 `crawler_debug.log`（启动时自动清空），记录 HTML 长度、关键标签匹配数、章节提取结果等。
+- 调试日志写入 `crawler_debug.log`（启动时自动清空），记录 HTML 长度、关键标签匹配数、章节提取结果、POST 数据等。
+- `clearCookies()` 替换 CookieJar 实现清除会话；`stopPolling()` 停止结果轮询定时器。
 
 **信号**：
 - `loginSuccess()` / `loginFailed(const QString &error)`
@@ -693,12 +704,14 @@ Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py
 - `homeworkProblemsReady(const QString &homeworkTitle, const QList<HomeworkItem> &problems)`
 - `problemDetailReady(const ProblemDetail &detail)`
 - `networkError(const QString &error)`
+- `submissionResultReady(const SubmissionResult &result)` / `submissionFailed(const QString &error)` / `submitPollTimeout()`
 
 **数据结构**：
 - `HomeworkItem`：`title`（标题）、`url`（完整 URL）、`deadline`（截止日期字符串，仅进行中作业）。
 - `ProblemSection`：`heading`（章节标题，如"描述"、"样例输入"）、`contentHtml`（原始 HTML 内容，保留 `<pre>` 等结构标签）。
 - `ProblemDetail`：`title`（题目标题）、`sections`（`QList<ProblemSection>` 章节列表）。
 - `PageInfo`：`url`（当前页 URL）、`currentPage`（页码）、`hasPrev` / `hasNext`（翻页边界）。
+- `SubmissionResult`：`runId`（运行编号）、`status`（状态字符串如 "Accepted"/"Wrong Answer"）、`timeMs`（耗时）、`memoryKb`（内存）、`compileError`（CE 详情）。
 
 **协作关系**：
 - 由 `OpenJudgeWindow` 创建并持有，所有信号连接到 `OpenJudgeWindow` 的对应槽方法。
@@ -726,17 +739,22 @@ Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py
 
 **职责**：
 - 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，深色主题（背景 `#2D2D30`，前景 `#D4D4D4`）。
-- 顶部工具栏：[选择此题目] [← 返回] [stretch] [刷新] [登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。
+- 顶部工具栏：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。
+- **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，匿名重新加载主页。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
-- 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。
+- 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
 - 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧渲染内容（`QTextBrowser`），无间隔紧凑布局。选择按钮在此页可见。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-<timestamp>"`，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
+- **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，校验登录状态、题目选择和作业进行中状态后，调用 `Crawler::submitCode()` 执行提交。
 - "选择此题目"按钮 emit `sampleSelected(folderPath)` 信号，由 `MainWindow` 回填至评测面板的测试用例文件夹。
 - 窗口为单例：`MainWindow` 通过 `QPointer<OpenJudgeWindow>` 管理，关闭后自动置 null，再次点击重新创建。
 
 **信号**：
 - `sampleSelected(const QString &folderPath)`：用户选择题目后发出，携带样例缓存目录路径。
+- `loginStateChanged(bool loggedIn, const QString &username)`：登录/登出状态变化时发出。
+- `submissionResultReady(const SubmissionResult &result)`：转发自 `Crawler`。
+- `submissionFailed(const QString &error)`：转发自 `Crawler`。
 
 **内部枚举 `OjViewState`**：`OJ_HOMEWORK_LIST`、`OJ_PROBLEM_LIST`、`OJ_PROBLEM_DETAIL`，独立于 web-crawler 的 `ViewState`，避免符号冲突。
 

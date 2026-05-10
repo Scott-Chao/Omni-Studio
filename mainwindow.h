@@ -24,6 +24,9 @@ class ProcessRunner;
 class OutputPanel;
 class JudgePanel;
 class OpenJudgeWindow;
+class SubmitResultPanel;
+
+struct SubmissionResult;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -130,6 +133,8 @@ private:
 
     // OpenJudge 窗口（单例）
     QPointer<OpenJudgeWindow> m_openJudgeWindow;
+    // 提交结果面板
+    SubmitResultPanel *m_submitResultPanel = nullptr;
 
     void onCompile();
     void onRun();
@@ -141,6 +146,9 @@ private:
     void onOpenJudgeRequested();
     void onOpenJudgeSampleSelected(const QString &folderPath);
     void onCodeBlockRequested(const QString &language, const QString &code);
+    void onSubmitToOpenJudge();
+    void onSubmissionResultReady(const SubmissionResult &result);
+    void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();

@@ -25,6 +25,7 @@ public:
 signals:
     void runAllRequested();
     void openJudgeRequested();
+    void submitToOpenJudgeRequested();
 
 public slots:
     void onTestStarted(int index, const QString &testName);
@@ -50,6 +51,7 @@ private:
     QLineEdit *m_folderEdit;
     QPushButton *m_browseBtn;
     QPushButton *m_openJudgeBtn;
+    QPushButton *m_submitOJBtn;
     QTableWidget *m_table;
     QPlainTextEdit *m_detailEdit;
     QLabel *m_summaryLabel;

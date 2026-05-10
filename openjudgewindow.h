@@ -11,6 +11,8 @@ class QPushButton;
 class QStackedWidget;
 class QTextBrowser;
 
+struct SubmissionResult;
+
 enum OjViewState { OJ_HOMEWORK_LIST, OJ_PROBLEM_LIST, OJ_PROBLEM_DETAIL };
 
 class OpenJudgeWindow : public QMainWindow
@@ -19,8 +21,16 @@ class OpenJudgeWindow : public QMainWindow
 public:
     explicit OpenJudgeWindow(QWidget *parent = nullptr);
 
+    bool isLoggedIn() const { return m_isLoggedIn; }
+    QString loggedInUsername() const { return m_username; }
+    void submitCurrentProblem(const QString &sourceCode, int languageId);
+    void onReLogin();
+
 signals:
     void sampleSelected(const QString &folderPath);
+    void loginStateChanged(bool loggedIn, const QString &username);
+    void submissionResultReady(const SubmissionResult &result);
+    void submissionFailed(const QString &error);
 
 private slots:
     void onLoginSuccess();
@@ -38,10 +48,11 @@ private slots:
     void onSectionClicked(QListWidgetItem *item);
     void onBack();
     void onRefresh();
-    void onReLogin();
     void onPrevPage();
     void onNextPage();
     void onSelectClicked();
+    void onLoginLogoutClicked();
+    void onLogoutClicked();
 
 private:
     void setupUi();
@@ -64,6 +75,10 @@ private:
     QPushButton *m_refreshBtn;
     QPushButton *m_backBtn;
     QPushButton *m_selectBtn;
+    QPushButton *m_loginBtn = nullptr;
+    QLabel *m_userLabel = nullptr;
+    bool m_isLoggedIn = false;
+    QString m_username;
 
     QStackedWidget *m_stackedWidget;
     QWidget *m_detailPage;
@@ -84,6 +99,7 @@ private:
     QString m_currentHomeworkTitle;
     QString m_currentHomeworkUrl;
     QString m_currentProblemUrl;
+    bool m_currentHomeworkOngoing = false;
 };
 
 #endif // OPENJUDGEWINDOW_H
