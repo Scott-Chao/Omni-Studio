@@ -40,7 +40,9 @@ QVector<JudgeEngine::TestCase> JudgeEngine::discoverTests() const
         QFileInfo inInfo(dir.absoluteFilePath(inFile));
         const QString baseName = inInfo.completeBaseName();
         const QString outPath = dir.absoluteFilePath(baseName + QStringLiteral(".out"));
-        if (QFile::exists(outPath)) {
+        QFileInfo outInfo(outPath);
+        // Skip if .out does not exist or is empty (no expected output to compare)
+        if (outInfo.exists() && outInfo.size() > 0) {
             TestCase tc;
             tc.name = baseName;
             tc.inputFile = inInfo.absoluteFilePath();
@@ -87,6 +89,7 @@ void JudgeEngine::stop()
 {
     m_running = false;
     cleanupCompileProcess();
+    cleanupWarmupProcess();
     cleanupTestProcess();
     if (m_testTimer)
         m_testTimer->stop();
@@ -141,7 +144,7 @@ void JudgeEngine::onCompileProcessFinished(int exitCode, QProcess::ExitStatus ex
     if (success) {
         emit judgeOutput(tr("编译成功。\n"), false);
         emit compileFinished(true, QString());
-        runNextTest();
+        runWarmup(); // warmup before first test to populate OS cache
     } else {
         m_compileStderr += QString::fromUtf8(m_compileProcess->readAllStandardError());
         emit judgeOutput(tr("编译失败。\n"), true);
@@ -171,6 +174,51 @@ void JudgeEngine::cleanupCompileProcess()
         m_compileProcess->disconnect();
         m_compileProcess->deleteLater();
         m_compileProcess = nullptr;
+    }
+}
+
+// ---- Warmup phase ----
+
+void JudgeEngine::runWarmup()
+{
+    cleanupWarmupProcess();
+
+    const QString executable = CompilerUtils::getOutputPath(m_sourceFile);
+    QFileInfo exeInfo(executable);
+    if (!exeInfo.exists()) {
+        emit judgeOutput(tr("警告: 可执行文件不存在，跳过预热。\n"), true);
+        runNextTest();
+        return;
+    }
+
+    emit judgeOutput(tr("预热中...\n"), false);
+
+    m_warmupProcess = new QProcess(this);
+    m_warmupProcess->setProcessChannelMode(QProcess::SeparateChannels);
+
+    connect(m_warmupProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &JudgeEngine::onWarmupFinished);
+
+    m_warmupProcess->start(executable, {});
+    m_warmupProcess->closeWriteChannel();
+}
+
+void JudgeEngine::onWarmupFinished()
+{
+    emit judgeOutput(tr("预热完成。\n"), false);
+    cleanupWarmupProcess();
+    runNextTest();
+}
+
+void JudgeEngine::cleanupWarmupProcess()
+{
+    if (m_warmupProcess) {
+        if (m_warmupProcess->state() != QProcess::NotRunning)
+            m_warmupProcess->kill();
+        m_warmupProcess->disconnect();
+        m_warmupProcess->deleteLater();
+        m_warmupProcess = nullptr;
     }
 }
 
@@ -221,6 +269,12 @@ void JudgeEngine::runNextTest()
 
     m_testProcess->start(executable, {});
 
+    // Capture initial memory while the process is alive (it may exit before
+    // the 100ms poll timer fires for the first time)
+    m_peakMemoryKb = 0;
+    m_mleDetected = false;
+    captureMemory();
+
     // Write .in content to stdin
     const QString input = readFile(tc.inputFile);
     m_testProcess->write(input.toUtf8());
@@ -229,9 +283,7 @@ void JudgeEngine::runNextTest()
     m_testElapsed.start();
     m_testTimer->start(m_timeLimitMs);
 
-    // Memory monitoring
-    m_peakMemoryKb = 0;
-    m_mleDetected = false;
+    // Memory monitoring (polling for long-running processes)
     m_memPollTimer->start();
 }
 
@@ -250,6 +302,9 @@ void JudgeEngine::onTestProcessFinished(int exitCode, QProcess::ExitStatus exitS
 
     // Read any remaining output
     m_actualOutput += QString::fromUtf8(m_testProcess->readAllStandardOutput());
+
+    // Final memory reading for fast processes that exited before poll timer fired
+    captureMemory();
 
     if (m_mleDetected) {
         return; // finishCurrentTest already called by onMemoryCheck
@@ -305,34 +360,21 @@ void JudgeEngine::onMemoryCheck()
     if (!m_testProcess || m_testProcess->state() != QProcess::Running)
         return;
 
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE,
-                                   static_cast<DWORD>(m_testProcess->processId()));
-    if (!hProcess)
-        return;
+    captureMemory();
 
-    PROCESS_MEMORY_COUNTERS pmc;
-    BOOL ok = GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc));
-    CloseHandle(hProcess);
+    if (m_peakMemoryKb > m_memoryLimitKb && !m_mleDetected) {
+        m_mleDetected = true;
+        m_testHandled = true;
+        m_testTimer->stop();
+        m_memPollTimer->stop();
 
-    if (ok) {
-        quint64 memKb = pmc.PeakWorkingSetSize / 1024;
-        if (memKb > m_peakMemoryKb)
-            m_peakMemoryKb = memKb;
-
-        if (m_peakMemoryKb > m_memoryLimitKb && !m_mleDetected) {
-            m_mleDetected = true;
-            m_testHandled = true;
-            m_testTimer->stop();
-            m_memPollTimer->stop();
-
-            if (m_testProcess) {
-                m_testProcess->disconnect();
-                m_testProcess->kill();
-            }
-
-            finishCurrentTest(false, QStringLiteral("MLE"),
-                              tr("超出内存限制 (%1 KB)").arg(m_memoryLimitKb));
+        if (m_testProcess) {
+            m_testProcess->disconnect();
+            m_testProcess->kill();
         }
+
+        finishCurrentTest(false, QStringLiteral("MLE"),
+                          tr("超出内存限制 (%1 KB)").arg(m_memoryLimitKb));
     }
 }
 
@@ -379,6 +421,30 @@ void JudgeEngine::cleanupTestProcess()
         m_testProcess->deleteLater();
         m_testProcess = nullptr;
     }
+}
+
+// ---- Memory monitoring ----
+
+void JudgeEngine::captureMemory()
+{
+    if (!m_testProcess)
+        return;
+
+    const DWORD pid = static_cast<DWORD>(m_testProcess->processId());
+    if (pid == 0)
+        return;
+
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProcess)
+        return;
+
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+        quint64 memKb = pmc.PeakWorkingSetSize / 1024;
+        if (memKb > m_peakMemoryKb)
+            m_peakMemoryKb = memKb;
+    }
+    CloseHandle(hProcess);
 }
 
 // ---- Utilities ----

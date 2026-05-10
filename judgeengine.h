@@ -70,10 +70,14 @@ private slots:
 
 private:
     void runCompile();
+    void runWarmup();
+    void onWarmupFinished();
     void runNextTest();
     void finishCurrentTest(bool passed, const QString &statusCode, const QString &detail);
     void cleanupCompileProcess();
+    void cleanupWarmupProcess();
     void cleanupTestProcess();
+    void captureMemory();
     QString readFile(const QString &path) const;
     static bool outputMatches(const QString &actual, const QString &expected);
 
@@ -89,6 +93,9 @@ private:
     // Compile process
     QProcess *m_compileProcess = nullptr;
     QString m_compileStderr;
+
+    // Warmup process
+    QProcess *m_warmupProcess = nullptr;
 
     // Test process
     QProcess *m_testProcess = nullptr;
