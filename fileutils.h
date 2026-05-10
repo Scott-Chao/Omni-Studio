@@ -17,6 +17,7 @@ inline QStringList textExtensions()
         "xml", "svg", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
         "rst", "tex", "log", "csv", "tsv",
         "sql", "graphql", "proto",
+        "in", "out",
         "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
         "cmake", "mak", "mk",
         "pro", "pri", "qml", "qrc", "ui",

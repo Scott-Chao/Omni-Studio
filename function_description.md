@@ -1,4 +1,4 @@
-## 功能说明文档（v0.3.3）
+## 功能说明文档（v0.3.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -23,11 +23,8 @@
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。
 
-### 新增 v0.3.3
-改进本地评测系统的准确性和鲁棒性
-- 评测引擎自动跳过空的 `.out` 文件（文件存在但内容为空时忽略该组数据，避免无意义 WA）。
-- 编译完成后增加预热运行（warmup）：用空输入启动一次可执行文件，使操作系统将其载入磁盘缓存，后续所有测试用例的计时不再受冷启动影响（第一组用时不会异常变长）。
-- 内存监控改为三重捕获机制：进程启动后立即同步读取 → 100ms 轮询续传 → 进程退出时补充读取。提取 `captureMemory()` 共享方法，使用 `PROCESS_QUERY_LIMITED_INFORMATION` 提升权限兼容性，确保快速程序的内存占用也能正确显示。
+### 新增 v0.3.4
+- 新增 `.in`/`.out` 文件扩展名支持，可在编辑器中直接打开评测测试用例文件。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -416,7 +413,7 @@
   - `scanNameFilters()`：返回 `QDirIterator` 所需的名称过滤器列表（如 `*.md`、`*.txt`、`*.cpp` 等）。
   - `isTextExtension(const QString &suffix)`：判断给定的后缀是否在已知文本扩展名列表中。
 
-**扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`pyx`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
+**扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`pyx`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`in`、`out`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
 
 **协作关系**：
 - 被 `MainWindow`、`BacklinkIndex`、`EditorWidget` 引用，用于文件索引构建、Wiki 链接解析和另存为过滤器。
