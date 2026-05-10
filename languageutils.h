@@ -49,6 +49,24 @@ inline QStringList codeExtensions()
 
 QSyntaxHighlighter *createHighlighter(const QString &langId, QTextDocument *doc);
 
+inline QString normalizeCodeFenceLanguage(const QString &fenceLang)
+{
+    const QString lower = fenceLang.trimmed().toLower();
+    const QMap<QString, LanguageInfo> &map = languageMap();
+
+    // Direct key match (e.g., "python" -> "python", "cpp" -> "cpp")
+    if (map.contains(lower))
+        return lower;
+
+    // Extension-based match (e.g., "py" -> "python", "c" -> "cpp")
+    for (auto it = map.cbegin(); it != map.cend(); ++it) {
+        if (it.value().extensions.contains(lower))
+            return it.key();
+    }
+
+    return {};
+}
+
 } // namespace LanguageUtils
 
 #endif // LANGUAGEUTILS_H

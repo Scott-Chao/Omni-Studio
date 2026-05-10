@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.0）
+## 功能说明文档（v0.4.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -24,11 +24,8 @@
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从Openjudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹，实现从 OpenJudge 直接获取题目进行本地评测。
 
-### 新增 v0.4.0
-OpenJudge 爬虫集成：新增 `Crawler`（网络爬虫引擎）、`LoginDialog`（登录对话框）、`OpenJudgeWindow`（独立浏览窗口）三个组件。
-- 评测面板新增"从Openjudge获取"按钮和 `openJudgeRequested` 信号。`MainWindow` 通过 `QPointer` 管理 OpenJudge 窗口单例。项目配置新增 `network` 模块依赖。
-- 可通过独立界面，浏览Openjudge上的作业，并查看题目详情。
-- 在题目详情界面点击“选择此题目”，可读取网页的测试样例，并进行本地评测。
+### 新增 v0.4.1
+Markdown 预览代码块运行：在预览模式下，为 `python`/`cpp`/`c`/`py` 等代码块添加 ▶ Run 按钮，点击后通过 `runblock:` scheme 拦截 + JS 数据传递，将代码提取为临时文件并通过 `ProcessRunner` 执行，输出显示在 OutputPanel。支持 Python 直接运行和 C++ 编译运行。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -197,6 +194,7 @@ OpenJudge 爬虫集成：新增 `Crawler`（网络爬虫引擎）、`LoginDialog
 - `void zoomFactorChanged(qreal factor)`：当缩放因子改变时发出，供主窗口更新百分比标签。
 - `void filePathChanged(const QString &oldPath, const QString &newPath)`：当文件路径被 `setFilePath` 修改时发出，供标签管理器更新路径关联。
 - `void wikiLinkClicked(const QString &fileName)`：当预览模式下的 WikiLink 被点击时发出。
+- `void runCodeBlockRequested(const QString &language, const QString &code)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码并转发。
 
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。

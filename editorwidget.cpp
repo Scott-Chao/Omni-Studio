@@ -18,14 +18,14 @@
 #include <QWebEnginePage>
 #include <QTextBlock>
 #include <QJsonDocument>
-#include <QJsonArray>
+#include <QJsonObject>
 #include <QColor>
-#include <functional>
 
-// 自定义 Web 页面：拦截 wikilink 导航
+// 自定义 Web 页面：拦截 wikilink 和 runblock 导航
 class PreviewPage : public QWebEnginePage {
 public:
     std::function<void(const QString &)> onWikiLinkClicked;
+    std::function<void(const QString &, const QString &)> onRunCodeBlock;
 
     using QWebEnginePage::QWebEnginePage;
 
@@ -37,6 +37,21 @@ protected:
                 QString linkText = QUrl::fromPercentEncoding(url.path().toUtf8());
                 if (onWikiLinkClicked)
                     onWikiLinkClicked(linkText);
+                return false;
+            }
+            if (url.scheme() == QStringLiteral("runblock")) {
+                // Retrieve stored code from JS context
+                runJavaScript(QStringLiteral("window._runCodeData"),
+                    [this](const QVariant &result) {
+                        QString data = result.toString();
+                        if (!data.isEmpty() && onRunCodeBlock) {
+                            QJsonDocument doc = QJsonDocument::fromJson(data.toUtf8());
+                            QJsonObject obj = doc.object();
+                            QString lang = obj.value(QStringLiteral("lang")).toString();
+                            QString code = obj.value(QStringLiteral("code")).toString();
+                            onRunCodeBlock(lang, code);
+                        }
+                    });
                 return false;
             }
             QDesktopServices::openUrl(url);
@@ -60,6 +75,9 @@ EditorWidget::EditorWidget(QWidget *parent)
     PreviewPage *previewPage = new PreviewPage(this);
     previewPage->onWikiLinkClicked = [this](const QString &fileName) {
         emit wikiLinkClicked(fileName);
+    };
+    previewPage->onRunCodeBlock = [this](const QString &language, const QString &code) {
+        emit runCodeBlockRequested(language, code);
     };
     m_previewView->setPage(previewPage);
 

@@ -107,6 +107,35 @@
     border-radius: 6px;
     padding: 8px;
   }
+  /* code block header with run button */
+  .code-block-wrapper {
+    margin: 1em 0;
+  }
+  .code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #333;
+    padding: 4px 12px;
+    border-radius: 6px 6px 0 0;
+    font-size: 0.85em;
+  }
+  .code-lang-label {
+    color: #999;
+  }
+  .run-code-btn {
+    color: #4ec9b0;
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: bold;
+  }
+  .run-code-btn:hover {
+    color: #6df0d0;
+  }
+  .code-block-wrapper pre {
+    margin: 0;
+    border-radius: 0 0 6px 6px;
+  }
   /* task list styling */
   .task-list-item {
     list-style: none;
@@ -139,13 +168,28 @@
     gfm: true
   });
 
-  // Custom renderer for mermaid code blocks (marked v15 token-based API)
+  // Custom renderer for code blocks (marked v15 token-based API)
+  var runnableLangs = ['python', 'py', 'cpp', 'c', 'cc', 'cxx'];
   const renderer = {
     code(token) {
       if (token.lang === 'mermaid') {
         return '<div class="mermaid">' + token.text + '</div>';
       }
-      return false;
+      var lang = (token.lang || '').toLowerCase();
+      var code = token.text;
+      var escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      var showRun = runnableLangs.indexOf(lang) !== -1;
+      var header = '';
+      if (showRun) {
+        var attrCode = escapedCode.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        header = '<div class="code-block-header">'
+          + '<span class="code-lang-label">' + (token.lang || 'code') + '</span>'
+          + '<a class="run-code-btn" href="runblock:execute" data-lang="' + lang + '" data-code="' + attrCode + '">▶ Run</a>'
+          + '</div>';
+      }
+      return '<div class="code-block-wrapper">' + header
+        + '<pre><code class="language-' + (token.lang || '') + '">' + escapedCode + '</code></pre>'
+        + '</div>';
     }
   };
   marked.use({ renderer: renderer });
@@ -222,6 +266,22 @@
       }
     })();
   };
+
+  // Run button click handler
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.run-code-btn');
+    if (btn) {
+      e.preventDefault();
+      var lang = btn.getAttribute('data-lang');
+      var code = btn.getAttribute('data-code');
+      // Decode HTML entities back to raw code
+      var ta = document.createElement('textarea');
+      ta.innerHTML = code;
+      code = ta.value;
+      window._runCodeData = JSON.stringify({lang: lang, code: code});
+      window.location.href = 'runblock:execute';
+    }
+  });
 
   // Initial render on page load
   window.renderMarkdown(document.getElementById('markdown-content').textContent);

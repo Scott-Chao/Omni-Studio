@@ -120,6 +120,9 @@ private:
     QAction *m_compileRunAction;
     QAction *m_stopAction;
 
+    QMetaObject::Connection m_codeBlockConnection;
+    int m_codeBlockCounter = 0;
+
     // 本地评测
     JudgePanel *m_judgePanel;
     QDockWidget *m_dockJudge;
@@ -137,7 +140,9 @@ private:
     void onJudgeRunAll();
     void onOpenJudgeRequested();
     void onOpenJudgeSampleSelected(const QString &folderPath);
+    void onCodeBlockRequested(const QString &language, const QString &code);
     QString saveCodeToTempFile(EditorWidget *editor);
+    QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
 
     // 键：文件名（不带路径，不带后缀，如 "笔记"）

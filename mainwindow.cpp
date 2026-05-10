@@ -14,6 +14,7 @@
 #include "judgepanel.h"
 #include "openjudgewindow.h"
 #include "compilerutils.h"
+#include "languageutils.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -582,6 +583,7 @@ void MainWindow::updateZoomLabel()
 void MainWindow::connectCurrentEditorZoomSignal()
 {
     disconnect(m_editorZoomConnection); // 断开前一个编辑器的缩放信号连接
+    disconnect(m_codeBlockConnection); // 断开前一个编辑器的代码块信号连接
     EditorWidget *editor = m_tabManager->currentEditor();
     if (editor) {
         m_editorZoomConnection = connect(editor, &EditorWidget::zoomFactorChanged, this, &MainWindow::updateZoomLabel); // 监听缩放
@@ -589,6 +591,8 @@ void MainWindow::connectCurrentEditorZoomSignal()
                 &MainWindow::updatePreviewActionState, Qt::UniqueConnection); // 监听路径变化
         connect(editor, &EditorWidget::wikiLinkClicked, this,
                 &MainWindow::onWikiLinkClicked, Qt::UniqueConnection);
+        m_codeBlockConnection = connect(editor, &EditorWidget::runCodeBlockRequested,
+                                        this, &MainWindow::onCodeBlockRequested);
     }
 }
 
@@ -1271,5 +1275,73 @@ void MainWindow::showOutputPanel()
     if (total > 0) {
         int outputH = total / 3;
         m_rightSplitter->setSizes({total - outputH, outputH});
+    }
+}
+
+QString MainWindow::saveCodeBlockToTempFile(const QString &language, const QString &code)
+{
+    QString ext;
+    if (language == QStringLiteral("python")) {
+        ext = QStringLiteral("py");
+    } else if (language == QStringLiteral("cpp")) {
+        ext = QStringLiteral("cpp");
+    } else {
+        return {};
+    }
+
+    const QString tempPath = QDir::tempPath()
+        + QStringLiteral("/mdblock_")
+        + QString::number(QCoreApplication::applicationPid())
+        + QStringLiteral("_")
+        + QString::number(m_codeBlockCounter++)
+        + QStringLiteral(".")
+        + ext;
+
+    QFile file(tempPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return {};
+
+    QTextStream out(&file);
+    out << code;
+    file.close();
+    return tempPath;
+}
+
+void MainWindow::onCodeBlockRequested(const QString &language, const QString &code)
+{
+    const QString normalizedLang = LanguageUtils::normalizeCodeFenceLanguage(language);
+
+    if (normalizedLang.isEmpty()) {
+        showOutputPanel();
+        m_outputPanel->clearOutput();
+        m_outputPanel->appendOutput(
+            tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
+        m_outputPanel->setStatus(tr("错误"), true);
+        return;
+    }
+
+    const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
+    if (filePath.isEmpty()) {
+        showOutputPanel();
+        m_outputPanel->clearOutput();
+        m_outputPanel->appendOutput(
+            tr("错误: 无法创建临时文件。\n"), true);
+        m_outputPanel->setStatus(tr("错误"), true);
+        return;
+    }
+
+    showOutputPanel();
+    m_outputPanel->clearOutput();
+
+    if (normalizedLang == QStringLiteral("python")) {
+        m_outputPanel->appendOutput(
+            QStringLiteral("--- ") + tr("运行 Python 代码块 ---\n"), false);
+        m_outputPanel->setStatus(tr("运行中..."));
+        m_processRunner->startRunPython(filePath);
+    } else if (normalizedLang == QStringLiteral("cpp")) {
+        m_outputPanel->appendOutput(
+            QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
+        m_outputPanel->setStatus(tr("编译中..."));
+        m_processRunner->startCompileAndRun(filePath);
     }
 }

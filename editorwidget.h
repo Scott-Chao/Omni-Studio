@@ -63,6 +63,7 @@ signals:
     void filePathChanged(const QString &oldPath, const QString &newPath);
 
     void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
+    void runCodeBlockRequested(const QString &language, const QString &code); // 转发代码块运行请求
 
 private slots:
     void onTextChanged();
