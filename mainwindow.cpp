@@ -35,6 +35,7 @@
 #include <QRegularExpression>
 #include <QCoreApplication>
 #include <QThread>
+#include <QTimer>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -142,6 +143,7 @@ MainWindow::MainWindow(QWidget *parent)
     // ----- 编译运行管理器 -----
     m_processRunner = new ProcessRunner(this);
     connect(m_outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
+    connect(m_outputPanel, &OutputPanel::sendRawInput, m_processRunner, &ProcessRunner::writeRaw);
     connect(m_processRunner, &ProcessRunner::outputReceived, m_outputPanel, &OutputPanel::appendOutput);
     connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
     connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);
@@ -150,13 +152,25 @@ MainWindow::MainWindow(QWidget *parent)
         m_compileAction->setEnabled(false);
         m_runAction->setEnabled(false);
         m_compileRunAction->setEnabled(false);
-        m_outputPanel->setRunning(true);
+        // 编译阶段禁止交互（无光标、不可选），运行阶段延迟启用输入
+        if (m_processRunner->isAcceptingInput()) {
+            QTimer::singleShot(50, this, [this]() {
+                if (m_processRunner->isRunning())
+                    m_outputPanel->setRunning(true);
+            });
+        } else {
+            m_outputPanel->enableTextSelection(false);
+        }
     });
     connect(m_processRunner, &ProcessRunner::processStopped, this, [this]() {
         m_stopAction->setEnabled(false);
         m_outputPanel->setRunning(false);
-        // Re-enable buttons based on current tab
+        // 恢复文本选择，将焦点移至编辑器，下次运行需手动点击终端
+        m_outputPanel->enableTextSelection(true);
         EditorWidget *editor = m_tabManager->currentEditor();
+        if (editor)
+            editor->setFocus();
+        // Re-enable buttons based on current tab
         bool isCode = editor && editor->isCodeEdit();
         m_compileAction->setVisible(isCode);
         m_compileAction->setEnabled(isCode);

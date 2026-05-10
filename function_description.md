@@ -1,4 +1,4 @@
-## 功能说明文档（v0.3.1）
+## 功能说明文档（v0.3.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -23,15 +23,16 @@
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。
 
-### 新增 v0.3.1
-新增本地评测（Local Judge）功能
-- 新增 `JudgeEngine` 和 `JudgePanel` 组件，实现批量测试用例评测。
-- 扫描指定文件夹下的 `.in`/`.out` 配对，自动编译源文件并逐个运行测试。
-- 评测结果支持 AC（正确）、WA（答案错误）、RE（运行时错误）、TLE（超时，1000ms）、MLE（超内存，65536KB）。
-- 测试运行时通过 Windows API `GetProcessMemoryInfo` 实时监控子进程峰值内存。
-- 评测面板以表格形式展示每个用例的结果、耗时和峰值内存；点击失败行在详情区显示预期输出与实际输出对比。
-- 快捷键 `Ctrl+Shift+J` 打开/关闭评测面板。
-- 输入输出对比：去除尾部空行后逐行 `.trimmed()` 比较，符合 OJ 风格。
+### 新增 v0.3.2
+改进终端输入输出行为，对齐 VS Code 终端体验
+- 粘贴重写为逐行发送（20ms 间隔），每行发送后调用 `processEvents()` 确保程序输出实时交错呈现。
+- 粘贴最后一行无尾部换行符时，回显并放入输入缓冲区，用户可编辑后按 Enter 发送（VS Code 行为）。
+- 编译阶段禁止输入（按键吞噬 + NoTextInteraction），运行阶段延迟 50ms 启用输入。
+- 移除 `ProcessRunner::onReadyReadStdout/Stderr` 中的 `.trimmed()` 调用，程序输出保持原始格式（不再自动添加换行）。
+- `appendOutput()` 中 stdout 不再追加人工换行，精确还原程序输出格式。
+- 进程结束后将焦点移回编辑器，下次运行需手动点击终端才能输入。
+- 运行结束后保留文本选中能力（`TextSelectableByMouse`），编译阶段完全禁用交互。
+- 新增 `ProcessRunner::writeRaw()` 和 `OutputPanel::sendRawInput` 信号，支持不追加换行的原始 stdin 写入。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -567,7 +568,9 @@
 - `startRunPython(sourceFile)`：检测 python 解释器并直接运行 `.py` 源文件。
 - `stop()`：终止当前正在执行的进程。
 - `writeInput(const QString &text)`：向正在运行的进程写入 stdin 数据（自动追加换行符）。
-- 实时输出流：通过 `readyReadStandardOutput/Error` 逐行读取并在 `outputReceived(text, isStderr)` 信号中发出。
+- `writeRaw(const QString &text)`：向正在运行的进程写入 stdin 数据（不追加换行符，用于原始字节写入）。
+- 实时输出流：通过 `readyReadStandardOutput/Error` 读取原始输出并通过 `outputReceived(text, isStderr)` 信号发出，不进行 `.trimmed()` 处理，保留原始格式。
+- 编译阶段自动禁用 stdin 写入（`isAcceptingInput()` 仅当模式为 `RunOnly` 时返回 `true`）。
 
 **信号**：
 - `outputReceived(const QString &text, bool isStderr)`
@@ -583,21 +586,23 @@
 
 **职责**：
 - 嵌入右侧垂直分割区（置于编辑器下方）的输出面板，深色终端风格，用于显示编译信息和程序运行输出，同时支持运行时标准输入交互。
-- `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
+- `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。程序输出精确还原，不添加人工换行。
 - 进程运行时，输出区域自动变为可编辑，支持终端式直接输入：
   - 键盘输入：字符实时回显到输出区域，同时缓冲到 `m_inputBuffer`
   - Enter：将缓冲行通过 `sendInput` 信号发送到进程 stdin，光标换行
   - Backspace：从缓冲区删除最后一个字符，同时从输出区域移除
-  - Ctrl+V / 右键：直接粘贴（无菜单），支持多行文本。粘贴时所有内容作为整体一次性发送至进程，避免逐行 `processEvents()` 导致的重入与输出交错问题
+  - Ctrl+V / 右键：直接粘贴（无菜单），支持多行文本。粘贴内容逐行发送（20ms 间隔），每行发送后调用 `processEvents()` 使程序输出交错显示。最后一行无尾部换行符时，回显并放入输入缓冲区，用户可编辑后按 Enter 发送
   - Ctrl+C：终止正在运行的进程（emit `stopRequested()`）
-  - 屏蔽方向键、Ctrl+Z 等编辑快捷键，防止破坏输出内容
-- 通过 `eventFilter` 拦截输出编辑器的按键事件实现上述行为。
-- `pasteToInput()`：从剪贴板读取文本，统一换行符（`\r\n` → `\n`），统一回显后一次性发送至进程（`sendInput` 信号）。若回显文本不以 `\n` 结尾则自动补插换行符，保证回显与后续输出分行显示。发送后清空输入缓冲。
+  - 屏蔽方向键、Ctrl+Z 等编辑快捷键，防止破坏输出内容；粘贴发送期间也屏蔽按键
+- 编译阶段完全禁用交互（`NoTextInteraction`，吞噬按键事件）；运行结束后恢复文本选中但保持只读；进程结束后焦点移至编辑器，下次运行需手动点击终端
+- `pasteToInput()`：从剪贴板读取文本，统一换行符（`\r\n` → `\n`），丢弃当前输入缓冲区，将文本拆分为行后逐行发送。有换行符结尾的行立即回显并发送（逐行 20ms 间隔，`processEvents()` 确保交错输出）；最后一行无换行符时回显并放入输入缓冲区，用户可编辑后按 Enter 发送。
+- `sendNextPasteLine()`：定时器触发的逐行发送函数，处理回显、发送和交错输出逻辑。
 - 右键菜单：进程运行时直接粘贴；非运行时显示"复制"和"全选"菜单。
 - 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮 + 隐藏按钮。
-- `appendOutput(text, isStderr)`：追加输出到面板。
+- `appendOutput(text, isStderr)`：追加输出到面板，stdout 不添加人工换行。
 - `setStatus(status, isError)`：更新状态标签文字和颜色。
-- `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲）。
+- `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲/粘贴队列/定时器）。运行阶段启用 `TextEditorInteraction`，结束后设为 `TextSelectableByMouse`。
+- `enableTextSelection(bool)`：切换文本交互模式，编译阶段 `NoTextInteraction`，运行结束后恢复可选。
 
 **信号**：
 - `stopRequested()`：用户点击终止按钮或按 Ctrl+C 时发出。

@@ -107,6 +107,13 @@ void ProcessRunner::writeInput(const QString &text)
     }
 }
 
+void ProcessRunner::writeRaw(const QString &text)
+{
+    if (m_currentProcess && m_currentProcess->state() == QProcess::Running) {
+        m_currentProcess->write(text.toUtf8());
+    }
+}
+
 void ProcessRunner::startProcess(const QString &program,
                                   const QStringList &args,
                                   const QString &workingDir)
@@ -143,7 +150,7 @@ void ProcessRunner::onReadyReadStdout()
 {
     if (m_currentProcess) {
         QByteArray data = m_currentProcess->readAllStandardOutput();
-        emit outputReceived(QString::fromUtf8(data).trimmed(), false);
+        emit outputReceived(QString::fromUtf8(data), false);
     }
 }
 
@@ -151,7 +158,7 @@ void ProcessRunner::onReadyReadStderr()
 {
     if (m_currentProcess) {
         QByteArray data = m_currentProcess->readAllStandardError();
-        emit outputReceived(QString::fromUtf8(data).trimmed(), true);
+        emit outputReceived(QString::fromUtf8(data), true);
     }
 }
 

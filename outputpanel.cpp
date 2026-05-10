@@ -34,6 +34,12 @@ OutputPanel::OutputPanel(QWidget *parent)
     m_outputEdit->setFrameShape(QFrame::NoFrame);
     m_outputEdit->installEventFilter(this);
 
+    // Timer for line-by-line paste delivery
+    m_pasteTimer = new QTimer(this);
+    m_pasteTimer->setTimerType(Qt::PreciseTimer);
+    m_pasteTimer->setSingleShot(false);
+    connect(m_pasteTimer, &QTimer::timeout, this, &OutputPanel::sendNextPasteLine);
+
     // Right-click: paste when accepting input, otherwise show copy menu
     connect(m_outputEdit, &QWidget::customContextMenuRequested, this, [this](const QPoint &) {
         if (m_acceptingInput) {
@@ -91,7 +97,10 @@ void OutputPanel::appendOutput(const QString &text, bool isStderr)
             QStringLiteral("<span style=\"color:#F48771;\">%1</span><br>")
                 .arg(text.toHtmlEscaped()));
     } else {
-        cursor.insertText(text + QStringLiteral("\n"));
+        // Output program text exactly as produced — no artificial newlines.
+        // Programs that don't output \\n (e.g. cout << i << "---") render
+        // contiguously, matching raw terminal behavior.
+        cursor.insertText(text);
     }
 
     // Auto-scroll to bottom
@@ -119,16 +128,37 @@ void OutputPanel::setRunning(bool running)
         m_acceptingInput = true;
         m_inputBuffer.clear();
         m_outputEdit->setReadOnly(false);
+        m_outputEdit->setTextInteractionFlags(Qt::TextEditorInteraction);
     } else {
         m_acceptingInput = false;
         m_inputBuffer.clear();
+        m_pasteQueue.clear();
+        m_pasteTimer->stop();
         m_outputEdit->setReadOnly(true);
+        // 允许选中文本，但不可编辑
+        QPlainTextEdit *edit = m_outputEdit;
+        edit->setTextInteractionFlags(Qt::TextSelectableByMouse
+                                       | Qt::TextSelectableByKeyboard);
+    }
+}
+
+void OutputPanel::enableTextSelection(bool enabled)
+{
+    if (enabled) {
+        m_outputEdit->setTextInteractionFlags(Qt::TextSelectableByMouse
+                                               | Qt::TextSelectableByKeyboard);
+    } else {
+        m_outputEdit->setTextInteractionFlags(Qt::NoTextInteraction);
     }
 }
 
 bool OutputPanel::eventFilter(QObject *obj, QEvent *event)
 {
-    if (obj == m_outputEdit && m_acceptingInput) {
+    if (obj == m_outputEdit) {
+        // Block all key events when not accepting input (e.g. during compilation)
+        if (!m_acceptingInput && event->type() == QEvent::KeyPress)
+            return true;
+
         if (event->type() == QEvent::KeyPress) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
 
@@ -141,6 +171,11 @@ bool OutputPanel::eventFilter(QObject *obj, QEvent *event)
             // Ctrl+V: paste (multi-line aware)
             if (keyEvent->matches(QKeySequence::Paste)) {
                 pasteToInput();
+                return true;
+            }
+
+            // Ignore keys while paste queue is being delivered
+            if (!m_pasteQueue.isEmpty()) {
                 return true;
             }
 
@@ -194,19 +229,68 @@ void OutputPanel::pasteToInput()
     // Normalize line endings
     text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 
-    // Echo the pasted text to display, ensure trailing newline for visual separation
+    // Discard any partial buffer — paste replaces pending input
+    m_inputBuffer.clear();
+
+    m_pasteEndsWithNewline = text.endsWith(QLatin1Char('\n'));
+
+    // Split into individual lines for line-by-line delivery
+    m_pasteQueue = text.split(QStringLiteral("\n"));
+    // Remove trailing empty entry that split produces when text ends with \n
+    while (!m_pasteQueue.isEmpty() && m_pasteQueue.last().isEmpty())
+        m_pasteQueue.removeLast();
+
+    if (m_pasteQueue.isEmpty())
+        return;
+
+    // Send first line immediately (echo + send), rest via timer
+    sendNextPasteLine();
+    if (!m_pasteQueue.isEmpty()) {
+        m_pasteTimer->start(20);
+    }
+}
+
+void OutputPanel::sendNextPasteLine()
+{
+    if (!m_acceptingInput || m_pasteQueue.isEmpty()) {
+        m_pasteQueue.clear();
+        m_pasteTimer->stop();
+        return;
+    }
+
+    QString line = m_pasteQueue.takeFirst();
+
+    // Stop timer before echo/send to prevent re-entrancy
+    m_pasteTimer->stop();
+
+    bool isLastLine = m_pasteQueue.isEmpty();
+
+    if (isLastLine && !m_pasteEndsWithNewline) {
+        // Last line without trailing newline: echo content, put into input
+        // buffer so user can edit before pressing Enter.
+        QTextCursor cursor = m_outputEdit->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertText(line);
+        m_outputEdit->setTextCursor(cursor);
+        m_outputEdit->ensureCursorVisible();
+        m_inputBuffer = line;
+        return;
+    }
+
+    // Normal line: echo and send
     QTextCursor cursor = m_outputEdit->textCursor();
     cursor.movePosition(QTextCursor::End);
-    cursor.insertText(text);
-    if (!text.endsWith(QLatin1Char('\n'))) {
-        cursor.insertText(QStringLiteral("\n"));
-    }
+    cursor.insertText(line + QStringLiteral("\n"));
     m_outputEdit->setTextCursor(cursor);
     m_outputEdit->ensureCursorVisible();
 
-    // Send all at once (writeInput appends \n for final line termination)
-    emit sendInput(text);
+    emit sendInput(line);  // writeInput appends \n
 
-    // Discard any partial buffer — paste replaces pending input
-    m_inputBuffer.clear();
+    // Force I/O processing so program output is displayed
+    // before the next echoed line (giving interleaved output)
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+    if (!m_pasteQueue.isEmpty()) {
+        m_pasteTimer->start(20);
+    }
 }

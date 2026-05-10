@@ -21,7 +21,9 @@ public:
     void startRunPython(const QString &sourceFile);
     void stop();
     void writeInput(const QString &text);
+    void writeRaw(const QString &text);
     bool isRunning() const { return m_currentProcess != nullptr; }
+    bool isAcceptingInput() const { return m_mode == RunOnly; }
     QString lastExecutable() const { return m_lastExecutable; }
 
 signals:
