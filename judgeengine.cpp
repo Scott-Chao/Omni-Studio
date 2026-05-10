@@ -82,7 +82,15 @@ void JudgeEngine::start()
 
     m_running = true;
     emit judgeOutput(tr("找到 %1 个测试用例。\n").arg(m_tests.size()), false);
-    runCompile();
+
+    m_isPython = QFileInfo(m_sourceFile).suffix().compare("py", Qt::CaseInsensitive) == 0;
+    if (m_isPython) {
+        emit judgeOutput(tr("Python 脚本，无需编译。\n"), false);
+        emit compileFinished(true, QString());
+        runWarmup();
+    } else {
+        runCompile();
+    }
 }
 
 void JudgeEngine::stop()
@@ -183,12 +191,26 @@ void JudgeEngine::runWarmup()
 {
     cleanupWarmupProcess();
 
-    const QString executable = CompilerUtils::getOutputPath(m_sourceFile);
-    QFileInfo exeInfo(executable);
-    if (!exeInfo.exists()) {
-        emit judgeOutput(tr("警告: 可执行文件不存在，跳过预热。\n"), true);
-        runNextTest();
-        return;
+    QString program;
+    QStringList args;
+
+    if (m_isPython) {
+        CompilerInfo py = CompilerUtils::findPython();
+        if (!py.available) {
+            emit judgeOutput(tr("警告: 未检测到 Python 解释器，跳过预热。\n"), true);
+            runNextTest();
+            return;
+        }
+        program = py.compilerPath;
+        args.append(m_sourceFile);
+    } else {
+        program = CompilerUtils::getOutputPath(m_sourceFile);
+        QFileInfo exeInfo(program);
+        if (!exeInfo.exists()) {
+            emit judgeOutput(tr("警告: 可执行文件不存在，跳过预热。\n"), true);
+            runNextTest();
+            return;
+        }
     }
 
     emit judgeOutput(tr("预热中...\n"), false);
@@ -200,7 +222,7 @@ void JudgeEngine::runWarmup()
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &JudgeEngine::onWarmupFinished);
 
-    m_warmupProcess->start(executable, {});
+    m_warmupProcess->start(program, args);
     m_warmupProcess->closeWriteChannel();
 }
 
@@ -259,15 +281,28 @@ void JudgeEngine::runNextTest()
     connect(m_testProcess, &QProcess::errorOccurred,
             this, &JudgeEngine::onTestProcessError);
 
-    const QString executable = CompilerUtils::getOutputPath(m_sourceFile);
-    QFileInfo exeInfo(executable);
-    if (!exeInfo.exists()) {
-        finishCurrentTest(false, QStringLiteral("RE"),
-                          tr("可执行文件不存在"));
-        return;
+    QString program;
+    QStringList args;
+    if (m_isPython) {
+        CompilerInfo py = CompilerUtils::findPython();
+        if (!py.available) {
+            finishCurrentTest(false, QStringLiteral("RE"),
+                              tr("未检测到 Python 解释器"));
+            return;
+        }
+        program = py.compilerPath;
+        args.append(m_sourceFile);
+    } else {
+        program = CompilerUtils::getOutputPath(m_sourceFile);
+        QFileInfo exeInfo(program);
+        if (!exeInfo.exists()) {
+            finishCurrentTest(false, QStringLiteral("RE"),
+                              tr("可执行文件不存在"));
+            return;
+        }
     }
 
-    m_testProcess->start(executable, {});
+    m_testProcess->start(program, args);
 
     // Capture initial memory while the process is alive (it may exit before
     // the 100ms poll timer fires for the first time)

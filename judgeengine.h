@@ -88,6 +88,7 @@ private:
     int m_currentTestIndex = -1;
     int m_passedCount = 0;
     bool m_running = false;
+    bool m_isPython = false;
     int m_timeLimitMs = 1000;
 
     // Compile process
