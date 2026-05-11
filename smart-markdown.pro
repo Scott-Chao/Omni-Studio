@@ -62,12 +62,9 @@ HEADERS += \
     processrunner.h \
     pythonsyntaxhighlighter.h \
     searchpanel.h \
-<<<<<<< Updated upstream
     submissionpanel.h \
-=======
     tagindex.h \
     tagpanel.h \
->>>>>>> Stashed changes
     mainwindow.h \
     settingsmanager.h \
     tabmanager.h
