@@ -46,6 +46,8 @@ private:
     bool handleBackspacePairRemoval(QKeyEvent *event);
     bool handleTabKey(QKeyEvent *event);
     bool handleClosingBracketSkip(QKeyEvent *event);
+    void handleToggleComment();
+    QString commentPrefix() const;
     bool isCursorInStringOrComment() const;
     QString indentString() const;
 };

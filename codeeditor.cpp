@@ -164,6 +164,12 @@ void CodeEditor::highlightCurrentLine()
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
+    // Ctrl+/ — toggle line comment
+    if (event->key() == Qt::Key_Slash && (event->modifiers() & Qt::ControlModifier)) {
+        handleToggleComment();
+        return;
+    }
+
     switch (event->key()) {
     case Qt::Key_Return:
     case Qt::Key_Enter:
@@ -242,10 +248,11 @@ void CodeEditor::handleAutoIndent()
         return;
     }
 
-    // Check if line ends with { (C-style) or : (Python) — add one more indent level
-    QString trimmed = blockText.trimmed();
-    bool pythonColon = (m_languageId == QStringLiteral("python") && trimmed.endsWith(QLatin1Char(':')));
-    if (trimmed.endsWith(QLatin1Char('{')) || pythonColon) {
+    // Only add one more indent level if the text before the cursor ends with
+    // { (C-style) or : (Python), not just anywhere on the line.
+    QString trimmedBefore = blockText.left(posInBlock).trimmed();
+    bool pythonColon = (m_languageId == QStringLiteral("python") && trimmedBefore.endsWith(QLatin1Char(':')));
+    if (trimmedBefore.endsWith(QLatin1Char('{')) || pythonColon) {
         indent += indentString();
     }
     // If the cursor is before the current indent text, use cursor position for indent
@@ -422,6 +429,129 @@ bool CodeEditor::handleTabKey(QKeyEvent *event)
         cursor.insertText(indentString());
     }
     return true;
+}
+
+// ---- Toggle comment ----
+
+QString CodeEditor::commentPrefix() const
+{
+    if (m_languageId == QStringLiteral("python"))
+        return QStringLiteral("#");
+    return QStringLiteral("//");
+}
+
+void CodeEditor::handleToggleComment()
+{
+    QTextCursor cursor = textCursor();
+    QTextDocument *doc = document();
+
+    int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+    int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+
+    // When the selection ends exactly at column 0 of a subsequent block,
+    // exclude that trailing unselected line.
+    if (cursor.selectionEnd() > cursor.selectionStart() &&
+        doc->findBlock(cursor.selectionEnd()).position() == cursor.selectionEnd() &&
+        startBlock != endBlock)
+    {
+        --endBlock;
+    }
+
+    QString prefix = commentPrefix();
+
+    // Check whether all non-blank lines are already commented (prefix at col 0)
+    bool allCommented = true;
+    for (int i = startBlock; i <= endBlock; ++i) {
+        QTextBlock block = doc->findBlockByNumber(i);
+        if (block.text().trimmed().isEmpty())
+            continue;
+        if (!block.text().startsWith(prefix)) {
+            allCommented = false;
+            break;
+        }
+    }
+
+    // ----- Save original selection as (blockNumber, offsetInBlock) -----
+    QTextBlock origStartBlock = doc->findBlock(cursor.selectionStart());
+    QTextBlock origEndBlock = doc->findBlock(cursor.selectionEnd());
+    int origStartBlockNum = origStartBlock.blockNumber();
+    int origEndBlockNum = origEndBlock.blockNumber();
+    int origStartOffset = cursor.selectionStart() - origStartBlock.position();
+    int origEndOffset = cursor.selectionEnd() - origEndBlock.position();
+
+    // ----- Pre-compute per-block text shift -----
+    // comment  → shift = +prefix+space  (added at column 0)
+    // uncomment → shift = -(prefix+space) or -(prefix) removed from column 0
+    QMap<int, int> shiftMap;
+    for (int i = startBlock; i <= endBlock; ++i) {
+        QTextBlock block = doc->findBlockByNumber(i);
+        QString text = block.text();
+        if (text.trimmed().isEmpty())
+            continue;
+
+        int shift = 0;
+        if (allCommented) {
+            if (text.startsWith(prefix)) {
+                int removeLen = prefix.length();
+                if (removeLen < text.length() && text.at(removeLen) == QLatin1Char(' '))
+                    ++removeLen;
+                shift = -removeLen;
+            }
+        } else {
+            shift = prefix.length() + 1;
+        }
+        if (shift != 0)
+            shiftMap[i] = shift;
+    }
+
+    // ----- Apply edits -----
+    cursor.beginEditBlock();
+
+    for (int i = startBlock; i <= endBlock; ++i) {
+        if (!shiftMap.contains(i))
+            continue;
+        QTextBlock block = doc->findBlockByNumber(i);
+        QTextCursor lineCursor(block);
+
+        if (allCommented) {
+            // Remove prefix (and optional trailing space) from column 0
+            QString text = block.text();
+            int idx = text.indexOf(prefix, 0);
+            if (idx < 0)
+                continue;
+            int removeLen = prefix.length();
+            if (idx + removeLen < text.length() && text.at(idx + removeLen) == QLatin1Char(' '))
+                ++removeLen;
+            lineCursor.setPosition(block.position() + idx);
+            lineCursor.setPosition(block.position() + idx + removeLen, QTextCursor::KeepAnchor);
+            lineCursor.removeSelectedText();
+        } else {
+            // Insert prefix + space at column 0
+            lineCursor.setPosition(block.position());
+            lineCursor.insertText(prefix + QStringLiteral(" "));
+        }
+    }
+
+    cursor.endEditBlock();
+
+    // ----- Restore selection (adjust offsets for modified blocks) -----
+    QTextCursor newCursor = textCursor();
+    QTextBlock newStartBlock = doc->findBlockByNumber(origStartBlockNum);
+    QTextBlock newEndBlock = doc->findBlockByNumber(origEndBlockNum);
+
+    int newStartOff = shiftMap.contains(origStartBlockNum)
+        ? qMax(0, origStartOffset + shiftMap.value(origStartBlockNum))
+        : origStartOffset;
+    int newEndOff = shiftMap.contains(origEndBlockNum)
+        ? qMax(0, origEndOffset + shiftMap.value(origEndBlockNum))
+        : origEndOffset;
+
+    int newStart = newStartBlock.position() + qMin(newStartOff, newStartBlock.length() - 1);
+    int newEnd   = newEndBlock.position()   + qMin(newEndOff,   newEndBlock.length() - 1);
+
+    newCursor.setPosition(newStart);
+    newCursor.setPosition(newEnd, QTextCursor::KeepAnchor);
+    setTextCursor(newCursor);
 }
 
 // ---- Helpers ----
