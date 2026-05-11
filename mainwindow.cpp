@@ -562,6 +562,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
     // 所有标签都已安全关闭，保存配置并退出
     m_historyPanel->saveHistory();
     saveSettings();
+    if (m_openJudgeWindow)
+        m_openJudgeWindow->close();
     event->accept();
 }
 
