@@ -106,7 +106,6 @@ private:
     QTimer *m_pollTimer = nullptr;
     int m_pollCount = 0;
     QString m_pollStatusUrl;
-    static constexpr int kMaxPollCount = 15;
     QString m_pendingRunId;
     QString m_pendingCeUrl;
     bool m_isLoginFlow = false;

@@ -1,4 +1,5 @@
 #include "backlinkspanel.h"
+#include "configmanager.h"
 #include <QVBoxLayout>
 #include <QFileInfo>
 #include <QColor>
@@ -6,7 +7,7 @@
 BacklinksPanel::BacklinksPanel(QWidget *parent)
     : QWidget(parent)
 {
-    setMinimumWidth(200);
+    setMinimumWidth(ConfigManager::instance().backlinksPanelMinWidth());
 
     m_listWidget = new QListWidget(this);
     m_listWidget->setSelectionMode(QAbstractItemView::NoSelection);

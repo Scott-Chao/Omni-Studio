@@ -1,10 +1,13 @@
 #include "pythonsyntaxhighlighter.h"
+#include "configmanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
+    const auto &cfg = ConfigManager::instance();
+
     // --- Comment format (dim green) ---
-    m_commentFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    m_commentFormat.setForeground(cfg.syntaxComments());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("#[^\n]*"));
@@ -13,7 +16,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Decorator format (purple) ---
-    m_decoratorFormat.setForeground(QColor(0xC5, 0x86, 0xC0));
+    m_decoratorFormat.setForeground(cfg.syntaxPythonDecorators());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("^\\s*@[\\w.]+"));
@@ -22,7 +25,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Self/cls format (yellow) ---
-    m_selfFormat.setForeground(QColor(0xDC, 0xDC, 0xAA));
+    m_selfFormat.setForeground(cfg.syntaxPythonSelfCls());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\bself\\b"));
@@ -37,7 +40,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Keyword format (blue, bold) ---
-    m_keywordFormat.setForeground(QColor(0x56, 0x9C, 0xD6));
+    m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
     const QStringList keywords = {
@@ -74,7 +77,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Builtin format (teal) ---
-    m_builtinFormat.setForeground(QColor(0x4E, 0xC9, 0xB0));
+    m_builtinFormat.setForeground(cfg.syntaxTypes());
     const QStringList builtins = {
         // Types
         QStringLiteral("int"), QStringLiteral("float"), QStringLiteral("str"),
@@ -118,7 +121,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Number format (green) ---
-    m_numberFormat.setForeground(QColor(0xB5, 0xCE, 0xA8));
+    m_numberFormat.setForeground(cfg.syntaxNumbers());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral(
@@ -131,7 +134,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- String format (orange-brown) ---
-    m_stringFormat.setForeground(QColor(0xCE, 0x91, 0x78));
+    m_stringFormat.setForeground(cfg.syntaxStrings());
 
     // Double-quoted strings with optional prefix: f, r, b, u, fr, rf, br, rb
     {
@@ -151,7 +154,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // Triple-quote patterns for block-state tracking
-    m_tripleFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    m_tripleFormat.setForeground(cfg.syntaxComments());
     m_tripleDoubleStart = QRegularExpression(QStringLiteral("\"\"\""));
     m_tripleDoubleEnd   = QRegularExpression(QStringLiteral("\"\"\""));
     m_tripleSingleStart = QRegularExpression(QStringLiteral("'''"));

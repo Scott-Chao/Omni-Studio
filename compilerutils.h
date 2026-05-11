@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QProcessEnvironment>
+#include "configmanager.h"
 
 struct CompilerInfo {
     QString id;
@@ -72,17 +73,14 @@ inline QStringList getCompileArgs(const QString &compilerId,
                                    const QString &sourceFile,
                                    const QString &outputFile)
 {
+    const auto &cfg = ConfigManager::instance();
     QStringList args;
     if (compilerId == QStringLiteral("gcc")) {
-        args << QStringLiteral("-std=c++17")
-             << QStringLiteral("-Wall")
-             << QStringLiteral("-Wextra")
+        args << cfg.compilerGxxFlags()
              << sourceFile
              << QStringLiteral("-o") << outputFile;
     } else if (compilerId == QStringLiteral("msvc")) {
-        args << QStringLiteral("/std:c++17")
-             << QStringLiteral("/W4")
-             << QStringLiteral("/EHsc")
+        args << cfg.compilerMsvcFlags()
              << sourceFile
              << QStringLiteral("/Fe") + outputFile;
     }
@@ -92,7 +90,8 @@ inline QStringList getCompileArgs(const QString &compilerId,
 inline QString getOutputPath(const QString &sourceFile)
 {
     QFileInfo fi(sourceFile);
-    return fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName() + QStringLiteral(".exe");
+    return fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
+           + ConfigManager::instance().compilerExecutableExtension();
 }
 
 } // namespace CompilerUtils

@@ -1,5 +1,6 @@
 #include "processrunner.h"
 #include "compilerutils.h"
+#include "configmanager.h"
 
 #include <QFileInfo>
 #include <QDir>
@@ -95,7 +96,7 @@ void ProcessRunner::stop()
 {
     if (m_currentProcess) {
         m_currentProcess->kill();
-        m_currentProcess->waitForFinished(3000);
+        m_currentProcess->waitForFinished(ConfigManager::instance().processKillWaitMs());
         cleanupProcess();
     }
 }

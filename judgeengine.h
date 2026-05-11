@@ -8,6 +8,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QElapsedTimer>
+#include "configmanager.h"
 
 class JudgeEngine : public QObject
 {
@@ -89,7 +90,7 @@ private:
     int m_passedCount = 0;
     bool m_running = false;
     bool m_isPython = false;
-    int m_timeLimitMs = 1000;
+    int m_timeLimitMs = ConfigManager::instance().judgeTimeLimitMs();
 
     // Compile process
     QProcess *m_compileProcess = nullptr;
@@ -108,7 +109,7 @@ private:
     // Memory monitoring
     QTimer *m_memPollTimer = nullptr;
     quint64 m_peakMemoryKb = 0;
-    quint64 m_memoryLimitKb = 65536;
+    quint64 m_memoryLimitKb = ConfigManager::instance().judgeMemoryLimitKb();
     bool m_mleDetected = false;
 };
 

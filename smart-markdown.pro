@@ -12,6 +12,7 @@ win32-msvc*: QMAKE_CXXFLAGS += /utf-8
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    configmanager.cpp \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
@@ -41,6 +42,7 @@ SOURCES += \
     tabmanager.cpp
 
 HEADERS += \
+    configmanager.h \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \

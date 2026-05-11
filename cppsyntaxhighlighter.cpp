@@ -1,10 +1,13 @@
 ﻿#include "cppsyntaxhighlighter.h"
+#include "configmanager.h"
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
+    const auto &cfg = ConfigManager::instance();
+
     // --- Keyword format (blue) ---
-    m_keywordFormat.setForeground(QColor(0x56, 0x9C, 0xD6));
+    m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
     const QStringList keywords = {
@@ -46,7 +49,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Preprocessor format (purple) ---
-    m_preprocessorFormat.setForeground(QColor(0xC5, 0x86, 0xC0));
+    m_preprocessorFormat.setForeground(cfg.syntaxPreprocessor());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("^\\s*#\\s*\\w+"));
@@ -55,7 +58,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Type format (teal) ---
-    m_typeFormat.setForeground(QColor(0x4E, 0xC9, 0xB0));
+    m_typeFormat.setForeground(cfg.syntaxTypes());
     const QStringList types = {
         QStringLiteral("bool"), QStringLiteral("char"), QStringLiteral("char16_t"),
         QStringLiteral("char32_t"), QStringLiteral("char8_t"), QStringLiteral("double"),
@@ -93,7 +96,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Number format (green) ---
-    m_numberFormat.setForeground(QColor(0xB5, 0xCE, 0xA8));
+    m_numberFormat.setForeground(cfg.syntaxNumbers());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -105,7 +108,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- String format (orange-brown) ---
-    m_stringFormat.setForeground(QColor(0xCE, 0x91, 0x78));
+    m_stringFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -131,7 +134,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Single-line comment format (dim green) ---
-    m_singleLineCommentFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    m_singleLineCommentFormat.setForeground(cfg.syntaxComments());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("//[^\n]*"));
@@ -140,7 +143,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Multi-line comment (block state tracking) ---
-    m_multiLineCommentFormat.setForeground(QColor(0x6A, 0x99, 0x55));
+    m_multiLineCommentFormat.setForeground(cfg.syntaxComments());
     m_commentStartExpr = QRegularExpression(QStringLiteral("/\\*"));
     m_commentEndExpr = QRegularExpression(QStringLiteral("\\*/"));
 }

@@ -1,5 +1,6 @@
 #include "judgepanel.h"
 #include "judgeengine.h"
+#include "configmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -38,7 +39,7 @@ void JudgePanel::setupUi()
     m_folderEdit->setPlaceholderText(tr("选择评测用例文件夹..."));
 
     m_browseBtn = new QPushButton(tr("浏览..."), this);
-    m_browseBtn->setFixedWidth(80);
+    m_browseBtn->setFixedWidth(ConfigManager::instance().judgeBrowseButtonWidth());
 
     m_openJudgeBtn = new QPushButton(tr("从OpenJudge获取"), this);
 
@@ -85,7 +86,7 @@ void JudgePanel::setupUi()
     m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    m_table->setMinimumHeight(120);
+    m_table->setMinimumHeight(ConfigManager::instance().judgeTableMinHeight());
 
     connect(m_table, &QTableWidget::cellClicked,
             this, &JudgePanel::onTableItemClicked);
@@ -94,7 +95,7 @@ void JudgePanel::setupUi()
     m_detailEdit = new QPlainTextEdit(this);
     m_detailEdit->setReadOnly(true);
     m_detailEdit->setMaximumBlockCount(1000);
-    m_detailEdit->setMinimumHeight(80);
+    m_detailEdit->setMinimumHeight(ConfigManager::instance().judgeDetailMinHeight());
 
     QFont monoFont(QStringLiteral("Consolas"), 10);
     monoFont.setStyleHint(QFont::Monospace);
@@ -250,19 +251,20 @@ void JudgePanel::onTestFinished(int index, const JudgeEngine::TestResult &result
     m_table->setItem(index, 1, new QTableWidgetItem(result.name));
 
     // Status column
+    const auto &cfg = ConfigManager::instance();
     const QString &code = result.statusCode;
     QTableWidgetItem *statusItem = new QTableWidgetItem(code);
     statusItem->setTextAlignment(Qt::AlignCenter);
     if (code == QStringLiteral("AC")) {
-        statusItem->setForeground(QColor(QStringLiteral("#52C41A"))); // green
+        statusItem->setForeground(cfg.judgeColorAc());
     } else if (code == QStringLiteral("WA")) {
-        statusItem->setForeground(QColor(QStringLiteral("#E74C3C"))); // red
+        statusItem->setForeground(cfg.judgeColorWa());
     } else if (code == QStringLiteral("TLE")) {
-        statusItem->setForeground(QColor(QStringLiteral("#3498DB"))); // blue
+        statusItem->setForeground(cfg.judgeColorTle());
     } else if (code == QStringLiteral("MLE")) {
-        statusItem->setForeground(QColor(QStringLiteral("#9B59B6"))); // purple
+        statusItem->setForeground(cfg.judgeColorMle());
     } else {
-        statusItem->setForeground(QColor(QStringLiteral("#F39C12"))); // orange (RE, etc.)
+        statusItem->setForeground(cfg.judgeColorRe());
     }
     m_table->setItem(index, 2, statusItem);
 

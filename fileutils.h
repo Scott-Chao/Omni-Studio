@@ -3,27 +3,13 @@
 
 #include <QString>
 #include <QStringList>
+#include "configmanager.h"
 
 namespace TextFileUtils {
 
 inline QStringList textExtensions()
 {
-    static const QStringList exts = {
-        "md", "markdown", "txt",
-        "c", "cpp", "cxx", "cc", "h", "hpp", "hxx", "hh",
-        "cs", "java", "py", "pyw", "pyx", "js", "jsx", "ts", "tsx", "mjs",
-        "rs", "go", "rb", "php", "swift", "kt", "kts",
-        "html", "htm", "css", "scss", "sass", "less",
-        "xml", "svg", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
-        "rst", "tex", "log", "csv", "tsv",
-        "sql", "graphql", "proto",
-        "in", "out",
-        "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
-        "cmake", "mak", "mk",
-        "pro", "pri", "qml", "qrc", "ui",
-        "diff", "patch"
-    };
-    return exts;
+    return ConfigManager::instance().textFileExtensions();
 }
 
 inline QStringList scanNameFilters()

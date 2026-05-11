@@ -1,4 +1,5 @@
 #include "outputpanel.h"
+#include "configmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -13,22 +14,27 @@
 OutputPanel::OutputPanel(QWidget *parent)
     : QWidget(parent)
 {
+    const auto &cfg = ConfigManager::instance();
+
     m_outputEdit = new QPlainTextEdit(this);
     m_outputEdit->setReadOnly(true);
-    m_outputEdit->setMaximumBlockCount(10000);
+    m_outputEdit->setMaximumBlockCount(cfg.outputPanelMaxBlocks());
     m_outputEdit->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    QFont monoFont(QStringLiteral("Consolas"), 10);
+    QFont monoFont(cfg.outputPanelFontFamily(), cfg.outputPanelFontSize());
     monoFont.setStyleHint(QFont::Monospace);
     m_outputEdit->setFont(monoFont);
 
-    m_outputEdit->setStyleSheet(QStringLiteral(
+    m_outputEdit->setStyleSheet(QString(
         "QPlainTextEdit {"
-        "  background-color: #1E1E1E;"
-        "  color: #D4D4D4;"
-        "  selection-background-color: #264F78;"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  selection-background-color: %3;"
         "  border: none;"
-        "}"));
+        "}")
+        .arg(cfg.outputPanelBackground().name())
+        .arg(cfg.outputPanelForeground().name())
+        .arg(cfg.outputPanelSelection().name()));
 
     m_outputEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_outputEdit->setFrameShape(QFrame::NoFrame);
@@ -94,8 +100,8 @@ void OutputPanel::appendOutput(const QString &text, bool isStderr)
 
     if (isStderr) {
         cursor.insertHtml(
-            QStringLiteral("<span style=\"color:#F48771;\">%1</span><br>")
-                .arg(text.toHtmlEscaped()));
+            QStringLiteral("<span style=\"color:%1;\">%2</span><br>")
+                .arg(ConfigManager::instance().outputStderr().name(), text.toHtmlEscaped()));
     } else {
         // Output program text exactly as produced — no artificial newlines.
         // Programs that don't output \\n (e.g. cout << i << "---") render
@@ -115,10 +121,12 @@ void OutputPanel::clearOutput()
 
 void OutputPanel::setStatus(const QString &status, bool isError)
 {
+    const auto &cfg = ConfigManager::instance();
     m_statusLabel->setText(status);
     m_statusLabel->setStyleSheet(
-        isError ? QStringLiteral("color: #F48771; font-weight: bold; padding: 2px 4px;")
-                : QStringLiteral("color: #6A9955; font-weight: bold; padding: 2px 4px;"));
+        QString("color: %1; font-weight: bold; padding: 2px 4px;")
+            .arg(isError ? cfg.outputErrorStatus().name()
+                         : cfg.outputSuccessStatus().name()));
 }
 
 void OutputPanel::setRunning(bool running)
@@ -246,7 +254,7 @@ void OutputPanel::pasteToInput()
     // Send first line immediately (echo + send), rest via timer
     sendNextPasteLine();
     if (!m_pasteQueue.isEmpty()) {
-        m_pasteTimer->start(20);
+        m_pasteTimer->start(ConfigManager::instance().outputPanelPasteTimerMs());
     }
 }
 
@@ -291,6 +299,6 @@ void OutputPanel::sendNextPasteLine()
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
     if (!m_pasteQueue.isEmpty()) {
-        m_pasteTimer->start(20);
+        m_pasteTimer->start(ConfigManager::instance().outputPanelPasteTimerMs());
     }
 }

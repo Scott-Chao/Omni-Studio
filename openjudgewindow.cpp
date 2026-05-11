@@ -1,6 +1,7 @@
 #include "openjudgewindow.h"
 #include "logindialog.h"
 #include "settingsmanager.h"
+#include "configmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -84,7 +85,8 @@ OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
     , m_sectionContent(new QTextBrowser)
 {
     setWindowTitle(QStringLiteral("OpenJudge 题目浏览"));
-    resize(900, 650);
+    resize(ConfigManager::instance().openJudgeWindowWidth(),
+           ConfigManager::instance().openJudgeWindowHeight());
 
     setupUi();
 
@@ -150,7 +152,7 @@ void OpenJudgeWindow::setupUi()
     m_statusLabel->setVisible(false);
 
     // Select button — wide, prominent, in toolbar
-    m_selectBtn->setMinimumWidth(140);
+    m_selectBtn->setMinimumWidth(ConfigManager::instance().openJudgeSelectButtonMinWidth());
     m_selectBtn->setStyleSheet(
         "QPushButton { background: #0078D4; color: white; font-weight: bold; "
         "border: none; border-radius: 4px; padding: 6px 20px; } "
@@ -248,7 +250,7 @@ void OpenJudgeWindow::setupDetailPage()
 
     // Left: section list — tight fit to content
     m_sectionList->setFont(QFont("Microsoft YaHei", 10));
-    m_sectionList->setFixedWidth(100);
+    m_sectionList->setFixedWidth(ConfigManager::instance().openJudgeSectionListWidth());
     m_sectionList->setSpacing(2);
     m_sectionList->setCursor(Qt::PointingHandCursor);
     m_sectionList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);

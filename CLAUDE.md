@@ -36,7 +36,8 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── BacklinksPanel      → QDockWidget + QListWidget, backlinks for current file (right, hidden by default)
   ├── TagIndex            → QMap-based bidirectional index: tag ↔ files for `#tag` syntax
   ├── TagPanel            → QDockWidget + QListWidget, tag browser (right, hidden by default) with back-navigation
-  ├── SettingsManager     → QSettings wrapper, config.ini persistence
+  ├── ConfigManager      → Singleton, reads config.json for static configuration (colors, fonts, timeouts, shortcuts, etc.)
+  ├── SettingsManager     → QSettings wrapper, config.ini for runtime session state (window geometry, recent files, OJ credentials)
   ├── TextFileUtils       → Utility (fileutils.h), 40+ text extension list & scan filters
   ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
   ├── CppSyntaxHighlighter → QSyntaxHighlighter, C/C++ dark-theme highlighting
@@ -92,7 +93,9 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 
 **TagPanel** — Dual-mode `QListWidget` panel: `showAllTags()` displays all tags with `#` prefix; `showFilesForTag()` lists files containing a specific tag. Back button returns to tag list. `m_showingFiles` flag controls click dispatch (emit `tagClicked` vs `fileClicked`). Empty states in gray. Follows History/Backlinks dock pattern: 200px min width, `Ctrl+Shift+T` toggle, auto-hide on outside click.
 
-**SettingsManager** — Writes `config.ini` next to the executable. Stores window geometry, splitter state, last open folder path, last save-as folder path, and recent files list.
+**ConfigManager** — Singleton loaded before MainWindow construction. Reads `config.json` (project root or executable dir) with dot-path resolution (`"editor.zoom.min"`). All accessors return built-in defaults if the file is missing. Covers colors, fonts, editor/panel sizes, judge limits, compiler flags, OpenJudge URLs/timeouts, shortcuts, extensions list, etc.
+
+**SettingsManager** — Writes `config.ini` next to the executable. Stores runtime session state only: window geometry, splitter state, last open/save-as folder paths, recent files list, and OJ credentials (base64-obfuscated). Coexists with ConfigManager without overlap.
 
 **TextFileUtils** (`fileutils.h`) — Header-only utility providing `textExtensions()` (returns 40+ common text file extensions like `md`, `txt`, `cpp`, `py`, `js`, `json`, `xml`, `yaml`, `csv`, etc.) and `scanNameFilters()` (returns `"*." + ext` filters for `QDirIterator`). Used by `BacklinkIndex`, `EditorWidget`, `FileExplorerWidget`, and `MainWindow` to replace hardcoded `.md`/`.txt` file lists.
 

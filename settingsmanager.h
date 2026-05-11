@@ -45,7 +45,6 @@ public:
 
 private:
     QSettings *m_settings;
-    static const int MaxRecentFiles = 50; // 历史记录数量限制
 };
 
 #endif // SETTINGSMANAGER_H

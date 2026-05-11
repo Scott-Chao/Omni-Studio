@@ -10,16 +10,21 @@
 #include <QTextStream>
 #include <QCoreApplication>
 #include <QTimer>
+#include "configmanager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
 
-static const QByteArray kUserAgent = QByteArrayLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+static const QByteArray &ua()
+{
+    static const QByteArray v = ConfigManager::instance().openJudgeUserAgent().toUtf8();
+    return v;
+}
 
 // Debug logging helper – call clearLog() at startup, then debugLog() throughout
 static void debugLog(const QString &msg)
 {
-    QFile file(QStringLiteral("crawler_debug.log"));
+    QFile file(ConfigManager::instance().openJudgeDebugLogFile());
     if (file.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&file);
         out << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz ")) << msg << "\n";
@@ -28,7 +33,7 @@ static void debugLog(const QString &msg)
 
 static void clearLog()
 {
-    QFile file(QStringLiteral("crawler_debug.log"));
+    QFile file(ConfigManager::instance().openJudgeDebugLogFile());
     file.open(QIODevice::WriteOnly | QIODevice::Text);
     file.close();
 }
@@ -36,7 +41,7 @@ static void clearLog()
 Crawler::Crawler(QObject *parent)
     : QObject(parent)
     , m_manager(new QNetworkAccessManager(this))
-    , m_baseUrl(QStringLiteral("http://cxsjsx.openjudge.cn"))
+    , m_baseUrl(ConfigManager::instance().openJudgeBaseUrl())
 {
     m_manager->setCookieJar(new QNetworkCookieJar(m_manager));
     clearLog();
@@ -57,8 +62,8 @@ void Crawler::login(const QString &username, const QString &password)
     // Step 1: fetch the login page to get session cookie (PHPSESSID)
     QString loginPageUrl = m_baseUrl + QStringLiteral("/auth/login/");
     QNetworkRequest pageReq(loginPageUrl);
-    pageReq.setRawHeader("User-Agent", kUserAgent);
-    pageReq.setTransferTimeout(15000);
+    pageReq.setRawHeader("User-Agent", ua());
+    pageReq.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *pageReply = m_manager->get(pageReq);
     connect(pageReply, &QNetworkReply::finished, this, [this, pageReply]() {
@@ -77,7 +82,7 @@ void Crawler::login(const QString &username, const QString &password)
         QNetworkRequest apiReq(apiUrl);
         apiReq.setHeader(QNetworkRequest::ContentTypeHeader,
                          QByteArrayLiteral("application/x-www-form-urlencoded"));
-        apiReq.setRawHeader("User-Agent", kUserAgent);
+        apiReq.setRawHeader("User-Agent", ua());
         apiReq.setRawHeader("X-Requested-With", QByteArrayLiteral("XMLHttpRequest"));
         apiReq.setRawHeader("Referer", (m_baseUrl + "/auth/login/").toUtf8());
 
@@ -99,8 +104,8 @@ void Crawler::fetchMainPage()
 {
     QUrl url(m_baseUrl);
     QNetworkRequest request(url);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -112,8 +117,8 @@ void Crawler::fetchHomeworkProblems(const QString &url)
 {
     QUrl qurl(url);
     QNetworkRequest request(qurl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
@@ -231,8 +236,8 @@ void Crawler::fetchProblemDetail(const QString &url)
     }
 
     QNetworkRequest request(qurl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(30000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeProblemDetailTimeoutMs());
 
     debugLog(QStringLiteral("fetchProblemDetail: %1").arg(url));
 
@@ -263,8 +268,8 @@ void Crawler::fetchPastPage(const QString &url)
 {
     QUrl qurl(url);
     QNetworkRequest request(qurl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -366,7 +371,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
         debugLog(QStringLiteral("onLoginPageFinished: falling back to main page login flow"));
         QUrl url(m_baseUrl);
         QNetworkRequest request(url);
-        request.setRawHeader("User-Agent", kUserAgent);
+        request.setRawHeader("User-Agent", ua());
 
         QNetworkReply *mainReply = m_manager->get(request);
         connect(mainReply, &QNetworkReply::finished, this, [this, mainReply]() {
@@ -385,7 +390,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
                 QNetworkRequest postReq(loginUrl);
                 postReq.setHeader(QNetworkRequest::ContentTypeHeader,
                                   QByteArrayLiteral("application/x-www-form-urlencoded"));
-                postReq.setRawHeader("User-Agent", kUserAgent);
+                postReq.setRawHeader("User-Agent", ua());
                 postReq.setRawHeader("Referer", m_baseUrl.toUtf8());
 
                 QByteArray postData = query.toString(QUrl::FullyEncoded).toUtf8();
@@ -423,7 +428,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
     QNetworkRequest request(loginUrl);
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QByteArrayLiteral("application/x-www-form-urlencoded"));
-    request.setRawHeader("User-Agent", kUserAgent);
+    request.setRawHeader("User-Agent", ua());
     request.setRawHeader("Referer", (m_baseUrl + "/login/").toUtf8());
 
     QByteArray postData = query.toString(QUrl::FullyEncoded).toUtf8();
@@ -467,8 +472,8 @@ void Crawler::onLoginFinished(QNetworkReply *reply)
         // Fetch the main page to populate the contest list
         QUrl url(m_baseUrl);
         QNetworkRequest request(url);
-        request.setRawHeader("User-Agent", kUserAgent);
-        request.setTransferTimeout(15000);
+        request.setRawHeader("User-Agent", ua());
+        request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
         QNetworkReply *mainReply = m_manager->get(request);
         connect(mainReply, &QNetworkReply::finished, this, [this, mainReply]() {
             onMainPageFinished(mainReply);
@@ -911,8 +916,8 @@ void Crawler::submitCode(const QString &problemUrl, const QString &sourceCode, i
     submitUrl += QStringLiteral("submit/");
 
     QNetworkRequest request(submitUrl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, problemUrl, sourceCode, languageId]() {
@@ -1076,7 +1081,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
     QNetworkRequest apiReq(apiUrl);
     apiReq.setHeader(QNetworkRequest::ContentTypeHeader,
                      QByteArrayLiteral("application/x-www-form-urlencoded"));
-    apiReq.setRawHeader("User-Agent", kUserAgent);
+    apiReq.setRawHeader("User-Agent", ua());
     apiReq.setRawHeader("X-Requested-With", QByteArrayLiteral("XMLHttpRequest"));
     apiReq.setRawHeader("Referer", problemUrl.toUtf8());
 
@@ -1141,7 +1146,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
                     connect(m_pollTimer, &QTimer::timeout, this, &Crawler::doPollSubmissionStatus);
                 }
                 doPollSubmissionStatus();
-                m_pollTimer->start(2000);
+                m_pollTimer->start(ConfigManager::instance().openJudgePollIntervalMs());
                 return;
             } else {
                 QString msg = obj.value(QStringLiteral("message")).toString();
@@ -1182,7 +1187,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
         }
 
         doPollSubmissionStatus();
-        m_pollTimer->start(2000);
+        m_pollTimer->start(ConfigManager::instance().openJudgePollIntervalMs());
     });
 }
 
@@ -1191,8 +1196,8 @@ void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
     debugLog(QStringLiteral("fetchSubmissionStatus: %1").arg(statusPageUrl));
 
     QNetworkRequest request(statusPageUrl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -1289,8 +1294,8 @@ void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
         if (found) {
             if (!m_pendingCeUrl.isEmpty()) {
                 QNetworkRequest ceReq(m_pendingCeUrl);
-                ceReq.setRawHeader("User-Agent", kUserAgent);
-                ceReq.setTransferTimeout(15000);
+                ceReq.setRawHeader("User-Agent", ua());
+                ceReq.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
                 QNetworkReply *ceReply = m_manager->get(ceReq);
                 connect(ceReply, &QNetworkReply::finished, this, [this, ceReply, result]() mutable {
                     onCompileErrorPageFinished(ceReply, result);
@@ -1306,17 +1311,17 @@ void Crawler::doPollSubmissionStatus()
 {
     m_pollCount++;
     debugLog(QStringLiteral("doPollSubmissionStatus: attempt %1/%2")
-        .arg(m_pollCount).arg(kMaxPollCount));
+        .arg(m_pollCount).arg(ConfigManager::instance().openJudgeMaxPollAttempts()));
 
-    if (m_pollCount > kMaxPollCount) {
+    if (m_pollCount > ConfigManager::instance().openJudgeMaxPollAttempts()) {
         m_pollTimer->stop();
         emit submitPollTimeout();
         return;
     }
 
     QNetworkRequest request(m_pollStatusUrl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -1425,8 +1430,8 @@ void Crawler::doPollSubmissionStatus()
             m_pollTimer->stop();
             if (!m_pendingCeUrl.isEmpty()) {
                 QNetworkRequest ceReq(m_pendingCeUrl);
-                ceReq.setRawHeader("User-Agent", kUserAgent);
-                ceReq.setTransferTimeout(15000);
+                ceReq.setRawHeader("User-Agent", ua());
+                ceReq.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
                 QNetworkReply *ceReply = m_manager->get(ceReq);
                 connect(ceReply, &QNetworkReply::finished, this, [this, ceReply, result]() mutable {
                     onCompileErrorPageFinished(ceReply, result);
@@ -1467,8 +1472,8 @@ void Crawler::onCompileErrorPageFinished(QNetworkReply *reply, SubmissionResult 
 void Crawler::fetchCompileError(const QString &ceUrl)
 {
     QNetworkRequest request(ceUrl);
-    request.setRawHeader("User-Agent", kUserAgent);
-    request.setTransferTimeout(15000);
+    request.setRawHeader("User-Agent", ua());
+    request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {

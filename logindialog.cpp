@@ -1,4 +1,5 @@
 #include "logindialog.h"
+#include "configmanager.h"
 
 #include <QLabel>
 #include <QLineEdit>
@@ -12,7 +13,8 @@ LoginDialog::LoginDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("登录 OpenJudge"));
-    setFixedSize(360, 260);
+    setFixedSize(ConfigManager::instance().loginDialogWidth(),
+                 ConfigManager::instance().loginDialogHeight());
 
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(12);
@@ -20,7 +22,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     auto *titleLabel = new QLabel(QStringLiteral("请输入 OpenJudge 账号信息"));
     titleLabel->setAlignment(Qt::AlignCenter);
     QFont titleFont = titleLabel->font();
-    titleFont.setPointSize(11);
+    titleFont.setPointSize(ConfigManager::instance().loginDialogTitleFontSize());
     titleLabel->setFont(titleFont);
 
     auto *formLayout = new QFormLayout;

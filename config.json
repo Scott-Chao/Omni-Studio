@@ -1,0 +1,240 @@
+{
+  "_schema_version": 1,
+  "_comment": "Smart-Markdown Configuration File. Place next to the executable.",
+
+  "editor": {
+    "base_font_size": 14,
+    "indent_width": 4,
+    "content_check_timer_ms": 300,
+    "font": {
+      "family": "Consolas",
+      "size": 12
+    },
+    "font_limits": {
+      "min_point_size": 1,
+      "max_point_size": 72
+    },
+    "zoom": {
+      "min": 0.5,
+      "max": 3.0,
+      "step": 0.1,
+      "default": 1.0
+    },
+    "line_number_area": {
+      "right_padding": 4
+    }
+  },
+
+  "output_panel": {
+    "font": {
+      "family": "Consolas",
+      "size": 10
+    },
+    "max_blocks": 10000,
+    "min_height": 100,
+    "default_height_ratio": 0.333,
+    "paste_timer_ms": 20,
+    "input_enable_delay_ms": 50
+  },
+
+  "search_panel": {
+    "debounce_ms": 300,
+    "max_per_file": 20,
+    "max_total_results": 500,
+    "snippet_max_length": 120
+  },
+
+  "splitter": {
+    "main_default_ratio": 4,
+    "editor_stretch": 2,
+    "output_stretch": 1
+  },
+
+  "main_window": {
+    "default_width": 1200,
+    "default_height": 800,
+    "default_x": 100,
+    "default_y": 100
+  },
+
+  "submission_result_panel": {
+    "height_ratio": 0.333,
+    "status_min_height": 60,
+    "status_max_height": 80,
+    "ce_edit_min_height": 60,
+    "ce_edit_max_height": 150,
+    "hide_button_width": 60
+  },
+
+  "process": {
+    "kill_wait_ms": 3000
+  },
+
+  "compiler": {
+    "gxx_flags": ["-std=c++17", "-Wall", "-Wextra"],
+    "msvc_flags": ["/std:c++17", "/W4", "/EHsc"],
+    "executable_extension": ".exe",
+    "temp_file_prefix": "temp_",
+    "temp_file_suffix": ".cpp",
+    "code_block_prefix": "mdblock_"
+  },
+
+  "judge": {
+    "time_limit_ms": 1000,
+    "memory_limit_kb": 65536,
+    "memory_poll_ms": 100,
+    "input_file_pattern": "*.in"
+  },
+
+  "judge_panel": {
+    "table_min_height": 120,
+    "detail_min_height": 80,
+    "browse_button_width": 80
+  },
+
+  "open_judge": {
+    "base_url": "http://cxsjsx.openjudge.cn",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "transfer_timeout_ms": 15000,
+    "problem_detail_timeout_ms": 30000,
+    "poll_interval_ms": 2000,
+    "max_poll_attempts": 15,
+    "login_dialog_delay_ms": 200,
+    "debug_log_file": "crawler_debug.log",
+    "submission_language_map": {
+      ".c": 0,
+      ".cpp": 1,
+      ".cc": 1,
+      ".cxx": 1,
+      ".py": 6,
+      ".pyw": 6
+    }
+  },
+
+  "open_judge_window": {
+    "width": 900,
+    "height": 650,
+    "section_list_width": 100,
+    "select_button_min_width": 140
+  },
+
+  "login_dialog": {
+    "width": 360,
+    "height": 260,
+    "title_font_size": 11
+  },
+
+  "panels": {
+    "backlinks_min_width": 200,
+    "tag_min_width": 200
+  },
+
+  "history": {
+    "max_entries": 50
+  },
+
+  "extensions": {
+    "text_files": [
+      "md", "markdown", "txt",
+      "c", "cpp", "cxx", "cc", "h", "hpp", "hxx", "hh",
+      "cs", "java", "py", "pyw", "pyx", "js", "jsx", "ts", "tsx", "mjs",
+      "rs", "go", "rb", "php", "swift", "kt", "kts",
+      "html", "htm", "css", "scss", "sass", "less",
+      "xml", "svg", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
+      "rst", "tex", "log", "csv", "tsv",
+      "sql", "graphql", "proto",
+      "in", "out",
+      "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
+      "cmake", "mak", "mk",
+      "pro", "pri", "qml", "qrc", "ui",
+      "diff", "patch"
+    ],
+    "tag_scan": ["md", "markdown"],
+    "judge_input": ["in"]
+  },
+
+  "webengine": {
+    "remote_debugging_port": "9222"
+  },
+
+  "translation": {
+    "prefix": "smart-markdown_",
+    "path": ":/i18n/"
+  },
+
+  "appearance": {
+    "colors": {
+      "editor": {
+        "background": "#1E1E1E",
+        "foreground": "#D4D4D4",
+        "selection": "#264F78"
+      },
+      "line_number": {
+        "background": "#252525",
+        "foreground": "#858585"
+      },
+      "current_line": {
+        "highlight": "#2A2D2E"
+      },
+      "output_panel": {
+        "background": "#1E1E1E",
+        "foreground": "#D4D4D4",
+        "selection": "#264F78",
+        "stderr": "#F48771",
+        "error_status": "#F48771",
+        "success_status": "#6A9955"
+      },
+      "search": {
+        "highlight_background": "#FFD700",
+        "highlight_foreground": "#000000"
+      },
+      "preview": {
+        "container_background": "#2d2d2d",
+        "webengine_background": "#2d2d2d"
+      },
+      "syntax_highlight": {
+        "keywords": "#569CD6",
+        "preprocessor": "#C586C0",
+        "types": "#4EC9B0",
+        "numbers": "#B5CEA8",
+        "strings": "#CE9178",
+        "comments": "#6A9955",
+        "python_decorators": "#C586C0",
+        "python_self_cls": "#DCDCDC"
+      },
+      "judge_status": {
+        "ac": "#52C41A",
+        "wa": "#E74C3C",
+        "tle": "#3498DB",
+        "mle": "#9B59B6",
+        "re": "#F39C12",
+        "pe": "#E67E22",
+        "ole": "#FF6B6B",
+        "ce": "#F39C12"
+      }
+    }
+  },
+
+  "shortcuts": {
+    "new_file": "Ctrl+N",
+    "save": "Ctrl+S",
+    "save_as": "Ctrl+Shift+S",
+    "toggle_preview": "Ctrl+Shift+P",
+    "toggle_history": "Ctrl+H",
+    "toggle_backlinks": "Ctrl+Shift+B",
+    "toggle_tags": "Ctrl+Shift+T",
+    "toggle_search": "Ctrl+Shift+F",
+    "toggle_judge": "Ctrl+Shift+J",
+    "compile_and_run": "F5",
+    "compile_only": "F6",
+    "run_only": "F7",
+    "stop_process": "Ctrl+Break",
+    "zoom_in": "Ctrl+=",
+    "zoom_out": "Ctrl+-",
+    "zoom_reset": "Ctrl+0",
+    "toggle_comment": "Ctrl+/",
+    "stop_in_output": "Ctrl+C",
+    "paste_in_output": "Ctrl+V",
+    "delete_file": "Delete"
+  }
+}

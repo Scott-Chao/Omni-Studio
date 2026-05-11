@@ -4,6 +4,7 @@
 #include "tagindex.h"
 #include "languageutils.h"
 #include "fileutils.h"
+#include "configmanager.h"
 #include <QFile>
 #include <QTextStream>
 #include <QFileDialog>
@@ -104,7 +105,9 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
     m_previewContainer = new QWidget(this);
-    m_previewContainer->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
+    m_previewContainer->setStyleSheet(
+        QString("background-color: %1;")
+            .arg(ConfigManager::instance().previewContainerBackground().name()));
     QVBoxLayout *containerLayout = new QVBoxLayout(m_previewContainer);
     containerLayout->setContentsMargins(0, 0, 0, 0);
     containerLayout->addWidget(m_previewView);
@@ -139,7 +142,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     setPreviewMode(false); // 默认编辑模式
 
     m_contentCheckTimer.setSingleShot(true);
-    m_contentCheckTimer.setInterval(300); // 设置300ms无文本变化后进行一次内容比较
+    m_contentCheckTimer.setInterval(ConfigManager::instance().editorContentCheckTimerMs());
     connect(&m_contentCheckTimer, &QTimer::timeout, this, &EditorWidget::onContentCheckTimeout);
 
     // 当文本编辑器内容变化时，重置计时器
@@ -163,7 +166,8 @@ void EditorWidget::setPreviewMode(bool preview)
     if (m_previewMode) {
         if (!m_previewReady) {
             // 首次预览：加载完整模板（setHtml），延迟到 loadFinished 再切换
-            m_previewView->page()->setBackgroundColor(QColor(0x2d, 0x2d, 0x2d));
+            m_previewView->page()->setBackgroundColor(
+                ConfigManager::instance().previewWebEngineBackground());
 
             QFile tmplFile(QStringLiteral(":/preview/template.html"));
             if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -394,7 +398,10 @@ void EditorWidget::applyZoom()
         ? m_codeEditor->document() : m_textEdit->document();
     QSignalBlocker blocker(doc);
 
-    int pointSize = qBound(1, qRound(m_baseFontSize * m_zoomFactor), 72);
+    const auto &cfg = ConfigManager::instance();
+    int pointSize = qBound(cfg.fontMinPointSize(),
+                           qRound(m_baseFontSize * m_zoomFactor),
+                           cfg.fontMaxPointSize());
 
     if (m_editorMode == CodeEdit) {
         QFont f = m_codeEditor->font();
@@ -422,23 +429,23 @@ void EditorWidget::applyZoom()
 
 void EditorWidget::zoomIn()
 {
-    setZoomFactor(m_zoomFactor + 0.1);
+    setZoomFactor(m_zoomFactor + ConfigManager::instance().zoomStep());
 }
 
 void EditorWidget::zoomOut()
 {
-    setZoomFactor(m_zoomFactor - 0.1);
+    setZoomFactor(m_zoomFactor - ConfigManager::instance().zoomStep());
 }
 
 void EditorWidget::zoomReset()
 {
-    setZoomFactor(1.0);
+    setZoomFactor(ConfigManager::instance().zoomDefault());
 }
 
 void EditorWidget::setZoomFactor(qreal factor)
 {
-    // 设置缩放比例
-    factor = qBound(0.5, factor, 3.0); // 允许 50%-300%
+    const auto &cfg = ConfigManager::instance();
+    factor = qBound(cfg.zoomMin(), factor, cfg.zoomMax());
     if (qFuzzyCompare(m_zoomFactor, factor))
         return;
     m_zoomFactor = factor;
@@ -563,8 +570,8 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
                 break;
 
             QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(QColor("#FFD700"));
-            sel.format.setForeground(QColor("#000000"));
+            sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
+            sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
             sel.cursor = found;
             selections.append(sel);
 

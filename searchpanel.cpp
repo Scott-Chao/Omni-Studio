@@ -1,5 +1,6 @@
 #include "searchpanel.h"
 #include "fileutils.h"
+#include "configmanager.h"
 
 #include <QVBoxLayout>
 #include <QDir>
@@ -23,11 +24,11 @@ SearchPanel::SearchPanel(QWidget *parent)
     m_resultList->setSpacing(2);
 
     m_statusLabel = new QLabel(tr("打开文件夹以搜索文件"), this);
-    m_statusLabel->setStyleSheet(QStringLiteral("color: #888; padding: 4px 8px; font-size: 12px;"));
+    m_statusLabel->setStyleSheet(QString("color: #888; padding: 4px 8px; font-size: 12px;"));
 
     m_debounceTimer = new QTimer(this);
     m_debounceTimer->setSingleShot(true);
-    m_debounceTimer->setInterval(DEBOUNCE_MS);
+    m_debounceTimer->setInterval(ConfigManager::instance().searchDebounceMs());
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -116,8 +117,9 @@ void SearchPanel::performSearch()
         int lineNum = 0;
         int fileMatches = 0;
 
-        while (!in.atEnd() && fileMatches < MAX_PER_FILE
-               && totalResults < MAX_TOTAL_RESULTS) {
+        const auto &cfg = ConfigManager::instance();
+        while (!in.atEnd() && fileMatches < cfg.searchMaxPerFile()
+               && totalResults < cfg.searchMaxTotalResults()) {
             QString line = in.readLine();
             ++lineNum;
 
@@ -135,7 +137,7 @@ void SearchPanel::performSearch()
         }
         file.close();
 
-        if (totalResults >= MAX_TOTAL_RESULTS)
+        if (totalResults >= ConfigManager::instance().searchMaxTotalResults())
             break;
     }
 
@@ -155,9 +157,10 @@ void SearchPanel::collectTextFiles(const QString &rootPath,
 QString SearchPanel::extractSnippet(const QString &line) const
 {
     QString trimmed = line.trimmed();
-    if (trimmed.length() > SNIPPET_MAX_LENGTH) {
+    int maxLen = ConfigManager::instance().searchSnippetMaxLength();
+    if (trimmed.length() > maxLen) {
         int matchIdx = trimmed.toLower().indexOf(m_searchText);
-        int contextLen = (SNIPPET_MAX_LENGTH - m_searchText.length()) / 2;
+        int contextLen = (maxLen - m_searchText.length()) / 2;
         if (matchIdx >= 0) {
             int start = qMax(0, matchIdx - contextLen);
             int end = qMin(trimmed.length(),
@@ -167,7 +170,7 @@ QString SearchPanel::extractSnippet(const QString &line) const
             if (end < trimmed.length()) snippet.append("...");
             return snippet;
         }
-        return trimmed.left(SNIPPET_MAX_LENGTH) + "...";
+        return trimmed.left(ConfigManager::instance().searchSnippetMaxLength()) + "...";
     }
     return trimmed;
 }

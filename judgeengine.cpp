@@ -1,5 +1,6 @@
 #include "judgeengine.h"
 #include "compilerutils.h"
+#include "configmanager.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -19,7 +20,7 @@ JudgeEngine::JudgeEngine(QObject *parent)
     connect(m_testTimer, &QTimer::timeout, this, &JudgeEngine::onTestTimeout);
 
     m_memPollTimer = new QTimer(this);
-    m_memPollTimer->setInterval(100);
+    m_memPollTimer->setInterval(ConfigManager::instance().judgeMemoryPollMs());
     connect(m_memPollTimer, &QTimer::timeout, this, &JudgeEngine::onMemoryCheck);
 }
 
@@ -35,7 +36,7 @@ QVector<JudgeEngine::TestCase> JudgeEngine::discoverTests() const
     if (!dir.exists())
         return tests;
 
-    const QStringList inFiles = dir.entryList({QStringLiteral("*.in")}, QDir::Files, QDir::Name);
+    const QStringList inFiles = dir.entryList({ConfigManager::instance().judgeInputFilePattern()}, QDir::Files, QDir::Name);
     for (const QString &inFile : inFiles) {
         QFileInfo inInfo(dir.absoluteFilePath(inFile));
         const QString baseName = inInfo.completeBaseName();

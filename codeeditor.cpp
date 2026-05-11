@@ -1,5 +1,6 @@
 ﻿#include "codeeditor.h"
 #include "languageutils.h"
+#include "configmanager.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QKeyEvent>
@@ -32,12 +33,17 @@ void LineNumberArea::paintEvent(QPaintEvent *event)
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
-    // Dark code editor theme
-    setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: #1E1E1E; color: #D4D4D4; "
-        "selection-background-color: #264F78; }"));
+    const auto &cfg = ConfigManager::instance();
 
-    QFont font(QStringLiteral("Consolas"), 12);
+    // Dark code editor theme
+    setStyleSheet(QString(
+        "QPlainTextEdit { background-color: %1; color: %2; "
+        "selection-background-color: %3; }")
+        .arg(cfg.editorBackground().name())
+        .arg(cfg.editorForeground().name())
+        .arg(cfg.editorSelection().name()));
+
+    QFont font(cfg.editorFontFamily(), cfg.editorFontSize());
     font.setStyleHint(QFont::Monospace);
     setFont(font);
     setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
@@ -117,9 +123,10 @@ void CodeEditor::refreshLineNumberArea()
 
 void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 {
+    const auto &cfg = ConfigManager::instance();
     QPainter painter(m_lineNumberArea);
     painter.setFont(font());
-    painter.fillRect(event->rect(), QColor(0x25, 0x25, 0x25));
+    painter.fillRect(event->rect(), cfg.lineNumberBackground());
 
     QTextBlock block = firstVisibleBlock();
     int blockNumber = block.blockNumber();
@@ -129,8 +136,8 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
-            painter.setPen(QColor(0x85, 0x85, 0x85));
-            painter.drawText(0, top, m_lineNumberArea->width() - 4,
+            painter.setPen(cfg.lineNumberForeground());
+            painter.drawText(0, top, m_lineNumberArea->width() - cfg.editorLineNumberRightPadding(),
                              fontMetrics().height(),
                              Qt::AlignRight, number);
         }
@@ -150,7 +157,7 @@ void CodeEditor::highlightCurrentLine()
 
     if (!isReadOnly()) {
         QTextEdit::ExtraSelection selection;
-        selection.format.setBackground(QColor(0x2A, 0x2D, 0x2E));
+        selection.format.setBackground(ConfigManager::instance().currentLineHighlight());
         selection.format.setProperty(QTextFormat::FullWidthSelection, true);
         selection.cursor = textCursor();
         selection.cursor.clearSelection();
@@ -580,14 +587,13 @@ bool CodeEditor::isCursorInStringOrComment() const
     QTextBlock block = document()->findBlock(checkPos);
     // Use previousBlockState + highlightBlock to get format
     // Instead, check the actual format list at this position
+    const auto &cfg = ConfigManager::instance();
     QVector<QTextLayout::FormatRange> formats = block.layout()->formats();
     int offsetInBlock = checkPos - block.position();
     for (const auto &fmt : formats) {
         if (offsetInBlock >= fmt.start && offsetInBlock < fmt.start + fmt.length) {
             QColor fg = fmt.format.foreground().color();
-            // Check if this is a comment or string color
-            // Comment: #6A9955, String: #CE9178
-            if (fg == QColor(0x6A, 0x99, 0x55) || fg == QColor(0xCE, 0x91, 0x78))
+            if (fg == cfg.syntaxComments() || fg == cfg.syntaxStrings())
                 return true;
             break;
         }
@@ -607,8 +613,8 @@ void CodeEditor::setSearchHighlights(const QString &searchText)
             break;
 
         QTextEdit::ExtraSelection sel;
-        sel.format.setBackground(QColor("#FFD700"));
-        sel.format.setForeground(QColor("#000000"));
+        sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
+        sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
         sel.cursor = found;
         m_searchHighlights.append(sel);
 

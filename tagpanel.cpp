@@ -1,4 +1,5 @@
 #include "tagpanel.h"
+#include "configmanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFileInfo>
@@ -7,7 +8,7 @@
 TagPanel::TagPanel(QWidget *parent)
     : QWidget(parent)
 {
-    setMinimumWidth(200);
+    setMinimumWidth(ConfigManager::instance().tagPanelMinWidth());
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);

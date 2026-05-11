@@ -3,6 +3,7 @@
 #include "fileexplorerwidget.h"
 #include "editorwidget.h"
 #include "settingsmanager.h"
+#include "configmanager.h"
 #include "tabmanager.h"
 #include "historypanel.h"
 #include "backlinkindex.h"
@@ -94,7 +95,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 工具栏最左侧插入显示/隐藏面板的按钮
     toggleHistoryAction = m_dockHistory->toggleViewAction();
     toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
-    toggleHistoryAction->setShortcut(QKeySequence("Ctrl+H"));
+    toggleHistoryAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_history", "Ctrl+H")));
 
     // 创建反向链接索引与面板
     m_backlinkIndex = new BacklinkIndex;
@@ -110,7 +111,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     toggleBacklinksAction = m_dockBacklinks->toggleViewAction();
     toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
-    toggleBacklinksAction->setShortcut(QKeySequence("Ctrl+Shift+B"));
+    toggleBacklinksAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_backlinks", "Ctrl+Shift+B")));
 
     // 创建搜索面板
     m_searchPanel = new SearchPanel(this);
@@ -125,7 +126,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     toggleSearchAction = m_dockSearch->toggleViewAction();
     toggleSearchAction->setToolTip(tr("显示/隐藏搜索"));
-    toggleSearchAction->setShortcut(QKeySequence("Ctrl+Shift+F"));
+    toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
 
     connect(m_dockSearch, &QDockWidget::visibilityChanged,
             this, [this](bool visible) {
@@ -135,7 +136,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 输出面板 -----
     m_outputPanel = new OutputPanel(this);
-    m_outputPanel->setMinimumHeight(100);
+    m_outputPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
     m_outputPanel->hide();
 
     connect(m_outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
@@ -195,7 +196,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_toggleJudgeAction = m_dockJudge->toggleViewAction();
     m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
-    m_toggleJudgeAction->setShortcut(QKeySequence("Ctrl+Shift+J"));
+    m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
 
     connect(m_judgePanel, &JudgePanel::runAllRequested,
             this, &MainWindow::onJudgeRunAll);
@@ -219,7 +220,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     toggleTagAction = m_dockTag->toggleViewAction();
     toggleTagAction->setToolTip(tr("显示/隐藏标签"));
-    toggleTagAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    toggleTagAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_tags", "Ctrl+Shift+T")));
 
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
@@ -265,7 +266,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 另存为（快捷键Ctrl+Shift+S）
     QAction *saveAsAction = new QAction("另存为", this);
-    saveAsAction->setShortcut(QKeySequence("Ctrl+Shift+S"));
+    saveAsAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
     addAction(saveAsAction);
     toolBar->addAction(saveAsAction);
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::onSaveFileAs);
@@ -274,7 +275,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 预览（快捷键Ctrl+Shift+P）
     m_previewAction = new QAction("预览模式", this);
-    m_previewAction->setShortcut(QKeySequence("Ctrl+Shift+P"));
+    m_previewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_preview", "Ctrl+Shift+P")));
     m_previewAction->setCheckable(true);
     toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
@@ -290,7 +291,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 编译 (F6)
     m_compileAction = new QAction(tr("编译"), this);
-    m_compileAction->setShortcut(QKeySequence("F6"));
+    m_compileAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_only", "F6")));
     addAction(m_compileAction);
     m_compileAction->setVisible(false);
     toolBar->addAction(m_compileAction);
@@ -298,7 +299,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 运行 (F7)
     m_runAction = new QAction(tr("运行"), this);
-    m_runAction->setShortcut(QKeySequence("F7"));
+    m_runAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("run_only", "F7")));
     addAction(m_runAction);
     m_runAction->setVisible(false);
     toolBar->addAction(m_runAction);
@@ -306,7 +307,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 编译运行 (F5)
     m_compileRunAction = new QAction(tr("编译运行"), this);
-    m_compileRunAction->setShortcut(QKeySequence("F5"));
+    m_compileRunAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_and_run", "F5")));
     addAction(m_compileRunAction);
     m_compileRunAction->setVisible(false);
     toolBar->addAction(m_compileRunAction);
@@ -314,7 +315,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
-    m_stopAction->setShortcut(QKeySequence("Ctrl+Break"));
+    m_stopAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("stop_process", "Ctrl+Break")));
     addAction(m_stopAction);
     m_stopAction->setEnabled(false);
     connect(m_stopAction, &QAction::triggered, this, &MainWindow::onStopProcess);
@@ -324,15 +325,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 创建缩放相关的 QAction
     m_zoomOutAction = new QAction(tr("缩小"), this);
-    m_zoomOutAction->setShortcut(QKeySequence("Ctrl+-"));
+    m_zoomOutAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("zoom_out", "Ctrl+-")));
     connect(m_zoomOutAction, &QAction::triggered, this, &MainWindow::onZoomOut);
 
     m_zoomInAction = new QAction(tr("放大"), this);
-    m_zoomInAction->setShortcut(QKeySequence("Ctrl+="));
+    m_zoomInAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("zoom_in", "Ctrl+=")));
     connect(m_zoomInAction, &QAction::triggered, this, &MainWindow::onZoomIn);
 
     m_zoomResetAction = new QAction(tr("重置缩放"), this);
-    m_zoomResetAction->setShortcut(QKeySequence("Ctrl+0"));
+    m_zoomResetAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("zoom_reset", "Ctrl+0")));
     connect(m_zoomResetAction, &QAction::triggered, this, &MainWindow::onZoomReset);
 
     // 创建缩放百分比标签
@@ -370,32 +371,42 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
-    m_tabManager->setStyleSheet(
-        // 标签页样式
-        "QTabBar::tab {"
-        "   height: 22px;"
-        "   margin-right: 2px;"
-        "   padding: 4px 12px;" // 上下4px，左右12px
-        "   border-top-left-radius: 4px;"
-        "   border-top-right-radius: 4px;"
-        "}"
-        // 选中标签页样式
-        "QTabBar::tab:selected {"
-        "   background: #2d2d2d;"
-        "   color: #ffffff;"
-        "}"
-        // 鼠标悬停样式
-        "QTabBar::tab:hover:!selected {"
-        "   background: #4a4a4a;"
-        "}"
+    {
+        const auto &cfg = ConfigManager::instance();
+        m_tabManager->setStyleSheet(
+            QString(
+                "QTabBar::tab {"
+                "   height: %1px;"
+                "   margin-right: %2px;"
+                "   padding: %3px %4px;"
+                "   border-top-left-radius: %5px;"
+                "   border-top-right-radius: %5px;"
+                "}"
+                "QTabBar::tab:selected {"
+                "   background: %6;"
+                "   color: %7;"
+                "}"
+                "QTabBar::tab:hover:!selected {"
+                "   background: %8;"
+                "}"
+            )
+            .arg(22) // height
+            .arg(2)  // margin-right
+            .arg(4)  // padding top/bottom
+            .arg(12) // padding left/right
+            .arg(4)  // border-radius
+            .arg(cfg.previewContainerBackground().name()) // selected bg (#2d2d2d)
+            .arg("#ffffff")                               // selected text
+            .arg("#4a4a4a")                               // hover bg
         );
+    }
 
     // 右侧垂直分割线：编辑器在上，输出面板在下
     m_rightSplitter = new QSplitter(Qt::Vertical, this);
     m_rightSplitter->addWidget(m_tabManager);
     m_rightSplitter->addWidget(m_outputPanel);
-    m_rightSplitter->setStretchFactor(0, 2);
-    m_rightSplitter->setStretchFactor(1, 1);
+    m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
+    m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
     m_splitter->addWidget(m_explorer);
     m_splitter->addWidget(m_rightSplitter);
@@ -560,19 +571,20 @@ void MainWindow::loadSettings()
     QString lastPath = m_settings->lastFolderPath();
     m_explorer->setRootPath(lastPath);
 
+    const auto &cfg = ConfigManager::instance();
     QByteArray geometryData = m_settings->windowGeometry();
     if (!geometryData.isEmpty()) {
         restoreGeometry(geometryData);
     } else {
-        resize(1200, 800);
-        move(100, 100);
+        resize(cfg.mainWindowDefaultWidth(), cfg.mainWindowDefaultHeight());
+        move(cfg.mainWindowDefaultX(), cfg.mainWindowDefaultY());
     }
 
     QByteArray splitterData = m_settings->splitterState();
     if (!splitterData.isEmpty()) {
         m_splitter->restoreState(splitterData);
     } else {
-        m_splitter->setStretchFactor(1, 4);
+        m_splitter->setStretchFactor(1, cfg.mainSplitterDefaultRatio());
     }
 }
 
@@ -1378,16 +1390,11 @@ void MainWindow::onSubmitToOpenJudge()
 
     QString ext = QFileInfo(filePath).suffix().toLower();
 
-    // Map to OpenJudge language IDs (typical values for cxsjsx.openjudge.cn)
-    int langId = 1; // default: G++
-    if (ext == QStringLiteral("c"))
-        langId = 0;  // GCC
-    else if (ext == QStringLiteral("cc") || ext == QStringLiteral("cxx"))
-        langId = 1;  // G++
-    else if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw"))
-        langId = 6;  // Python 3
+    // Map to OpenJudge language IDs (from config)
+    QMap<QString, int> langMap = ConfigManager::instance().openJudgeSubmissionLanguageMap();
+    int langId = langMap.value("." + ext, 1); // default: G++
 
-    // 4. Submit through OpenJudgeWindow
+    // Submit through OpenJudgeWindow
     m_openJudgeWindow->submitCurrentProblem(code, langId);
 
     // 5. Show a brief status message in the judge panel
@@ -1414,10 +1421,11 @@ void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
     m_submitResultPanel->showResult(result);
     m_submitResultPanel->setVisible(true);
 
-    // Resize splitter to give the result panel 1/3 height
+    // Resize splitter to give the result panel configured ratio height
+    double ratio = ConfigManager::instance().submissionResultHeightRatio();
     int total = m_rightSplitter->height();
     if (total > 0) {
-        int panelH = total / 3;
+        int panelH = qRound(total * ratio);
         m_rightSplitter->setSizes({total - panelH, panelH});
     }
 }
@@ -1445,8 +1453,10 @@ QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
 
     if (filePath.isEmpty()) {
         // 新建的文件：在根目录下创建临时 .cpp 文件
-        filePath = rootPath + QStringLiteral("/temp_") + QString::number(QCoreApplication::applicationPid())
-                   + QStringLiteral(".cpp");
+        const auto &cfg = ConfigManager::instance();
+        filePath = rootPath + QStringLiteral("/") + cfg.compilerTempFilePrefix()
+                   + QString::number(QCoreApplication::applicationPid())
+                   + cfg.compilerTempFileSuffix();
     }
 
     QFile file(filePath);
@@ -1464,9 +1474,10 @@ QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
 void MainWindow::showOutputPanel()
 {
     m_outputPanel->setVisible(true);
+    double ratio = ConfigManager::instance().outputPanelDefaultHeightRatio();
     int total = m_rightSplitter->height();
     if (total > 0) {
-        int outputH = total / 3;
+        int outputH = qRound(total * ratio);
         m_rightSplitter->setSizes({total - outputH, outputH});
     }
 }
@@ -1483,7 +1494,7 @@ QString MainWindow::saveCodeBlockToTempFile(const QString &language, const QStri
     }
 
     const QString tempPath = QDir::tempPath()
-        + QStringLiteral("/mdblock_")
+        + QStringLiteral("/") + ConfigManager::instance().compilerCodeBlockPrefix()
         + QString::number(QCoreApplication::applicationPid())
         + QStringLiteral("_")
         + QString::number(m_codeBlockCounter++)

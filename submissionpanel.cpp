@@ -1,4 +1,5 @@
 #include "submissionpanel.h"
+#include "configmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -12,17 +13,19 @@ SubmitResultPanel::SubmitResultPanel(QWidget *parent)
 
 void SubmitResultPanel::setupUi()
 {
-    setStyleSheet(QStringLiteral(
-        "QWidget { background: #1E1E1E; color: #D4D4D4; }"
-    ));
+    const auto &cfg = ConfigManager::instance();
+    setStyleSheet(QString(
+        "QWidget { background: %1; color: %2; }")
+        .arg(cfg.editorBackground().name())
+        .arg(cfg.editorForeground().name()));
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setWordWrap(true);
-    m_statusLabel->setMaximumHeight(80);
+    m_statusLabel->setMaximumHeight(cfg.submitResultStatusMaxHeight());
     QFont statusFont(QStringLiteral("Microsoft YaHei"), 24, QFont::Bold);
     m_statusLabel->setFont(statusFont);
-    m_statusLabel->setMinimumHeight(60);
+    m_statusLabel->setMinimumHeight(cfg.submitResultStatusMinHeight());
     m_statusLabel->setStyleSheet(QStringLiteral("color: #888; padding: 8px;"));
 
     m_detailLabel = new QLabel(this);
@@ -34,8 +37,8 @@ void SubmitResultPanel::setupUi()
     m_ceEdit = new QPlainTextEdit(this);
     m_ceEdit->setReadOnly(true);
     m_ceEdit->setMaximumBlockCount(500);
-    m_ceEdit->setMinimumHeight(60);
-    m_ceEdit->setMaximumHeight(150);
+    m_ceEdit->setMinimumHeight(cfg.submitResultCeEditMinHeight());
+    m_ceEdit->setMaximumHeight(cfg.submitResultCeEditMaxHeight());
     QFont monoFont(QStringLiteral("Consolas"), 10);
     monoFont.setStyleHint(QFont::Monospace);
     m_ceEdit->setFont(monoFont);
@@ -50,7 +53,7 @@ void SubmitResultPanel::setupUi()
     m_ceEdit->hide();
 
     m_hideBtn = new QPushButton(tr("隐藏"), this);
-    m_hideBtn->setFixedWidth(60);
+    m_hideBtn->setFixedWidth(ConfigManager::instance().submitResultHideButtonWidth());
     m_hideBtn->setStyleSheet(QStringLiteral(
         "QPushButton { background: #3E3E42; color: #D4D4D4; border: 1px solid #555; "
         "border-radius: 3px; padding: 4px 12px; } "
@@ -74,30 +77,30 @@ void SubmitResultPanel::setupUi()
 
 void SubmitResultPanel::showResult(const SubmissionResult &result)
 {
+    const auto &cfg = ConfigManager::instance();
+
     // Status text and color
     QString statusText = result.status;
-    QString color;
+    QColor statusColor = cfg.editorForeground(); // default #D4D4D4
     if (result.status == QStringLiteral("Accepted") || result.status == QStringLiteral("AC")) {
-        color = QStringLiteral("#52C41A"); // green
+        statusColor = cfg.judgeColorAc();
     } else if (result.status == QStringLiteral("Wrong Answer") || result.status == QStringLiteral("WA")) {
-        color = QStringLiteral("#E74C3C"); // red
+        statusColor = cfg.judgeColorWa();
     } else if (result.status == QStringLiteral("Compile Error") || result.status == QStringLiteral("CE")) {
-        color = QStringLiteral("#F39C12"); // orange
+        statusColor = cfg.judgeColorCe();
     } else if (result.status == QStringLiteral("Time Limit Exceeded") || result.status == QStringLiteral("TLE")) {
-        color = QStringLiteral("#3498DB"); // blue
+        statusColor = cfg.judgeColorTle();
     } else if (result.status == QStringLiteral("Memory Limit Exceeded") || result.status == QStringLiteral("MLE")) {
-        color = QStringLiteral("#9B59B6"); // purple
+        statusColor = cfg.judgeColorMle();
     } else if (result.status == QStringLiteral("Runtime Error") || result.status == QStringLiteral("RE")) {
-        color = QStringLiteral("#E74C3C"); // red
+        statusColor = cfg.judgeColorRe();
     } else if (result.status == QStringLiteral("Presentation Error") || result.status == QStringLiteral("PE")) {
-        color = QStringLiteral("#E67E22"); // dark orange
+        statusColor = cfg.judgeColorPe();
     } else if (result.status == QStringLiteral("Output Limit Exceeded") || result.status == QStringLiteral("OLE")) {
-        color = QStringLiteral("#FF6B6B"); // salmon pink
-    } else {
-        color = QStringLiteral("#D4D4D4");
+        statusColor = cfg.judgeColorOle();
     }
 
-    m_statusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 8px;").arg(color));
+    m_statusLabel->setStyleSheet(QString("color: %1; padding: 8px;").arg(statusColor.name()));
     m_statusLabel->setText(statusText);
 
     // Detail line
