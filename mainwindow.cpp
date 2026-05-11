@@ -1426,7 +1426,19 @@ void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
     int total = m_rightSplitter->height();
     if (total > 0) {
         int panelH = qRound(total * ratio);
-        m_rightSplitter->setSizes({total - panelH, panelH});
+        int editorH = total - panelH;
+        QList<int> sizes;
+        sizes.reserve(m_rightSplitter->count());
+        for (int i = 0; i < m_rightSplitter->count(); ++i) {
+            QWidget *w = m_rightSplitter->widget(i);
+            if (w == m_submitResultPanel)
+                sizes.append(panelH);
+            else if (w == m_tabManager)
+                sizes.append(editorH);
+            else
+                sizes.append(0);
+        }
+        m_rightSplitter->setSizes(sizes);
     }
 }
 
@@ -1478,7 +1490,19 @@ void MainWindow::showOutputPanel()
     int total = m_rightSplitter->height();
     if (total > 0) {
         int outputH = qRound(total * ratio);
-        m_rightSplitter->setSizes({total - outputH, outputH});
+        int editorH = total - outputH;
+        QList<int> sizes;
+        sizes.reserve(m_rightSplitter->count());
+        for (int i = 0; i < m_rightSplitter->count(); ++i) {
+            QWidget *w = m_rightSplitter->widget(i);
+            if (w == m_outputPanel)
+                sizes.append(outputH);
+            else if (w == m_tabManager)
+                sizes.append(editorH);
+            else
+                sizes.append(0);
+        }
+        m_rightSplitter->setSizes(sizes);
     }
 }
 
