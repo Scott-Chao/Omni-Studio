@@ -683,7 +683,7 @@ void MainWindow::onZoomOut()
 void MainWindow::onZoomReset()
 {
     if (auto *editor = m_tabManager->currentEditor()) {
-        editor->zoomReset();
+        editor->setZoomFactor(m_settings->editorDefaultZoom());
     }
 }
 

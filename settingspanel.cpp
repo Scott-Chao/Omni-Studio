@@ -39,6 +39,12 @@ SettingsPanel::SettingsPanel(QWidget *parent)
 
     resize(panelWidth, panelHeight);
     setObjectName("settingsPanel");
+
+    setAutoFillBackground(true);
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, QColor(0x2b, 0x2b, 0x2b));
+    setPalette(pal);
+
     setStyleSheet(
         "#settingsPanel {"
         "  background-color: #2b2b2b;"
@@ -90,11 +96,12 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setStyleSheet(
-        "QScrollArea { background: transparent; border: none; }"
-        "QScrollArea > QWidget > QWidget { background: transparent; }"
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
     );
 
     auto *scrollContent = new QWidget;
+    scrollContent->setStyleSheet("background: #2b2b2b;");
     m_contentLayout = new QVBoxLayout(scrollContent);
     m_contentLayout->setContentsMargins(16, 12, 16, 12);
     m_contentLayout->setSpacing(8);
