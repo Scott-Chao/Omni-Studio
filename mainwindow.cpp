@@ -16,6 +16,8 @@
 #include "submissionpanel.h"
 #include "compilerutils.h"
 #include "languageutils.h"
+#include "tagindex.h"
+#include "tagpanel.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -202,6 +204,23 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
             this, &MainWindow::onSubmitToOpenJudge);
 
+    // ----- 标签面板 -----
+    m_tagIndex = new TagIndex;
+
+    m_tagPanel = new TagPanel(this);
+    connect(m_tagPanel, &TagPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
+    connect(m_tagPanel, &TagPanel::tagClicked, this, &MainWindow::onTagClicked);
+
+    m_dockTag = new QDockWidget(tr("标签"), this);
+    m_dockTag->setWidget(m_tagPanel);
+    m_dockTag->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockTag);
+    m_dockTag->hide();
+
+    toggleTagAction = m_dockTag->toggleViewAction();
+    toggleTagAction->setToolTip(tr("显示/隐藏标签"));
+    toggleTagAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -213,6 +232,8 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->insertAction(nullptr, toggleBacklinksAction);
     // 搜索
     toolBar->insertAction(nullptr, toggleSearchAction);
+    // 标签
+    toolBar->insertAction(nullptr, toggleTagAction);
     // 代码评测
     toolBar->insertAction(nullptr, m_toggleJudgeAction);
     toolBar->insertSeparator(toggleHistoryAction);
@@ -386,6 +407,7 @@ MainWindow::MainWindow(QWidget *parent)
         connectCurrentEditorZoomSignal();
         syncFileTreeSelection();
         refreshBacklinks();
+        refreshTags();
         updateCurrentEditorCompletions();
 
         // 更新编译运行按钮状态
@@ -464,9 +486,11 @@ void MainWindow::saveFile()
         if (editor->saveFile()) {
             m_backlinkIndex->rebuildFile(editor->currentFilePath(),
                                          m_explorer->rootPath(), m_fileIndex);
+            m_tagIndex->rebuildFile(editor->currentFilePath());
             updatePreviewActionState(); // 刷新预览按钮状态
             addToRecentFiles(editor->currentFilePath());
             refreshBacklinks(); // 保存后更新反链
+            refreshTags();
         }
     }
 }
@@ -487,9 +511,11 @@ void MainWindow::onSaveFileAs()
         }
         buildFileIndex();
         m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
+        m_tagIndex->rebuildFile(newFilePath);
         updatePreviewActionState();
         addToRecentFiles(newFilePath);
         refreshBacklinks();
+        refreshTags();
     }
 }
 
@@ -596,6 +622,8 @@ void MainWindow::connectCurrentEditorZoomSignal()
                 &MainWindow::onWikiLinkClicked, Qt::UniqueConnection);
         m_codeBlockConnection = connect(editor, &EditorWidget::runCodeBlockRequested,
                                         this, &MainWindow::onCodeBlockRequested);
+        connect(editor, &EditorWidget::tagClicked, this, &MainWindow::onTagClicked,
+                Qt::UniqueConnection);
     }
 }
 
@@ -733,6 +761,22 @@ void MainWindow::refreshBacklinks()
     QString filePath = editor->currentFilePath();
     QStringList sources = m_backlinkIndex->backlinksFor(filePath);
     m_backlinksPanel->showBacklinks(sources);
+}
+
+void MainWindow::refreshTags()
+{
+    QStringList tags = m_tagIndex->allTags();
+    tags.sort(Qt::CaseInsensitive);
+    m_tagPanel->showAllTags(tags);
+}
+
+void MainWindow::onTagClicked(const QString &tag)
+{
+    QStringList files = m_tagIndex->filesForTag(tag);
+    files.sort();
+    m_tagPanel->showFilesForTag(tag, files);
+    m_dockTag->show();
+    m_dockTag->raise();
 }
 
 void MainWindow::onHistoryFileClicked(const QString &filePath)
@@ -880,15 +924,22 @@ void MainWindow::startAsyncIndexBuild()
             BacklinkIndex::buildFromPath(root, fileIndex);
         if (cancelled->load()) return;
 
+        // Phase 3: Build tag index
+        TagIndex::TagData tagData = TagIndex::buildFromPath(root);
+        if (cancelled->load()) return;
+
         // Deliver results to main thread
         QMetaObject::invokeMethod(this, [this, scanId,
                                          fileIndex = std::move(fileIndex),
-                                         data = std::move(backlinkData)]() mutable {
+                                         data = std::move(backlinkData),
+                                         tagData = std::move(tagData)]() mutable {
             if (scanId != m_scanId.load()) return; // Stale
             m_fileIndex = std::move(fileIndex);
             m_backlinkIndex->setData(std::move(data));
+            m_tagIndex->setData(std::move(tagData));
             updateCurrentEditorCompletions();
             refreshBacklinks();
+            refreshTags();
         }, Qt::QueuedConnection);
     })->start();
 }
@@ -898,6 +949,7 @@ void MainWindow::updateCurrentEditorCompletions()
     EditorWidget *editor = m_tabManager->currentEditor();
     if (editor) {
         editor->setFileNames(m_fileIndex.keys());
+        editor->setTagNames(m_tagIndex->allTags());
     }
 }
 
@@ -916,6 +968,7 @@ void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &new
 
     buildFileIndex();
     m_backlinkIndex->onFileRenamed(oldPath, newPath);
+    m_tagIndex->onFileRenamed(oldPath, newPath);
 
     // 更新所有引用文件中的 [[旧文件名]] 为 [[新文件名]]
     updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
@@ -927,6 +980,7 @@ void MainWindow::onFileDeletedInIndex(const QString &path)
 {
     buildFileIndex();
     m_backlinkIndex->onFileDeleted(path);
+    m_tagIndex->onFileDeleted(path);
     m_historyPanel->removeFile(path);
     refreshBacklinks();
 }
@@ -997,6 +1051,14 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return QMainWindow::eventFilter(watched, event);
             if (!m_dockBacklinks->isAncestorOf(clickedWidget))
                 m_dockBacklinks->hide();
+        }
+
+        // Auto-hide tag panel when clicking outside
+        if (m_dockTag->isVisible()) {
+            if (btn && btn->defaultAction() == toggleTagAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (!m_dockTag->isAncestorOf(clickedWidget))
+                m_dockTag->hide();
         }
     }
     return QMainWindow::eventFilter(watched, event);

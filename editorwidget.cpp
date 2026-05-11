@@ -1,6 +1,7 @@
 ﻿#include "editorwidget.h"
 #include "wikilinktextedit.h"
 #include "codeeditor.h"
+#include "tagindex.h"
 #include "languageutils.h"
 #include "fileutils.h"
 #include <QFile>
@@ -26,6 +27,7 @@ class PreviewPage : public QWebEnginePage {
 public:
     std::function<void(const QString &)> onWikiLinkClicked;
     std::function<void(const QString &, const QString &)> onRunCodeBlock;
+    std::function<void(const QString &)> onTagClicked;
 
     using QWebEnginePage::QWebEnginePage;
 
@@ -37,6 +39,12 @@ protected:
                 QString linkText = QUrl::fromPercentEncoding(url.path().toUtf8());
                 if (onWikiLinkClicked)
                     onWikiLinkClicked(linkText);
+                return false;
+            }
+            if (url.scheme() == QStringLiteral("tag")) {
+                QString tag = QUrl::fromPercentEncoding(url.path().toUtf8());
+                if (onTagClicked)
+                    onTagClicked(tag);
                 return false;
             }
             if (url.scheme() == QStringLiteral("runblock")) {
@@ -78,6 +86,9 @@ EditorWidget::EditorWidget(QWidget *parent)
     };
     previewPage->onRunCodeBlock = [this](const QString &language, const QString &code) {
         emit runCodeBlockRequested(language, code);
+    };
+    previewPage->onTagClicked = [this](const QString &tag) {
+        emit tagClicked(tag);
     };
     m_previewView->setPage(previewPage);
 
@@ -161,6 +172,7 @@ void EditorWidget::setPreviewMode(bool preview)
             tmplFile.close();
 
             QString safeContent = processWikiLinks(m_textEdit->toPlainText());
+            safeContent = TagIndex::processTagsForPreview(safeContent);
             safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
             tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
             m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
@@ -220,6 +232,7 @@ QString EditorWidget::processWikiLinks(const QString &markdown)
 void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
 {
     QString safeContent = processWikiLinks(m_textEdit->toPlainText());
+    safeContent = TagIndex::processTagsForPreview(safeContent);
     safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
 
     QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
@@ -504,6 +517,12 @@ void EditorWidget::setFileNames(const QStringList &names)
 {
     if (m_editorMode != CodeEdit)
         m_textEdit->setFileNames(names);
+}
+
+void EditorWidget::setTagNames(const QStringList &names)
+{
+    if (m_editorMode != CodeEdit)
+        m_textEdit->setTagNames(names);
 }
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)

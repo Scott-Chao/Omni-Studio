@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.5）
+## 功能说明文档（v0.4.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -16,21 +16,20 @@
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
+- #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
-- 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
+- 异步索引构建：切换到大目录时，文件索引、反向链接扫描与标签索引扫描在后台线程依次执行（Phase 1/2/3），UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 
-### 新增 v0.4.5
-OpenJudge 自动登录功能
-- 登录时勾选“自动登录”，信息存储至配置文件，之后登录无需手动操作。
-- 新增题目选中状态检测，如果点击提交时未选择题目，弹出提示信息。
+### 新增 v0.4.6
+#tag 标签系统：在 Markdown 文件中使用 `#tag` 语法标记内容，支持 Unicode 标签（中文、日文等）。预览渲染为可点击蓝色链接，编辑模式输入 `#` 时弹出已有标签补全。标签面板（Ctrl+Shift+T）双级导航浏览标签和关联文件。全量扫描为异步 Phase 3（与文件索引、反链扫描同批次执行），文件保存/重命名/删除时增量更新。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -49,6 +48,7 @@ OpenJudge 自动登录功能
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
+  - `Ctrl+Shift+T` 打开/关闭标签面板
   - `Ctrl+Shift+F` 打开/关闭搜索面板
   - `Ctrl+Shift+J` 打开/关闭评测面板
   - `F5` 编译运行（C/C++ 编译后运行，Python 直接运行）、`F6` 编译（仅 C/C++，Python 提示不需要编译）、`F7` 运行
@@ -64,7 +64,7 @@ OpenJudge 自动登录功能
 - 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
-- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程执行文件扫描和反向链接索引构建，使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
+- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
 
 **主要接口（槽函数）**：
@@ -86,10 +86,11 @@ OpenJudge 自动登录功能
 - `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的点击，打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系（同步版本，保留用于重命名/删除后的即时更新）。
-- `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建和反向链接扫描。支持取消令牌（`std::shared_ptr<std::atomic<bool>>`）和扫描代际（`std::atomic<uint64_t>`）保护。完成后通过 `Qt::QueuedConnection` 将结果交付主线程并刷新补全列表与反向链接面板。
+- `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建、反向链接扫描和标签索引构建（Phase 1/2/3）。支持取消令牌和扫描代际保护。完成后交付主线程并刷新补全列表、反链面板和标签面板。
 - `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
+- `void refreshTags()` / `void onTagClicked(const QString &tag)`：刷新标签面板显示所有标签；响应标签点击时在面板显示关联文件列表并确保面板可见（`show` + `raise`）。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
-- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
+- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引与标签索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
 - `void updateWikiLinksAfterRename(const QStringList &affectedSources, const QString &oldLinkText, const QString &newLinkText)`：文件重命名后更新所有引用文件中的 wiki 链接文本。从 BacklinkIndex 获取受影响源文件列表，使用 `replaceWikiLinkText` 精确匹配替换 `[[oldLinkText]]` → `[[newLinkText]]`。若源文件在打开的标签中，优先读取 `editor->toPlainText()` 以保留未保存更改，替换后写盘并重新加载编辑器。
 
@@ -168,7 +169,7 @@ OpenJudge 自动登录功能
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
 - 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
-- WikiLink 转换：`processWikiLinks()` 使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">` 格式的 Markdown 链接，链接目标通过 `QUrl::toPercentEncoding` 编码，避免特殊字符破坏 HTML/JS 语法。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:` scheme 的导航请求并发出跳转信号，同时将外部链接交由系统浏览器打开。
+- WikiLink 转换：`processWikiLinks()` 使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">` 格式的 Markdown 链接，链接目标通过 `QUrl::toPercentEncoding` 编码，避免特殊字符破坏 HTML/JS 语法。预览渲染还通过 `TagIndex::processTagsForPreview()` 将 `#tag` 转换为 `<a href="tag:tag">#tag</a>`，实现标签可点击。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:`、`tag:`、`runblock:` scheme 的导航请求并发出对应信号，外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
 - Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
 
@@ -182,6 +183,7 @@ OpenJudge 自动登录功能
 - `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。代码编辑模式下为无操作。首次切换时加载模板页面（`setHtml`），`loadFinished` 后再切换视图栈；后续切换使用 `runJavaScript` 原地更新，通过回调在 JS 渲染完成后才切换以避免闪烁。
 - `bool isPreviewMode() const`：返回当前是否为预览模式（代码编辑模式下始终返回 `false`）。
 - `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
+- `void setTagNames(const QStringList &names)`：设置 #tag 自动补全的标签列表。
 - `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
 - `void clearExtraSelections()`：清除搜索高亮。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
@@ -200,6 +202,7 @@ OpenJudge 自动登录功能
 - `void filePathChanged(const QString &oldPath, const QString &newPath)`：当文件路径被 `setFilePath` 修改时发出，供标签管理器更新路径关联。
 - `void wikiLinkClicked(const QString &fileName)`：当预览模式下的 WikiLink 被点击时发出。
 - `void runCodeBlockRequested(const QString &language, const QString &code)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码并转发。
+- `void tagClicked(const QString &tag)`：预览模式下点击 `#tag` 链接时发出，由 PreviewPage 拦截 `tag:` scheme 后转发。
 
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
@@ -369,6 +372,66 @@ OpenJudge 自动登录功能
 - 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件。
 - `MainWindow` 在标签页切换、文件保存等操作后调用 `showBacklinks` 刷新面板。
 - 点击事件复用 `MainWindow::onHistoryFileClicked` 槽，打开文件的同时自动处理文件树目录切换。
+
+---
+
+### 8.5. `TagIndex` — 标签索引
+
+**文件**：`tagindex.h` / `tagindex.cpp`
+
+**职责**：
+- 维护标签索引：记录 `#tag` → 文件的双向映射关系，支持标签浏览和文件关联查询。
+- 提取规则：正则 `(*UCP)#(?!\s)([\w-]+)` — Unicode 感知（支持中文/日文/韩文等），`(?!\s)` 排除 `# Heading` 的误匹配，行级跳过 ``` 围栏代码块（保护 `#include` 等误转换）。
+- 全量扫描仅针对 `*.md` / `*.markdown` 文件（不扫描代码文件），使用 `QDirIterator` 递归遍历。
+- 预览转换：`processTagsForPreview()` 将 Markdown 内容中的 `#tag` 替换为 `<a href="tag:tag">#tag</a>`，代码块内不转换。
+- 支持后台线程安全的异步全量扫描：通过 `TagData` 结构体 + `static buildFromPath()` 返回独立数据，`setData()` 在主线程通过 `std::move` 原子交换索引，作为异步构建的 Phase 3 执行。
+- 空状态处理：无标签时返回空列表，由面板负责展示占位文本。
+
+**主要接口**：
+- `static TagData buildFromPath(const QString &rootPath)`：全量扫描，返回 `tagToFiles` 和 `fileToTags` 映射。
+- `void setData(TagData data)`：原子替换内部索引。
+- `QStringList filesForTag(const QString &tag) const`：查询标签关联的文件列表。
+- `QStringList allTags() const`：返回所有标签列表。
+- `void rebuildFile(const QString &filePath)`：增量更新单个文件（保存时调用）。
+- `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息。
+- `void onFileDeleted(const QString &path)`：从索引中移除已删除文件。
+- `static QStringList extractTagsFromContent(const QString &content)`：从文本中提取标签。
+- `static QString processTagsForPreview(const QString &markdown)`：Markdown 中的 #tag 转可点击 HTML 链接。
+
+**内部数据结构**：
+- `QMap<QString, QStringList> m_tagToFiles`：标签 → 文件路径列表。
+- `QMap<QString, QStringList> m_fileToTags`：文件路径 → 标签列表（用于增量删除时的反向清理）。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有。
+- `addFileTags()` 包含 `content.contains('#')` 快路径优化。
+- 标签补全列表由 `updateCurrentEditorCompletions()` 推送到编辑器。
+
+---
+
+### 8.6. `TagPanel` — 标签面板
+
+**文件**：`tagpanel.h` / `tagpanel.cpp`
+
+**职责**：
+- 以 `QListWidget` 双级导航展示标签系统：标签总览 → 点击标签 → 关联文件列表。
+- `showAllTags(tags)`：列表显示所有标签（`#` 前缀），点击触发 `tagClicked` 信号。
+- `showFilesForTag(tag, files)`：显示包含该标签的所有文件（文件名 + 完整路径 ToolTip），点击触发 `fileClicked` 信号。
+- 返回按钮切回标签总览（`onBackClicked` → `showAllTags(m_allTags)`）。
+- 空状态：无标签时灰色 "未找到标签"，无文件时灰色 "无文件包含此标签"。
+- 面板宽度 `setMinimumWidth(200)` 确保稳定不塌缩。
+
+**信号**：
+- `void fileClicked(const QString &filePath)`：用户点击文件列表项时发出。
+- `void tagClicked(const QString &tag)`：用户点击标签列表项时发出。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件，右侧停靠，默认隐藏。
+- 文件点击复用 `MainWindow::onHistoryFileClicked` 槽。
+- 标签点击触发 `MainWindow::onTagClicked`，在面板显示关联文件并确保面板可见。
+- 通过 `MainWindow::refreshTags()` 在标签页切换、文件保存时刷新。
+- 支持点击外部自动隐藏（与 History/Backlinks 面板共享同一 `eventFilter` 模式）。
+- 工具栏快捷键 `Ctrl+Shift+T` 切换显示/隐藏。
 
 ---
 

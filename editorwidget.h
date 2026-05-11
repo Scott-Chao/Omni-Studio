@@ -52,6 +52,7 @@ public:
 
     // WikiLink 自动补全
     void setFileNames(const QStringList &names);
+    void setTagNames(const QStringList &names);
     bool isCodeEdit() const { return m_editorMode == CodeEdit; }
 
 signals:
@@ -64,6 +65,7 @@ signals:
 
     void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
     void runCodeBlockRequested(const QString &language, const QString &code); // 转发代码块运行请求
+    void tagClicked(const QString &tag); // 点击 #tag 时发出
 
 private slots:
     void onTextChanged();

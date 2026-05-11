@@ -25,8 +25,9 @@ class OutputPanel;
 class JudgePanel;
 class OpenJudgeWindow;
 class SubmitResultPanel;
-
 struct SubmissionResult;
+class TagIndex;
+class TagPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -135,6 +136,14 @@ private:
     QPointer<OpenJudgeWindow> m_openJudgeWindow;
     // 提交结果面板
     SubmitResultPanel *m_submitResultPanel = nullptr;
+
+    // 标签系统
+    TagIndex *m_tagIndex;
+    TagPanel *m_tagPanel;
+    QDockWidget *m_dockTag;
+    QAction *toggleTagAction;
+    void refreshTags();
+    void onTagClicked(const QString &tag);
 
     void onCompile();
     void onRun();
