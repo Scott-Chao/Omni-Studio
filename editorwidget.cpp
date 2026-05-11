@@ -263,6 +263,8 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         return text.toHtmlEscaped();
     };
 
+    struct MultiLineSpan { QString placeholder; QString raw; };
+
     if (langId == QStringLiteral("cpp")) {
         const QColor preprocColor = cfg.syntaxPreprocessor(); // #C586C0
 
@@ -362,7 +364,27 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         // Single-line comment — highest priority
         cppRules.append({QRegularExpression(QStringLiteral("//[^\n]*")), {cmtColor, false}});
 
-        html += highlightWithRules(code, cppRules);
+        // Pre-process multi-line comments /*...*/ to protect from line-by-line rules
+        QString procCode = code;
+        QVector<MultiLineSpan> mlSpans;
+        {
+            int midx = 0;
+            static const QRegularExpression reMLCmt(QStringLiteral(R"(/\*[\s\S]*?\*/)"));
+            while (true) {
+                QRegularExpressionMatch m = reMLCmt.match(procCode);
+                if (!m.hasMatch()) break;
+                QString ph = QStringLiteral("\x00MLC%1\x00").arg(midx);
+                mlSpans.append({ph, m.captured(0)});
+                procCode = procCode.left(m.capturedStart()) + ph + procCode.mid(m.capturedEnd());
+                ++midx;
+            }
+        }
+        QString highlighted = highlightWithRules(procCode, cppRules);
+        for (const auto &s : mlSpans)
+            highlighted.replace(s.placeholder,
+                QStringLiteral("<span style=\"color:%1;\">%2</span>")
+                    .arg(cmtColor.name(), s.raw.toHtmlEscaped()));
+        html += highlighted;
     } else if (langId == QStringLiteral("python")) {
         const QColor decorColor = cfg.syntaxPythonDecorators(); // #C586C0
         const QColor selfColor  = cfg.syntaxPythonSelfCls();    // #DCDCDC
@@ -456,7 +478,30 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         // Comment — highest priority
         pyRules.append({QRegularExpression(QStringLiteral("#[^\n]*")), {cmtColor, false}});
 
-        html += highlightWithRules(code, pyRules);
+        // Pre-process triple-quoted strings """...""" and '''...''' (with optional prefix)
+        // to protect them from single-line string rule fragmentation
+        QString procCode = code;
+        QVector<MultiLineSpan> tqSpans;
+        {
+            int tidx = 0;
+            static const QRegularExpression reTQD(
+                QStringLiteral(R"((?:[furbFURB]{1,2})?(?:"""[\s\S]*?"""|'''[\s\S]*?'''))"));
+            while (true) {
+                QRegularExpressionMatch m = reTQD.match(procCode);
+                if (!m.hasMatch()) break;
+                QString ph = QStringLiteral("\x00TQ%1\x00").arg(tidx);
+                tqSpans.append({ph, m.captured(0)});
+                procCode = procCode.left(m.capturedStart()) + ph + procCode.mid(m.capturedEnd());
+                ++tidx;
+            }
+        }
+        QString highlighted = highlightWithRules(procCode, pyRules);
+        // Restore triple-quoted strings with comment color (matching PythonSyntaxHighlighter)
+        for (const auto &s : tqSpans)
+            highlighted.replace(s.placeholder,
+                QStringLiteral("<span style=\"color:%1;\">%2</span>")
+                    .arg(cmtColor.name(), s.raw.toHtmlEscaped()));
+        html += highlighted;
     } else {
         // Unknown language — plain text
         html += code.toHtmlEscaped();
