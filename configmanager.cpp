@@ -283,6 +283,14 @@ QJsonObject ConfigManager::buildDefaultConfig()
     compiler["code_block_prefix"] = "mdblock_";
     root["compiler"] = compiler;
 
+    // ---- settings_panel ----
+    QJsonObject settingsPanel;
+    settingsPanel["width"] = 500;
+    settingsPanel["height"] = 400;
+    settingsPanel["min_width"] = 300;
+    settingsPanel["min_height"] = 200;
+    root["settings_panel"] = settingsPanel;
+
     // ---- judge ----
     QJsonObject judge;
     judge["time_limit_ms"] = 1000;
@@ -458,6 +466,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["toggle_tags"] = "Ctrl+Shift+T";
     shortcuts["toggle_search"] = "Ctrl+Shift+F";
     shortcuts["toggle_judge"] = "Ctrl+Shift+J";
+    shortcuts["toggle_settings"] = "Ctrl+,";
     shortcuts["compile_and_run"] = "F5";
     shortcuts["compile_only"] = "F6";
     shortcuts["run_only"] = "F7";
@@ -658,3 +667,9 @@ QString ConfigManager::shortcut(const QString &actionName, const QString &defaul
 {
     return stringValue("shortcuts." + actionName, defaultValue);
 }
+
+// ---- Settings Panel ----
+int ConfigManager::settingsPanelWidth() const { return intValue("settings_panel.width", 500); }
+int ConfigManager::settingsPanelHeight() const { return intValue("settings_panel.height", 400); }
+int ConfigManager::settingsPanelMinWidth() const { return intValue("settings_panel.min_width", 300); }
+int ConfigManager::settingsPanelMinHeight() const { return intValue("settings_panel.min_height", 200); }

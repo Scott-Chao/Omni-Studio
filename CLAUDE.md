@@ -51,6 +51,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn (browse + submit + poll status)
   ├── SubmitResultPanel   → QWidget, dark-themed submission result display (AC/WA/TLE/CE/PE/OLE with time & memory)
   ├── LoginDialog         → QDialog, username/password + auto-login checkbox for OpenJudge login
+  ├── SettingsPanel       → QWidget, floating settings panel with dimming overlay, drag/resize, empty content area for future options
   └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout for breadcrumb
 ```
 
@@ -126,6 +127,10 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 **SubmitResultPanel** (`submissionpanel.h/cpp`) — `QWidget` for displaying OpenJudge submission results. Dark theme (`#1E1E1E` background). Large status label with color-coded results: AC `#52C41A` green, WA/RE `#E74C3C` red, CE `#F39C12` orange, TLE `#3498DB` blue, MLE `#9B59B6` purple, PE `#E67E22` dark orange, OLE `#FF6B6B` salmon. Detail label shows time(ms) and memory(KB) + Run ID. Collapsible `QPlainTextEdit` for CE compile error log (Consolas 10pt, `#F48771` error color). Hide button at bottom. `showResult(SubmissionResult)` updates all fields at once.
 
 **LoginDialog** (`logindialog.h/cpp`) — `QDialog` with username/password fields, an auto-login checkbox (`QCheckBox`), and Login/Skip buttons. `isAutoLoginEnabled()` / `setAutoLoginEnabled()` control checkbox state.
+
+**SettingsPanel** (`settingspanel.h/cpp`) — `QWidget` for the settings panel, a child of the dimming overlay (`m_settingsOverlay`) owned by `MainWindow`. Dark theme (`#2b2b2b` bg, `#555555` border, 8px border-radius). Custom title bar (36px): "设置" label + close button (`✕`, red hover `#c42b1c`). Scrollable content area via `QScrollArea` with empty `QVBoxLayout` accessible via `contentLayout()` for future settings options. Supports 8-direction edge-drag resize (8px margin, min 300x200), title bar drag-move, and `QSizeGrip` at bottom-right. Emits `closeRequested()` signal. Sizes from ConfigManager (`settingsPanelWidth`/`settingsPanelHeight`).
+
+  **Settings panel toggle & overlay in MainWindow**: `m_settingsAction` (toolbar + `Ctrl+,` shortcut) → `toggleSettings()`. On show: `m_settingsOverlay` (full-window `QWidget`, `rgba(0,0,0,128)` bg) raised + shown, panel centered. On hide: overlay hidden. On window resize: overlay resized, panel position clamped. Click overlay background → `eventFilter` calls `toggleSettings()`. Shortcuts: `shortcuts.toggle_settings` in config.json (default `Ctrl+,`). ConfigManager keys: `settings_panel.width/height/min_width/min_height`.
 
 **FlowLayout** (`flowlayout.h/cpp`) — Custom `QLayout` subclass implementing auto-wrapping flow layout (like Java's `FlowLayout`). When a row is full, items wrap to the next line. Supports `heightForWidth()` for proper height calculation in constrained-width containers. Uses `doLayout(QRect, bool testOnly)` core function: `testOnly=true` calculates required height without moving widgets; `testOnly=false` positions widgets. Spacing can be user-specified or derived from widget style via `smartSpacing()`. Used by `FileExplorerWidget`'s breadcrumb bar to prevent long paths from forcing the left panel wider.
 

@@ -33,6 +33,7 @@ SOURCES += \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
     searchpanel.cpp \
+    settingspanel.cpp \
     submissionpanel.cpp \
     tagindex.cpp \
     tagpanel.cpp \
@@ -64,6 +65,7 @@ HEADERS += \
     processrunner.h \
     pythonsyntaxhighlighter.h \
     searchpanel.h \
+    settingspanel.h \
     submissionpanel.h \
     tagindex.h \
     tagpanel.h \

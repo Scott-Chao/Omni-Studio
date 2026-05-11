@@ -186,6 +186,12 @@ public:
     // ---- Shortcuts ----
     QString shortcut(const QString &actionName, const QString &defaultValue) const;
 
+    // ---- Settings Panel ----
+    int settingsPanelWidth() const;
+    int settingsPanelHeight() const;
+    int settingsPanelMinWidth() const;
+    int settingsPanelMinHeight() const;
+
 private:
     ConfigManager();
     ~ConfigManager() = default;

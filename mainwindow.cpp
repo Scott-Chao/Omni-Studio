@@ -19,6 +19,7 @@
 #include "languageutils.h"
 #include "tagindex.h"
 #include "tagpanel.h"
+#include "settingspanel.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -227,6 +228,15 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->setMovable(false);
     toolBar->setFloatable(false);
 
+    // 设置
+    m_settingsAction = new QAction(tr("设置"), this);
+    m_settingsAction->setShortcut(
+        QKeySequence(ConfigManager::instance().shortcut("toggle_settings", "Ctrl+,")));
+    m_settingsAction->setToolTip(tr("打开/关闭设置面板 (Ctrl+,)"));
+    addAction(m_settingsAction);
+    connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
+    toolBar->insertAction(nullptr, m_settingsAction);
+
     // 历史记录
     toolBar->insertAction(nullptr, toggleHistoryAction);
     // 反向链接
@@ -368,6 +378,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 当切换标签页时，更新预览按钮的选中状态
     connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updatePreviewActionState);
+
+    // ----- 设置面板（悬浮遮罩 + 面板）-----
+    m_settingsOverlay = new QWidget(this);
+    m_settingsOverlay->setObjectName("settingsOverlay");
+    m_settingsOverlay->setStyleSheet(
+        "#settingsOverlay { background-color: rgba(0, 0, 0, 128); }"
+    );
+    m_settingsOverlay->hide();
+
+    m_settingsPanel = new SettingsPanel(m_settingsOverlay);
+    connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
@@ -587,6 +608,41 @@ void MainWindow::loadSettings()
         m_splitter->restoreState(splitterData);
     } else {
         m_splitter->setStretchFactor(1, cfg.mainSplitterDefaultRatio());
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    if (m_settingsOverlay && m_settingsOverlay->isVisible()) {
+        m_settingsOverlay->setGeometry(this->rect());
+        // Clamp panel position to stay within new overlay bounds
+        QPoint panelPos = m_settingsPanel->pos();
+        panelPos.setX(qBound(0, panelPos.x(), m_settingsOverlay->width() - m_settingsPanel->width()));
+        panelPos.setY(qBound(0, panelPos.y(), m_settingsOverlay->height() - m_settingsPanel->height()));
+        m_settingsPanel->move(panelPos);
+    }
+}
+
+void MainWindow::toggleSettings()
+{
+    if (!m_settingsOverlay || !m_settingsPanel)
+        return;
+
+    if (m_settingsOverlay->isVisible()) {
+        m_settingsOverlay->hide();
+    } else {
+        m_settingsOverlay->setGeometry(this->rect());
+        m_settingsOverlay->raise();
+
+        int panelW = m_settingsPanel->width();
+        int panelH = m_settingsPanel->height();
+        int x = (m_settingsOverlay->width() - panelW) / 2;
+        int y = (m_settingsOverlay->height() - panelH) / 2;
+        m_settingsPanel->move(qMax(0, x), qMax(0, y));
+        m_settingsPanel->raise();
+
+        m_settingsOverlay->show();
     }
 }
 
@@ -1073,6 +1129,18 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return QMainWindow::eventFilter(watched, event);
             if (!m_dockTag->isAncestorOf(clickedWidget))
                 m_dockTag->hide();
+        }
+
+        // Close settings panel when clicking overlay background
+        if (m_settingsOverlay && m_settingsOverlay->isVisible()) {
+            if (btn && btn->defaultAction() == m_settingsAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (m_settingsPanel->isAncestorOf(clickedWidget))
+                return QMainWindow::eventFilter(watched, event);
+            if (m_settingsOverlay->isAncestorOf(clickedWidget) &&
+                !m_settingsPanel->isAncestorOf(clickedWidget)) {
+                toggleSettings();
+            }
         }
     }
     return QMainWindow::eventFilter(watched, event);

@@ -28,6 +28,7 @@ class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
 class TagPanel;
+class SettingsPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -78,6 +79,7 @@ private slots:
 
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存
+    void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -145,6 +147,11 @@ private:
     void refreshTags();
     void onTagClicked(const QString &tag);
 
+    // 设置面板
+    SettingsPanel *m_settingsPanel = nullptr;
+    QWidget *m_settingsOverlay = nullptr;
+    QAction *m_settingsAction = nullptr;
+
     void onCompile();
     void onRun();
     void onCompileAndRun();
@@ -158,6 +165,7 @@ private:
     void onSubmitToOpenJudge();
     void onSubmissionResultReady(const SubmissionResult &result);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
+    void toggleSettings();
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
