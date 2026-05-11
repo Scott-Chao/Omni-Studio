@@ -1226,7 +1226,7 @@ void MainWindow::onOpenJudgeRequested()
 {
     bool isNew = false;
     if (!m_openJudgeWindow) {
-        m_openJudgeWindow = new OpenJudgeWindow(nullptr);
+        m_openJudgeWindow = new OpenJudgeWindow(m_settings, nullptr);
         isNew = true;
         connect(m_openJudgeWindow, &OpenJudgeWindow::sampleSelected,
                 this, &MainWindow::onOpenJudgeSampleSelected);
@@ -1263,15 +1263,7 @@ void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
 
 void MainWindow::onSubmitToOpenJudge()
 {
-    // 1. Check if OpenJudge window exists and is logged in
-    if (!m_openJudgeWindow || !m_openJudgeWindow->isLoggedIn()) {
-        QMessageBox::information(this, tr("提示"),
-            tr("请先登录 OpenJudge"));
-        onOpenJudgeRequested();
-        return;
-    }
-
-    // 2. Check if there's a code file open
+    // 1. Check if there's a code file open
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || !editor->isCodeEdit()) {
         QMessageBox::information(this, tr("提示"),
@@ -1279,11 +1271,35 @@ void MainWindow::onSubmitToOpenJudge()
         return;
     }
 
-    // 3. Get code and determine language
+    // 2. Get code and determine language
     QString code = editor->toPlainText();
     if (code.trimmed().isEmpty()) {
         QMessageBox::information(this, tr("提示"),
             tr("代码内容为空"));
+        return;
+    }
+
+    // 3. Check if OpenJudge window exists and has a problem selected
+    if (!m_openJudgeWindow || !m_openJudgeWindow->hasCurrentProblem()) {
+        // Trigger auto-login / show window so user can select a problem
+        bool autoLoginInitiated = m_openJudgeWindow && m_openJudgeWindow->tryAutoLogin();
+        if (!autoLoginInitiated) {
+            onOpenJudgeRequested();
+        }
+        QMessageBox::information(this, tr("提示"),
+            tr("请先在 OpenJudge 中选择一道题目"));
+        return;
+    }
+
+    // 4. Check login status
+    if (!m_openJudgeWindow->isLoggedIn()) {
+        bool autoLoginInitiated = m_openJudgeWindow->tryAutoLogin();
+        if (!autoLoginInitiated) {
+            onOpenJudgeRequested();
+        }
+        QMessageBox::information(this, tr("提示"),
+            autoLoginInitiated ? tr("正在自动登录 OpenJudge，请稍后重试")
+                               : tr("请先登录 OpenJudge"));
         return;
     }
 

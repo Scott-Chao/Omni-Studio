@@ -36,6 +36,13 @@ public:
     // 清除所有设置
     void clear();
 
+    // OpenJudge 自动登录
+    void setOpenJudgeAutoLogin(bool enabled);
+    bool openJudgeAutoLogin() const;
+    void setOpenJudgeCredentials(const QString &username, const QString &password);
+    QPair<QString, QString> openJudgeCredentials() const; // <username, password>
+    void clearOpenJudgeCredentials();
+
 private:
     QSettings *m_settings;
     static const int MaxRecentFiles = 50; // 历史记录数量限制

@@ -1,5 +1,6 @@
 #include "openjudgewindow.h"
 #include "logindialog.h"
+#include "settingsmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -68,8 +69,9 @@ static QString wrapHtml(const QString &body)
 // Constructor
 // ======================================================================
 
-OpenJudgeWindow::OpenJudgeWindow(QWidget *parent)
+OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
     : QMainWindow(parent)
+    , m_settingsManager(settings)
     , m_crawler(new Crawler(this))
     , m_listWidget(new QListWidget)
     , m_statusLabel(new QLabel)
@@ -308,16 +310,46 @@ void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
 // Login / auth
 // ======================================================================
 
+bool OpenJudgeWindow::tryAutoLogin()
+{
+    if (m_isLoggedIn) return true;
+    if (m_autoLoginInProgress) return false;
+    if (!m_settingsManager) return false;
+    if (!m_settingsManager->openJudgeAutoLogin()) return false;
+
+    auto [username, password] = m_settingsManager->openJudgeCredentials();
+    if (username.isEmpty() || password.isEmpty()) return false;
+
+    m_autoLoginInProgress = true;
+    m_username = username;
+    m_statusLabel->setText(QStringLiteral("正在自动登录..."));
+    m_refreshBtn->setEnabled(false);
+    m_listWidget->clear();
+    m_crawler->login(username, password);
+    return true;
+}
+
 void OpenJudgeWindow::onReLogin()
 {
+    // Try auto-login first
+    if (tryAutoLogin())
+        return;
+
     LoginDialog dlg(this);
+    if (m_settingsManager)
+        dlg.setAutoLoginEnabled(m_settingsManager->openJudgeAutoLogin());
+
     if (dlg.exec() == QDialog::Accepted) {
         m_username = dlg.username();
+        m_pendingPassword = dlg.password();
+        m_pendingAutoLogin = dlg.isAutoLoginEnabled();
         m_statusLabel->setText(QStringLiteral("正在登录..."));
         m_refreshBtn->setEnabled(false);
         m_listWidget->clear();
-        m_crawler->login(dlg.username(), dlg.password());
+        m_crawler->login(m_username, m_pendingPassword);
     } else {
+        m_pendingAutoLogin = false;
+        m_pendingPassword.clear();
         m_statusLabel->setText(QStringLiteral("跳过登录，正在获取页面..."));
         m_crawler->fetchMainPage();
     }
@@ -326,17 +358,43 @@ void OpenJudgeWindow::onReLogin()
 void OpenJudgeWindow::onLoginSuccess()
 {
     m_isLoggedIn = true;
+    m_autoLoginInProgress = false;
     m_loginBtn->setText(QStringLiteral("退出登录"));
     m_userLabel->setText(QStringLiteral("用户: %1").arg(m_username));
     m_userLabel->setVisible(true);
     m_statusLabel->setText(QStringLiteral("登录成功，正在获取作业列表..."));
+
+    // Save credentials if auto-login was requested via dialog
+    if (m_settingsManager && m_pendingAutoLogin && !m_pendingPassword.isEmpty()) {
+        m_settingsManager->setOpenJudgeAutoLogin(true);
+        m_settingsManager->setOpenJudgeCredentials(m_username, m_pendingPassword);
+    }
+    m_pendingAutoLogin = false;
+    m_pendingPassword.clear();
+
     emit loginStateChanged(true, m_username);
 }
 
 void OpenJudgeWindow::onLoginFailed(const QString &error)
 {
+    bool wasAutoLogin = m_autoLoginInProgress;
     m_isLoggedIn = false;
+    m_autoLoginInProgress = false;
+    m_pendingAutoLogin = false;
+    m_pendingPassword.clear();
     m_username.clear();
+
+    if (wasAutoLogin) {
+        // Auto-login failed, clear saved credentials and fall back to dialog
+        if (m_settingsManager) {
+            m_settingsManager->setOpenJudgeAutoLogin(false);
+            m_settingsManager->clearOpenJudgeCredentials();
+        }
+        m_statusLabel->setText(QStringLiteral("自动登录失败，请手动登录"));
+        onReLogin(); // Will show dialog since tryAutoLogin() will return false
+        return;
+    }
+
     m_statusLabel->setText(QStringLiteral("登录失败"));
     QMessageBox::warning(this, QStringLiteral("登录失败"), error);
     m_refreshBtn->setEnabled(true);
@@ -354,12 +412,21 @@ void OpenJudgeWindow::onLogoutClicked()
 {
     m_isLoggedIn = false;
     m_username.clear();
+    m_autoLoginInProgress = false;
+    m_pendingAutoLogin = false;
+    m_pendingPassword.clear();
     m_loginBtn->setText(QStringLiteral("登录"));
     m_userLabel->clear();
     m_userLabel->setVisible(false);
 
     // Clear cookies
     m_crawler->clearCookies();
+
+    // Clear auto-login credentials so it won't auto-login again
+    if (m_settingsManager) {
+        m_settingsManager->setOpenJudgeAutoLogin(false);
+        m_settingsManager->clearOpenJudgeCredentials();
+    }
 
     m_statusLabel->setText(QStringLiteral("已退出登录"));
     m_refreshBtn->setText(QStringLiteral("刷新"));
@@ -743,12 +810,12 @@ void OpenJudgeWindow::onSelectClicked()
 
 void OpenJudgeWindow::submitCurrentProblem(const QString &sourceCode, int languageId)
 {
-    if (!m_isLoggedIn) {
-        m_statusLabel->setText(QStringLiteral("请先登录"));
+    if (m_currentProblemUrl.isEmpty()) {
+        emit submissionFailed(QStringLiteral("请先在 OpenJudge 中选择一道题目"));
         return;
     }
-    if (m_currentProblemUrl.isEmpty()) {
-        m_statusLabel->setText(QStringLiteral("请先选择一道题目"));
+    if (!m_isLoggedIn) {
+        emit submissionFailed(QStringLiteral("请先登录 OpenJudge"));
         return;
     }
     if (!m_currentHomeworkOngoing) {

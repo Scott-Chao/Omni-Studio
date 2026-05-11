@@ -10,6 +10,7 @@ class QLabel;
 class QPushButton;
 class QStackedWidget;
 class QTextBrowser;
+class SettingsManager;
 
 struct SubmissionResult;
 
@@ -19,12 +20,14 @@ class OpenJudgeWindow : public QMainWindow
 {
     Q_OBJECT
 public:
-    explicit OpenJudgeWindow(QWidget *parent = nullptr);
+    explicit OpenJudgeWindow(SettingsManager *settings, QWidget *parent = nullptr);
 
     bool isLoggedIn() const { return m_isLoggedIn; }
+    bool hasCurrentProblem() const { return !m_currentProblemUrl.isEmpty(); }
     QString loggedInUsername() const { return m_username; }
     void submitCurrentProblem(const QString &sourceCode, int languageId);
     void onReLogin();
+    bool tryAutoLogin();
 
 signals:
     void sampleSelected(const QString &folderPath);
@@ -100,6 +103,11 @@ private:
     QString m_currentHomeworkUrl;
     QString m_currentProblemUrl;
     bool m_currentHomeworkOngoing = false;
+
+    SettingsManager *m_settingsManager = nullptr;
+    bool m_autoLoginInProgress = false;
+    bool m_pendingAutoLogin = false;
+    QString m_pendingPassword;
 };
 
 #endif // OPENJUDGEWINDOW_H

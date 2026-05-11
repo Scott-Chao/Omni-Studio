@@ -3,6 +3,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -11,7 +12,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("登录 OpenJudge"));
-    setFixedSize(360, 220);
+    setFixedSize(360, 260);
 
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(12);
@@ -34,6 +35,9 @@ LoginDialog::LoginDialog(QWidget *parent)
     m_passwordEdit->setEchoMode(QLineEdit::Password);
     formLayout->addRow(QStringLiteral("密码:"), m_passwordEdit);
 
+    m_autoLoginCheck = new QCheckBox(QStringLiteral("自动登录"));
+    m_autoLoginCheck->setChecked(false);
+
     auto *btnLayout = new QHBoxLayout;
     btnLayout->setSpacing(12);
 
@@ -46,6 +50,7 @@ LoginDialog::LoginDialog(QWidget *parent)
 
     mainLayout->addWidget(titleLabel);
     mainLayout->addLayout(formLayout);
+    mainLayout->addWidget(m_autoLoginCheck, 0, Qt::AlignCenter);
     mainLayout->addLayout(btnLayout);
     mainLayout->addStretch();
 
@@ -68,4 +73,14 @@ QString LoginDialog::username() const
 QString LoginDialog::password() const
 {
     return m_passwordEdit->text();
+}
+
+bool LoginDialog::isAutoLoginEnabled() const
+{
+    return m_autoLoginCheck->isChecked();
+}
+
+void LoginDialog::setAutoLoginEnabled(bool enabled)
+{
+    m_autoLoginCheck->setChecked(enabled);
 }

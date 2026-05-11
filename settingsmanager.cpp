@@ -95,3 +95,46 @@ void SettingsManager::clear()
     // 清空设置
     m_settings->clear();
 }
+
+static const QString KEY_OJ_AUTO_LOGIN  = "OpenJudge/autoLogin";
+static const QString KEY_OJ_USERNAME    = "OpenJudge/username";
+static const QString KEY_OJ_PASSWORD    = "OpenJudge/password";
+
+static QString obfuscate(const QString &text)
+{
+    return QString::fromLatin1(text.toUtf8().toBase64());
+}
+
+static QString deobfuscate(const QString &encoded)
+{
+    return QString::fromUtf8(QByteArray::fromBase64(encoded.toLatin1()));
+}
+
+void SettingsManager::setOpenJudgeAutoLogin(bool enabled)
+{
+    m_settings->setValue(KEY_OJ_AUTO_LOGIN, enabled);
+}
+
+bool SettingsManager::openJudgeAutoLogin() const
+{
+    return m_settings->value(KEY_OJ_AUTO_LOGIN, false).toBool();
+}
+
+void SettingsManager::setOpenJudgeCredentials(const QString &username, const QString &password)
+{
+    m_settings->setValue(KEY_OJ_USERNAME, username);
+    m_settings->setValue(KEY_OJ_PASSWORD, obfuscate(password));
+}
+
+QPair<QString, QString> SettingsManager::openJudgeCredentials() const
+{
+    QString username = m_settings->value(KEY_OJ_USERNAME).toString();
+    QString password = deobfuscate(m_settings->value(KEY_OJ_PASSWORD).toString());
+    return {username, password};
+}
+
+void SettingsManager::clearOpenJudgeCredentials()
+{
+    m_settings->remove(KEY_OJ_USERNAME);
+    m_settings->remove(KEY_OJ_PASSWORD);
+}

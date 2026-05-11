@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.4）
+## 功能说明文档（v0.4.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -23,15 +23,14 @@
 - 异步索引构建：切换到大目录时，文件索引与反向链接扫描在后台线程执行，UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
-- OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。
+- OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 
-### 修复 v0.4.4
-OpenJudge 窗口交互修复
-- 修复"提交到OpenJudge"弹出两个重叠登录窗口的问题：`onSubmitToOpenJudge()` 中移除重复的 500ms 定时器调用，统一由 `onOpenJudgeRequested()` 在窗口创建/显示后触发登录对话框。
-- 修复 OpenJudge 窗口 Z 轴层级问题（打开后主窗口无法置顶）：`OpenJudgeWindow` 不再以 `MainWindow` 为父窗口（parent = `nullptr`），作为独立顶层窗口可正常切换前后层级。
-- 修复最小化 OpenJudge 窗口后点击"从OpenJudge获取"无法自动恢复窗口：`onOpenJudgeRequested()` 中添加 `setWindowState(... & ~WindowMinimized)` 清除最小化状态后再 `show()` / `raise()` / `activateWindow()`。
+### 新增 v0.4.5
+OpenJudge 自动登录功能
+- 登录时勾选“自动登录”，信息存储至配置文件，之后登录无需手动操作。
+- 新增题目选中状态检测，如果点击提交时未选择题目，弹出提示信息。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -276,6 +275,10 @@ OpenJudge 窗口交互修复
 - `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
 - `void clear()`：清除所有设置。
 - `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（最多50条），键名 `History/recentFiles`。
+- **OpenJudge 自动登录**：
+  - `void setOpenJudgeAutoLogin(bool enabled)` / `bool openJudgeAutoLogin() const`：读写自动登录开关，键名 `OpenJudge/autoLogin`。
+  - `void setOpenJudgeCredentials(const QString &username, const QString &password)` / `QPair<QString, QString> openJudgeCredentials() const`：读写 OpenJudge 账号密码，密码经 Base64 混淆后存储。
+  - `void clearOpenJudgeCredentials()`：清除已保存的凭据。
 
 **协作关系**：
 - 仅被 `MainWindow` 使用，在 `loadSettings` 和 `saveSettings` 中调用对应方法。
@@ -675,7 +678,7 @@ OpenJudge 窗口交互修复
 - `setTestFolder(path)` 设置文件夹路径并自动清除已有结果，供 OpenJudge 集成使用。
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
 - 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
-- 信号 `submitToOpenJudgeRequested()` 由 `MainWindow::onSubmitToOpenJudge()` 处理，执行代码提交流程。
+- 信号 `submitToOpenJudgeRequested()` 由 `MainWindow::onSubmitToOpenJudge()` 处理，执行代码提交流程。检查顺序：代码有效性 → 题目选择状态 → 登录状态 → 作业是否进行中，不满足时弹出相应提示。
 
 ---
 
@@ -725,9 +728,10 @@ OpenJudge 窗口交互修复
 **文件**：`logindialog.h` / `logindialog.cpp`
 
 **职责**：
-- 简单的 `QDialog`，包含用户名和密码输入框。
+- 简单的 `QDialog`，包含用户名和密码输入框，附带"自动登录"复选框（默认关闭）。
 - 提供"登录"和"跳过"两个按钮，跳过时 `reject()` 对话框。
-- `username()` / `password()` 方法返回用户输入的凭据。
+- `username()` / `password()` 返回用户输入的凭据，`isAutoLoginEnabled()` 返回复选框状态。
+- `setAutoLoginEnabled(bool)` 设置复选框的初始状态（从配置读取）。
 
 **协作关系**：
 - 由 `OpenJudgeWindow::onReLogin()` 以模态方式弹出，用户选择登录则将凭据传入 `Crawler::login()`。
@@ -741,13 +745,14 @@ OpenJudge 窗口交互修复
 **职责**：
 - 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，深色主题（背景 `#2D2D30`，前景 `#D4D4D4`）。
 - 顶部工具栏：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。
-- **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，匿名重新加载主页。
+- **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
+- **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
 - 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
 - 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧渲染内容（`QTextBrowser`），无间隔紧凑布局。选择按钮在此页可见。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-<timestamp>"`，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
-- **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，校验登录状态、题目选择和作业进行中状态后，调用 `Crawler::submitCode()` 执行提交。
+- **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。
 - "选择此题目"按钮 emit `sampleSelected(folderPath)` 信号，由 `MainWindow` 回填至评测面板的测试用例文件夹。
 - 窗口为单例：`MainWindow` 通过 `QPointer<OpenJudgeWindow>` 管理，关闭后自动置 null，再次点击重新创建。
 
@@ -760,9 +765,9 @@ OpenJudge 窗口交互修复
 **内部枚举 `OjViewState`**：`OJ_HOMEWORK_LIST`、`OJ_PROBLEM_LIST`、`OJ_PROBLEM_DETAIL`，独立于 web-crawler 的 `ViewState`，避免符号冲突。
 
 **协作关系**：
-- 由 `MainWindow::onOpenJudgeRequested()` 创建，`sampleSelected` 信号连接到 `MainWindow::onOpenJudgeSampleSelected()`。
+- 由 `MainWindow::onOpenJudgeRequested()` 创建（传入 `SettingsManager*`），`sampleSelected` 信号连接到 `MainWindow::onOpenJudgeSampleSelected()`。
 - 持有 `Crawler` 实例，连接其全部信号到自身槽方法。
-- 调用 `LoginDialog` 进行登录交互。
+- 调用 `LoginDialog` 进行登录交互，通过 `SettingsManager` 持久化自动登录凭据。
 - 依赖 `Crawler::decodeHtmlEntities()` 静态方法解码 HTML 实体。
 
 ---
