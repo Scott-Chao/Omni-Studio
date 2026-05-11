@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.7）
+## 功能说明文档（v0.4.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -27,9 +27,10 @@
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
+- Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 
-### 新增 v0.4.7
-**集中配置文件系统**：所有硬编码值（颜色、字体、超时、限制、扩展名、编译器参数、快捷键等）集中到 `config.json`，通过 `ConfigManager` 单例统一管理。`config.json` 缺失时所有接口返回内置默认值，行为完全不变。与 `config.ini`（SettingsManager 会话状态）共存互补。
+### 新增 v0.4.8
+预览代码块语法高亮：预览模式下的代码块现在具有与代码编辑器相同的语法高亮。采用 C++ 端预处理方案，在将 Markdown 发送给 WebEngine 预览前，解析所有 fenced 代码块，对可识别语言（C/C++、Python）运用与 QSyntaxHighlighter 一致的规则生成带内联样式的 HTML。高亮后的 HTML 经 Base64 编码后包裹在 `highlighted` 自定义围栏块中，由 marked.js 渲染器解码透传，无需引入额外 JS 高亮库。颜色通过 ConfigManager 统一配置，确保预览与编辑器的着色一致。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -169,7 +170,7 @@
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
 - 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
-- WikiLink 转换：`processWikiLinks()` 使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">` 格式的 Markdown 链接，链接目标通过 `QUrl::toPercentEncoding` 编码，避免特殊字符破坏 HTML/JS 语法。预览渲染还通过 `TagIndex::processTagsForPreview()` 将 `#tag` 转换为 `<a href="tag:tag">#tag</a>`，实现标签可点击。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:`、`tag:`、`runblock:` scheme 的导航请求并发出对应信号，外部链接交由系统浏览器打开。
+- 预览内容预处理：`preparePreviewContent()` 统一编排预处理管线——先调用 `preHighlightCodeBlocks()` 对 fenced 代码块进行 C++ 端语法高亮（`highlightCodeBlock()` 使用直接正则匹配 + ConfigManager 颜色生成内联样式 HTML，经 Base64 编码后以 ````highlighted``` 自定义围栏块形式交给 marked.js 解码透传），再调用 `processWikiLinks()` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">`（使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]`，链接目标通过 `QUrl::toPercentEncoding` 编码），接着通过 `TagIndex::processTagsForPreview()` 将 `#tag` 转换为 `<a href="tag:tag">#tag</a>`，最后转义 `</script>` 防止 HTML 注入。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:`、`tag:`、`runblock:` scheme 的导航请求并发出对应信号，外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
 - Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
 
@@ -187,7 +188,10 @@
 - `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
 - `void clearExtraSelections()`：清除搜索高亮。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
-- `void updatePreviewContent(std::function<void()> onFinished)`：处理 WikiLink → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
+- `void updatePreviewContent(std::function<void()> onFinished)`：调用 `preparePreviewContent()` 获取预处理内容 → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
+- `QString preparePreviewContent(const QString &rawMarkdown)`：统一预处理管线——`preHighlightCodeBlocks()` → `processWikiLinks()` → `TagIndex::processTagsForPreview()` → `</script>` 转义。被 `setPreviewMode()` 和 `updatePreviewContent()` 共同使用。
+- `QString preHighlightCodeBlocks(const QString &markdown)`：使用正则匹配所有 fenced 代码块，对可识别语言（C/C++、Python）调用 `highlightCodeBlock()` 生成内联样式 HTML，经 Base64 编码后替换为 `highlighted` 自定义围栏块。
+- `QString highlightCodeBlock(const QString &code, const QString &langId)`：使用直接正则匹配（复用 CppSyntaxHighlighter / PythonSyntaxHighlighter 的规则和 ConfigManager 颜色），对代码逐行逐片着生成 `<span style="color:...">` 内联样式 HTML。
 - `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 `<a href="wikilink:...">` HTML 超链接格式（供首次加载和增量更新共用）。
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。

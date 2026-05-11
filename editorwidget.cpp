@@ -19,9 +19,15 @@
 #include <QDesktopServices>
 #include <QWebEnginePage>
 #include <QTextBlock>
+#include <QTextDocument>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QColor>
+
+// Forward declaration for highlightWithRules used in highlightCodeBlock
+static QString highlightWithRules(
+    const QString &code,
+    const QVector<QPair<QRegularExpression, QPair<QColor,bool>>> &rules);
 
 // 自定义 Web 页面：拦截 wikilink 和 runblock 导航
 class PreviewPage : public QWebEnginePage {
@@ -175,9 +181,7 @@ void EditorWidget::setPreviewMode(bool preview)
             QString tmpl = QString::fromUtf8(tmplFile.readAll());
             tmplFile.close();
 
-            QString safeContent = processWikiLinks(m_textEdit->toPlainText());
-            safeContent = TagIndex::processTagsForPreview(safeContent);
-            safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+            QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
             tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
             m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 
@@ -233,11 +237,410 @@ QString EditorWidget::processWikiLinks(const QString &markdown)
     return result;
 }
 
+QString EditorWidget::highlightCodeBlock(const QString &code, const QString &langId)
+{
+    const auto &cfg = ConfigManager::instance();
+    QString html;
+    html += QStringLiteral("<pre style=\"background:#1e1e1e;padding:16px;border-radius:0 0 6px 6px;"
+                           "overflow-x:auto;margin:0;\">");
+    html += QStringLiteral("<code style=\"background:none;padding:0;"
+                           "font-family:Consolas,'Courier New',monospace;font-size:0.9em;\">");
+
+    // Colors matching CppSyntaxHighlighter / PythonSyntaxHighlighter
+    const QColor kwColor    = cfg.syntaxKeywords();      // #569CD6
+    const QColor typeColor  = cfg.syntaxTypes();         // #4EC9B0
+    const QColor numColor   = cfg.syntaxNumbers();       // #B5CEA8
+    const QColor strColor   = cfg.syntaxStrings();       // #CE9178
+    const QColor cmtColor   = cfg.syntaxComments();      // #6A9955
+
+    // --- Helper: wrap a token in a colored span ---
+    auto span = [&](const QString &text, const QColor &color, bool bold = false) {
+        if (color.isValid() && color != QColor(0, 0, 0)) {
+            QString style = QStringLiteral("color:%1;").arg(color.name());
+            if (bold) style += QStringLiteral("font-weight:bold;");
+            return QStringLiteral("<span style=\"%1\">%2</span>").arg(style, text.toHtmlEscaped());
+        }
+        return text.toHtmlEscaped();
+    };
+
+    if (langId == QStringLiteral("cpp")) {
+        const QColor preprocColor = cfg.syntaxPreprocessor(); // #C586C0
+
+        // C++ keyword list (from CppSyntaxHighlighter)
+        const QStringList keywords = {
+            QStringLiteral("alignas"), QStringLiteral("alignof"), QStringLiteral("and"),
+            QStringLiteral("and_eq"), QStringLiteral("asm"), QStringLiteral("auto"),
+            QStringLiteral("bitand"), QStringLiteral("bitor"), QStringLiteral("break"),
+            QStringLiteral("case"), QStringLiteral("catch"), QStringLiteral("class"),
+            QStringLiteral("compl"), QStringLiteral("concept"), QStringLiteral("const"),
+            QStringLiteral("consteval"), QStringLiteral("constexpr"), QStringLiteral("constinit"),
+            QStringLiteral("const_cast"), QStringLiteral("continue"), QStringLiteral("co_await"),
+            QStringLiteral("co_return"), QStringLiteral("co_yield"), QStringLiteral("decltype"),
+            QStringLiteral("default"), QStringLiteral("delete"), QStringLiteral("do"),
+            QStringLiteral("dynamic_cast"), QStringLiteral("else"), QStringLiteral("enum"),
+            QStringLiteral("explicit"), QStringLiteral("export"), QStringLiteral("extern"),
+            QStringLiteral("false"), QStringLiteral("final"), QStringLiteral("for"),
+            QStringLiteral("friend"), QStringLiteral("goto"), QStringLiteral("if"),
+            QStringLiteral("inline"), QStringLiteral("mutable"), QStringLiteral("namespace"),
+            QStringLiteral("new"), QStringLiteral("noexcept"), QStringLiteral("not"),
+            QStringLiteral("not_eq"), QStringLiteral("nullptr"), QStringLiteral("operator"),
+            QStringLiteral("or"), QStringLiteral("or_eq"), QStringLiteral("override"),
+            QStringLiteral("private"), QStringLiteral("protected"), QStringLiteral("public"),
+            QStringLiteral("register"), QStringLiteral("reinterpret_cast"), QStringLiteral("requires"),
+            QStringLiteral("return"), QStringLiteral("signed"), QStringLiteral("sizeof"),
+            QStringLiteral("static"), QStringLiteral("static_assert"), QStringLiteral("static_cast"),
+            QStringLiteral("struct"), QStringLiteral("switch"), QStringLiteral("template"),
+            QStringLiteral("this"), QStringLiteral("thread_local"), QStringLiteral("throw"),
+            QStringLiteral("true"), QStringLiteral("try"), QStringLiteral("typedef"),
+            QStringLiteral("typeid"), QStringLiteral("typename"), QStringLiteral("union"),
+            QStringLiteral("unsigned"), QStringLiteral("using"), QStringLiteral("virtual"),
+            QStringLiteral("void"), QStringLiteral("volatile"), QStringLiteral("while"),
+            QStringLiteral("xor"), QStringLiteral("xor_eq")
+        };
+        // Build keyword regex
+        QString kwPattern;
+        for (int i = 0; i < keywords.size(); ++i) {
+            if (i > 0) kwPattern += QChar(L'|');
+            kwPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(keywords[i]));
+        }
+
+        // Type list (from CppSyntaxHighlighter)
+        const QStringList types = {
+            QStringLiteral("bool"), QStringLiteral("char"), QStringLiteral("char16_t"),
+            QStringLiteral("char32_t"), QStringLiteral("char8_t"), QStringLiteral("double"),
+            QStringLiteral("float"), QStringLiteral("int"), QStringLiteral("long"),
+            QStringLiteral("short"), QStringLiteral("size_t"), QStringLiteral("ssize_t"),
+            QStringLiteral("ptrdiff_t"), QStringLiteral("int8_t"), QStringLiteral("int16_t"),
+            QStringLiteral("int32_t"), QStringLiteral("int64_t"), QStringLiteral("uint8_t"),
+            QStringLiteral("uint16_t"), QStringLiteral("uint32_t"), QStringLiteral("uint64_t"),
+            QStringLiteral("wchar_t"), QStringLiteral("std"), QStringLiteral("string"),
+            QStringLiteral("wstring"), QStringLiteral("u16string"), QStringLiteral("u32string"),
+            QStringLiteral("vector"), QStringLiteral("map"), QStringLiteral("set"),
+            QStringLiteral("list"), QStringLiteral("deque"), QStringLiteral("queue"),
+            QStringLiteral("stack"), QStringLiteral("array"), QStringLiteral("tuple"),
+            QStringLiteral("pair"), QStringLiteral("optional"), QStringLiteral("variant"),
+            QStringLiteral("unique_ptr"), QStringLiteral("shared_ptr"), QStringLiteral("weak_ptr"),
+            QStringLiteral("function"), QStringLiteral("string_view"), QStringLiteral("span"),
+            QStringLiteral("initializer_list"), QStringLiteral("mutex"), QStringLiteral("lock_guard"),
+            QStringLiteral("unique_lock"), QStringLiteral("shared_lock"), QStringLiteral("condition_variable"),
+            QStringLiteral("promise"), QStringLiteral("future"), QStringLiteral("atomic"),
+            QStringLiteral("thread"), QStringLiteral("jthread"), QStringLiteral("filesystem"),
+            QStringLiteral("path"), QStringLiteral("error_code"), QStringLiteral("error_category"),
+            QStringLiteral("istream"), QStringLiteral("ostream"), QStringLiteral("iostream"),
+            QStringLiteral("fstream"), QStringLiteral("sstream"), QStringLiteral("stringstream"),
+            QStringLiteral("ifstream"), QStringLiteral("ofstream"), QStringLiteral("QString"),
+            QStringLiteral("QWidget"), QStringLiteral("QObject"), QStringLiteral("QVariant"),
+            QStringLiteral("QList"), QStringLiteral("QVector"), QStringLiteral("QMap"),
+            QStringLiteral("QSet"), QStringLiteral("QHash"), QStringLiteral("QPair"),
+            QStringLiteral("QSharedPointer"), QStringLiteral("QScopedPointer")
+        };
+        QString typePattern;
+        for (int i = 0; i < types.size(); ++i) {
+            if (i > 0) typePattern += QChar(L'|');
+            typePattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(types[i]));
+        }
+
+        // Combine patterns — lowest priority first, so later rules override earlier ones
+        // This matches CppSyntaxHighlighter's rule application order
+        QVector<QPair<QRegularExpression, QPair<QColor,bool>>> cppRules;
+        // Keywords (bold) — lowest priority
+        cppRules.append({QRegularExpression(kwPattern), {kwColor, true}});
+        // Preprocessor
+        cppRules.append({QRegularExpression(QStringLiteral("^\\s*#\\s*\\w+")), {preprocColor, false}});
+        // Types
+        cppRules.append({QRegularExpression(typePattern), {typeColor, false}});
+        // Numbers
+        cppRules.append({QRegularExpression(
+            QStringLiteral("\\b0[xX][0-9a-fA-F]+[']?[0-9a-fA-F]*\\b"
+                           "|\\b0[bB][01]+[']?[01]*\\b"
+                           "|\\b[0-9]+[']?[0-9]*(?:\\.[0-9]+[']?[0-9]*)?(?:[eE][+-]?[0-9]+)?(?:f|F|l|L|u|U|ll|LL|ull|ULL)?\\b")),
+            {numColor, false}});
+        // Char literals
+        cppRules.append({QRegularExpression(QStringLiteral(R"('(?:[^'\\]|\\.)'|'(?:\\.)')")), {strColor, false}});
+        // String literals
+        cppRules.append({QRegularExpression(QStringLiteral(R"("(?:[^"\\]|\\.)*")")), {strColor, false}});
+        // Single-line comment — highest priority
+        cppRules.append({QRegularExpression(QStringLiteral("//[^\n]*")), {cmtColor, false}});
+
+        html += highlightWithRules(code, cppRules);
+    } else if (langId == QStringLiteral("python")) {
+        const QColor decorColor = cfg.syntaxPythonDecorators(); // #C586C0
+        const QColor selfColor  = cfg.syntaxPythonSelfCls();    // #DCDCDC
+
+        // Python keyword list (from PythonSyntaxHighlighter)
+        const QStringList pyKeywords = {
+            QStringLiteral("def"), QStringLiteral("class"), QStringLiteral("if"),
+            QStringLiteral("elif"), QStringLiteral("else"), QStringLiteral("for"),
+            QStringLiteral("while"), QStringLiteral("import"), QStringLiteral("from"),
+            QStringLiteral("as"), QStringLiteral("return"), QStringLiteral("yield"),
+            QStringLiteral("try"), QStringLiteral("except"), QStringLiteral("finally"),
+            QStringLiteral("raise"), QStringLiteral("with"), QStringLiteral("pass"),
+            QStringLiteral("break"), QStringLiteral("continue"), QStringLiteral("lambda"),
+            QStringLiteral("del"), QStringLiteral("global"), QStringLiteral("nonlocal"),
+            QStringLiteral("assert"), QStringLiteral("async"), QStringLiteral("await"),
+            QStringLiteral("match"), QStringLiteral("case"), QStringLiteral("and"),
+            QStringLiteral("or"), QStringLiteral("not"), QStringLiteral("is"),
+            QStringLiteral("in"), QStringLiteral("True"), QStringLiteral("False"), QStringLiteral("None")
+        };
+        QString pyKwPattern;
+        for (int i = 0; i < pyKeywords.size(); ++i) {
+            if (i > 0) pyKwPattern += QChar(L'|');
+            pyKwPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(pyKeywords[i]));
+        }
+
+        // Builtins
+        const QStringList builtins = {
+            QStringLiteral("int"), QStringLiteral("float"), QStringLiteral("str"),
+            QStringLiteral("list"), QStringLiteral("dict"), QStringLiteral("tuple"),
+            QStringLiteral("set"), QStringLiteral("bool"), QStringLiteral("bytes"),
+            QStringLiteral("bytearray"), QStringLiteral("complex"), QStringLiteral("frozenset"),
+            QStringLiteral("range"), QStringLiteral("slice"), QStringLiteral("type"),
+            QStringLiteral("super"), QStringLiteral("object"), QStringLiteral("property"),
+            QStringLiteral("staticmethod"), QStringLiteral("classmethod"),
+            QStringLiteral("enumerate"), QStringLiteral("zip"), QStringLiteral("map"),
+            QStringLiteral("filter"), QStringLiteral("len"), QStringLiteral("print"),
+            QStringLiteral("open"), QStringLiteral("isinstance"), QStringLiteral("hasattr"),
+            QStringLiteral("getattr"), QStringLiteral("setattr"), QStringLiteral("sorted"),
+            QStringLiteral("reversed"), QStringLiteral("iter"), QStringLiteral("next"),
+            QStringLiteral("any"), QStringLiteral("all"), QStringLiteral("sum"),
+            QStringLiteral("min"), QStringLiteral("max"), QStringLiteral("abs"),
+            QStringLiteral("round"), QStringLiteral("ord"), QStringLiteral("chr"),
+            QStringLiteral("repr"), QStringLiteral("input"), QStringLiteral("format"),
+            QStringLiteral("id"), QStringLiteral("dir"), QStringLiteral("vars"),
+            QStringLiteral("callable"), QStringLiteral("issubclass"), QStringLiteral("eval"),
+            QStringLiteral("exec"), QStringLiteral("compile"), QStringLiteral("locals"),
+            QStringLiteral("globals"), QStringLiteral("hash"),
+            QStringLiteral("ValueError"), QStringLiteral("TypeError"),
+            QStringLiteral("KeyError"), QStringLiteral("IndexError"),
+            QStringLiteral("AttributeError"), QStringLiteral("ImportError"),
+            QStringLiteral("ModuleNotFoundError"), QStringLiteral("NameError"),
+            QStringLiteral("FileNotFoundError"), QStringLiteral("ZeroDivisionError"),
+            QStringLiteral("StopIteration"), QStringLiteral("RuntimeError"),
+            QStringLiteral("OSError"), QStringLiteral("IOError"),
+            QStringLiteral("Exception"), QStringLiteral("BaseException"),
+            QStringLiteral("Warning"), QStringLiteral("UserWarning"),
+            QStringLiteral("DeprecationWarning")
+        };
+        QString builtinPattern;
+        for (int i = 0; i < builtins.size(); ++i) {
+            if (i > 0) builtinPattern += QChar(L'|');
+            builtinPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(builtins[i]));
+        }
+
+        // Python rules — lowest priority first
+        QVector<QPair<QRegularExpression, QPair<QColor,bool>>> pyRules;
+        // Keywords (bold) — lowest priority
+        pyRules.append({QRegularExpression(pyKwPattern), {kwColor, true}});
+        // Builtins
+        pyRules.append({QRegularExpression(builtinPattern), {typeColor, false}});
+        // Numbers
+        pyRules.append({QRegularExpression(
+            QStringLiteral("\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b"
+                           "|\\b0[bB][01](?:[01_]*[01])?\\b"
+                           "|\\b0[oO][0-7](?:[0-7_]*[0-7])?\\b"
+                           "|\\b\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)?[jJ]?\\b")),
+            {numColor, false}});
+        // self / cls
+        pyRules.append({QRegularExpression(QStringLiteral("\\bself\\b")), {selfColor, false}});
+        pyRules.append({QRegularExpression(QStringLiteral("\\bcls\\b")), {selfColor, false}});
+        // Decorator
+        pyRules.append({QRegularExpression(QStringLiteral("^\\s*@[\\w.]+")), {decorColor, false}});
+        // Strings (double-quoted with optional prefix)
+        pyRules.append({QRegularExpression(
+            QStringLiteral(R"((?:[furbFURB]{1,2})?"(?:[^"\\]|\\.)*")")),
+            {strColor, false}});
+        // Strings (single-quoted with optional prefix)
+        pyRules.append({QRegularExpression(
+            QStringLiteral(R"((?:[furbFURB]{1,2})?'(?:[^'\\]|\\.)*')")),
+            {strColor, false}});
+        // Comment — highest priority
+        pyRules.append({QRegularExpression(QStringLiteral("#[^\n]*")), {cmtColor, false}});
+
+        html += highlightWithRules(code, pyRules);
+    } else {
+        // Unknown language — plain text
+        html += code.toHtmlEscaped();
+    }
+
+    html += QStringLiteral("</code></pre>");
+    return html;
+}
+
+// Apply a set of highlighting rules to code text and return HTML
+QString highlightWithRules(
+    const QString &code,
+    const QVector<QPair<QRegularExpression, QPair<QColor,bool>>> &rules)
+{
+    // Split into lines, remove trailing empty lines caused by newline before closing ```
+    QStringList lines = code.split(QChar(L'\n'));
+    while (!lines.isEmpty() && lines.last().isEmpty())
+        lines.removeLast();
+    QString result;
+    for (int lineIdx = 0; lineIdx < lines.size(); ++lineIdx) {
+        const QString &line = lines[lineIdx];
+        if (line.isEmpty()) {
+            result += QChar(L'\n');
+            continue;
+        }
+
+        // Process rules in REVERSE order (highest priority first).
+        // Only fill positions not yet filled, so higher-priority rules (processed first)
+        // lock in their colors before lower-priority rules can overwrite them.
+        QVector<QColor> colorAt(line.length());
+        QVector<bool> boldAt(line.length());
+        for (int i = 0; i < line.length(); ++i) {
+            colorAt[i] = QColor(); // invalid = not filled
+            boldAt[i] = false;
+        }
+        for (int r = rules.size() - 1; r >= 0; --r) {
+            QRegularExpressionMatchIterator it = rules[r].first.globalMatch(line);
+            while (it.hasNext()) {
+                QRegularExpressionMatch m = it.next();
+                int start = m.capturedStart();
+                int length = m.capturedLength();
+                for (int j = start; j < start + length && j < line.length(); ++j) {
+                    if (!colorAt[j].isValid()) {
+                        colorAt[j] = rules[r].second.first;
+                        boldAt[j] = rules[r].second.second;
+                    }
+                }
+            }
+        }
+
+        // Output with spans
+        int i = 0;
+        while (i < line.length()) {
+            if (!colorAt[i].isValid()) {
+                // Plain text
+                int end = i + 1;
+                while (end < line.length() && !colorAt[end].isValid())
+                    ++end;
+                result += line.mid(i, end - i).toHtmlEscaped();
+                i = end;
+            } else {
+                QColor curColor = colorAt[i];
+                bool curBold = boldAt[i];
+                int end = i + 1;
+                while (end < line.length() && colorAt[end].isValid()
+                       && colorAt[end] == curColor && boldAt[end] == curBold)
+                    ++end;
+                QString style = QStringLiteral("color:%1;").arg(curColor.name());
+                if (curBold) style += QStringLiteral("font-weight:bold;");
+                result += QStringLiteral("<span style=\"%1\">%2</span>")
+                              .arg(style, line.mid(i, end - i).toHtmlEscaped());
+                i = end;
+            }
+        }
+
+        if (lineIdx < lines.size() - 1)
+            result += QChar(L'\n');
+    }
+    return result;
+}
+
+QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
+{
+    // Match fenced code blocks: ```lang\n...\n```
+    // Group 1: opening ``` (captured for closing match via backreference)
+    // Group 2: language identifier (optional)
+    // Group 3: code content
+    static const QRegularExpression fencedRegex(
+        QStringLiteral("(```)(\\w*)\\r?\\n([\\s\\S]*?)\\1"));
+
+    // Runnable languages matching the preview-template.js list
+    static const QStringList runnableLangs = {
+        QStringLiteral("python"), QStringLiteral("py"),
+        QStringLiteral("cpp"),   QStringLiteral("c"),
+        QStringLiteral("cc"),    QStringLiteral("cxx")
+    };
+
+    QString result;
+    int lastPos = 0;
+
+    QRegularExpressionMatchIterator it = fencedRegex.globalMatch(markdown);
+    while (it.hasNext()) {
+        QRegularExpressionMatch match = it.next();
+
+        // Append text before this code block
+        result += QStringView(markdown).mid(lastPos, match.capturedStart() - lastPos).toString();
+
+        const QString lang  = match.captured(2);
+        const QString code  = match.captured(3);
+        const QString langLower = lang.toLower();
+
+        // Check if this is a known code language
+        QString langId = LanguageUtils::normalizeCodeFenceLanguage(langLower);
+
+        if (langId.isEmpty()) {
+            // Unknown language — keep original fenced block
+            result += match.captured(0);
+        } else {
+            // Known language — apply syntax highlighting
+            bool showRun = runnableLangs.contains(langLower);
+
+            // Build the complete HTML wrapper
+            QString blockHtml;
+            blockHtml += QStringLiteral("<div class=\"code-block-wrapper\">");
+
+            if (showRun && !code.isEmpty()) {
+                // HTML-escape code for data-code attribute
+                QString escapedCode = code;
+                escapedCode.replace(QStringLiteral("&"),  QStringLiteral("&amp;"));
+                escapedCode.replace(QStringLiteral("\""), QStringLiteral("&quot;"));
+                escapedCode.replace(QStringLiteral("'"),  QStringLiteral("&#39;"));
+                escapedCode.replace(QStringLiteral("<"),  QStringLiteral("&lt;"));
+                escapedCode.replace(QStringLiteral(">"),  QStringLiteral("&gt;"));
+
+                blockHtml += QStringLiteral("<div class=\"code-block-header\">");
+                blockHtml += QStringLiteral("<span class=\"code-lang-label\">%1</span>").arg(lang);
+                blockHtml += QStringLiteral("<a class=\"run-code-btn\" href=\"runblock:execute\""
+                                            " data-lang=\"%1\" data-code=\"%2\">▶ Run</a>")
+                                .arg(langLower, escapedCode);
+                blockHtml += QStringLiteral("</div>");
+            }
+
+            // Highlighted code
+            QString highlighted = highlightCodeBlock(code, langId);
+            if (highlighted.isEmpty()) {
+                // Fallback: use original fenced block
+                result += match.captured(0);
+                lastPos = match.capturedEnd();
+                continue;
+            }
+
+            blockHtml += highlighted;
+            blockHtml += QStringLiteral("</div>");
+
+            // Encode the complete HTML as base64 and wrap in a custom fenced block
+            // so marked.js's renderer.code can decode and inject it directly
+            QString b64 = QString::fromLatin1(blockHtml.toUtf8().toBase64());
+            result += QStringLiteral("```highlighted\n") + b64 + QStringLiteral("\n```");
+        }
+
+        lastPos = match.capturedEnd();
+    }
+
+    // Append remaining text after the last code block
+    result += QStringView(markdown).mid(lastPos).toString();
+
+    return result;
+}
+
+QString EditorWidget::preparePreviewContent(const QString &rawMarkdown)
+{
+    // Step 1: Pre-highlight code blocks (produces ```highlighted\n<base64>\n``` custom blocks)
+    // Step 2: Process wiki links and tags (base64 content won't match [[...]] or #tag)
+    // Step 3: Prevent </script> injection for the setHtml() path
+    QString content = preHighlightCodeBlocks(rawMarkdown);
+    content = processWikiLinks(content);
+    content = TagIndex::processTagsForPreview(content);
+    content.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+    return content;
+}
+
 void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
 {
-    QString safeContent = processWikiLinks(m_textEdit->toPlainText());
-    safeContent = TagIndex::processTagsForPreview(safeContent);
-    safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+    QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
 
     QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
     m_previewView->page()->runJavaScript(

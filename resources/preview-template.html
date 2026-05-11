@@ -175,6 +175,16 @@
       if (token.lang === 'mermaid') {
         return '<div class="mermaid">' + token.text + '</div>';
       }
+      // Pre-highlighted code blocks (base64-encoded HTML from C++)
+      if (token.lang === 'highlighted') {
+        var b64 = token.text.trim();
+        var binary = atob(b64);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return new TextDecoder('utf-8').decode(bytes);
+      }
       var lang = (token.lang || '').toLowerCase();
       var code = token.text;
       var escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -87,6 +87,9 @@ private:
 private:
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
     QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
+    QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色
+    QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
+    QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;
 
