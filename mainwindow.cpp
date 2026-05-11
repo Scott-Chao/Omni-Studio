@@ -1224,8 +1224,10 @@ void MainWindow::onJudgeRunAll()
 
 void MainWindow::onOpenJudgeRequested()
 {
+    bool isNew = false;
     if (!m_openJudgeWindow) {
-        m_openJudgeWindow = new OpenJudgeWindow(this);
+        m_openJudgeWindow = new OpenJudgeWindow(nullptr);
+        isNew = true;
         connect(m_openJudgeWindow, &OpenJudgeWindow::sampleSelected,
                 this, &MainWindow::onOpenJudgeSampleSelected);
         connect(m_openJudgeWindow, &OpenJudgeWindow::loginStateChanged,
@@ -1237,9 +1239,19 @@ void MainWindow::onOpenJudgeRequested()
             QMessageBox::warning(this, tr("提交失败"), error);
         });
     }
+    // Restore from minimized state
+    m_openJudgeWindow->setWindowState(m_openJudgeWindow->windowState() & ~Qt::WindowMinimized);
     m_openJudgeWindow->show();
     m_openJudgeWindow->raise();
     m_openJudgeWindow->activateWindow();
+
+    // Show login dialog if not logged in (after window is visible)
+    if (isNew || !m_openJudgeWindow->isLoggedIn()) {
+        QTimer::singleShot(200, this, [this]() {
+            if (m_openJudgeWindow && !m_openJudgeWindow->isLoggedIn())
+                m_openJudgeWindow->onReLogin();
+        });
+    }
 }
 
 void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
@@ -1256,11 +1268,6 @@ void MainWindow::onSubmitToOpenJudge()
         QMessageBox::information(this, tr("提示"),
             tr("请先登录 OpenJudge"));
         onOpenJudgeRequested();
-        // Delay-trigger login dialog
-        QTimer::singleShot(500, this, [this]() {
-            if (m_openJudgeWindow)
-                m_openJudgeWindow->onReLogin();
-        });
         return;
     }
 

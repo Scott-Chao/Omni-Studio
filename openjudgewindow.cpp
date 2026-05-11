@@ -116,8 +116,7 @@ OpenJudgeWindow::OpenJudgeWindow(QWidget *parent)
         m_statusLabel->setText(QStringLiteral("提交结果获取超时"));
     });
 
-    // Show login dialog on startup
-    QTimer::singleShot(100, this, &OpenJudgeWindow::onReLogin);
+    // Login dialog is triggered by MainWindow::onOpenJudgeRequested after window is shown
 }
 
 // ======================================================================

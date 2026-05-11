@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.3）
+## 功能说明文档（v0.4.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -27,10 +27,11 @@
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 
-### 新增/修复 v0.4.3
-代码编辑器增强：修复自动缩进 + 切换行注释
-- 修复自动缩进（`handleAutoIndent`）：光标在 `class`、`if` 等关键字之前按回车时，不再因行尾的 `{` 或 Python `:` 而错误增加一级缩进。缩进检测改为仅检查光标前的文本。
-- 切换行注释（`handleToggleComment` / `commentPrefix`）：Ctrl+/ 快捷键切换行注释。无选区时注释当前行，有选区时注释所有选中行。C++ 使用 `//`、Python 使用 `#`，注释符号统一置于行首（column 0）。再次按 Ctrl+/ 自动取消注释，且保留原来的选中状态。
+### 修复 v0.4.4
+OpenJudge 窗口交互修复
+- 修复"提交到OpenJudge"弹出两个重叠登录窗口的问题：`onSubmitToOpenJudge()` 中移除重复的 500ms 定时器调用，统一由 `onOpenJudgeRequested()` 在窗口创建/显示后触发登录对话框。
+- 修复 OpenJudge 窗口 Z 轴层级问题（打开后主窗口无法置顶）：`OpenJudgeWindow` 不再以 `MainWindow` 为父窗口（parent = `nullptr`），作为独立顶层窗口可正常切换前后层级。
+- 修复最小化 OpenJudge 窗口后点击"从OpenJudge获取"无法自动恢复窗口：`onOpenJudgeRequested()` 中添加 `setWindowState(... & ~WindowMinimized)` 清除最小化状态后再 `show()` / `raise()` / `activateWindow()`。
 
 ### 1. `MainWindow` - 主窗口控制器
 
