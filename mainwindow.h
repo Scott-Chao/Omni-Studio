@@ -166,6 +166,7 @@ private:
     void onSubmissionResultReady(const SubmissionResult &result);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
+    void onDefaultZoomChanged(qreal zoom);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();

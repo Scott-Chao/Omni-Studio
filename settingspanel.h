@@ -4,8 +4,10 @@
 #include <QWidget>
 
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QScrollArea;
+class QSlider;
 class QVBoxLayout;
 class QSizeGrip;
 
@@ -19,8 +21,12 @@ public:
     QVBoxLayout *contentLayout() const;
     QLabel *titleLabel() const;
 
+    void setDefaultZoom(qreal zoom);
+    qreal defaultZoom() const;
+
 signals:
     void closeRequested();
+    void defaultZoomChanged(qreal zoom);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -46,6 +52,8 @@ private:
     QScrollArea *m_scrollArea;
     QVBoxLayout *m_contentLayout;
     QSizeGrip *m_sizeGrip;
+    QSlider *m_fontSizeSlider = nullptr;
+    QLineEdit *m_fontSizeEdit = nullptr;
 
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;

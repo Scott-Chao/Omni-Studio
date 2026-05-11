@@ -44,6 +44,25 @@
     "snippet_max_length": 120
   },
 
+  "settings_panel": {
+    "width": 500,
+    "height": 400,
+    "min_width": 300,
+    "min_height": 200,
+    "zoom_slider": {
+      "groove_color": "#555555",
+      "groove_height": 4,
+      "groove_radius": 2,
+      "handle_color": "#0078d4",
+      "handle_hover_color": "#1a8ad4",
+      "handle_width": 14,
+      "handle_radius": 7
+    },
+    "zoom_spinbox": {
+      "width": 50
+    }
+  },
+
   "splitter": {
     "main_default_ratio": 4,
     "editor_stretch": 2,

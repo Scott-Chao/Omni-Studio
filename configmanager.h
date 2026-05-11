@@ -191,6 +191,14 @@ public:
     int settingsPanelHeight() const;
     int settingsPanelMinWidth() const;
     int settingsPanelMinHeight() const;
+    QString settingsPanelZoomSliderGrooveColor() const;
+    int settingsPanelZoomSliderGrooveHeight() const;
+    int settingsPanelZoomSliderGrooveRadius() const;
+    QString settingsPanelZoomSliderHandleColor() const;
+    QString settingsPanelZoomSliderHandleHoverColor() const;
+    int settingsPanelZoomSliderHandleWidth() const;
+    int settingsPanelZoomSliderHandleRadius() const;
+    int settingsPanelZoomSpinboxWidth() const;
 
 private:
     ConfigManager();

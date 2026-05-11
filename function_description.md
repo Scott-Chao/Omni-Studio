@@ -1,4 +1,4 @@
-## 功能说明文档（v0.4.12）
+## 功能说明文档（v0.4.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -28,10 +28,10 @@
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
-- 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内容区域预留，为后续设置选项集成做准备。
+- 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认字体大小**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 
-### 新增 v0.4.12
-- 设置面板（SettingsPanel）：工具栏"设置"按钮 + `Ctrl+,` 快捷键切换，悬浮遮罩式面板，支持拖拽移动和边缘调整大小，右上角关闭按钮与快捷键均可关闭，背景半透明变暗效果
+### 新增 v0.4.13
+- 设置面板默认字体大小选项：可拖动滑块（范围 50%~300%，步长 10%），右侧数字输入框支持直接输入数值（4 位限制，超出范围自动钳位至边界值，清空自动恢复 100%），百分号独立显示在框外不可编辑。设置通过 `SettingsManager` 持久化至 `config.ini`，程序启动时读取；修改后即时应用至所有已打开编辑器，新打开文件默认使用所选缩放值。滑块样式参数通过 `ConfigManager` 从 `config.json` 的 `settings_panel.zoom_slider` 节点读取。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -80,6 +80,7 @@
 - `void loadSettings()` / `void saveSettings()`：配置读写。`loadSettings()` 中若无保存分割状态，默认设置左侧文件树与右侧编辑区拉伸比例为 1:4。
 - `void onZoomIn()` / `void onZoomOut()` / `void onZoomReset()`：将缩放操作转发给 `TabManager` 当前激活的 `EditorWidget`。
 - `void updateZoomLabel()`：更新状态栏中的缩放百分比标签。
+- `void onDefaultZoomChanged(qreal zoom)`：响应设置面板的默认缩放变更，保存至 `SettingsManager`（`editor/defaultZoom`），遍历所有已打开编辑器调用 `setZoomFactor()` 实时应用，并刷新缩放标签。
 - `void connectCurrentEditorZoomSignal()`：在标签切换或创建新编辑器时，连接/重连当前编辑器的 `zoomFactorChanged` 信号，确保百分比标签实时同步。
   同时，在 `connectCurrentEditorZoomSignal()` 中连接当前编辑器的 `filePathChanged` 信号到 `updatePreviewActionState`，以便文件路径（如通过外部重命名或另存为）变化时刷新按钮状态。
 - `void syncFileTreeSelection()`：在标签页切换时将文件树的选中项同步到当前编辑器正在编辑的文件，内部获取当前文件路径并转发给 `FileExplorerWidget::selectFile()`。
@@ -106,7 +107,7 @@
 - 工具栏中添加了"预览模式"按钮（可勾选），用于切换当前编辑器的预览状态。
 - 持有缩放相关的 UI 元素：`QAction`（放大/缩小/重置）和 `QLabel`（百分比），并将它们布局在状态栏中。
 - 监听 `TabManager::currentChanged` 信号，当标签页切换时调用 `updateZoomLabel()`、`connectCurrentEditorZoomSignal()` 和 `syncFileTreeSelection()`，保持缩放信息、信号连接以及文件树选中状态与当前编辑器同步。
-- 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建文件会继承当前活动标签的缩放倍率。
+- 在 `newFile()` 和 `onFileSelected()` 中确保新建立的编辑器连接了 `zoomFactorChanged` 信号，且新建/打开文件均从 `SettingsManager::editorDefaultZoom()` 读取默认缩放倍率（默认 100%），不再继承当前标签的缩放。
 - 通过 `updatePreviewActionState()` 方法统一控制预览按钮的可见性、启用状态和勾选状态，标签切换、文件路径变化、新建/打开/保存文件时都会调用该方法，确保按钮只在当前文件为 `.md` 时出现。
 - 持有 `HistoryPanel*` 和 `QDockWidget*`，将面板放置于右侧停靠区域，默认隐藏。
 - 持有 `BacklinkIndex*`、`BacklinksPanel*` 和对应的 `QDockWidget*`，反链面板同样放置在右侧停靠区域，默认隐藏。
@@ -284,6 +285,8 @@
 - `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
 - `void clear()`：清除所有设置。
 - `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（最多50条），键名 `History/recentFiles`。
+- **编辑器默认缩放**：
+  - `qreal editorDefaultZoom() const` / `void setEditorDefaultZoom(qreal zoom)`：读写编辑器默认缩放因子，键名 `editor/defaultZoom`，默认值 `1.0`（100%）。
 - **OpenJudge 自动登录**：
   - `void setOpenJudgeAutoLogin(bool enabled)` / `bool openJudgeAutoLogin() const`：读写自动登录开关，键名 `OpenJudge/autoLogin`。
   - `void setOpenJudgeCredentials(const QString &username, const QString &password)` / `QPair<QString, QString> openJudgeCredentials() const`：读写 OpenJudge 账号密码，密码经 Base64 混淆后存储。
@@ -850,15 +853,19 @@
 - 遮罩层（`m_settingsOverlay`）由 `MainWindow` 创建并管理，半透明黑色背景（`rgba(0, 0, 0, 128)`），覆盖整个主窗口客户区。
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
-- 内容区域：`QScrollArea` 内含空 `QVBoxLayout`，通过 `contentLayout()` 访问器暴露，为后续设置选项的添加预留扩展点。
+- 内容区域：`QScrollArea` 内含 `QVBoxLayout`，通过 `contentLayout()` 访问器暴露，可扩展更多设置选项。
+- **默认字体大小**：横向布局行包含标签"默认字体大小"、`QSlider`（由 `config.json` 的 `settings_panel.zoom_slider` 节点配置样式）和数字输入框 `QLineEdit`（`ZoomValidator` 限制最多 4 位数字，空输入视为 `Acceptable` 以触发 `editingFinished`）+ 百分号 `QLabel`。滑块与输入框双向同步；`editingFinished` 时钳位至 `[zoomMin*100, zoomMax*100]`，空文本恢复 100。值变化时 emit `defaultZoomChanged(qreal)` 信号，由 `MainWindow::onDefaultZoomChanged()` 保存至 `SettingsManager` 并同步所有编辑器。
 - 支持标题栏拖拽移动：在标题栏区域按住鼠标左键拖动可移动面板位置，移动范围限制在遮罩层内。
 - 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 300×200 像素。
 - `QSizeGrip` 放置在右下角，提供可视化的调整大小手柄。
 - 尺寸从 `ConfigManager` 读取（`settings_panel.width` / `settings_panel.height`，默认 500×400）。
+- `void setDefaultZoom(qreal zoom)`：同步滑块/输入框到指定缩放值（面板打开时由 `MainWindow` 调用以同步当前设置）。
+- `qreal defaultZoom() const`：返回当前滑块对应的缩放值。
 - 点击遮罩层背景区域自动关闭面板（通过 `MainWindow::eventFilter` 处理）。
 
 **信号**：
 - `void closeRequested()`：用户点击关闭按钮时发出，由 `MainWindow::toggleSettings()` 响应。
+- `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应，保存至 `SettingsManager` 并同步所有编辑器。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
@@ -902,4 +909,4 @@
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
-- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。支持标题栏拖拽和边缘调整大小，关闭按钮悬停变红（`#c42b1c`）。
+- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。支持标题栏拖拽和边缘调整大小，关闭按钮悬停变红（`#c42b1c`）。默认字体大小区域包含标签、可拖动滑块（深色轨道 `#555555` + 蓝色手柄 `#0078d4`，样式参数从 `config.json` 的 `settings_panel.zoom_slider` 读取）和无按钮的数字输入框（背景 `#3c3c3c`，右侧独立的 `%` 标签），滑块与输入框双向同步，编辑完成后自动钳位。

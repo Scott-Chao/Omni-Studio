@@ -36,6 +36,10 @@ public:
     // 清除所有设置
     void clear();
 
+    // 编辑器默认缩放
+    qreal editorDefaultZoom() const;
+    void setEditorDefaultZoom(qreal zoom);
+
     // OpenJudge 自动登录
     void setOpenJudgeAutoLogin(bool enabled);
     bool openJudgeAutoLogin() const;

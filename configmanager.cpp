@@ -289,6 +289,18 @@ QJsonObject ConfigManager::buildDefaultConfig()
     settingsPanel["height"] = 400;
     settingsPanel["min_width"] = 300;
     settingsPanel["min_height"] = 200;
+    QJsonObject zoomSlider;
+    zoomSlider["groove_color"] = "#555555";
+    zoomSlider["groove_height"] = 4;
+    zoomSlider["groove_radius"] = 2;
+    zoomSlider["handle_color"] = "#0078d4";
+    zoomSlider["handle_hover_color"] = "#1a8ad4";
+    zoomSlider["handle_width"] = 14;
+    zoomSlider["handle_radius"] = 7;
+    settingsPanel["zoom_slider"] = zoomSlider;
+    QJsonObject zoomSpinbox;
+    zoomSpinbox["width"] = 50;
+    settingsPanel["zoom_spinbox"] = zoomSpinbox;
     root["settings_panel"] = settingsPanel;
 
     // ---- judge ----
@@ -673,3 +685,11 @@ int ConfigManager::settingsPanelWidth() const { return intValue("settings_panel.
 int ConfigManager::settingsPanelHeight() const { return intValue("settings_panel.height", 400); }
 int ConfigManager::settingsPanelMinWidth() const { return intValue("settings_panel.min_width", 300); }
 int ConfigManager::settingsPanelMinHeight() const { return intValue("settings_panel.min_height", 200); }
+QString ConfigManager::settingsPanelZoomSliderGrooveColor() const { return stringValue("settings_panel.zoom_slider.groove_color", "#555555"); }
+int ConfigManager::settingsPanelZoomSliderGrooveHeight() const { return intValue("settings_panel.zoom_slider.groove_height", 4); }
+int ConfigManager::settingsPanelZoomSliderGrooveRadius() const { return intValue("settings_panel.zoom_slider.groove_radius", 2); }
+QString ConfigManager::settingsPanelZoomSliderHandleColor() const { return stringValue("settings_panel.zoom_slider.handle_color", "#0078d4"); }
+QString ConfigManager::settingsPanelZoomSliderHandleHoverColor() const { return stringValue("settings_panel.zoom_slider.handle_hover_color", "#1a8ad4"); }
+int ConfigManager::settingsPanelZoomSliderHandleWidth() const { return intValue("settings_panel.zoom_slider.handle_width", 14); }
+int ConfigManager::settingsPanelZoomSliderHandleRadius() const { return intValue("settings_panel.zoom_slider.handle_radius", 7); }
+int ConfigManager::settingsPanelZoomSpinboxWidth() const { return intValue("settings_panel.zoom_spinbox.width", 60); }

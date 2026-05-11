@@ -9,6 +9,24 @@
 #include <QMouseEvent>
 #include <QApplication>
 #include <QSizeGrip>
+#include <QSlider>
+#include <QLineEdit>
+#include <QIntValidator>
+
+namespace {
+
+class ZoomValidator : public QIntValidator
+{
+public:
+    using QIntValidator::QIntValidator;
+    State validate(QString &input, int &pos) const override
+    {
+        if (input.isEmpty()) return Acceptable;
+        return QIntValidator::validate(input, pos);
+    }
+};
+
+} // namespace
 
 SettingsPanel::SettingsPanel(QWidget *parent)
     : QWidget(parent)
@@ -80,7 +98,107 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_contentLayout = new QVBoxLayout(scrollContent);
     m_contentLayout->setContentsMargins(16, 12, 16, 12);
     m_contentLayout->setSpacing(8);
+
+    // ---- 默认字体大小 ----
+    auto *zoomRow = new QHBoxLayout;
+    auto *zoomLabel = new QLabel(tr("默认字体大小"));
+    zoomLabel->setStyleSheet("color: #cccccc; font-size: 12px;");
+    zoomRow->addWidget(zoomLabel);
+
+    int sliderMin = qRound(cfg.zoomMin() * 100);
+    int sliderMax = qRound(cfg.zoomMax() * 100);
+    int sliderStep = qRound(cfg.zoomStep() * 100);
+    int sliderDefault = qRound(cfg.zoomDefault() * 100);
+
+    m_fontSizeSlider = new QSlider(Qt::Horizontal);
+    m_fontSizeSlider->setRange(sliderMin, sliderMax);
+    m_fontSizeSlider->setSingleStep(sliderStep);
+    m_fontSizeSlider->setPageStep(sliderStep);
+    m_fontSizeSlider->setValue(sliderDefault);
+
+    QString grooveColor = cfg.settingsPanelZoomSliderGrooveColor();
+    int grooveHeight = cfg.settingsPanelZoomSliderGrooveHeight();
+    int grooveRadius = cfg.settingsPanelZoomSliderGrooveRadius();
+    QString handleColor = cfg.settingsPanelZoomSliderHandleColor();
+    QString handleHoverColor = cfg.settingsPanelZoomSliderHandleHoverColor();
+    int handleWidth = cfg.settingsPanelZoomSliderHandleWidth();
+    int handleRadius = cfg.settingsPanelZoomSliderHandleRadius();
+
+    m_fontSizeSlider->setStyleSheet(
+        QStringLiteral(
+            "QSlider::groove:horizontal {"
+            "  background: %1;"
+            "  height: %2px;"
+            "  border-radius: %3px;"
+            "}"
+            "QSlider::handle:horizontal {"
+            "  background: %4;"
+            "  width: %5px;"
+            "  margin: -5px 0;"
+            "  border-radius: %6px;"
+            "}"
+            "QSlider::handle:horizontal:hover {"
+            "  background: %7;"
+            "}"
+        ).arg(grooveColor)
+         .arg(grooveHeight)
+         .arg(grooveRadius)
+         .arg(handleColor)
+         .arg(handleWidth)
+         .arg(handleRadius)
+         .arg(handleHoverColor)
+    );
+    zoomRow->addWidget(m_fontSizeSlider, 1);
+
+    m_fontSizeEdit = new QLineEdit;
+    m_fontSizeEdit->setValidator(new ZoomValidator(0, 9999, m_fontSizeEdit));
+    m_fontSizeEdit->setText(QString::number(sliderDefault));
+    m_fontSizeEdit->setFixedWidth(cfg.settingsPanelZoomSpinboxWidth());
+    m_fontSizeEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_fontSizeEdit->setStyleSheet(
+        "QLineEdit {"
+        "  background-color: #3c3c3c;"
+        "  color: #cccccc;"
+        "  border: 1px solid #555555;"
+        "  border-radius: 3px;"
+        "  padding: 2px 4px;"
+        "  font-size: 12px;"
+        "}"
+        "QLineEdit:focus {"
+        "  border-color: #0078d4;"
+        "}"
+    );
+    zoomRow->addWidget(m_fontSizeEdit);
+
+    auto *percentLabel = new QLabel(QStringLiteral("%"));
+    percentLabel->setStyleSheet("color: #cccccc; font-size: 12px;");
+    zoomRow->addWidget(percentLabel);
+
+    m_contentLayout->addLayout(zoomRow);
     m_contentLayout->addStretch();
+
+    // 滑块 → 数字框
+    connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this](int value) {
+        m_fontSizeEdit->setText(QString::number(value));
+    });
+
+    // 数字框 → 滑块（编辑完成时，带边界钳位）
+    connect(m_fontSizeEdit, &QLineEdit::editingFinished, this, [this, sliderMin, sliderMax]() {
+        QString text = m_fontSizeEdit->text().trimmed();
+        bool ok = false;
+        int value = text.toInt(&ok);
+        if (!ok || text.isEmpty()) {
+            value = 100;
+        }
+        value = qBound(sliderMin, value, sliderMax);
+        m_fontSizeEdit->setText(QString::number(value));
+        m_fontSizeSlider->setValue(value);
+    });
+
+    // 默认缩放变更信号（仅从滑块发出，避免编辑中频繁触发）
+    connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this](int value) {
+        emit defaultZoomChanged(value / 100.0);
+    });
 
     m_scrollArea->setWidget(scrollContent);
 
@@ -100,6 +218,22 @@ QVBoxLayout *SettingsPanel::contentLayout() const
 QLabel *SettingsPanel::titleLabel() const
 {
     return m_titleLabel;
+}
+
+void SettingsPanel::setDefaultZoom(qreal zoom)
+{
+    if (!m_fontSizeSlider) return;
+    const auto &cfg = ConfigManager::instance();
+    int sliderMin = qRound(cfg.zoomMin() * 100);
+    int sliderMax = qRound(cfg.zoomMax() * 100);
+    int value = qRound(zoom * 100);
+    m_fontSizeSlider->setValue(qBound(sliderMin, value, sliderMax));
+}
+
+qreal SettingsPanel::defaultZoom() const
+{
+    if (!m_fontSizeSlider) return 1.0;
+    return m_fontSizeSlider->value() / 100.0;
 }
 
 SettingsPanel::Edge SettingsPanel::detectEdge(const QPoint &pos) const

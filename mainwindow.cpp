@@ -389,6 +389,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_settingsPanel = new SettingsPanel(m_settingsOverlay);
     connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
+    connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
@@ -490,6 +491,9 @@ MainWindow::~MainWindow()
 void MainWindow::onFileSelected(const QString &filePath)
 {
     m_tabManager->openFile(filePath);
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->setZoomFactor(m_settings->editorDefaultZoom());
+    }
     updateZoomLabel();
     updatePreviewActionState();
     addToRecentFiles(filePath);
@@ -497,10 +501,9 @@ void MainWindow::onFileSelected(const QString &filePath)
 
 void MainWindow::newFile()
 {
-    EditorWidget *current = m_tabManager->currentEditor();
     EditorWidget *newEditor = m_tabManager->newFile();
-    if (newEditor && current) {
-        newEditor->setZoomFactor(current->zoomFactor());  // 继承当前缩放
+    if (newEditor) {
+        newEditor->setZoomFactor(m_settings->editorDefaultZoom());
         updateZoomLabel();
     }
     updatePreviewActionState();
@@ -635,6 +638,9 @@ void MainWindow::toggleSettings()
         m_settingsOverlay->setGeometry(this->rect());
         m_settingsOverlay->raise();
 
+        // 同步滑块到当前保存的默认缩放值
+        m_settingsPanel->setDefaultZoom(m_settings->editorDefaultZoom());
+
         int panelW = m_settingsPanel->width();
         int panelH = m_settingsPanel->height();
         int x = (m_settingsOverlay->width() - panelW) / 2;
@@ -644,6 +650,19 @@ void MainWindow::toggleSettings()
 
         m_settingsOverlay->show();
     }
+}
+
+void MainWindow::onDefaultZoomChanged(qreal zoom)
+{
+    m_settings->setEditorDefaultZoom(zoom);
+
+    // 将新的默认缩放应用到所有已打开的编辑器
+    for (int i = 0; i < m_tabManager->count(); ++i) {
+        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+            editor->setZoomFactor(zoom);
+        }
+    }
+    updateZoomLabel();
 }
 
 // 缩放相关槽函数

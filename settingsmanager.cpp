@@ -97,6 +97,18 @@ void SettingsManager::clear()
     m_settings->clear();
 }
 
+static const QString KEY_DEFAULT_ZOOM   = "editor/defaultZoom";
+
+qreal SettingsManager::editorDefaultZoom() const
+{
+    return m_settings->value(KEY_DEFAULT_ZOOM, 1.0).toDouble();
+}
+
+void SettingsManager::setEditorDefaultZoom(qreal zoom)
+{
+    m_settings->setValue(KEY_DEFAULT_ZOOM, zoom);
+}
+
 static const QString KEY_OJ_AUTO_LOGIN  = "OpenJudge/autoLogin";
 static const QString KEY_OJ_USERNAME    = "OpenJudge/username";
 static const QString KEY_OJ_PASSWORD    = "OpenJudge/password";
