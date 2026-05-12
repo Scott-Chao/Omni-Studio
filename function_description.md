@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.2）
+## 功能说明文档（v0.5.3）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -31,8 +31,9 @@
 - **分屏预览模式**：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认字体大小**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 
-### 修复
-- 大纲面板预览模式下点击标题支持预览侧自动滚动到标题位置并用黄色高亮（`EditorWidget::navigateToLine`，通过 `injectHeadingAnchors` 注入 `<a id="hl-N">` 锚点）
+### 新增 v0.5.3
+- 设置面板重构：Obsidian 风格分类侧边栏布局，左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧显示对应设置项。设置实时应用并持久化至 `config.ini`，新打开文件自动继承设置值。
+- 新增设置项：编辑器字体族/字号、缩进宽度、外观颜色（编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮）、输出面板字号、预览防抖延迟/分屏比例、搜索限制（每文件匹配数、总结果数、片段长度）。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -854,28 +855,35 @@
 **文件**：`settingspanel.h` / `settingspanel.cpp`
 
 **职责**：
-- 悬浮式设置面板 `QWidget`，以半透明遮罩层 + 居中面板的方式覆盖在主窗口上方，提供设置功能的 UI 容器。
+- 悬浮式设置面板 `QWidget`，以半透明遮罩层 + 居中面板的方式覆盖在主窗口上方。
 - 遮罩层（`m_settingsOverlay`）由 `MainWindow` 创建并管理，半透明黑色背景（`rgba(0, 0, 0, 128)`），覆盖整个主窗口客户区。
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
-- 内容区域：`QScrollArea` 内含 `QVBoxLayout`，通过 `contentLayout()` 访问器暴露，可扩展更多设置选项。
-- **默认字体大小**：横向布局行包含标签"默认字体大小"、`QSlider`（由 `config.json` 的 `settings_panel.zoom_slider` 节点配置样式）和数字输入框 `QLineEdit`（`ZoomValidator` 限制最多 4 位数字，空输入视为 `Acceptable` 以触发 `editingFinished`）+ 百分号 `QLabel`。滑块与输入框双向同步；`editingFinished` 时钳位至 `[zoomMin*100, zoomMax*100]`，空文本恢复 100。值变化时 emit `defaultZoomChanged(qreal)` 信号，由 `MainWindow::onDefaultZoomChanged()` 保存至 `SettingsManager` 并同步所有编辑器。
+- **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QListWidget`（170px 宽、深色 `#252525`）作为分类列表，右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
+- **6 个分类页面**：
+  - **编辑器**：默认字体大小滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
+  - **外观**：6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
+  - **输出面板**：输出面板字号微调框（8-24）。
+  - **预览**：分屏防抖延迟微调框（100-2000ms）、分屏比例微调框（30-70%）。
+  - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
+  - **快捷键**：只读 `QTableWidget`，两列（动作名 + 按键序列），从 ConfigManager 读取。
+- **信号**：`editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
+- `syncFromSettings(SettingsManager &sm)`：面板打开时由 `MainWindow` 调用，从 `SettingsManager::value()` 读取已持久化的覆盖值回填所有控件（使用 ConfigManager 默认值作为 fallback）。
 - 支持标题栏拖拽移动：在标题栏区域按住鼠标左键拖动可移动面板位置，移动范围限制在遮罩层内。
-- 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 300×200 像素。
+- 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 400×300 像素。
 - `QSizeGrip` 放置在右下角，提供可视化的调整大小手柄。
-- 尺寸从 `ConfigManager` 读取（`settings_panel.width` / `settings_panel.height`，默认 500×400）。
-- `void setDefaultZoom(qreal zoom)`：同步滑块/输入框到指定缩放值（面板打开时由 `MainWindow` 调用以同步当前设置）。
-- `qreal defaultZoom() const`：返回当前滑块对应的缩放值。
+- 尺寸从 `ConfigManager` 读取（`settings_panel.width` / `settings_panel.height`，默认 680×480）。
 - 点击遮罩层背景区域自动关闭面板（通过 `MainWindow::eventFilter` 处理）。
 
 **信号**：
 - `void closeRequested()`：用户点击关闭按钮时发出，由 `MainWindow::toggleSettings()` 响应。
-- `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应，保存至 `SettingsManager` 并同步所有编辑器。
+- `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
 - 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。
 - `MainWindow::resizeEvent()` 中处理遮罩层尺寸同步和面板位置约束。
+- `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
 
 
 ### 配置存储说明
@@ -915,4 +923,4 @@
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
-- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。支持标题栏拖拽和边缘调整大小，关闭按钮悬停变红（`#c42b1c`）。默认字体大小区域包含标签、可拖动滑块（深色轨道 `#555555` + 蓝色手柄 `#0078d4`，样式参数从 `config.json` 的 `settings_panel.zoom_slider` 读取）和无按钮的数字输入框（背景 `#3c3c3c`，右侧独立的 `%` 标签），滑块与输入框双向同步，编辑完成后自动钳位。
+- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`。新打开文件继承已有设置值。

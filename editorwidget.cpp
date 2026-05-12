@@ -5,6 +5,7 @@
 #include "languageutils.h"
 #include "fileutils.h"
 #include "configmanager.h"
+#include "settingsmanager.h"
 #include <QFile>
 #include <QTextStream>
 #include <QUuid>
@@ -133,14 +134,25 @@ EditorWidget::EditorWidget(QWidget *parent)
     layout->addWidget(m_stackedWidget);
     setLayout(layout);
 
-    // 获取基础字体大小
-    QFont baseFont = m_textEdit->font();
-    m_baseFontSize = baseFont.pointSize();
+    const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
+    m_baseFontSize = qRound(sm.value("editor.font.size", cfg.editorFontSize()).toDouble());
 
-    // 同步代码编辑器字体大小
-    QFont codeFont = m_codeEditor->font();
-    codeFont.setPointSize(m_baseFontSize);
-    m_codeEditor->setFont(codeFont);
+    {
+        QString fontFamily = sm.value("editor.font.family", cfg.editorFontFamily()).toString();
+        QFont textFont(fontFamily, m_baseFontSize);
+        m_textEdit->setFont(textFont);
+        QFont codeFont(fontFamily, m_baseFontSize);
+        codeFont.setStyleHint(QFont::Monospace);
+        m_codeEditor->setFont(codeFont);
+
+        QString bg = sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString();
+        QString fg = sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString();
+        QString sel = sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString();
+        m_textEdit->setStyleSheet(QString(
+            "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
+        ).arg(bg, fg, sel));
+    }
 
     // 当编辑区内容改变时，更新修改标志并刷新预览
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::onTextChanged);
@@ -920,6 +932,40 @@ void EditorWidget::setModified(bool modified)
         doc->setModified(modified);
         emit modificationChanged(modified);
     }
+}
+
+void EditorWidget::setEditorFont(const QString &family, int size)
+{
+    m_baseFontSize = size;
+
+    QFont textFont(family, size);
+    m_textEdit->setFont(textFont);
+
+    QFont codeFont(family, size);
+    codeFont.setStyleHint(QFont::Monospace);
+    m_codeEditor->setFont(codeFont);
+    m_codeEditor->refreshLineNumberArea();
+
+    applyZoom();
+}
+
+void EditorWidget::setCodeIndentWidth(int width)
+{
+    m_codeEditor->setIndentWidth(width);
+}
+
+void EditorWidget::reloadEditorColors()
+{
+    m_codeEditor->reloadColors();
+
+    const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
+    QString bg = sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString();
+    QString fg = sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString();
+    QString sel = sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString();
+    m_textEdit->setStyleSheet(QString(
+        "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
+    ).arg(bg, fg, sel));
 }
 
 void EditorWidget::applyZoom()

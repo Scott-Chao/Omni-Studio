@@ -176,6 +176,11 @@ private:
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
     void onDefaultZoomChanged(qreal zoom);
+    void onEditorSettingChanged(const QString &key, const QVariant &value);
+    void onAppearanceSettingChanged(const QString &key, const QVariant &value);
+    void onOutputPanelSettingChanged(const QString &key, const QVariant &value);
+    void onPreviewSettingChanged(const QString &key, const QVariant &value);
+    void onSearchSettingChanged(const QString &key, const QVariant &value);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();

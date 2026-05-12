@@ -4,11 +4,14 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QCoreApplication>
+#include <QJsonArray>
 
 static const QString KEY_GEOMETRY    = "window/geometry";
 static const QString KEY_SPLITTER    = "window/splitterState";
 static const QString KEY_LAST_FOLDER = "file/lastFolderPath";
 static const QString KEY_LAST_SAVE_AS_FOLDER = "LastSaveAsFolder";
+
+SettingsManager *SettingsManager::s_instance = nullptr;
 
 SettingsManager::SettingsManager(const QString &fileName)
 {
@@ -20,11 +23,41 @@ SettingsManager::SettingsManager(const QString &fileName)
     } else {
         m_settings = new QSettings(fileName, QSettings::IniFormat);
     }
+    s_instance = this;
 }
 
 SettingsManager::~SettingsManager()
 {
     delete m_settings;
+    if (s_instance == this)
+        s_instance = nullptr;
+}
+
+SettingsManager &SettingsManager::instance()
+{
+    return *s_instance;
+}
+
+QVariant SettingsManager::value(const QString &key, const QVariant &defaultValue) const
+{
+    // 1. 检查用户覆盖值
+    QVariant override = settingOverride(key);
+    if (override.isValid())
+        return override;
+
+    // 2. 回退到 ConfigManager 的静态默认值
+    QJsonValue jsonVal = ConfigManager::instance().resolvePath(key);
+    if (jsonVal.isUndefined() || jsonVal.isNull())
+        return defaultValue;
+
+    switch (jsonVal.type()) {
+    case QJsonValue::String: return jsonVal.toString();
+    case QJsonValue::Double: return jsonVal.toDouble();
+    case QJsonValue::Bool:   return jsonVal.toBool();
+    case QJsonValue::Array:  return jsonVal.toArray().toVariantList();
+    case QJsonValue::Object: return jsonVal.toObject().toVariantMap();
+    default: return defaultValue;
+    }
 }
 
 void SettingsManager::setWindowGeometry(const QByteArray &geometry)
@@ -89,6 +122,31 @@ void SettingsManager::setRecentFiles(const QStringList &files) {
 
 QStringList SettingsManager::recentFiles() const {
     return m_settings->value("History/recentFiles").toStringList();
+}
+
+static const QString KEY_OVERRIDES = "settings_overrides";
+
+void SettingsManager::setSettingOverride(const QString &key, const QVariant &value)
+{
+    m_settings->setValue(KEY_OVERRIDES + "/" + key, value);
+}
+
+QVariant SettingsManager::settingOverride(const QString &key, const QVariant &defaultValue) const
+{
+    return m_settings->value(KEY_OVERRIDES + "/" + key, defaultValue);
+}
+
+void SettingsManager::removeSettingOverride(const QString &key)
+{
+    m_settings->remove(KEY_OVERRIDES + "/" + key);
+}
+
+QStringList SettingsManager::allOverrideKeys() const
+{
+    m_settings->beginGroup(KEY_OVERRIDES);
+    QStringList keys = m_settings->childKeys();
+    m_settings->endGroup();
+    return keys;
 }
 
 void SettingsManager::clear()

@@ -1,5 +1,6 @@
 #include "outputpanel.h"
 #include "configmanager.h"
+#include "settingsmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -15,13 +16,15 @@ OutputPanel::OutputPanel(QWidget *parent)
     : QWidget(parent)
 {
     const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
 
     m_outputEdit = new QPlainTextEdit(this);
     m_outputEdit->setReadOnly(true);
     m_outputEdit->setMaximumBlockCount(cfg.outputPanelMaxBlocks());
     m_outputEdit->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    QFont monoFont(cfg.outputPanelFontFamily(), cfg.outputPanelFontSize());
+    QFont monoFont(cfg.outputPanelFontFamily(),
+                   sm.value("output_panel.font.size", cfg.outputPanelFontSize()).toInt());
     monoFont.setStyleHint(QFont::Monospace);
     m_outputEdit->setFont(monoFont);
 
@@ -117,6 +120,11 @@ void OutputPanel::appendOutput(const QString &text, bool isStderr)
 void OutputPanel::clearOutput()
 {
     m_outputEdit->clear();
+}
+
+void OutputPanel::setOutputFont(const QFont &font)
+{
+    m_outputEdit->setFont(font);
 }
 
 void OutputPanel::setStatus(const QString &status, bool isError)

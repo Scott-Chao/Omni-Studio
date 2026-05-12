@@ -21,6 +21,8 @@ public:
     void setRunning(bool running);
     void enableTextSelection(bool enabled);
 
+    void setOutputFont(const QFont &font);
+
 signals:
     void stopRequested();
     void sendInput(const QString &text);
