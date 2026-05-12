@@ -7,10 +7,12 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QTimer>
+#include <QSplitter>
 #include <functional>
 
 class WikiLinkTextEdit;
 class CodeEditor;
+class PreviewPage;
 
 class EditorWidget : public QWidget
 {
@@ -41,6 +43,10 @@ public:
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
     void updatePreviewContent(std::function<void()> onFinished); // 异步更新预览，完成后回调
 
+    // 分屏预览模式
+    void setSplitPreviewMode(bool split);
+    bool isSplitPreviewMode() const { return m_splitPreview; }
+
     // 字体缩放
     void zoomIn();
     void zoomOut();
@@ -70,6 +76,7 @@ signals:
 private slots:
     void onTextChanged();
     void updateModificationChanged();
+    void onSplitDebounceTimeout();
 
 private:
     enum EditorMode { MarkdownEdit, CodeEdit };
@@ -84,12 +91,24 @@ private:
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板
 
+    // 分屏预览
+    bool m_splitPreview = false;
+    QSplitter *m_splitSplitter = nullptr;
+    QWidget *m_splitTextWrapper = nullptr;
+    QWebEngineView *m_splitPreviewView = nullptr;
+    PreviewPage *m_splitPreviewPage = nullptr;
+    bool m_splitPreviewReady = false;
+    QString m_lastSplitPreviewContent;
+    QTimer m_splitDebounceTimer;
+
 private:
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
     QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
     QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色
     QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
     QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
+    void createSplitPreviewWidgets();
+    void updateSplitPreviewContentNow();
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;
 

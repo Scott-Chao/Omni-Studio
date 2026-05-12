@@ -151,6 +151,11 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_contentCheckTimer.setInterval(ConfigManager::instance().editorContentCheckTimerMs());
     connect(&m_contentCheckTimer, &QTimer::timeout, this, &EditorWidget::onContentCheckTimeout);
 
+    // 分屏预览 debounce 定时器
+    m_splitDebounceTimer.setSingleShot(true);
+    m_splitDebounceTimer.setInterval(ConfigManager::instance().previewSplitDebounceMs());
+    connect(&m_splitDebounceTimer, &QTimer::timeout, this, &EditorWidget::onSplitDebounceTimeout);
+
     // 当文本编辑器内容变化时，重置计时器
     connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
         m_contentCheckTimer.start();
@@ -167,6 +172,10 @@ void EditorWidget::setPreviewMode(bool preview)
         return;
     if (preview == m_previewMode)
         return;
+    // 互斥：进入全屏预览时，退出分屏预览
+    if (preview && m_splitPreview) {
+        setSplitPreviewMode(false);
+    }
     m_previewMode = preview;
 
     if (m_previewMode) {
@@ -212,6 +221,9 @@ void EditorWidget::setPreviewMode(bool preview)
 void EditorWidget::refreshPreview()
 {
     updatePreviewContent(nullptr);
+    if (m_splitPreview && m_splitPreviewReady) {
+        updateSplitPreviewContentNow();
+    }
 }
 
 QString EditorWidget::processWikiLinks(const QString &markdown)
@@ -698,8 +710,10 @@ void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
 
 void EditorWidget::onTextChanged()
 {
-    // 如果处于预览模式，且希望实时更新，可以取消注释下面一行
-    // if (m_previewMode) refreshPreview();
+    // 分屏预览：启动 debounce 定时器，延迟刷新
+    if (m_splitPreview) {
+        m_splitDebounceTimer.start();
+    }
 }
 
 void EditorWidget::updateModificationChanged()
@@ -724,6 +738,18 @@ bool EditorWidget::loadFile(const QString &filePath)
     QTextStream stream(&file);
     QString content = stream.readAll();
     m_filePath = QFileInfo(filePath).absoluteFilePath();
+
+    // 退出分屏预览（如果有），恢复 m_textEdit 到 page 0
+    if (m_splitPreview) {
+        m_splitTextWrapper->layout()->removeWidget(m_textEdit);
+        m_stackedWidget->insertWidget(0, m_textEdit);
+        m_splitPreview = false;
+        m_lastSplitPreviewContent.clear();
+    }
+    // 退出全屏预览
+    if (m_previewMode) {
+        m_previewMode = false;
+    }
 
     // Auto-detect code file and switch mode BEFORE setting text,
     // so that setPlainText dispatches to the correct editor.
@@ -871,6 +897,9 @@ void EditorWidget::applyZoom()
     if (m_previewMode) {
         m_previewView->setZoomFactor(m_zoomFactor);
     }
+    if (m_splitPreview && m_splitPreviewView) {
+        m_splitPreviewView->setZoomFactor(m_zoomFactor);
+    }
 
     doc->setModified(wasModified);
 }
@@ -982,7 +1011,7 @@ void EditorWidget::setTagNames(const QStringList &names)
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 {
-    if (m_previewMode) {
+    if (m_previewMode && !m_splitPreview) {
         setPreviewMode(false);
     }
 
@@ -1037,4 +1066,128 @@ void EditorWidget::clearExtraSelections()
         m_codeEditor->clearSearchHighlights();
     else
         m_textEdit->setExtraSelections({});
+}
+
+// ---- 分屏预览 ----
+
+void EditorWidget::createSplitPreviewWidgets()
+{
+    if (m_splitSplitter) return;
+
+    m_splitSplitter = new QSplitter(Qt::Horizontal, this);
+
+    // 左侧：包装 m_textEdit 的容器
+    m_splitTextWrapper = new QWidget(this);
+    QVBoxLayout *wrapperLayout = new QVBoxLayout(m_splitTextWrapper);
+    wrapperLayout->setContentsMargins(0, 0, 0, 0);
+    m_splitSplitter->addWidget(m_splitTextWrapper);
+
+    // 右侧：第二个 QWebEngineView
+    m_splitPreviewView = new QWebEngineView(this);
+    m_splitPreviewPage = new PreviewPage(this);
+    m_splitPreviewPage->onWikiLinkClicked = [this](const QString &fileName) {
+        emit wikiLinkClicked(fileName);
+    };
+    m_splitPreviewPage->onRunCodeBlock = [this](const QString &language, const QString &code) {
+        emit runCodeBlockRequested(language, code);
+    };
+    m_splitPreviewPage->onTagClicked = [this](const QString &tag) {
+        emit tagClicked(tag);
+    };
+    m_splitPreviewView->setPage(m_splitPreviewPage);
+
+    m_splitPreviewView->installEventFilter(this);
+    QTimer::singleShot(0, this, [this]() {
+        if (QWidget *fp = m_splitPreviewView->focusProxy())
+            fp->installEventFilter(this);
+    });
+
+    m_splitSplitter->addWidget(m_splitPreviewView);
+
+    // 默认五五分隔
+    m_splitSplitter->setSizes({1, 1});
+
+    m_stackedWidget->addWidget(m_splitSplitter);
+}
+
+void EditorWidget::setSplitPreviewMode(bool split)
+{
+    if (m_editorMode == CodeEdit)
+        return;
+    if (split == m_splitPreview)
+        return;
+
+    // 互斥：进入分屏预览时，退出全屏预览
+    if (split && m_previewMode) {
+        setPreviewMode(false);
+    }
+
+    m_splitPreview = split;
+
+    if (m_splitPreview) {
+        createSplitPreviewWidgets();
+
+        // 将 m_textEdit 从 page 0 转移到 splitter 左侧
+        m_stackedWidget->removeWidget(m_textEdit);
+        m_splitTextWrapper->layout()->addWidget(m_textEdit);
+        m_textEdit->show();
+
+        if (!m_splitPreviewReady) {
+            m_splitPreviewView->page()->setBackgroundColor(
+                ConfigManager::instance().previewWebEngineBackground());
+
+            QFile tmplFile(QStringLiteral(":/preview/template.html"));
+            if (tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QString tmpl = QString::fromUtf8(tmplFile.readAll());
+                tmplFile.close();
+
+                QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
+                tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+                m_splitPreviewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
+
+                connect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this,
+                    [this](bool ok) {
+                        disconnect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
+                        if (!ok) return;
+                        m_splitPreviewReady = true;
+                        if (QWidget *fp = m_splitPreviewView->focusProxy())
+                            fp->installEventFilter(this);
+                        m_lastSplitPreviewContent = m_textEdit->toPlainText();
+                        applyZoom();
+                    });
+            }
+        } else {
+            updateSplitPreviewContentNow();
+            applyZoom();
+        }
+
+        m_stackedWidget->setCurrentWidget(m_splitSplitter);
+    } else {
+        // 退出分屏：将 m_textEdit 从 splitter 放回 page 0
+        m_splitTextWrapper->layout()->removeWidget(m_textEdit);
+        m_stackedWidget->insertWidget(0, m_textEdit);
+        m_stackedWidget->setCurrentWidget(m_textEdit);
+        applyZoom();
+    }
+}
+
+void EditorWidget::onSplitDebounceTimeout()
+{
+    if (!m_splitPreview || !m_splitPreviewReady) return;
+
+    QString currentContent = m_textEdit->toPlainText();
+    if (currentContent == m_lastSplitPreviewContent) return;
+
+    m_lastSplitPreviewContent = currentContent;
+    updateSplitPreviewContentNow();
+}
+
+void EditorWidget::updateSplitPreviewContentNow()
+{
+    if (!m_splitPreviewView || !m_splitPreviewReady) return;
+
+    QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
+    QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
+    m_splitPreviewView->page()->runJavaScript(
+        QStringLiteral("window.renderFromBase64('%1')").arg(base64));
 }

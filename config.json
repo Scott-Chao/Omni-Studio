@@ -37,6 +37,11 @@
     "input_enable_delay_ms": 50
   },
 
+  "preview": {
+    "split_debounce_ms": 500,
+    "split_preview_ratio": 50
+  },
+
   "search_panel": {
     "debounce_ms": 300,
     "max_per_file": 20,
@@ -239,6 +244,7 @@
     "save": "Ctrl+S",
     "save_as": "Ctrl+Shift+S",
     "toggle_preview": "Ctrl+Shift+P",
+    "toggle_split_preview": "Ctrl+P",
     "toggle_history": "Ctrl+H",
     "toggle_backlinks": "Ctrl+Shift+B",
     "toggle_tags": "Ctrl+Shift+T",

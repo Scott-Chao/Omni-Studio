@@ -291,9 +291,34 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
-            if (checked && !editor->currentFilePath().toLower().endsWith(".md")) // 仅在 .md 文件中允许使用预览
+            if (checked && !editor->currentFilePath().toLower().endsWith(".md"))
                 return;
             editor->setPreviewMode(checked);
+            if (checked && m_splitPreviewAction && m_splitPreviewAction->isChecked()) {
+                m_splitPreviewAction->blockSignals(true);
+                m_splitPreviewAction->setChecked(false);
+                m_splitPreviewAction->blockSignals(false);
+            }
+        }
+    });
+
+    // 分屏预览（快捷键Ctrl+P）
+    m_splitPreviewAction = new QAction(tr("分屏预览"), this);
+    m_splitPreviewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_split_preview", "Ctrl+P")));
+    m_splitPreviewAction->setCheckable(true);
+    addAction(m_splitPreviewAction);
+    toolBar->addAction(m_splitPreviewAction);
+    connect(m_splitPreviewAction, &QAction::toggled, this, [this](bool checked) {
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (editor) {
+            if (checked && !editor->currentFilePath().toLower().endsWith(".md"))
+                return;
+            editor->setSplitPreviewMode(checked);
+            if (checked && m_previewAction && m_previewAction->isChecked()) {
+                m_previewAction->blockSignals(true);
+                m_previewAction->setChecked(false);
+                m_previewAction->blockSignals(false);
+            }
         }
     });
 
@@ -378,6 +403,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 当切换标签页时，更新预览按钮的选中状态
     connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updatePreviewActionState);
+    connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updateSplitPreviewActionState);
 
     // ----- 设置面板（悬浮遮罩 + 面板）-----
     m_settingsOverlay = new QWidget(this);
@@ -478,6 +504,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_searchPanel->setRootPath(m_explorer->rootPath());
     startAsyncIndexBuild();
     updatePreviewActionState();
+    updateSplitPreviewActionState();
 }
 
 MainWindow::~MainWindow()
@@ -496,6 +523,7 @@ void MainWindow::onFileSelected(const QString &filePath)
     }
     updateZoomLabel();
     updatePreviewActionState();
+    updateSplitPreviewActionState();
     addToRecentFiles(filePath);
 }
 
@@ -507,6 +535,7 @@ void MainWindow::newFile()
         updateZoomLabel();
     }
     updatePreviewActionState();
+    updateSplitPreviewActionState();
 }
 
 void MainWindow::saveFile()
@@ -523,6 +552,7 @@ void MainWindow::saveFile()
                                          m_explorer->rootPath(), m_fileIndex);
             m_tagIndex->rebuildFile(editor->currentFilePath());
             updatePreviewActionState(); // 刷新预览按钮状态
+            updateSplitPreviewActionState();
             addToRecentFiles(editor->currentFilePath());
             refreshBacklinks(); // 保存后更新反链
             refreshTags();
@@ -548,6 +578,7 @@ void MainWindow::onSaveFileAs()
         m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
         m_tagIndex->rebuildFile(newFilePath);
         updatePreviewActionState();
+        updateSplitPreviewActionState();
         addToRecentFiles(newFilePath);
         refreshBacklinks();
         refreshTags();
@@ -829,6 +860,29 @@ void MainWindow::updatePreviewActionState()
     } else if (isMd) {
         // 如果是 md 文件，同步按钮的勾选状态以反映当前编辑器的预览模式
         m_previewAction->setChecked(editor->isPreviewMode());
+    }
+}
+
+void MainWindow::updateSplitPreviewActionState()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) {
+        m_splitPreviewAction->setVisible(false);
+        m_splitPreviewAction->setEnabled(false);
+        return;
+    }
+
+    QString filePath = editor->currentFilePath();
+    bool isMd = filePath.toLower().endsWith(".md");
+
+    m_splitPreviewAction->setVisible(isMd);
+    m_splitPreviewAction->setEnabled(isMd);
+
+    if (!isMd && editor->isSplitPreviewMode()) {
+        editor->setSplitPreviewMode(false);
+        m_splitPreviewAction->setChecked(false);
+    } else if (isMd) {
+        m_splitPreviewAction->setChecked(editor->isSplitPreviewMode());
     }
 }
 

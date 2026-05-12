@@ -55,6 +55,10 @@ public:
     int outputPanelPasteTimerMs() const;
     int outputPanelInputEnableDelayMs() const;
 
+    // ---- Preview ----
+    int previewSplitDebounceMs() const;
+    int previewSplitPreviewRatio() const;
+
     // ---- Search Panel ----
     int searchDebounceMs() const;
     int searchMaxPerFile() const;

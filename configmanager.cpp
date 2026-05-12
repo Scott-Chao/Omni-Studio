@@ -231,6 +231,12 @@ QJsonObject ConfigManager::buildDefaultConfig()
     outputPanel["input_enable_delay_ms"] = 50;
     root["output_panel"] = outputPanel;
 
+    // ---- preview ----
+    QJsonObject preview;
+    preview["split_debounce_ms"] = 500;
+    preview["split_preview_ratio"] = 50;
+    root["preview"] = preview;
+
     // ---- search_panel ----
     QJsonObject searchPanel;
     searchPanel["debounce_ms"] = 300;
@@ -473,6 +479,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["save"] = "Ctrl+S";
     shortcuts["save_as"] = "Ctrl+Shift+S";
     shortcuts["toggle_preview"] = "Ctrl+Shift+P";
+    shortcuts["toggle_split_preview"] = "Ctrl+P";
     shortcuts["toggle_history"] = "Ctrl+H";
     shortcuts["toggle_backlinks"] = "Ctrl+Shift+B";
     shortcuts["toggle_tags"] = "Ctrl+Shift+T";
@@ -521,6 +528,10 @@ int ConfigManager::outputPanelMinHeight() const { return intValue("output_panel.
 double ConfigManager::outputPanelDefaultHeightRatio() const { return doubleValue("output_panel.default_height_ratio", 0.333); }
 int ConfigManager::outputPanelPasteTimerMs() const { return intValue("output_panel.paste_timer_ms", 20); }
 int ConfigManager::outputPanelInputEnableDelayMs() const { return intValue("output_panel.input_enable_delay_ms", 50); }
+
+// ---- Preview ----
+int ConfigManager::previewSplitDebounceMs() const { return intValue("preview.split_debounce_ms", 500); }
+int ConfigManager::previewSplitPreviewRatio() const { return intValue("preview.split_preview_ratio", 50); }
 
 // ---- Search Panel ----
 int ConfigManager::searchDebounceMs() const { return intValue("search_panel.debounce_ms", 300); }

@@ -100,7 +100,9 @@ private:
     void connectCurrentEditorZoomSignal(); // 连接当前编辑器的缩放信号
     // 预览模式激活状态调整
     QAction *m_previewAction = nullptr;
+    QAction *m_splitPreviewAction = nullptr;
     void updatePreviewActionState();
+    void updateSplitPreviewActionState();
     // 历史记录
     void addToRecentFiles(const QString &filePath);
     HistoryPanel *m_historyPanel;
