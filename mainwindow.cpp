@@ -42,6 +42,8 @@
 #include <QDockWidget>
 #include <QDirIterator>
 #include <QRegularExpression>
+#include <QStandardPaths>
+#include <QDateTime>
 #include <QCoreApplication>
 #include <QThread>
 #include <QTimer>
@@ -95,6 +97,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_dockHistory->hide(); // 默认隐藏历史记录
 
+    // 左右侧边栏互斥：当右侧面板显示时隐藏左侧搜索面板
+    connect(m_dockHistory, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) m_dockSearch->hide();
+    });
+
     // 工具栏最左侧插入显示/隐藏面板的按钮
     toggleHistoryAction = m_dockHistory->toggleViewAction();
     toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
@@ -111,6 +118,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockBacklinks->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
     addDockWidget(Qt::RightDockWidgetArea, m_dockBacklinks);
     m_dockBacklinks->hide();
+
+    connect(m_dockBacklinks, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) m_dockSearch->hide();
+    });
 
     toggleBacklinksAction = m_dockBacklinks->toggleViewAction();
     toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
@@ -133,8 +144,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_dockSearch, &QDockWidget::visibilityChanged,
             this, [this](bool visible) {
-        if (visible)
+        if (visible) {
             m_searchPanel->focusSearchInput();
+            // 隐藏所有右侧面板
+            m_dockHistory->hide();
+            m_dockBacklinks->hide();
+            m_dockTag->hide();
+            m_dockOutline->hide();
+            m_dockJudge->hide();
+        }
     });
 
     // ----- 输出面板 -----
@@ -197,6 +215,10 @@ MainWindow::MainWindow(QWidget *parent)
     addDockWidget(Qt::RightDockWidgetArea, m_dockJudge);
     m_dockJudge->hide();
 
+    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) m_dockSearch->hide();
+    });
+
     m_toggleJudgeAction = m_dockJudge->toggleViewAction();
     m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
@@ -221,6 +243,10 @@ MainWindow::MainWindow(QWidget *parent)
     addDockWidget(Qt::RightDockWidgetArea, m_dockTag);
     m_dockTag->hide();
 
+    connect(m_dockTag, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) m_dockSearch->hide();
+    });
+
     toggleTagAction = m_dockTag->toggleViewAction();
     toggleTagAction->setToolTip(tr("显示/隐藏标签"));
     toggleTagAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_tags", "Ctrl+Shift+T")));
@@ -238,6 +264,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockOutline->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
     addDockWidget(Qt::RightDockWidgetArea, m_dockOutline);
     m_dockOutline->hide();
+
+    connect(m_dockOutline, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible) m_dockSearch->hide();
+    });
 
     toggleOutlineAction = m_dockOutline->toggleViewAction();
     toggleOutlineAction->setToolTip(tr("显示/隐藏大纲"));
@@ -524,6 +554,7 @@ MainWindow::MainWindow(QWidget *parent)
     qApp->installEventFilter(this);
 
     loadSettings();
+    checkCrashRecovery(); // 检测崩溃恢复文件
     m_searchPanel->setRootPath(m_explorer->rootPath());
     startAsyncIndexBuild();
     updatePreviewActionState();
@@ -641,6 +672,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     // 所有标签都已安全关闭，保存配置并退出
     m_historyPanel->saveHistory();
     saveSettings();
+    clearRecoveryDirectory(); // 正常关闭，清理恢复目录
     if (m_openJudgeWindow)
         m_openJudgeWindow->close();
     event->accept();
@@ -1758,5 +1790,102 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
             QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
         m_outputPanel->setStatus(tr("编译中..."));
         m_processRunner->startCompileAndRun(filePath);
+    }
+}
+
+// ==================================================================
+// Crash recovery
+// ==================================================================
+
+void MainWindow::checkCrashRecovery()
+{
+    cleanStaleRecoveryFiles();
+
+    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                          + "/SM-Recovery";
+    QDir dir(recoveryDir);
+    if (!dir.exists())
+        return;
+
+    QStringList entries = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Time);
+    if (entries.isEmpty())
+        return;
+
+    // 有恢复文件 → 询问用户
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("恢复文件"));
+    msgBox.setIcon(QMessageBox::Question);
+    msgBox.setText(tr("检测到上次异常退出，发现 %1 个未保存的临时文件。").arg(entries.size()));
+    msgBox.setInformativeText(tr("是否恢复未保存的内容？\n\n"
+                                 "选择“恢复”将打开临时文件供您手动保存；\n"
+                                 "选择“丢弃”将删除所有临时文件。"));
+    QPushButton *restoreBtn = msgBox.addButton(tr("恢复(&R)"), QMessageBox::AcceptRole);
+    QPushButton *discardBtn = msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
+    msgBox.setDefaultButton(restoreBtn);
+
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == restoreBtn) {
+        // 恢复：依次打开每个恢复文件
+        for (const QString &entry : entries) {
+            QString filePath = dir.absoluteFilePath(entry);
+            QFile file(filePath);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            QString content = QString::fromUtf8(file.readAll());
+            file.close();
+
+            // 创建新标签页，填入恢复内容
+            EditorWidget *editor = m_tabManager->newFile();
+            editor->setPlainText(content);
+            editor->setModified(true);
+
+            // 记录恢复文件路径，后续手动保存时清理
+            editor->setRecoveryTempPath(filePath);
+
+            // 更新标签标题
+            int idx = m_tabManager->indexOf(editor);
+            if (idx >= 0)
+                m_tabManager->setTabText(idx, tr("未命名（已恢复）"));
+        }
+    } else {
+        // 丢弃：删除整个恢复目录
+        clearRecoveryDirectory();
+    }
+}
+
+void MainWindow::cleanStaleRecoveryFiles()
+{
+    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                          + "/SM-Recovery";
+    QDir dir(recoveryDir);
+    if (!dir.exists())
+        return;
+
+    int maxAgeHours = ConfigManager::instance().autoSaveRecoveryMaxAgeHours();
+    qint64 cutoff = QDateTime::currentSecsSinceEpoch() - (maxAgeHours * 3600);
+
+    const QStringList entries = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
+    for (const QString &entry : entries) {
+        QString filePath = dir.absoluteFilePath(entry);
+        QFileInfo info(filePath);
+        if (info.lastModified().toSecsSinceEpoch() < cutoff) {
+            QFile::remove(filePath);
+        }
+    }
+
+    // 如果目录已空，删除它
+    if (dir.entryList(QDir::Files | QDir::NoDotAndDotDot).isEmpty()) {
+        dir.removeRecursively();
+    }
+}
+
+void MainWindow::clearRecoveryDirectory()
+{
+    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                          + "/SM-Recovery";
+    QDir dir(recoveryDir);
+    if (dir.exists()) {
+        dir.removeRecursively();
     }
 }

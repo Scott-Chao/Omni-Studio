@@ -180,6 +180,11 @@ private:
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
 
+    // 崩溃恢复
+    void checkCrashRecovery();
+    void cleanStaleRecoveryFiles();
+    void clearRecoveryDirectory();
+
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）
     QMap<QString, QStringList> m_fileIndex;

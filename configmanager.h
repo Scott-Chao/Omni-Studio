@@ -138,6 +138,11 @@ public:
     // ---- History ----
     int historyMaxEntries() const;
 
+    // ---- Auto Save ----
+    bool autoSaveEnabled() const;
+    int autoSaveIntervalMs() const;
+    int autoSaveRecoveryMaxAgeHours() const;
+
     // ---- Extensions ----
     QStringList textFileExtensions() const;
     QStringList tagScanExtensions() const;

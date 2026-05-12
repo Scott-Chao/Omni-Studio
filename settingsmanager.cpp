@@ -151,3 +151,36 @@ void SettingsManager::clearOpenJudgeCredentials()
     m_settings->remove(KEY_OJ_USERNAME);
     m_settings->remove(KEY_OJ_PASSWORD);
 }
+
+// ---- Auto-Save / Crash Recovery ----
+static const QString KEY_RECOVERY_FILES = "AutoSave/recoveryFiles";
+static const QString RECOVERY_SEPARATOR = QStringLiteral("|");
+
+void SettingsManager::setRecoveryFiles(const QList<QPair<QString, QString>> &files)
+{
+    QStringList encoded;
+    for (const auto &pair : files) {
+        encoded.append(pair.first + RECOVERY_SEPARATOR + pair.second);
+    }
+    m_settings->setValue(KEY_RECOVERY_FILES, encoded);
+}
+
+QList<QPair<QString, QString>> SettingsManager::recoveryFiles() const
+{
+    QStringList encoded = m_settings->value(KEY_RECOVERY_FILES).toStringList();
+    QList<QPair<QString, QString>> result;
+    for (const QString &entry : encoded) {
+        int sepIdx = entry.indexOf(RECOVERY_SEPARATOR);
+        if (sepIdx >= 0) {
+            QString recoveryPath = entry.left(sepIdx);
+            QString originalPath = entry.mid(sepIdx + 1);
+            result.append({recoveryPath, originalPath});
+        }
+    }
+    return result;
+}
+
+void SettingsManager::clearRecoveryFiles()
+{
+    m_settings->remove(KEY_RECOVERY_FILES);
+}

@@ -178,6 +178,12 @@
     "judge_input": ["in"]
   },
 
+  "auto_save": {
+    "enabled": true,
+    "interval_ms": 30000,
+    "recovery_dir_max_age_hours": 72
+  },
+
   "webengine": {
     "remote_debugging_port": "9222"
   },

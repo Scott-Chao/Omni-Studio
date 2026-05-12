@@ -47,6 +47,12 @@ public:
     QPair<QString, QString> openJudgeCredentials() const; // <username, password>
     void clearOpenJudgeCredentials();
 
+    // 崩溃恢复 - 恢复文件元数据
+    // 每个条目存储为 "recoveryPath|originalPath"，originalPath 为空表示未命名文件
+    void setRecoveryFiles(const QList<QPair<QString, QString>> &files);
+    QList<QPair<QString, QString>> recoveryFiles() const;
+    void clearRecoveryFiles();
+
 private:
     QSettings *m_settings;
 };

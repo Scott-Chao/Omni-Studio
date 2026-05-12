@@ -44,6 +44,7 @@ EditorWidget* TabManager::newFile()
     int index = addTab(editor, "未命名");
     setCurrentIndex(index);
     connectEditorSignals(editor);
+    editor->startAutoSave();
     emit tabCountChanged(count());
     return editor;
 }

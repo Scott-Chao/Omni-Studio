@@ -400,6 +400,13 @@ QJsonObject ConfigManager::buildDefaultConfig()
     extensions["judge_input"] = judgeInput;
     root["extensions"] = extensions;
 
+    // ---- auto_save ----
+    QJsonObject autoSave;
+    autoSave["enabled"] = true;
+    autoSave["interval_ms"] = 30000;
+    autoSave["recovery_dir_max_age_hours"] = 72;
+    root["auto_save"] = autoSave;
+
     // ---- webengine ----
     QJsonObject webengine;
     webengine["remote_debugging_port"] = "9222";
@@ -632,6 +639,11 @@ QStringList ConfigManager::textFileExtensions() const
     };
     return stringListValue("extensions.text_files", def);
 }
+
+// ---- Auto Save ----
+bool ConfigManager::autoSaveEnabled() const { return boolValue("auto_save.enabled", true); }
+int ConfigManager::autoSaveIntervalMs() const { return intValue("auto_save.interval_ms", 30000); }
+int ConfigManager::autoSaveRecoveryMaxAgeHours() const { return intValue("auto_save.recovery_dir_max_age_hours", 72); }
 
 QStringList ConfigManager::tagScanExtensions() const
 {

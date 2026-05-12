@@ -20,6 +20,7 @@ class EditorWidget : public QWidget
 
 public:
     explicit EditorWidget(QWidget *parent = nullptr);
+    ~EditorWidget();
 
     // 文件操作
     bool loadFile(const QString &filePath);
@@ -63,6 +64,13 @@ public:
     void setTagNames(const QStringList &names);
     bool isCodeEdit() const { return m_editorMode == CodeEdit; }
 
+    // 自动保存
+    void startAutoSave();
+    void stopAutoSave();
+    QString recoveryTempPath() const { return m_recoveryTempPath; }
+    void setRecoveryTempPath(const QString &path) { m_recoveryTempPath = path; }
+    QString autoSaveRecoveryDir() const; // 恢复文件目录路径（静态）
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
@@ -79,6 +87,7 @@ private slots:
     void onTextChanged();
     void updateModificationChanged();
     void onSplitDebounceTimeout();
+    void onAutoSaveTimeout();
 
 private:
     enum EditorMode { MarkdownEdit, CodeEdit };
@@ -119,6 +128,11 @@ private:
     QString m_originalContent; // 文件的原始纯文本内容
     QTimer m_contentCheckTimer; // 计时器，用于延迟内容比较
     void onContentCheckTimeout(); // 超时后比较内容并更新修改状态
+
+    // 自动保存
+    QTimer m_autoSaveTimer;
+    QString m_recoveryTempPath; // 恢复文件路径（仅未命名文件使用）
+    void autoSaveNow(); // 执行自动保存（不修改 modified 状态）
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

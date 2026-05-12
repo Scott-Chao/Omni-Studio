@@ -7,6 +7,10 @@
 #include "configmanager.h"
 #include <QFile>
 #include <QTextStream>
+#include <QUuid>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFileInfo>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QWheelEvent>
@@ -155,6 +159,10 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_splitDebounceTimer.setSingleShot(true);
     m_splitDebounceTimer.setInterval(ConfigManager::instance().previewSplitDebounceMs());
     connect(&m_splitDebounceTimer, &QTimer::timeout, this, &EditorWidget::onSplitDebounceTimeout);
+
+    // 自动保存定时器（周期触发，每 30 秒检查一次）
+    m_autoSaveTimer.setInterval(ConfigManager::instance().autoSaveIntervalMs());
+    connect(&m_autoSaveTimer, &QTimer::timeout, this, &EditorWidget::onAutoSaveTimeout);
 
     // 当文本编辑器内容变化时，重置计时器
     connect(m_textEdit, &QTextEdit::textChanged, this, [this]() {
@@ -803,6 +811,12 @@ bool EditorWidget::loadFile(const QString &filePath)
     applyZoom();
 
     emit fileLoaded(filePath);
+
+    // 文件加载后启动自动保存定时器
+    if (ConfigManager::instance().autoSaveEnabled()) {
+        m_autoSaveTimer.start();
+    }
+
     return true;
 }
 
@@ -822,6 +836,16 @@ bool EditorWidget::saveFile()
     m_originalContent = toPlainText();
     setModified(false); // 保存后清除修改标志
     emit fileSaved(m_filePath);
+
+    // 手动保存后清理恢复文件并重置 auto-save 定时器
+    if (!m_recoveryTempPath.isEmpty()) {
+        QFile::remove(m_recoveryTempPath);
+        m_recoveryTempPath.clear();
+    }
+    if (ConfigManager::instance().autoSaveEnabled()) {
+        m_autoSaveTimer.start();
+    }
+
     return true;
 }
 
@@ -1291,4 +1315,69 @@ void EditorWidget::updateSplitPreviewContentNow()
     QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
     m_splitPreviewView->page()->runJavaScript(
         QStringLiteral("window.renderFromBase64('%1')").arg(base64));
+}
+
+// ==================================================================
+// Auto-save
+// ==================================================================
+
+EditorWidget::~EditorWidget()
+{
+    stopAutoSave();
+}
+
+void EditorWidget::startAutoSave()
+{
+    if (ConfigManager::instance().autoSaveEnabled()) {
+        m_autoSaveTimer.start();
+    }
+}
+
+void EditorWidget::stopAutoSave()
+{
+    m_autoSaveTimer.stop();
+}
+
+void EditorWidget::onAutoSaveTimeout()
+{
+    if (!isModified())
+        return;
+    autoSaveNow();
+}
+
+void EditorWidget::autoSaveNow()
+{
+    if (!isModified())
+        return;
+
+    if (!m_filePath.isEmpty()) {
+        // 有路径的文件：直接写入原文件，不清除修改标记
+        QFile file(m_filePath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream stream(&file);
+            stream << toPlainText();
+            file.close();
+        }
+    } else {
+        // 未命名文件：保存到恢复目录
+        if (m_recoveryTempPath.isEmpty()) {
+            QString recoveryDir = autoSaveRecoveryDir();
+            QDir().mkpath(recoveryDir);
+            m_recoveryTempPath = recoveryDir + "/untitled_"
+                                 + QUuid::createUuid().toString(QUuid::Id128)
+                                 + ".md";
+        }
+        QFile file(m_recoveryTempPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream stream(&file);
+            stream << toPlainText();
+            file.close();
+        }
+    }
+}
+
+QString EditorWidget::autoSaveRecoveryDir() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+           + "/SM-Recovery";
 }
