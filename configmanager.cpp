@@ -363,6 +363,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     QJsonObject panels;
     panels["backlinks_min_width"] = 200;
     panels["tag_min_width"] = 200;
+    panels["outline_min_width"] = 200;
     root["panels"] = panels;
 
     // ---- history ----
@@ -483,6 +484,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["toggle_history"] = "Ctrl+H";
     shortcuts["toggle_backlinks"] = "Ctrl+Shift+B";
     shortcuts["toggle_tags"] = "Ctrl+Shift+T";
+    shortcuts["toggle_outline"] = "Ctrl+Shift+O";
     shortcuts["toggle_search"] = "Ctrl+Shift+F";
     shortcuts["toggle_judge"] = "Ctrl+Shift+J";
     shortcuts["toggle_settings"] = "Ctrl+,";
@@ -605,6 +607,7 @@ int ConfigManager::loginDialogTitleFontSize() const { return intValue("login_dia
 // ---- Panels ----
 int ConfigManager::backlinksPanelMinWidth() const { return intValue("panels.backlinks_min_width", 200); }
 int ConfigManager::tagPanelMinWidth() const { return intValue("panels.tag_min_width", 200); }
+int ConfigManager::outlinePanelMinWidth() const { return intValue("panels.outline_min_width", 200); }
 
 // ---- History ----
 int ConfigManager::historyMaxEntries() const { return intValue("history.max_entries", 50); }

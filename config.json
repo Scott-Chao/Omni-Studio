@@ -150,7 +150,8 @@
 
   "panels": {
     "backlinks_min_width": 200,
-    "tag_min_width": 200
+    "tag_min_width": 200,
+    "outline_min_width": 200
   },
 
   "history": {
@@ -248,6 +249,7 @@
     "toggle_history": "Ctrl+H",
     "toggle_backlinks": "Ctrl+Shift+B",
     "toggle_tags": "Ctrl+Shift+T",
+    "toggle_outline": "Ctrl+Shift+O",
     "toggle_search": "Ctrl+Shift+F",
     "toggle_judge": "Ctrl+Shift+J",
     "compile_and_run": "F5",

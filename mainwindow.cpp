@@ -19,6 +19,8 @@
 #include "languageutils.h"
 #include "tagindex.h"
 #include "tagpanel.h"
+#include "outlinepanel.h"
+#include "outlineutils.h"
 #include "settingspanel.h"
 
 #include <QSplitter>
@@ -223,6 +225,24 @@ MainWindow::MainWindow(QWidget *parent)
     toggleTagAction->setToolTip(tr("显示/隐藏标签"));
     toggleTagAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_tags", "Ctrl+Shift+T")));
 
+    // ----- 大纲面板 -----
+    m_outlinePanel = new OutlinePanel(this);
+    connect(m_outlinePanel, &OutlinePanel::headingClicked, this, [this](int line) {
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (editor)
+            editor->scrollToLine(line);
+    });
+
+    m_dockOutline = new QDockWidget(tr("大纲"), this);
+    m_dockOutline->setWidget(m_outlinePanel);
+    m_dockOutline->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockOutline);
+    m_dockOutline->hide();
+
+    toggleOutlineAction = m_dockOutline->toggleViewAction();
+    toggleOutlineAction->setToolTip(tr("显示/隐藏大纲"));
+    toggleOutlineAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_outline", "Ctrl+Shift+O")));
+
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
@@ -245,6 +265,8 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->insertAction(nullptr, toggleSearchAction);
     // 标签
     toolBar->insertAction(nullptr, toggleTagAction);
+    // 大纲
+    toolBar->insertAction(nullptr, toggleOutlineAction);
     // 代码评测
     toolBar->insertAction(nullptr, m_toggleJudgeAction);
     toolBar->insertSeparator(toggleHistoryAction);
@@ -467,6 +489,7 @@ MainWindow::MainWindow(QWidget *parent)
         syncFileTreeSelection();
         refreshBacklinks();
         refreshTags();
+        refreshOutline();
         updateCurrentEditorCompletions();
 
         // 更新编译运行按钮状态
@@ -556,6 +579,7 @@ void MainWindow::saveFile()
             addToRecentFiles(editor->currentFilePath());
             refreshBacklinks(); // 保存后更新反链
             refreshTags();
+            refreshOutline();
         }
     }
 }
@@ -913,6 +937,18 @@ void MainWindow::refreshTags()
     m_tagPanel->showAllTags(tags);
 }
 
+void MainWindow::refreshOutline()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->currentFilePath().toLower().endsWith(QStringLiteral(".md"))) {
+        m_outlinePanel->clear();
+        return;
+    }
+    QString content = editor->toPlainText();
+    auto headings = extractHeadingsFromContent(content);
+    m_outlinePanel->showHeadings(headings);
+}
+
 void MainWindow::onTagClicked(const QString &tag)
 {
     QStringList files = m_tagIndex->filesForTag(tag);
@@ -1202,6 +1238,14 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return QMainWindow::eventFilter(watched, event);
             if (!m_dockTag->isAncestorOf(clickedWidget))
                 m_dockTag->hide();
+        }
+
+        // Auto-hide outline panel when clicking outside
+        if (m_dockOutline->isVisible()) {
+            if (btn && btn->defaultAction() == toggleOutlineAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (!m_dockOutline->isAncestorOf(clickedWidget))
+                m_dockOutline->hide();
         }
 
         // Close settings panel when clicking overlay background

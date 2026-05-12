@@ -28,6 +28,7 @@ class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
 class TagPanel;
+class OutlinePanel;
 class SettingsPanel;
 
 QT_BEGIN_NAMESPACE
@@ -148,6 +149,12 @@ private:
     QAction *toggleTagAction;
     void refreshTags();
     void onTagClicked(const QString &tag);
+
+    // 大纲面板
+    OutlinePanel *m_outlinePanel;
+    QDockWidget *m_dockOutline;
+    QAction *toggleOutlineAction;
+    void refreshOutline();
 
     // 设置面板
     SettingsPanel *m_settingsPanel = nullptr;

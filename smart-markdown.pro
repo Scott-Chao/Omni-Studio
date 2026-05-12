@@ -29,6 +29,7 @@ SOURCES += \
     judgepanel.cpp \
     logindialog.cpp \
     openjudgewindow.cpp \
+    outlinepanel.cpp \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
@@ -61,6 +62,8 @@ HEADERS += \
     judgepanel.h \
     logindialog.h \
     openjudgewindow.h \
+    outlinepanel.h \
+    outlineutils.h \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \

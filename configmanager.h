@@ -133,6 +133,7 @@ public:
     // ---- Panels ----
     int backlinksPanelMinWidth() const;
     int tagPanelMinWidth() const;
+    int outlinePanelMinWidth() const;
 
     // ---- History ----
     int historyMaxEntries() const;
