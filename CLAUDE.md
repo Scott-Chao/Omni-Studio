@@ -24,7 +24,8 @@ The app is a single-window Markdown editor (Qt Widgets). All source files are at
 
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
-MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots
+MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with custom title bar (toolbar + caption buttons), window drag/resize via nativeEvent & event()
+  ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg for instant response
   ├── OutlinePanel        → QDockWidget + QListWidget, heading navigation for current Markdown file (right, hidden by default)  
   ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree panel (left)
   ├── TabManager          → QTabWidget, manages EditorWidget tabs (center)

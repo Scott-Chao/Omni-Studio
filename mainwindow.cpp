@@ -25,8 +25,13 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
+#include <QPainter>
 #include <QTextStream>
 #include <QCoreApplication>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <windowsx.h>
+#endif
 
 // 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
 static void previewLogMw(const QString &msg)
@@ -69,7 +74,9 @@ static void previewLogMw(const QString &msg)
 #include <QMessageBox>
 #include <QFileInfo>
 #include <QToolButton>
+#include <QPushButton>
 #include <QInputDialog>
+#include <QWindow>
 #include <utility>
 #include <QDockWidget>
 #include <QDirIterator>
@@ -115,6 +122,18 @@ MainWindow::MainWindow(QWidget *parent)
     , m_zoomLabel(nullptr)
 {
     ui->setupUi(this);
+
+    // 设置窗口标题与无边框
+    setWindowTitle(tr("Smart Markdown"));
+    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint |
+                   Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint);
+
+    // 强制创建原生窗口句柄，添加 WS_THICKFRAME 以启用边缘缩放和 Aero Snap
+#ifdef Q_OS_WIN
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    SetWindowLongPtr(hwnd, GWL_STYLE,
+                     GetWindowLongPtr(hwnd, GWL_STYLE) | WS_THICKFRAME);
+#endif
 
     // 创建历史记录面板
     m_historyPanel = new HistoryPanel(m_settings, this);
@@ -442,6 +461,9 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(m_stopAction);
     m_stopAction->setEnabled(false);
     connect(m_stopAction, &QAction::triggered, this, &MainWindow::onStopProcess);
+
+    // 将工具栏改造为自定义标题栏
+    setupCustomTitleBar();
 
     // 添加缩放项
     QStatusBar *status = statusBar();
@@ -1407,8 +1429,212 @@ void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
     }
 }
 
+// ============================================================
+// 自定义标题栏 — 自绘按钮，内嵌系统原生图标
+// ============================================================
+namespace {
+class CaptionBtn : public QPushButton
+{
+public:
+    CaptionBtn(QStyle::StandardPixmap iconId, bool closeBtn, QWidget *parent)
+        : QPushButton(parent), m_iconId(iconId), m_closeBtn(closeBtn)
+    {
+        setFixedSize(46, 32);
+        setFlat(true);
+        setCursor(Qt::ArrowCursor);
+        setStyleSheet("QPushButton { border: none; background: transparent; }");
+        setIconSize(QSize(18, 18));
+        setIcon(style()->standardIcon(m_iconId));
+        setMouseTracking(true);
+    }
+
+    void setIconType(QStyle::StandardPixmap id) {
+        m_iconId = id;
+        setIcon(style()->standardIcon(id));
+    }
+
+protected:
+    void enterEvent(QEnterEvent *) override { m_hovered = true; repaint(); }
+    void leaveEvent(QEvent *) override       { m_hovered = false; repaint(); }
+
+    void paintEvent(QPaintEvent *event) override
+    {
+        QPainter p(this);
+        // hover 背景
+        if (m_hovered) {
+            p.fillRect(rect(), m_closeBtn ? QColor("#c42b1c") : QColor(0x3a, 0x3a, 0x3a));
+        }
+        p.end();
+        // 让 QPushButton 负责图标居中绘制
+        QPushButton::paintEvent(event);
+    }
+
+private:
+    QStyle::StandardPixmap m_iconId;
+    bool m_closeBtn;
+    bool m_hovered = false;
+};
+} // anonymous namespace
+
+void MainWindow::setupCustomTitleBar()
+{
+    QToolBar *tb = findChild<QToolBar*>();
+    if (!tb) return;
+
+    tb->installEventFilter(this);
+
+    m_toolbarSpacer = new QWidget;
+    m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_toolbarSpacer->installEventFilter(this);
+    tb->addWidget(m_toolbarSpacer);
+
+    m_minimizeBtn = new CaptionBtn(QStyle::SP_TitleBarMinButton, false, this);
+    m_minimizeBtn->setIconSize(QSize(28, 28));  // 横线图标视觉偏小，单独放大
+    m_minimizeBtn->setToolTip(tr("最小化"));
+    connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
+    tb->addWidget(m_minimizeBtn);
+
+    m_maximizeBtn = new CaptionBtn(QStyle::SP_TitleBarMaxButton, false, this);
+    m_maximizeBtn->setIconSize(QSize(16, 16));
+    m_maximizeBtn->setToolTip(tr("最大化"));
+    connect(m_maximizeBtn, &QPushButton::clicked, this, [this]() {
+        if (isMaximized()) showNormal(); else showMaximized();
+    });
+    tb->addWidget(m_maximizeBtn);
+
+    m_closeBtn = new CaptionBtn(QStyle::SP_TitleBarCloseButton, true, this);
+    m_closeBtn->setIconSize(QSize(16, 16));
+    m_closeBtn->setToolTip(tr("关闭"));
+    connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
+    tb->addWidget(m_closeBtn);
+}
+
+// ============================================================
+// 无边框窗口 — 边缘 resize & 窗口样式
+// ============================================================
+bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
+{
+#ifdef Q_OS_WIN
+    if (eventType == "windows_generic_MSG") {
+        MSG *msg = static_cast<MSG*>(message);
+        if (msg->message == WM_NCCREATE) {
+            // 为无边框窗口添加 WS_THICKFRAME，使系统发送 WM_NCHITTEST
+            HWND hwnd = reinterpret_cast<HWND>(winId());
+            LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+            style |= WS_THICKFRAME;
+            SetWindowLongPtr(hwnd, GWL_STYLE, style);
+        }
+        if (msg->message == WM_NCHITTEST && !isMaximized()) {
+            const int x = GET_X_LPARAM(msg->lParam);
+            const int y = GET_Y_LPARAM(msg->lParam);
+            RECT r;
+            GetWindowRect(reinterpret_cast<HWND>(winId()), &r);
+            const int bw = r.right - r.left;
+            const int bh = r.bottom - r.top;
+            const int m = 10;
+            const bool onL = (x >= r.left && x <= r.left + m);
+            const bool onR = (x >= r.right - m && x <= r.right);
+            const bool onT = (y >= r.top && y <= r.top + m);
+            const bool onB = (y >= r.bottom - m && y <= r.bottom);
+
+            if (onT && onL)     { *result = HTTOPLEFT;     return true; }
+            if (onT && onR)     { *result = HTTOPRIGHT;    return true; }
+            if (onB && onL)     { *result = HTBOTTOMLEFT;  return true; }
+            if (onB && onR)     { *result = HTBOTTOMRIGHT; return true; }
+            if (onT)            { *result = HTTOP;          return true; }
+            if (onB)            { *result = HTBOTTOM;       return true; }
+            if (onL)            { *result = HTLEFT;         return true; }
+            if (onR)            { *result = HTRIGHT;        return true; }
+        }
+    }
+#else
+    Q_UNUSED(result);
+#endif
+    return QMainWindow::nativeEvent(eventType, message, result);
+}
+
+bool MainWindow::event(QEvent *event)
+{
+    // 窗口边缘缩放：在子控件之前拦截鼠标事件
+    if (event->type() == QEvent::MouseButtonPress && !isMaximized()) {
+        QMouseEvent *me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton) {
+            const int m = 10;
+            const int x = me->pos().x();
+            const int y = me->pos().y();
+            bool onL = (x <= m);
+            bool onR = (x >= width() - m);
+            bool onT = (y <= m);
+            bool onB = (y >= height() - m);
+
+            Qt::Edges edges;
+            if (onT) edges |= Qt::TopEdge;
+            if (onB) edges |= Qt::BottomEdge;
+            if (onL) edges |= Qt::LeftEdge;
+            if (onR) edges |= Qt::RightEdge;
+
+            if (edges != Qt::Edges{} && windowHandle()) {
+                windowHandle()->startSystemResize(edges);
+                return true;
+            }
+        }
+    }
+    return QMainWindow::event(event);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::WindowStateChange) {
+        if (m_maximizeBtn) {
+            auto *cb = static_cast<CaptionBtn*>(m_maximizeBtn);
+            if (isMaximized()) {
+                cb->setIconType(QStyle::SP_TitleBarNormalButton);
+                cb->setToolTip(tr("还原"));
+            } else {
+                cb->setIconType(QStyle::SP_TitleBarMaxButton);
+                cb->setToolTip(tr("最大化"));
+            }
+        }
+    }
+    QMainWindow::changeEvent(event);
+}
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    // 工具栏拖拽：点击空白区域或 spacer 移动窗口
+    if (m_minimizeBtn && m_maximizeBtn && m_closeBtn) {
+        QToolBar *tb = qobject_cast<QToolBar*>(watched);
+        bool isToolbarOrSpacer = (tb != nullptr) || (watched == m_toolbarSpacer);
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonPress) {
+            QMouseEvent *me = static_cast<QMouseEvent*>(event);
+            bool shouldMove = (watched == m_toolbarSpacer);
+            if (!shouldMove && tb) {
+                QWidget *child = tb->childAt(me->pos());
+                shouldMove = (!child || child == m_toolbarSpacer);
+            }
+            if (shouldMove && me->button() == Qt::LeftButton) {
+                if (isMaximized()) {
+                    // 最大化拖拽：还原 → 处理事件 → 定位 → 系统拖拽
+                    QPoint gpos = me->globalPos();
+                    QPoint localInWindow = mapFromGlobal(gpos);
+                    showNormal();
+                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+                    move(gpos.x() - localInWindow.x(), gpos.y() - localInWindow.y());
+                }
+                if (windowHandle())
+                    windowHandle()->startSystemMove();
+                return true;
+            }
+        }
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonDblClick) {
+            if (isMaximized())
+                showNormal();
+            else
+                showMaximized();
+            return true;
+        }
+    }
+
     if (event->type() == QEvent::MouseButtonPress) {
         QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
         QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);

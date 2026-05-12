@@ -16,6 +16,7 @@ class FileExplorerWidget;
 class EditorWidget;
 class SettingsManager;
 class QDockWidget;
+class QPushButton;
 class HistoryPanel;
 class BacklinkIndex;
 class BacklinksPanel;
@@ -81,6 +82,9 @@ private slots:
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存
     void resizeEvent(QResizeEvent *event) override;
+    void changeEvent(QEvent *event) override;
+    bool event(QEvent *event) override;
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -160,6 +164,13 @@ private:
     SettingsPanel *m_settingsPanel = nullptr;
     QWidget *m_settingsOverlay = nullptr;
     QAction *m_settingsAction = nullptr;
+
+    // 自定义标题栏控件
+    QPushButton *m_minimizeBtn = nullptr;
+    QPushButton *m_maximizeBtn = nullptr;
+    QPushButton *m_closeBtn = nullptr;
+    QWidget *m_toolbarSpacer = nullptr;
+    void setupCustomTitleBar();
 
     void onCompile();
     void onRun();

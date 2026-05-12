@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.9）
+## 功能说明文档（v0.5.10）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -29,12 +29,17 @@
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
+- 自定义标题栏与无边框窗口：隐藏系统原生标题栏，将工具栏上移至标题栏位置。窗口标题设为 "Smart Markdown"。工具栏右侧放置最小化、最大化/还原、关闭三个窗口控制按钮，使用 Windows 系统原生图标（`QStyle::SP_TitleBarMinButton` 等），hover 时自绘背景（`QPainter::fillRect`）确保响应即时无延迟。支持拖拽工具栏空白区域移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原并定位。窗口边缘 10px 范围内支持拖拽缩放（`WM_NCHITTEST` + `startSystemResize` 双重保障），添加 `WS_THICKFRAME` 样式支持 Aero Snap 窗口贴靠。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 修复（v0.5.9）
-- 预览模式首次切换白屏闪烁问题：修复了全屏预览和分屏预览在首次进入时出现的白屏闪烁（含窗口跳动、左上角白色轮廓等衍生现象）。根因有两层：(1) `QStackedWidget` 仅对当前可见页面更新子控件尺寸，隐藏页面中的 `QWebEngineView` 停留在默认小尺寸（100×30），Chromium 以此尺寸初始化视口，后续显示时拉伸导致白边；(2) Windows 在首次显示 `QWebEngineView` 的原生窗口（HWND）时用默认白色画刷擦除背景，在 GPU 渲染管线提交第一帧前短暂露出白色。修复方案：在 `setHtml()` 之前通过 `setFixedSize(correctSize)` + `WA_NativeWindow` + `winId()` 强制 WebEngineView 以目标区域正确尺寸创建原生窗口；设置 `WA_NoSystemBackground` 属性阻止 Windows 对原生窗口做白色背景擦除；`loadFinished` 后解除 `fixedSize` 恢复布局管理。分屏预览额外根据 QSplitter 分屏比例计算右侧预览宽度。同时添加了详细调试日志系统，输出至 `release/preview_debug.log`，用于逐步诊断白屏阶段。
+### 新增（v0.5.10）
+- 自定义标题栏与无边框窗口：隐藏系统原生标题栏（`Qt::FramelessWindowHint`），将工具栏上移至标题栏位置，窗口标题设为 "Smart Markdown"。
+  工具栏右侧新增最小化、最大化/还原、关闭三个窗口控制按钮，使用 Windows 系统原生图标（`QStyle::SP_TitleBarMinButton` / `SP_TitleBarMaxButton` / `SP_TitleBarNormalButton` / `SP_TitleBarCloseButton`）。按钮类 `CaptionBtn` 通过 `enterEvent`/`leaveEvent` + `repaint()` + `QPainter::fillRect` 自绘 hover 背景，避免 Qt stylesheet `:hover` 伪类重解析导致的响应延迟，关闭按钮 hover 红色背景（`#c42b1c`）。最大化/还原状态自动切换图标。
+  窗口管理：工具栏空白区域拖拽移动窗口（`startSystemMove()`），双击切换最大化/还原；最大化状态拖拽自动还原并定位到鼠标位置后启动移动（`showNormal()` + `processEvents()` + `move()`）。窗口边缘 10px 范围内支持拖拽缩放，由 `WM_NCHITTEST`（系统级）和 `event()`（Qt 级）双重保障。窗口创建时通过 `SetWindowLongPtr` 添加 `WS_THICKFRAME` 样式以启用 Aero Snap 窗口贴靠；`nativeEvent` 中 `WM_NCCREATE` 确保样式不被覆盖。
+  编译链接新增 `user32.lib`（用于 `GetWindowLongPtr`、`SetWindowLongPtr`、`GetWindowRect` 等 Win32 API）。
+  相关文件：`mainwindow.h`（新增 `CaptionBtn*` 成员、`setupCustomTitleBar()`、`event()`、`nativeEvent()`、`changeEvent()`）、`mainwindow.cpp`（新增 `CaptionBtn` 类、`setupCustomTitleBar()` 实现、无边框窗口管理代码）、`mainwindow.ui`（标题更新）、`smart-markdown.pro`（新增 `user32.lib`）。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -47,6 +52,7 @@
 - 协调文件树与标签管理器的双向联动：当用户在文件树中点击文件时，通知 `TabManager` 打开或切换到对应文件；当用户切换标签页时，文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
+- 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
 - 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
