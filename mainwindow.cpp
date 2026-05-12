@@ -227,10 +227,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 大纲面板 -----
     m_outlinePanel = new OutlinePanel(this);
-    connect(m_outlinePanel, &OutlinePanel::headingClicked, this, [this](int line) {
+    connect(m_outlinePanel, &OutlinePanel::headingClicked, this, [this](int line, const QString &) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor)
-            editor->scrollToLine(line);
+            editor->navigateToLine(line);
     });
 
     m_dockOutline = new QDockWidget(tr("大纲"), this);

@@ -35,6 +35,7 @@ public:
 
     // 搜索导航
     void scrollToLine(int lineNumber, const QString &highlightText = QString());
+    void navigateToLine(int lineNumber);
     void clearExtraSelections();
 
     // 预览模式切换

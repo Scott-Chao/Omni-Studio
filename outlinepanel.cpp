@@ -51,6 +51,7 @@ void OutlinePanel::showHeadings(const QVector<HeadingItem> &headings)
 
         QListWidgetItem *item = new QListWidgetItem(display);
         item->setData(Qt::UserRole, h.lineNumber);
+        item->setData(Qt::UserRole + 1, h.text);
         item->setToolTip(QStringLiteral("L%1  %2").arg(h.lineNumber).arg(h.text));
 
         int colorIdx = qBound(0, h.level - 1, 5);
@@ -73,6 +74,8 @@ void OutlinePanel::clear()
 void OutlinePanel::onItemClicked(QListWidgetItem *item)
 {
     int line = item->data(Qt::UserRole).toInt();
-    if (line > 0)
-        emit headingClicked(line);
+    if (line > 0) {
+        QString headingText = item->data(Qt::UserRole + 1).toString();
+        emit headingClicked(line, headingText);
+    }
 }

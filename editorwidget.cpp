@@ -1060,6 +1060,54 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
     }
 }
 
+void EditorWidget::navigateToLine(int lineNumber)
+{
+    // Scroll to line and highlight the entire line in yellow (search-highlight style).
+    // Unlike scrollToLine(,highlightText), this does NOT search the full document
+    // for matching text — it precisely highlights only the target line.
+
+    if (m_previewMode && !m_splitPreview) {
+        setPreviewMode(false);
+    }
+
+    QTextBlock block;
+    if (m_editorMode == CodeEdit) {
+        block = m_codeEditor->document()->findBlockByLineNumber(lineNumber - 1);
+    } else {
+        block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
+    }
+    if (!block.isValid())
+        return;
+
+    // Position cursor at the target line
+    QTextCursor cursor(block);
+    if (m_editorMode == CodeEdit) {
+        m_codeEditor->setTextCursor(cursor);
+        m_codeEditor->ensureCursorVisible();
+    } else {
+        m_textEdit->setTextCursor(cursor);
+        m_textEdit->ensureCursorVisible();
+    }
+
+    // Add a full-width yellow highlight on the target line using extra selections
+    QTextEdit::ExtraSelection sel;
+    sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
+    sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
+    sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+    sel.cursor = cursor;
+    sel.cursor.clearSelection();
+
+    if (m_editorMode == CodeEdit) {
+        // Keep search highlights but add the navigation highlight
+        // highlightCurrentLine() will restore this on next cursor move
+        QList<QTextEdit::ExtraSelection> selections;
+        selections.append(sel);
+        m_codeEditor->setExtraSelections(selections);
+    } else {
+        m_textEdit->setExtraSelections({sel});
+    }
+}
+
 void EditorWidget::clearExtraSelections()
 {
     if (m_editorMode == CodeEdit)

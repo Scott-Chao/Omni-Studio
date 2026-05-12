@@ -17,7 +17,7 @@ public:
     void clear();
 
 signals:
-    void headingClicked(int lineNumber);
+    void headingClicked(int lineNumber, const QString &headingText);
 
 private slots:
     void onItemClicked(QListWidgetItem *item);
