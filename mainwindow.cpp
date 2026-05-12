@@ -22,6 +22,38 @@
 #include "outlinepanel.h"
 #include "outlineutils.h"
 #include "settingspanel.h"
+#include <QDateTime>
+#include <QDebug>
+#include <QFile>
+#include <QTextStream>
+#include <QCoreApplication>
+
+// 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
+static void previewLogMw(const QString &msg)
+{
+    static QFile logFile;
+    static QTextStream stream;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        QString logPath = QCoreApplication::applicationDirPath() + QStringLiteral("/preview_debug_mw.log");
+        logFile.setFileName(logPath);
+        if (logFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            stream.setDevice(&logFile);
+            stream << "=== Preview Debug Log (MainWindow) ===" << Qt::endl;
+            stream.flush();
+        }
+    }
+    if (stream.device()) {
+        stream << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << " " << msg << Qt::endl;
+        stream.flush();
+    }
+}
+
+#define PREVIEW_LOG_MW(msg) do { \
+    QString _logMsg; QDebug _dbg(&_logMsg); _dbg << msg; \
+    previewLogMw(_logMsg); \
+} while(0)
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -341,10 +373,14 @@ MainWindow::MainWindow(QWidget *parent)
     m_previewAction->setCheckable(true);
     toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
+        PREVIEW_LOG_MW("previewAction toggled, checked=" << checked);
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
-            if (checked && !editor->currentFilePath().toLower().endsWith(".md"))
+            if (checked && !editor->currentFilePath().toLower().endsWith(".md")) {
+                PREVIEW_LOG_MW("previewAction — 跳过(非.md文件)");
                 return;
+            }
+            PREVIEW_LOG_MW("previewAction — 调用 editor->setPreviewMode(" << checked << ")");
             editor->setPreviewMode(checked);
             if (checked && m_splitPreviewAction && m_splitPreviewAction->isChecked()) {
                 m_splitPreviewAction->blockSignals(true);

@@ -3,6 +3,7 @@
 #include "codeeditor.h"
 #include "tagindex.h"
 #include "languageutils.h"
+#include <memory>
 #include "fileutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -28,6 +29,39 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QColor>
+#include <QDateTime>
+#include <QDebug>
+#include <QFile>
+#include <QTextStream>
+#include <QCoreApplication>
+#include <QDir>
+
+// 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
+static void previewLog(const QString &msg)
+{
+    static QFile logFile;
+    static QTextStream stream;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        QString logPath = QCoreApplication::applicationDirPath() + QStringLiteral("/preview_debug.log");
+        logFile.setFileName(logPath);
+        if (logFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            stream.setDevice(&logFile);
+            stream << "=== Preview Debug Log ===" << Qt::endl;
+            stream.flush();
+        }
+    }
+    if (stream.device()) {
+        stream << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << " " << msg << Qt::endl;
+        stream.flush();
+    }
+}
+
+#define PREVIEW_LOG(msg) do { \
+    QString _logMsg; QDebug _dbg(&_logMsg); _dbg << msg; \
+    previewLog(_logMsg); \
+} while(0)
 
 // Forward declaration for highlightWithRules used in highlightCodeBlock
 static QString highlightWithRules(
@@ -91,7 +125,11 @@ EditorWidget::EditorWidget(QWidget *parent)
     // 创建编辑器和预览控件
     m_textEdit = new WikiLinkTextEdit(this);
 
+    PREVIEW_LOG("EditorWidget 构造函数 — 开始创建 QWebEngineView");
     m_previewView = new QWebEngineView(this);
+    // 阻止 Windows 原生窗口用白色画刷擦除背景，让暗色容器透过来
+    m_previewView->setAttribute(Qt::WA_NoSystemBackground, true);
+    PREVIEW_LOG("QWebEngineView 创建完成, WA_NoSystemBackground 已设置");
     PreviewPage *previewPage = new PreviewPage(this);
     previewPage->onWikiLinkClicked = [this](const QString &fileName) {
         emit wikiLinkClicked(fileName);
@@ -116,6 +154,7 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
     m_previewContainer = new QWidget(this);
+    m_previewContainer->installEventFilter(this);
     m_previewContainer->setStyleSheet(
         QString("background-color: %1;")
             .arg(ConfigManager::instance().previewContainerBackground().name()));
@@ -128,6 +167,15 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_stackedWidget->addWidget(m_textEdit);
     m_stackedWidget->addWidget(m_previewContainer);
     m_stackedWidget->addWidget(m_codeEditor);
+
+    // 预览调试：监听 stackedWidget 页面切换
+    connect(m_stackedWidget, &QStackedWidget::currentChanged, this,
+        [this](int index) {
+            PREVIEW_LOG("QStackedWidget::currentChanged → index=" << index
+                        << ", m_previewView->isVisible()=" << m_previewView->isVisible()
+                        << ", m_previewContainer->isVisible()=" << m_previewContainer->isVisible()
+                        << ", m_previewView->size()=" << m_previewView->size());
+        });
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -191,12 +239,23 @@ EditorWidget::EditorWidget(QWidget *parent)
 
 void EditorWidget::setPreviewMode(bool preview)
 {
-    if (m_editorMode == CodeEdit)
+    PREVIEW_LOG("setPreviewMode 被调用, preview=" << preview
+                << ", m_previewReady=" << m_previewReady
+                << ", m_editorMode=" << (int)m_editorMode
+                << ", stackedWidget currentIndex=" << m_stackedWidget->currentIndex()
+                << ", previewView isVisible=" << m_previewView->isVisible());
+
+    if (m_editorMode == CodeEdit) {
+        PREVIEW_LOG("setPreviewMode — 退出(CodeEdit 模式)");
         return;
-    if (preview == m_previewMode)
+    }
+    if (preview == m_previewMode) {
+        PREVIEW_LOG("setPreviewMode — 退出(已是目标状态)");
         return;
+    }
     // 互斥：进入全屏预览时，退出分屏预览
     if (preview && m_splitPreview) {
+        PREVIEW_LOG("setPreviewMode — 先退出分屏预览");
         setSplitPreviewMode(false);
     }
     m_previewMode = preview;
@@ -204,41 +263,84 @@ void EditorWidget::setPreviewMode(bool preview)
     if (m_previewMode) {
         if (!m_previewReady) {
             // 首次预览：加载完整模板（setHtml），延迟到 loadFinished 再切换
+            PREVIEW_LOG("setPreviewMode — 首次预览，准备调用 setHtml");
+
             m_previewView->page()->setBackgroundColor(
                 ConfigManager::instance().previewWebEngineBackground());
+            PREVIEW_LOG("setPreviewMode — setBackgroundColor 已调用");
 
             QFile tmplFile(QStringLiteral(":/preview/template.html"));
-            if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text))
+            if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                PREVIEW_LOG("setPreviewMode — 错误：无法打开模板文件");
                 return;
+            }
             QString tmpl = QString::fromUtf8(tmplFile.readAll());
             tmplFile.close();
+            PREVIEW_LOG("setPreviewMode — 模板已读取, 大小=" << tmpl.size() << " bytes");
 
             QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
             tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+            PREVIEW_LOG("setPreviewMode — 内容已注入模板, 总大小=" << tmpl.size() << " bytes");
+
+            // 关键修复：QStackedWidget 不会更新隐藏页面的子控件尺寸，
+            // 导致 QWebEngineView 停留在默认小尺寸 (100x30)，
+            // Chromium 以此尺寸初始化 → 后续拉伸 → 右侧/下侧白边
+            // 用 setFixedSize 绕过布局，强制 WebEngineView 在 setHtml 时使用正确尺寸
+            QSize correctSize = m_stackedWidget->size();
+            PREVIEW_LOG("setPreviewMode — 设置 fixedSize=" << correctSize);
+            m_previewView->setFixedSize(correctSize);
+            m_previewView->setAttribute(Qt::WA_NativeWindow, true);
+            m_previewView->winId();
+            PREVIEW_LOG("setPreviewMode — WA_NativeWindow + winId 已调用, size=" << m_previewView->size());
+
+            PREVIEW_LOG("setPreviewMode — 开始调用 m_previewView->setHtml()");
             m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
+            PREVIEW_LOG("setPreviewMode — setHtml() 已返回(异步加载中)");
 
             connect(m_previewView->page(), &QWebEnginePage::loadFinished, this,
                 [this](bool ok) {
+                    PREVIEW_LOG("loadFinished 信号触发, ok=" << ok
+                                << ", 当前 stackedWidget index=" << m_stackedWidget->currentIndex()
+                                << ", previewView isVisible=" << m_previewView->isVisible()
+                                << ", previewContainer isVisible=" << m_previewContainer->isVisible());
                     disconnect(m_previewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
-                    if (!ok) return;
+                    if (!ok) {
+                        PREVIEW_LOG("loadFinished — 加载失败，退出");
+                        return;
+                    }
                     m_previewReady = true;
+
+                    // 解除 fixedSize，恢复布局管理
+                    m_previewView->setMinimumSize(0, 0);
+                    m_previewView->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+                    PREVIEW_LOG("loadFinished — 已解除 fixedSize, size=" << m_previewView->size());
+
+                    PREVIEW_LOG("loadFinished — 准备调用 setCurrentIndex(1)");
                     m_stackedWidget->setCurrentIndex(1);
+                    PREVIEW_LOG("loadFinished — setCurrentIndex(1) 已完成");
+
                     // WebEngine 内部的 focus proxy 在页面加载后才确定，
                     // 需要在其上安装事件过滤器才能捕获预览区的 Ctrl+滚轮缩放
                     if (QWidget *fp = m_previewView->focusProxy())
                         fp->installEventFilter(this);
                     applyZoom();
+                    PREVIEW_LOG("loadFinished — applyZoom 已完成, 全流程结束");
                 });
         } else {
+            PREVIEW_LOG("setPreviewMode — 后续预览, 使用 runJavaScript 更新");
             updatePreviewContent([this]() {
+                PREVIEW_LOG("updatePreviewContent 回调 — 准备 setCurrentIndex(1)");
                 m_stackedWidget->setCurrentIndex(1);
+                PREVIEW_LOG("updatePreviewContent 回调 — setCurrentIndex(1) 完成");
                 applyZoom();
             });
         }
     } else {
+        PREVIEW_LOG("setPreviewMode — 退出预览, setCurrentIndex(0)");
         m_stackedWidget->setCurrentIndex(0);
         applyZoom();
     }
+    PREVIEW_LOG("setPreviewMode — 方法返回");
 }
 
 void EditorWidget::refreshPreview()
@@ -1059,6 +1161,18 @@ qreal EditorWidget::zoomFactor() const
 
 bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
 {
+    // 预览调试：记录 m_previewView 和 m_previewContainer 的 Show/Hide/Paint 事件
+    if (obj == m_previewView || obj == m_previewContainer) {
+        if (event->type() == QEvent::Show) {
+            PREVIEW_LOG("eventFilter — Show 事件, obj=" << obj
+                        << " (previewView=" << (obj == m_previewView)
+                        << ", previewContainer=" << (obj == m_previewContainer) << ")");
+        } else if (event->type() == QEvent::Hide) {
+            PREVIEW_LOG("eventFilter — Hide 事件, obj=" << obj);
+        } else if (event->type() == QEvent::Paint) {
+            PREVIEW_LOG("eventFilter — Paint 事件, obj=" << obj);
+        }
+    }
     if (event->type() == QEvent::Wheel) {
         QWheelEvent *wheel = static_cast<QWheelEvent*>(event);
         // 当按下 Ctrl 时，视为缩放操作
@@ -1324,6 +1438,20 @@ void EditorWidget::setSplitPreviewMode(bool split)
         m_textEdit->show();
 
         if (!m_splitPreviewReady) {
+            // 关键修复：确保分屏预览的 QWebEngineView 在 setHtml 前有正确的尺寸
+            // 与全屏预览相同的问题：QStackedWidget 不会为隐藏页面更新子控件尺寸
+            QSize stackedSize = m_stackedWidget->size();
+            int ratio = SettingsManager::instance().value("preview.split_preview_ratio",
+                           ConfigManager::instance().previewSplitPreviewRatio()).toInt();
+            int previewWidth = qMax(stackedSize.width() * ratio / 100, 100);
+            QSize splitViewSize(previewWidth, stackedSize.height());
+            PREVIEW_LOG("setSplitPreviewMode — 设置 fixedSize=" << splitViewSize
+                        << ", stackedSize=" << stackedSize << ", ratio=" << ratio);
+            m_splitPreviewView->setFixedSize(splitViewSize);
+            m_splitPreviewView->setAttribute(Qt::WA_NoSystemBackground, true);
+            m_splitPreviewView->setAttribute(Qt::WA_NativeWindow, true);
+            m_splitPreviewView->winId();
+
             m_splitPreviewView->page()->setBackgroundColor(
                 ConfigManager::instance().previewWebEngineBackground());
 
@@ -1341,6 +1469,12 @@ void EditorWidget::setSplitPreviewMode(bool split)
                         disconnect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
                         if (!ok) return;
                         m_splitPreviewReady = true;
+
+                        // 解除 fixedSize，恢复布局管理
+                        m_splitPreviewView->setMinimumSize(0, 0);
+                        m_splitPreviewView->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+                        PREVIEW_LOG("setSplitPreviewMode — loadFinished, 已解除 fixedSize");
+
                         if (QWidget *fp = m_splitPreviewView->focusProxy())
                             fp->installEventFilter(this);
                         m_lastSplitPreviewContent = m_textEdit->toPlainText();

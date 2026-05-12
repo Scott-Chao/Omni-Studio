@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.8）
+## 功能说明文档（v0.5.9）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -33,8 +33,8 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 修复（v0.5.8）
-- 文件树图标消失问题：修复了面包屑路径栏切换到父目录后，原先作为监视根目录的文件夹图标消失、展开图标可能消失及其他随机性图标缺失问题。根因是 Windows 上 `QFileSystemModel` 通过 `SHGetFileInfo` → `HICON` 获取文件图标，`setRootPath()` 切换监视目录后原监视根的 `HICON` 句柄被系统释放，但 `QIcon` 对象报告 `availableSizes` 非空而所有 `pixmap()` 均返回 null（"空心"图标），导致无内容可渲染。修复：在 `FileSortProxyModel::data()` 中遍历 `availableSizes()` 逐一验证 `pixmap()` 有效性，检测到全空时用 `QFileIconProvider::Folder/File` 另行生成有效图标。同时启用 `setDynamicSortFilter(true)` 确保异步加载的目录内容自动按序插入，用 `setUpdatesEnabled(false/true)` 包裹根目录切换操作避免中间态闪现排序重排。
+### 修复（v0.5.9）
+- 预览模式首次切换白屏闪烁问题：修复了全屏预览和分屏预览在首次进入时出现的白屏闪烁（含窗口跳动、左上角白色轮廓等衍生现象）。根因有两层：(1) `QStackedWidget` 仅对当前可见页面更新子控件尺寸，隐藏页面中的 `QWebEngineView` 停留在默认小尺寸（100×30），Chromium 以此尺寸初始化视口，后续显示时拉伸导致白边；(2) Windows 在首次显示 `QWebEngineView` 的原生窗口（HWND）时用默认白色画刷擦除背景，在 GPU 渲染管线提交第一帧前短暂露出白色。修复方案：在 `setHtml()` 之前通过 `setFixedSize(correctSize)` + `WA_NativeWindow` + `winId()` 强制 WebEngineView 以目标区域正确尺寸创建原生窗口；设置 `WA_NoSystemBackground` 属性阻止 Windows 对原生窗口做白色背景擦除；`loadFinished` 后解除 `fixedSize` 恢复布局管理。分屏预览额外根据 QSplitter 分屏比例计算右侧预览宽度。同时添加了详细调试日志系统，输出至 `release/preview_debug.log`，用于逐步诊断白屏阶段。
 
 ### 1. `MainWindow` - 主窗口控制器
 
