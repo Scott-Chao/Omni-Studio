@@ -37,6 +37,7 @@ public:
     void scrollToLine(int lineNumber, const QString &highlightText = QString());
     void navigateToLine(int lineNumber);
     void clearExtraSelections();
+    void navigateEditorToLine(int lineNumber);
 
     // 预览模式切换
     void setPreviewMode(bool preview);
@@ -106,6 +107,7 @@ private:
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
     QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
     QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色
+    QString injectHeadingAnchors(const QString &markdown); // 为标题注入 <a id="hl-N"> 锚点，供预览导航用
     QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
     QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
     void createSplitPreviewWidgets();

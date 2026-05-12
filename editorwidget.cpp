@@ -685,14 +685,47 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
 
 QString EditorWidget::preparePreviewContent(const QString &rawMarkdown)
 {
+    // Step 0: Inject heading anchors for preview navigation
     // Step 1: Pre-highlight code blocks (produces ```highlighted\n<base64>\n``` custom blocks)
     // Step 2: Process wiki links and tags (base64 content won't match [[...]] or #tag)
     // Step 3: Prevent </script> injection for the setHtml() path
-    QString content = preHighlightCodeBlocks(rawMarkdown);
+    QString content = injectHeadingAnchors(rawMarkdown);
+    content = preHighlightCodeBlocks(content);
     content = processWikiLinks(content);
     content = TagIndex::processTagsForPreview(content);
     content.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
     return content;
+}
+
+QString EditorWidget::injectHeadingAnchors(const QString &markdown)
+{
+    // Insert <a id="hl-LINENUM"></a> before each heading line so that
+    // preview-mode navigation can scroll to it via JavaScript.
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+    QStringList result;
+    bool inCodeBlock = false;
+
+    static const QRegularExpression headingRe(QStringLiteral("^(#{1,6})\\s+(.+)$"));
+
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &line = lines[i];
+        QString trimmed = line.trimmed();
+
+        if (trimmed.startsWith(QStringLiteral("```"))) {
+            inCodeBlock = !inCodeBlock;
+        }
+
+        if (!inCodeBlock) {
+            QRegularExpressionMatch match = headingRe.match(line);
+            if (match.hasMatch()) {
+                result.append(QStringLiteral("<a id=\"hl-%1\"></a>").arg(i + 1));
+            }
+        }
+
+        result.append(line);
+    }
+
+    return result.join(QLatin1Char('\n'));
 }
 
 void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
@@ -1062,24 +1095,50 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 
 void EditorWidget::navigateToLine(int lineNumber)
 {
+    if (m_editorMode == CodeEdit) {
+        navigateEditorToLine(lineNumber);
+        return;
+    }
+
+    // Preview or split-preview: scroll the rendered WebEngine view to the heading anchor
+    bool hasPreview = m_previewMode || m_splitPreview;
+    if (hasPreview) {
+        QWebEngineView *view = m_splitPreview ? m_splitPreviewView : m_previewView;
+        QString js = QStringLiteral(
+            "var el = document.getElementById('hl-%1');"
+            "if (el) {"
+            "  el.scrollIntoView({behavior: 'smooth', block: 'center'});"
+            "  var oldBg = el.style.backgroundColor;"
+            "  el.style.backgroundColor = '#FFD700';"
+            "  el.style.transition = 'background-color 1.5s ease';"
+            "  setTimeout(function() {"
+            "    el.style.backgroundColor = oldBg || 'transparent';"
+            "  }, 1500);"
+            "}"
+        ).arg(lineNumber);
+        view->page()->runJavaScript(js);
+    }
+
+    // Edit mode or split-preview: also highlight in the editor pane
+    if (!m_previewMode) {
+        navigateEditorToLine(lineNumber);
+    }
+}
+
+void EditorWidget::navigateEditorToLine(int lineNumber)
+{
     // Scroll to line and highlight the entire line in yellow (search-highlight style).
     // Unlike scrollToLine(,highlightText), this does NOT search the full document
     // for matching text — it precisely highlights only the target line.
 
-    if (m_previewMode && !m_splitPreview) {
-        setPreviewMode(false);
-    }
-
     QTextBlock block;
-    if (m_editorMode == CodeEdit) {
+    if (m_editorMode == CodeEdit)
         block = m_codeEditor->document()->findBlockByLineNumber(lineNumber - 1);
-    } else {
+    else
         block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
-    }
     if (!block.isValid())
         return;
 
-    // Position cursor at the target line
     QTextCursor cursor(block);
     if (m_editorMode == CodeEdit) {
         m_codeEditor->setTextCursor(cursor);
@@ -1089,7 +1148,6 @@ void EditorWidget::navigateToLine(int lineNumber)
         m_textEdit->ensureCursorVisible();
     }
 
-    // Add a full-width yellow highlight on the target line using extra selections
     QTextEdit::ExtraSelection sel;
     sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
     sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
@@ -1097,15 +1155,10 @@ void EditorWidget::navigateToLine(int lineNumber)
     sel.cursor = cursor;
     sel.cursor.clearSelection();
 
-    if (m_editorMode == CodeEdit) {
-        // Keep search highlights but add the navigation highlight
-        // highlightCurrentLine() will restore this on next cursor move
-        QList<QTextEdit::ExtraSelection> selections;
-        selections.append(sel);
-        m_codeEditor->setExtraSelections(selections);
-    } else {
+    if (m_editorMode == CodeEdit)
+        m_codeEditor->setExtraSelections({sel});
+    else
         m_textEdit->setExtraSelections({sel});
-    }
 }
 
 void EditorWidget::clearExtraSelections()
