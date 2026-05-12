@@ -22,6 +22,7 @@ public:
     void enableTextSelection(bool enabled);
 
     void setOutputFont(const QFont &font);
+    void setMaxBlocks(int max);
 
 signals:
     void stopRequested();

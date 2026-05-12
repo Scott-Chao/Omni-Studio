@@ -2,6 +2,7 @@
 #define SETTINGSMANAGER_H
 
 #include <QByteArray>
+#include <QMap>
 #include <QString>
 #include <QVariant>
 
@@ -39,6 +40,9 @@ public:
     void setRecentFiles(const QStringList &files);
     QStringList recentFiles() const;
 
+    // 将内存中的待写覆盖值刷新到磁盘（关闭程序时调用）
+    void flushOverrides();
+
     // 设置覆盖 (用于存储用户通过设置面板更改的值)
     void setSettingOverride(const QString &key, const QVariant &value);
     QVariant settingOverride(const QString &key, const QVariant &defaultValue = QVariant()) const;
@@ -68,6 +72,8 @@ public:
 private:
     QSettings *m_settings;
     static SettingsManager *s_instance;
+    QMap<QString, QVariant> m_overrideMap;
+    qreal m_cachedDefaultZoom = 1.0;
 };
 
 #endif // SETTINGSMANAGER_H

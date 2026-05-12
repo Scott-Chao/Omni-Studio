@@ -10,6 +10,8 @@ static const QString KEY_GEOMETRY    = "window/geometry";
 static const QString KEY_SPLITTER    = "window/splitterState";
 static const QString KEY_LAST_FOLDER = "file/lastFolderPath";
 static const QString KEY_LAST_SAVE_AS_FOLDER = "LastSaveAsFolder";
+static const QString KEY_OVERRIDES = "settings_overrides";
+static const QString KEY_DEFAULT_ZOOM   = "editor/defaultZoom";
 
 SettingsManager *SettingsManager::s_instance = nullptr;
 
@@ -24,6 +26,15 @@ SettingsManager::SettingsManager(const QString &fileName)
         m_settings = new QSettings(fileName, QSettings::IniFormat);
     }
     s_instance = this;
+
+    // 预加载已持久化的覆盖值到内存 map
+    m_settings->beginGroup(KEY_OVERRIDES);
+    const QStringList keys = m_settings->childKeys();
+    for (const QString &key : keys)
+        m_overrideMap[key] = m_settings->value(key);
+    m_settings->endGroup();
+
+    m_cachedDefaultZoom = m_settings->value(KEY_DEFAULT_ZOOM, 1.0).toDouble();
 }
 
 SettingsManager::~SettingsManager()
@@ -124,47 +135,58 @@ QStringList SettingsManager::recentFiles() const {
     return m_settings->value("History/recentFiles").toStringList();
 }
 
-static const QString KEY_OVERRIDES = "settings_overrides";
-
 void SettingsManager::setSettingOverride(const QString &key, const QVariant &value)
 {
-    m_settings->setValue(KEY_OVERRIDES + "/" + key, value);
+    m_overrideMap[key] = value;
 }
 
 QVariant SettingsManager::settingOverride(const QString &key, const QVariant &defaultValue) const
 {
-    return m_settings->value(KEY_OVERRIDES + "/" + key, defaultValue);
+    auto it = m_overrideMap.find(key);
+    if (it != m_overrideMap.end())
+        return it.value();
+    return defaultValue;
 }
 
 void SettingsManager::removeSettingOverride(const QString &key)
 {
-    m_settings->remove(KEY_OVERRIDES + "/" + key);
+    m_overrideMap.remove(key);
 }
 
 QStringList SettingsManager::allOverrideKeys() const
 {
-    m_settings->beginGroup(KEY_OVERRIDES);
-    QStringList keys = m_settings->childKeys();
-    m_settings->endGroup();
-    return keys;
+    return m_overrideMap.keys();
 }
 
 void SettingsManager::clear()
 {
-    // 清空设置
+    m_overrideMap.clear();
     m_settings->clear();
 }
 
-static const QString KEY_DEFAULT_ZOOM   = "editor/defaultZoom";
+void SettingsManager::flushOverrides()
+{
+    // 将所有 pending override 写入 QSettings
+    m_settings->beginGroup(KEY_OVERRIDES);
+    m_settings->remove(QString()); // 清空旧值
+    for (auto it = m_overrideMap.constBegin(); it != m_overrideMap.constEnd(); ++it)
+        m_settings->setValue(it.key(), it.value());
+    m_settings->endGroup();
+
+    // 写 editor/defaultZoom
+    m_settings->setValue(KEY_DEFAULT_ZOOM, m_cachedDefaultZoom);
+
+    m_settings->sync();
+}
 
 qreal SettingsManager::editorDefaultZoom() const
 {
-    return m_settings->value(KEY_DEFAULT_ZOOM, 1.0).toDouble();
+    return m_cachedDefaultZoom;
 }
 
 void SettingsManager::setEditorDefaultZoom(qreal zoom)
 {
-    m_settings->setValue(KEY_DEFAULT_ZOOM, zoom);
+    m_cachedDefaultZoom = zoom;
 }
 
 static const QString KEY_OJ_AUTO_LOGIN  = "OpenJudge/autoLogin";

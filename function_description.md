@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.3）
+## 功能说明文档（v0.5.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -29,11 +29,21 @@
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - **分屏预览模式**：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
-- 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认字体大小**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
+- 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 
-### 新增 v0.5.3
-- 设置面板重构：Obsidian 风格分类侧边栏布局，左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧显示对应设置项。设置实时应用并持久化至 `config.ini`，新打开文件自动继承设置值。
-- 新增设置项：编辑器字体族/字号、缩进宽度、外观颜色（编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮）、输出面板字号、预览防抖延迟/分屏比例、搜索限制（每文件匹配数、总结果数、片段长度）。
+### 新增 v0.5.5
+- 设置面板 bug 修复与优化：
+  - "默认字体大小"重命名为"默认缩放比例"（更准确地反映其实际功能）
+  - QSpinBox 上下按钮和 QComboBox 下拉按钮使用 SVG 三角形图标替换 CSS border-triangle 渲染，解决三角形图标失效问题
+  - QSpinBox 显式添加 `up-button`/`down-button` 子控件样式，解决样式表模式下下键无法点击的问题
+  - "分屏比例"百分号移出 spinbox 编辑框，使用独立 `%` 标签，与其他控件风格一致
+- 设置项功能修复：
+  - **搜索面板**：`max_per_file`、`max_total_results`、`snippet_max_length` 三项限制改为通过 `SettingsManager::value()` 读取，设置面板中的修改立即生效
+  - **输出面板**：`max_blocks` 改为通过 `SettingsManager::value()` 读取，支持运行时即时更新（`setMaxBlocks()`）
+  - **分屏防抖**：debounce 间隔改为通过 `SettingsManager::value()` 读取，设置变更时实时更新计时器（`setSplitPreviewDebounceMs()`）
+  - **分屏比例**：`createSplitPreviewWidgets()` 中硬编码的 `{1,1}` 替换为从设置读取比例值，设置变更时实时调整分隔条位置（`applySplitPreviewRatio()`）
+- 设置持久化优化：`SettingsManager` 新增延迟写入机制——设置变更时仅更新内存 map（`m_overrideMap`），程序正常关闭时通过 `flushOverrides()` 统一写入 `config.ini`，避免滑块拖动时频繁磁盘 I/O
+- 清理 `searchpanel.h` 中 4 个未使用的 `static const int` 常量
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -49,7 +59,7 @@
 - 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
-  - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放至设置面板中配置的默认字体大小
+  - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放至设置面板中配置的默认缩放比例
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
   - `Ctrl+Shift+T` 打开/关闭标签面板
@@ -169,7 +179,7 @@
 **职责**：
 - 封装文本编辑功能，支持 **Markdown 源码编辑**、**全屏渲染预览**、**分屏预览** 与 **代码编辑** 四种模式。
 - Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；全屏预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
-- **分屏预览模式**：新增的第 4 种布局模式，通过 `QSplitter(Qt::Horizontal)` 将编辑器区域分为左右两部分——左侧为 Markdown 源码编辑器（复用 `m_textEdit`），右侧为第二个独立的 `QWebEngineView` 渲染预览。分屏预览与全屏预览互斥，切换标签页时保留各自状态。右侧预览采用 500ms 防抖机制延迟刷新，仅在文本变化后更新。复用与全屏预览完全相同的 `preparePreviewContent()` 管线、`PreviewPage` 链接拦截和信号转发逻辑。
+- **分屏预览模式**：新增的第 4 种布局模式，通过 `QSplitter(Qt::Horizontal)` 将编辑器区域分为左右两部分——左侧为 Markdown 源码编辑器（复用 `m_textEdit`），右侧为第二个独立的 `QWebEngineView` 渲染预览。分屏预览与全屏预览互斥，切换标签页时保留各自状态。右侧预览采用可配置的防抖机制延迟刷新（默认 500ms，可通过设置面板调节），仅在文本变化后更新。分屏比例从 `SettingsManager` 覆盖值读取（默认 50%，可通过设置面板调节），设置变更时实时调整分隔条位置。复用与全屏预览完全相同的 `preparePreviewContent()` 管线、`PreviewPage` 链接拦截和信号转发逻辑。
 - 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。分屏预览的 `QWebEngineView` 同样采用延迟初始化（仅在首次进入分屏模式时创建），并共享同一套预处理和更新管线。
 - 四种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`）。
@@ -206,6 +216,8 @@
 - `qreal zoomFactor() const`：返回当前缩放倍数。
 - `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
 - `void setFilePath(const QString &newPath)`：更新当前编辑器的文件路径（不改变文档内容），用于外部重命名后同步。
+- `void setSplitPreviewDebounceMs(int ms)`：动态更新分屏预览的防抖延迟间隔，用于设置面板实时调整。
+- `void applySplitPreviewRatio()`：从 `SettingsManager` 读取最新的分屏比例值并立即调整 `QSplitter` 分隔条位置。
 
 **信号**：
 - `void fileLoaded(const QString &filePath)`
@@ -282,17 +294,23 @@
 - 封装 `QSettings`，提供统一、类型安全的配置读写接口。
 - 负责管理 `config.ini` 文件的存储位置（默认与可执行文件同目录）。
 - 支持窗口几何信息、拆分条状态、最后打开的文件夹路径、最后另存为的文件夹路径等持久化，两者独立记忆。
-- 提供扩展方法，便于未来添加字体大小、快捷键配置等。
+- 提供设置覆盖（`settings_overrides`）机制：通过 `setSettingOverride` / `settingOverride` 读写用户通过设置面板修改的配置项，覆盖 `ConfigManager` 的静态默认值。v0.5.4 起覆盖值改为内存缓冲（`m_overrideMap`），避免设置变更时频繁磁盘 I/O，程序关闭时通过 `flushOverrides()` 统一写入。
+- `editorDefaultZoom` / `setEditorDefaultZoom` 同样改为内存缓存（`m_cachedDefaultZoom`），随 `flushOverrides()` 一并持久化。
 
 **主要接口**：
 - `void setWindowGeometry(const QByteArray &geometry)` / `QByteArray windowGeometry() const`
 - `void setSplitterState(const QByteArray &state)` / `QByteArray splitterState() const`
 - `void setLastFolderPath(const QString &path)` / `QString lastFolderPath(const QString &defaultPath = QString()) const`
 - `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
+- `void flushOverrides()`：将所有待写的设置覆盖值和默认缩放值刷新到磁盘，在 `MainWindow::closeEvent` 中调用。
 - `void clear()`：清除所有设置。
 - `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（最多50条），键名 `History/recentFiles`。
+- **设置覆盖**：
+  - `void setSettingOverride(const QString &key, const QVariant &value)`：写入内存 map，延迟持久化。
+  - `QVariant settingOverride(const QString &key, const QVariant &defaultValue = QVariant()) const`：从内存 map 读取。
+  - `void removeSettingOverride(const QString &key)` / `QStringList allOverrideKeys() const`：管理覆盖项。
 - **编辑器默认缩放**：
-  - `qreal editorDefaultZoom() const` / `void setEditorDefaultZoom(qreal zoom)`：读写编辑器默认缩放因子，键名 `editor/defaultZoom`，默认值 `1.0`（100%）。
+  - `qreal editorDefaultZoom() const` / `void setEditorDefaultZoom(qreal zoom)`：读写编辑器默认缩放因子，键名 `editor/defaultZoom`，默认值 `1.0`（100%），内存缓存。
 - **OpenJudge 自动登录**：
   - `void setOpenJudgeAutoLogin(bool enabled)` / `bool openJudgeAutoLogin() const`：读写自动登录开关，键名 `OpenJudge/autoLogin`。
   - `void setOpenJudgeCredentials(const QString &username, const QString &password)` / `QPair<QString, QString> openJudgeCredentials() const`：读写 OpenJudge 账号密码，密码经 Base64 混淆后存储。
@@ -459,7 +477,7 @@
 - 搜索输入支持 300ms 防抖，避免每次按键都触发磁盘扫描。
 - 使用 `QDirIterator` + `TextFileUtils::scanNameFilters()` 递归收集文本文件列表。
 - 使用 `QTextStream::readLine()` 逐行流式读取文件内容，`QString::toLower().contains()` 进行大小写不敏感匹配。
-- 结果上限：每文件最多 20 个匹配，总计最多 500 条结果。
+- 结果上限：每文件匹配数和总结果数从 `SettingsManager` 覆盖值读取（默认每文件 20、总计 500），片段最大长度同样可配置（默认 120）。设置面板中的修改实时生效。
 - 每个结果项展示文件名、行号和上下文片段（自动截断并对齐匹配关键词位置）。
 - 面板置于左侧 `QDockWidget`，默认隐藏（快捷键 `Ctrl+Shift+F`），显示时自动聚焦搜索输入框。
 - 与历史/反链面板不同，搜索面板**不**在点击外部时自动隐藏（持久侧边栏行为）。
@@ -685,6 +703,7 @@
 - `setStatus(status, isError)`：更新状态标签文字和颜色。
 - `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲/粘贴队列/定时器）。运行阶段启用 `TextEditorInteraction`，结束后设为 `TextSelectableByMouse`。
 - `enableTextSelection(bool)`：切换文本交互模式，编译阶段 `NoTextInteraction`，运行结束后恢复可选。
+- `setMaxBlocks(int max)`：动态更新输出面板的最大行数限制，v0.5.4 起从 `SettingsManager` 覆盖值读取，支持设置面板实时调整。
 
 **信号**：
 - `stopRequested()`：用户点击终止按钮或按 Ctrl+C 时发出。
@@ -861,10 +880,10 @@
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QListWidget`（170px 宽、深色 `#252525`）作为分类列表，右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
 - **6 个分类页面**：
-  - **编辑器**：默认字体大小滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
+  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
   - **外观**：6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
-  - **输出面板**：输出面板字号微调框（8-24）。
-  - **预览**：分屏防抖延迟微调框（100-2000ms）、分屏比例微调框（30-70%）。
+  - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
+  - **预览**：分屏防抖延迟微调框（100-2000ms，百分号移出框外使用独立 `%` 标签）、分屏比例微调框（30-70）。
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
   - **快捷键**：只读 `QTableWidget`，两列（动作名 + 按键序列），从 ConfigManager 读取。
 - **信号**：`editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
@@ -908,7 +927,7 @@
 - **保存提示对话框**：使用 `QMessageBox` 并设置自定义按钮文字（"保存(&S)"、"不保存(&D)"、"取消(&C)"），提示文本中包含当前文件名，且通过样式表设置最小尺寸（400×200 像素）。
 - **Markdown 预览模式**：在工具栏添加了"预览模式"按钮（快捷键 `Ctrl+Shift+P`）和"分屏预览"按钮（快捷键 `Ctrl+P`），**两个按钮仅在当前编辑的文件为 `.md` 后缀时可见且可用**。切换到其他类型文件（包括代码文件）或没有标签页时，按钮自动隐藏，对应的快捷键同时失效。全屏预览与分屏预览互斥——开启一个自动关闭另一个，切换标签页时记忆各自的预览状态。
   如果当前正处在预览模式但切换到了一个非 `.md` 文件，编辑器会自动退回到源码编辑模式。预览引擎采用延迟初始化避免文件打开时抖动，暗色容器 + 页面背景色双重保障消除切换白屏闪烁，base64 + TextDecoder 确保中文内容正确显示。分屏预览复用同一套预处理管线和信号转发逻辑。
-- **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。重置按钮和 `Ctrl+0` 快捷键将缩放恢复至设置面板中配置的默认字体大小（通过 `SettingsManager::editorDefaultZoom()` 获取），而非固定 100%。
+- **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。重置按钮和 `Ctrl+0` 快捷键将缩放恢复至设置面板中配置的默认缩放比例（通过 `SettingsManager::editorDefaultZoom()` 获取），而非固定 100%。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
 - **面包屑路径栏**：位于文件树顶部，深色背景（`#252525`），底部有 1px 分割线（`#3c3c3c`）。按钮扁平无边框，当前目录白色、祖先目录灰色（`#b0b0b0`），悬停时背景变为 `#3c3c3c`。段之间用灰色 `>` 标签（`#858585`）分隔。使用 `FlowLayout` 实现自动换行。
 - **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。
@@ -923,4 +942,4 @@
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
-- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`。新打开文件继承已有设置值。
+- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。

@@ -1,6 +1,7 @@
 #include "searchpanel.h"
 #include "fileutils.h"
 #include "configmanager.h"
+#include "settingsmanager.h"
 
 #include <QVBoxLayout>
 #include <QDir>
@@ -117,9 +118,12 @@ void SearchPanel::performSearch()
         int lineNum = 0;
         int fileMatches = 0;
 
+        auto &sm = SettingsManager::instance();
         const auto &cfg = ConfigManager::instance();
-        while (!in.atEnd() && fileMatches < cfg.searchMaxPerFile()
-               && totalResults < cfg.searchMaxTotalResults()) {
+        int maxPerFile = sm.value("search_panel.max_per_file", cfg.searchMaxPerFile()).toInt();
+        int maxTotalResults = sm.value("search_panel.max_total_results", cfg.searchMaxTotalResults()).toInt();
+        while (!in.atEnd() && fileMatches < maxPerFile
+               && totalResults < maxTotalResults) {
             QString line = in.readLine();
             ++lineNum;
 
@@ -137,7 +141,7 @@ void SearchPanel::performSearch()
         }
         file.close();
 
-        if (totalResults >= ConfigManager::instance().searchMaxTotalResults())
+        if (totalResults >= maxTotalResults)
             break;
     }
 
@@ -157,7 +161,8 @@ void SearchPanel::collectTextFiles(const QString &rootPath,
 QString SearchPanel::extractSnippet(const QString &line) const
 {
     QString trimmed = line.trimmed();
-    int maxLen = ConfigManager::instance().searchSnippetMaxLength();
+    int maxLen = SettingsManager::instance().value("search_panel.snippet_max_length",
+                   ConfigManager::instance().searchSnippetMaxLength()).toInt();
     if (trimmed.length() > maxLen) {
         int matchIdx = trimmed.toLower().indexOf(m_searchText);
         int contextLen = (maxLen - m_searchText.length()) / 2;
@@ -170,7 +175,7 @@ QString SearchPanel::extractSnippet(const QString &line) const
             if (end < trimmed.length()) snippet.append("...");
             return snippet;
         }
-        return trimmed.left(ConfigManager::instance().searchSnippetMaxLength()) + "...";
+        return trimmed.left(maxLen) + "...";
     }
     return trimmed;
 }

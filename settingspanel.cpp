@@ -54,10 +54,9 @@ const char *kInputStyle = "QSpinBox, QLineEdit, QComboBox {"
     "  width: 20px;"
     "}"
     "QComboBox::down-arrow {"
-    "  image: none;"
-    "  border-left: 4px solid transparent;"
-    "  border-right: 4px solid transparent;"
-    "  border-top: 5px solid #aaaaaa;"
+    "  image: url(:/preview/spin-down.svg);"
+    "  width: 10px;"
+    "  height: 7px;"
     "  margin-right: 4px;"
     "}"
     "QComboBox QAbstractItemView {"
@@ -65,6 +64,33 @@ const char *kInputStyle = "QSpinBox, QLineEdit, QComboBox {"
     "  color: #cccccc;"
     "  border: 1px solid #555555;"
     "  selection-background-color: #0078d4;"
+    "}"
+    "QSpinBox::up-button, QSpinBox::down-button {"
+    "  width: 20px;"
+    "  border: none;"
+    "  background-color: #3c3c3c;"
+    "}"
+    "QSpinBox::up-button {"
+    "  subcontrol-origin: border;"
+    "  subcontrol-position: top right;"
+    "  border-left: 1px solid #555555;"
+    "  border-top-right-radius: 3px;"
+    "}"
+    "QSpinBox::down-button {"
+    "  subcontrol-origin: border;"
+    "  subcontrol-position: bottom right;"
+    "  border-left: 1px solid #555555;"
+    "  border-bottom-right-radius: 3px;"
+    "}"
+    "QSpinBox::up-arrow {"
+    "  image: url(:/preview/spin-up.svg);"
+    "  width: 10px;"
+    "  height: 7px;"
+    "}"
+    "QSpinBox::down-arrow {"
+    "  image: url(:/preview/spin-down.svg);"
+    "  width: 10px;"
+    "  height: 7px;"
     "}";
 
 } // namespace
@@ -236,7 +262,7 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 默认字体大小 (zoom) ----
     auto *zoomRow = new QHBoxLayout;
-    auto *zoomLabel = new QLabel(tr("默认字体大小"));
+    auto *zoomLabel = new QLabel(tr("默认缩放比例"));
     zoomLabel->setStyleSheet(kLabelStyle);
     zoomRow->addWidget(zoomLabel);
 
@@ -605,12 +631,14 @@ QWidget *SettingsPanel::createPreviewPage()
     m_previewRatioSpin = new QSpinBox;
     m_previewRatioSpin->setRange(30, 70);
     m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
-    m_previewRatioSpin->setSuffix(QStringLiteral(" %"));
     m_previewRatioSpin->setFixedWidth(100);
     m_previewRatioSpin->setStyleSheet(kInputStyle);
     ratioRow->addWidget(ratioLabel);
     ratioRow->addStretch();
     ratioRow->addWidget(m_previewRatioSpin);
+    auto *ratioPercentLabel = new QLabel(QStringLiteral("%"));
+    ratioPercentLabel->setStyleSheet(kLabelStyle);
+    ratioRow->addWidget(ratioPercentLabel);
     layout->addLayout(ratioRow);
 
     connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {

@@ -20,7 +20,8 @@ OutputPanel::OutputPanel(QWidget *parent)
 
     m_outputEdit = new QPlainTextEdit(this);
     m_outputEdit->setReadOnly(true);
-    m_outputEdit->setMaximumBlockCount(cfg.outputPanelMaxBlocks());
+    m_outputEdit->setMaximumBlockCount(
+        sm.value("output_panel.max_blocks", cfg.outputPanelMaxBlocks()).toInt());
     m_outputEdit->setContextMenuPolicy(Qt::CustomContextMenu);
 
     QFont monoFont(cfg.outputPanelFontFamily(),
@@ -125,6 +126,11 @@ void OutputPanel::clearOutput()
 void OutputPanel::setOutputFont(const QFont &font)
 {
     m_outputEdit->setFont(font);
+}
+
+void OutputPanel::setMaxBlocks(int max)
+{
+    m_outputEdit->setMaximumBlockCount(max);
 }
 
 void OutputPanel::setStatus(const QString &status, bool isError)

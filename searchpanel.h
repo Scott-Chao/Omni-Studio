@@ -49,11 +49,6 @@ private:
     QString m_rootPath;
     QString m_searchText;
     QVector<SearchResult> m_results;
-
-    static const int DEBOUNCE_MS = 300;
-    static const int MAX_PER_FILE = 20;
-    static const int MAX_TOTAL_RESULTS = 500;
-    static const int SNIPPET_MAX_LENGTH = 120;
 };
 
 #endif // SEARCHPANEL_H

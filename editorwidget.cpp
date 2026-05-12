@@ -169,7 +169,9 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     // 分屏预览 debounce 定时器
     m_splitDebounceTimer.setSingleShot(true);
-    m_splitDebounceTimer.setInterval(ConfigManager::instance().previewSplitDebounceMs());
+    m_splitDebounceTimer.setInterval(
+        SettingsManager::instance().value("preview.split_debounce_ms",
+                                          ConfigManager::instance().previewSplitDebounceMs()).toInt());
     connect(&m_splitDebounceTimer, &QTimer::timeout, this, &EditorWidget::onSplitDebounceTimeout);
 
     // 自动保存定时器（周期触发，每 30 秒检查一次）
@@ -954,6 +956,26 @@ void EditorWidget::setCodeIndentWidth(int width)
     m_codeEditor->setIndentWidth(width);
 }
 
+void EditorWidget::setSplitPreviewDebounceMs(int ms)
+{
+    m_splitDebounceTimer.setInterval(ms);
+}
+
+void EditorWidget::applySplitPreviewRatio()
+{
+    if (!m_splitSplitter)
+        return;
+    int ratio = SettingsManager::instance().value("preview.split_preview_ratio",
+                   ConfigManager::instance().previewSplitPreviewRatio()).toInt();
+    QList<int> sizes = m_splitSplitter->sizes();
+    if (sizes.size() == 2) {
+        int total = sizes[0] + sizes[1];
+        m_splitSplitter->setSizes({total * (100 - ratio) / 100, total * ratio / 100});
+    } else {
+        m_splitSplitter->setSizes({100 - ratio, ratio});
+    }
+}
+
 void EditorWidget::reloadEditorColors()
 {
     m_codeEditor->reloadColors();
@@ -1275,8 +1297,9 @@ void EditorWidget::createSplitPreviewWidgets()
 
     m_splitSplitter->addWidget(m_splitPreviewView);
 
-    // 默认五五分隔
-    m_splitSplitter->setSizes({1, 1});
+    int ratio = SettingsManager::instance().value("preview.split_preview_ratio",
+                   ConfigManager::instance().previewSplitPreviewRatio()).toInt();
+    m_splitSplitter->setSizes({100 - ratio, ratio});
 
     m_stackedWidget->addWidget(m_splitSplitter);
 }

@@ -27,5 +27,7 @@
     <file alias="fonts/KaTeX_Size2-Regular.woff2">fonts/KaTeX_Size2-Regular.woff2</file>
     <file alias="fonts/KaTeX_Size3-Regular.woff2">fonts/KaTeX_Size3-Regular.woff2</file>
     <file alias="fonts/KaTeX_Size4-Regular.woff2">fonts/KaTeX_Size4-Regular.woff2</file>
+    <file alias="spin-up.svg">spin-up.svg</file>
+    <file alias="spin-down.svg">spin-down.svg</file>
   </qresource>
 </RCC>
