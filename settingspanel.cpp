@@ -1,17 +1,26 @@
 #include "settingspanel.h"
 #include "configmanager.h"
+#include "settingsmanager.h"
 
 #include <QLabel>
+#include <QListWidget>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QStackedWidget>
+#include <QSlider>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QComboBox>
 #include <QMouseEvent>
 #include <QApplication>
 #include <QSizeGrip>
-#include <QSlider>
-#include <QLineEdit>
 #include <QIntValidator>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QColorDialog>
+#include <QFontDatabase>
 
 namespace {
 
@@ -26,14 +35,46 @@ public:
     }
 };
 
+// Shared style strings
+const char *kLabelStyle = "color: #cccccc; font-size: 12px;";
+const char *kInputStyle = "QSpinBox, QLineEdit, QComboBox {"
+    "  background-color: #3c3c3c;"
+    "  color: #cccccc;"
+    "  border: 1px solid #555555;"
+    "  border-radius: 3px;"
+    "  padding: 2px 4px;"
+    "  font-size: 12px;"
+    "  min-height: 20px;"
+    "}"
+    "QSpinBox:focus, QLineEdit:focus, QComboBox:focus {"
+    "  border-color: #0078d4;"
+    "}"
+    "QComboBox::drop-down {"
+    "  border: none;"
+    "  width: 20px;"
+    "}"
+    "QComboBox::down-arrow {"
+    "  image: none;"
+    "  border-left: 4px solid transparent;"
+    "  border-right: 4px solid transparent;"
+    "  border-top: 5px solid #aaaaaa;"
+    "  margin-right: 4px;"
+    "}"
+    "QComboBox QAbstractItemView {"
+    "  background-color: #3c3c3c;"
+    "  color: #cccccc;"
+    "  border: 1px solid #555555;"
+    "  selection-background-color: #0078d4;"
+    "}";
+
 } // namespace
 
 SettingsPanel::SettingsPanel(QWidget *parent)
     : QWidget(parent)
 {
     const auto &cfg = ConfigManager::instance();
-    int panelWidth = cfg.settingsPanelWidth();
-    int panelHeight = cfg.settingsPanelHeight();
+    int panelWidth = 680;
+    int panelHeight = 480;
     m_minWidth = cfg.settingsPanelMinWidth();
     m_minHeight = cfg.settingsPanelMinHeight();
 
@@ -91,25 +132,112 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     titleLayout->addStretch();
     titleLayout->addWidget(m_closeButton);
 
-    // ---- Content area ----
-    m_scrollArea = new QScrollArea;
-    m_scrollArea->setWidgetResizable(true);
-    m_scrollArea->setFrameShape(QFrame::NoFrame);
-    m_scrollArea->setStyleSheet(
+    // ---- Body: categories | pages (no gap) ----
+    auto *bodyWidget = new QWidget;
+    bodyWidget->setStyleSheet("background: #2b2b2b;");
+    auto *bodyLayout = new QHBoxLayout(bodyWidget);
+    bodyLayout->setContentsMargins(0, 0, 0, 0);
+    bodyLayout->setSpacing(0);
+
+    // Left: category list
+    m_categoryList = new QListWidget;
+    m_categoryList->setFixedWidth(kCategoryWidth);
+    m_categoryList->setFrameShape(QFrame::NoFrame);
+    m_categoryList->setStyleSheet(
+        "QListWidget {"
+        "  background-color: #252525;"
+        "  border: none;"
+        "  border-right: 1px solid #3c3c3c;"
+        "  color: #999999;"
+        "  font-size: 13px;"
+        "  padding: 4px 0;"
+        "  outline: none;"
+        "}"
+        "QListWidget::item {"
+        "  padding: 8px 16px;"
+        "  border: none;"
+        "}"
+        "QListWidget::item:hover {"
+        "  background-color: #2a2a2a;"
+        "  color: #cccccc;"
+        "}"
+        "QListWidget::item:selected {"
+        "  background-color: #2d2d2d;"
+        "  color: #ffffff;"
+        "  border-left: 3px solid #0078d4;"
+        "  padding-left: 13px;"
+        "}"
+    );
+
+    m_categoryList->addItem(tr("编辑器"));
+    m_categoryList->addItem(tr("外观"));
+    m_categoryList->addItem(tr("输出面板"));
+    m_categoryList->addItem(tr("预览"));
+    m_categoryList->addItem(tr("搜索"));
+    m_categoryList->addItem(tr("快捷键"));
+
+    // Right: stacked pages
+    m_stackedWidget = new QStackedWidget;
+    m_stackedWidget->setStyleSheet("background: #2b2b2b;");
+
+    m_stackedWidget->addWidget(createEditorPage());       // index 0
+    m_stackedWidget->addWidget(createAppearancePage());    // index 1
+    m_stackedWidget->addWidget(createOutputPanelPage());   // index 2
+    m_stackedWidget->addWidget(createPreviewPage());       // index 3
+    m_stackedWidget->addWidget(createSearchPage());        // index 4
+    m_stackedWidget->addWidget(createShortcutsPage());     // index 5
+
+    connect(m_categoryList, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
+    m_categoryList->setCurrentRow(0);
+
+    bodyLayout->addWidget(m_categoryList);
+    bodyLayout->addWidget(m_stackedWidget, 1);
+
+    // ---- Size grip ----
+    m_sizeGrip = new QSizeGrip(this);
+    m_sizeGrip->setStyleSheet("QSizeGrip { image: none; background: transparent; }");
+
+    mainLayout->addWidget(titleBar);
+    mainLayout->addWidget(bodyWidget, 1);
+}
+
+QLabel *SettingsPanel::createSectionLabel(const QString &text)
+{
+    auto *label = new QLabel(text);
+    label->setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold; margin-top: 4px; margin-bottom: 8px;");
+    return label;
+}
+
+// ============================================================
+// Page: 编辑器 (Editor)
+// ============================================================
+QWidget *SettingsPanel::createEditorPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
     );
 
-    auto *scrollContent = new QWidget;
-    scrollContent->setStyleSheet("background: #2b2b2b;");
-    m_contentLayout = new QVBoxLayout(scrollContent);
-    m_contentLayout->setContentsMargins(16, 12, 16, 12);
-    m_contentLayout->setSpacing(8);
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
 
-    // ---- 默认字体大小 ----
+    layout->addWidget(createSectionLabel(tr("编辑器")));
+
+    // ---- 默认字体大小 (zoom) ----
     auto *zoomRow = new QHBoxLayout;
     auto *zoomLabel = new QLabel(tr("默认字体大小"));
-    zoomLabel->setStyleSheet("color: #cccccc; font-size: 12px;");
+    zoomLabel->setStyleSheet(kLabelStyle);
     zoomRow->addWidget(zoomLabel);
 
     int sliderMin = qRound(cfg.zoomMin() * 100);
@@ -162,33 +290,19 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_fontSizeEdit->setText(QString::number(sliderDefault));
     m_fontSizeEdit->setFixedWidth(cfg.settingsPanelZoomSpinboxWidth());
     m_fontSizeEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_fontSizeEdit->setStyleSheet(
-        "QLineEdit {"
-        "  background-color: #3c3c3c;"
-        "  color: #cccccc;"
-        "  border: 1px solid #555555;"
-        "  border-radius: 3px;"
-        "  padding: 2px 4px;"
-        "  font-size: 12px;"
-        "}"
-        "QLineEdit:focus {"
-        "  border-color: #0078d4;"
-        "}"
-    );
+    m_fontSizeEdit->setStyleSheet(kInputStyle);
     zoomRow->addWidget(m_fontSizeEdit);
 
     auto *percentLabel = new QLabel(QStringLiteral("%"));
-    percentLabel->setStyleSheet("color: #cccccc; font-size: 12px;");
+    percentLabel->setStyleSheet(kLabelStyle);
     zoomRow->addWidget(percentLabel);
 
-    m_contentLayout->addLayout(zoomRow);
-    m_contentLayout->addStretch();
+    layout->addLayout(zoomRow);
 
     // 滑块 → 数字框
     connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this](int value) {
         m_fontSizeEdit->setText(QString::number(value));
     });
-
     // 数字框 → 滑块（编辑完成时，带边界钳位）
     connect(m_fontSizeEdit, &QLineEdit::editingFinished, this, [this, sliderMin, sliderMax]() {
         QString text = m_fontSizeEdit->text().trimmed();
@@ -201,30 +315,557 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         m_fontSizeEdit->setText(QString::number(value));
         m_fontSizeSlider->setValue(value);
     });
-
-    // 默认缩放变更信号（仅从滑块发出，避免编辑中频繁触发）
+    // 默认缩放变更信号
     connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this](int value) {
         emit defaultZoomChanged(value / 100.0);
     });
 
-    m_scrollArea->setWidget(scrollContent);
+    // ---- 缩进宽度 ----
+    int indentDef = cfg.editorIndentWidth();
+    auto *indentRow = new QHBoxLayout;
+    auto *indentLabel = new QLabel(tr("缩进宽度"));
+    indentLabel->setStyleSheet(kLabelStyle);
+    m_indentWidthSpin = new QSpinBox;
+    m_indentWidthSpin->setRange(1, 8);
+    m_indentWidthSpin->setValue(indentDef);
+    m_indentWidthSpin->setFixedWidth(80);
+    m_indentWidthSpin->setStyleSheet(kInputStyle);
+    indentRow->addWidget(indentLabel);
+    indentRow->addStretch();
+    indentRow->addWidget(m_indentWidthSpin);
+    layout->addLayout(indentRow);
 
-    // ---- Size grip ----
-    m_sizeGrip = new QSizeGrip(this);
-    m_sizeGrip->setStyleSheet("QSizeGrip { image: none; background: transparent; }");
+    connect(m_indentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.indent_width", val);
+    });
 
-    mainLayout->addWidget(titleBar);
-    mainLayout->addWidget(m_scrollArea, 1);
+    // ---- 编辑器字体 ----
+    auto *fontRow = new QHBoxLayout;
+    auto *fontLabel = new QLabel(tr("编辑器字体"));
+    fontLabel->setStyleSheet(kLabelStyle);
+    m_fontFamilyCombo = new QComboBox;
+    m_fontFamilyCombo->setEditable(false);
+    m_fontFamilyCombo->setFixedWidth(180);
+    m_fontFamilyCombo->setStyleSheet(kInputStyle);
+
+    static const QStringList families = QFontDatabase().families();
+    m_fontFamilyCombo->addItems(families);
+    int fontIdx = m_fontFamilyCombo->findText(cfg.editorFontFamily());
+    if (fontIdx >= 0) m_fontFamilyCombo->setCurrentIndex(fontIdx);
+
+    fontRow->addWidget(fontLabel);
+    fontRow->addStretch();
+    fontRow->addWidget(m_fontFamilyCombo);
+    layout->addLayout(fontRow);
+
+    connect(m_fontFamilyCombo, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+        emit editorSettingChanged("editor.font.family", text);
+    });
+
+    // ---- 编辑器字号 ----
+    auto *fontSizeRow = new QHBoxLayout;
+    auto *fontSizeLabel = new QLabel(tr("编辑器字号"));
+    fontSizeLabel->setStyleSheet(kLabelStyle);
+    m_fontSizeSpin = new QSpinBox;
+    m_fontSizeSpin->setRange(8, 24);
+    m_fontSizeSpin->setValue(cfg.editorFontSize());
+    m_fontSizeSpin->setFixedWidth(80);
+    m_fontSizeSpin->setStyleSheet(kInputStyle);
+    fontSizeRow->addWidget(fontSizeLabel);
+    fontSizeRow->addStretch();
+    fontSizeRow->addWidget(m_fontSizeSpin);
+    layout->addLayout(fontSizeRow);
+
+    connect(m_fontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.font.size", val);
+    });
+
+    layout->addStretch();
+
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
 }
 
-QVBoxLayout *SettingsPanel::contentLayout() const
+// ============================================================
+// Page: 外观 (Appearance)
+// ============================================================
+QWidget *SettingsPanel::createAppearancePage()
 {
-    return m_contentLayout;
+    const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("编辑器颜色")));
+
+    struct ColorItem {
+        QString label;
+        QString configKey;
+        QColor defaultColor;
+    };
+
+    ColorItem colors[] = {
+        {tr("编辑器背景"), "appearance.colors.editor.background", cfg.editorBackground()},
+        {tr("编辑器前景（文字）"), "appearance.colors.editor.foreground", cfg.editorForeground()},
+        {tr("选中背景"),  "appearance.colors.editor.selection",  cfg.editorSelection()},
+        {tr("当前行高亮"), "appearance.colors.current_line.highlight", cfg.currentLineHighlight()},
+        {tr("行号区域背景"), "appearance.colors.line_number.background", cfg.lineNumberBackground()},
+        {tr("行号文字颜色"), "appearance.colors.line_number.foreground", cfg.lineNumberForeground()},
+    };
+
+    for (const auto &ci : colors) {
+        auto *row = new QHBoxLayout;
+        auto *lbl = new QLabel(ci.label);
+        lbl->setStyleSheet(kLabelStyle);
+
+        auto *colorBtn = new QPushButton;
+        colorBtn->setFixedSize(24, 24);
+        QString bgHex = sm.value(ci.configKey, ci.defaultColor.name()).toString();
+        colorBtn->setStyleSheet(
+            QStringLiteral(
+                "QPushButton { background-color: %1; border: 1px solid #555555; border-radius: 4px; }"
+                "QPushButton:hover { border-color: #0078d4; }"
+            ).arg(bgHex)
+        );
+
+        auto *colorPreview = new QLabel;
+        colorPreview->setFixedWidth(80);
+        colorPreview->setText(bgHex);
+        colorPreview->setStyleSheet(
+            QStringLiteral("color: #999999; font-size: 11px; padding: 2px 4px; "
+                           "background-color: #3c3c3c; border: 1px solid #555555; border-radius: 3px;")
+        );
+
+        QString configKey = ci.configKey;
+        QColor defaultColor = ci.defaultColor;
+
+        connect(colorBtn, &QPushButton::clicked, this, [this, colorBtn, colorPreview, configKey, defaultColor]() {
+            QColor chosen = QColorDialog::getColor(defaultColor, this, tr("选择颜色"));
+            if (chosen.isValid()) {
+                QString hex = chosen.name();
+                colorBtn->setStyleSheet(
+                    QStringLiteral(
+                        "QPushButton { background-color: %1; border: 1px solid #555555; border-radius: 4px; }"
+                        "QPushButton:hover { border-color: #0078d4; }"
+                    ).arg(hex)
+                );
+                colorPreview->setText(hex);
+                emit appearanceSettingChanged(configKey, hex);
+            }
+        });
+
+        row->addWidget(lbl);
+        row->addStretch();
+        row->addWidget(colorPreview);
+        row->addWidget(colorBtn);
+        layout->addLayout(row);
+    }
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
 }
 
-QLabel *SettingsPanel::titleLabel() const
+// ============================================================
+// Page: 输出面板 (Output Panel)
+// ============================================================
+QWidget *SettingsPanel::createOutputPanelPage()
 {
-    return m_titleLabel;
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("输出面板")));
+
+    // 字体大小
+    auto *sizeRow = new QHBoxLayout;
+    auto *sizeLabel = new QLabel(tr("字体大小"));
+    sizeLabel->setStyleSheet(kLabelStyle);
+    m_outputFontSizeSpin = new QSpinBox;
+    m_outputFontSizeSpin->setRange(8, 24);
+    m_outputFontSizeSpin->setValue(cfg.outputPanelFontSize());
+    m_outputFontSizeSpin->setFixedWidth(80);
+    m_outputFontSizeSpin->setStyleSheet(kInputStyle);
+    sizeRow->addWidget(sizeLabel);
+    sizeRow->addStretch();
+    sizeRow->addWidget(m_outputFontSizeSpin);
+    layout->addLayout(sizeRow);
+
+    connect(m_outputFontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit outputPanelSettingChanged("output_panel.font.size", val);
+    });
+
+    // 最大行数
+    auto *maxRow = new QHBoxLayout;
+    auto *maxLabel = new QLabel(tr("最大行数"));
+    maxLabel->setStyleSheet(kLabelStyle);
+    auto *maxSpin = new QSpinBox;
+    maxSpin->setRange(100, 100000);
+    maxSpin->setSingleStep(500);
+    maxSpin->setValue(cfg.outputPanelMaxBlocks());
+    maxSpin->setFixedWidth(100);
+    maxSpin->setStyleSheet(kInputStyle);
+    maxRow->addWidget(maxLabel);
+    maxRow->addStretch();
+    maxRow->addWidget(maxSpin);
+    layout->addLayout(maxRow);
+
+    connect(maxSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit outputPanelSettingChanged("output_panel.max_blocks", val);
+    });
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
+// Page: 预览 (Preview)
+// ============================================================
+QWidget *SettingsPanel::createPreviewPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("预览")));
+
+    // 分屏防抖毫秒
+    auto *debounceRow = new QHBoxLayout;
+    auto *debounceLabel = new QLabel(tr("分屏防抖 (ms)"));
+    debounceLabel->setStyleSheet(kLabelStyle);
+    m_previewDebounceSpin = new QSpinBox;
+    m_previewDebounceSpin->setRange(100, 2000);
+    m_previewDebounceSpin->setSingleStep(50);
+    m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
+    m_previewDebounceSpin->setSuffix(QStringLiteral(" ms"));
+    m_previewDebounceSpin->setFixedWidth(100);
+    m_previewDebounceSpin->setStyleSheet(kInputStyle);
+    debounceRow->addWidget(debounceLabel);
+    debounceRow->addStretch();
+    debounceRow->addWidget(m_previewDebounceSpin);
+    layout->addLayout(debounceRow);
+
+    connect(m_previewDebounceSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit previewSettingChanged("preview.split_debounce_ms", val);
+    });
+
+    // 分屏比例
+    auto *ratioRow = new QHBoxLayout;
+    auto *ratioLabel = new QLabel(tr("分屏比例"));
+    ratioLabel->setStyleSheet(kLabelStyle);
+    m_previewRatioSpin = new QSpinBox;
+    m_previewRatioSpin->setRange(30, 70);
+    m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
+    m_previewRatioSpin->setSuffix(QStringLiteral(" %"));
+    m_previewRatioSpin->setFixedWidth(100);
+    m_previewRatioSpin->setStyleSheet(kInputStyle);
+    ratioRow->addWidget(ratioLabel);
+    ratioRow->addStretch();
+    ratioRow->addWidget(m_previewRatioSpin);
+    layout->addLayout(ratioRow);
+
+    connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit previewSettingChanged("preview.split_preview_ratio", val);
+    });
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
+// Page: 搜索 (Search)
+// ============================================================
+QWidget *SettingsPanel::createSearchPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("搜索")));
+
+    // 每文件最大匹配
+    auto *perFileRow = new QHBoxLayout;
+    auto *perFileLabel = new QLabel(tr("每文件最大匹配"));
+    perFileLabel->setStyleSheet(kLabelStyle);
+    m_searchPerFileSpin = new QSpinBox;
+    m_searchPerFileSpin->setRange(1, 50);
+    m_searchPerFileSpin->setValue(cfg.searchMaxPerFile());
+    m_searchPerFileSpin->setFixedWidth(80);
+    m_searchPerFileSpin->setStyleSheet(kInputStyle);
+    perFileRow->addWidget(perFileLabel);
+    perFileRow->addStretch();
+    perFileRow->addWidget(m_searchPerFileSpin);
+    layout->addLayout(perFileRow);
+
+    connect(m_searchPerFileSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.max_per_file", val);
+    });
+
+    // 最大结果总数
+    auto *totalRow = new QHBoxLayout;
+    auto *totalLabel = new QLabel(tr("最大结果总数"));
+    totalLabel->setStyleSheet(kLabelStyle);
+    m_searchTotalSpin = new QSpinBox;
+    m_searchTotalSpin->setRange(50, 2000);
+    m_searchTotalSpin->setSingleStep(50);
+    m_searchTotalSpin->setValue(cfg.searchMaxTotalResults());
+    m_searchTotalSpin->setFixedWidth(100);
+    m_searchTotalSpin->setStyleSheet(kInputStyle);
+    totalRow->addWidget(totalLabel);
+    totalRow->addStretch();
+    totalRow->addWidget(m_searchTotalSpin);
+    layout->addLayout(totalRow);
+
+    connect(m_searchTotalSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.max_total_results", val);
+    });
+
+    // 片段最大长度
+    auto *snippetRow = new QHBoxLayout;
+    auto *snippetLabel = new QLabel(tr("片段最大长度"));
+    snippetLabel->setStyleSheet(kLabelStyle);
+    m_searchSnippetSpin = new QSpinBox;
+    m_searchSnippetSpin->setRange(50, 500);
+    m_searchSnippetSpin->setSingleStep(10);
+    m_searchSnippetSpin->setValue(cfg.searchSnippetMaxLength());
+    m_searchSnippetSpin->setFixedWidth(80);
+    m_searchSnippetSpin->setStyleSheet(kInputStyle);
+    snippetRow->addWidget(snippetLabel);
+    snippetRow->addStretch();
+    snippetRow->addWidget(m_searchSnippetSpin);
+    layout->addLayout(snippetRow);
+
+    connect(m_searchSnippetSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.snippet_max_length", val);
+    });
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
+// Page: 快捷键 (Shortcuts)
+// ============================================================
+QWidget *SettingsPanel::createShortcutsPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("快捷键")));
+
+    auto *table = new QTableWidget;
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionMode(QAbstractItemView::NoSelection);
+    table->setFocusPolicy(Qt::NoFocus);
+    table->setShowGrid(false);
+    table->setAlternatingRowColors(true);
+    table->verticalHeader()->hide();
+    table->horizontalHeader()->hide();
+    table->setColumnCount(2);
+    table->setStyleSheet(
+        "QTableWidget {"
+        "  background-color: #2b2b2b;"
+        "  alternate-background-color: #2f2f2f;"
+        "  border: 1px solid #3c3c3c;"
+        "  color: #cccccc;"
+        "  font-size: 12px;"
+        "}"
+        "QTableWidget::item {"
+        "  padding: 4px 8px;"
+        "  border: none;"
+        "}"
+        "QHeaderView::section {"
+        "  background-color: #333333;"
+        "  color: #999999;"
+        "  padding: 4px 8px;"
+        "  border: none;"
+        "  border-bottom: 1px solid #3c3c3c;"
+        "  font-weight: bold;"
+        "}"
+    );
+
+    // Shortcut mapping: action name -> config key
+    struct ShortcutItem {
+        QString displayName;
+        QString configKey;
+    };
+    ShortcutItem items[] = {
+        {tr("新建文件"),     "new_file"},
+        {tr("保存"),         "save"},
+        {tr("另存为"),       "save_as"},
+        {tr("切换预览"),     "toggle_preview"},
+        {tr("分屏预览"),     "toggle_split_preview"},
+        {tr("历史记录"),     "toggle_history"},
+        {tr("反向链接"),     "toggle_backlinks"},
+        {tr("标签面板"),     "toggle_tags"},
+        {tr("大纲面板"),     "toggle_outline"},
+        {tr("全文搜索"),     "toggle_search"},
+        {tr("本地评测"),     "toggle_judge"},
+        {tr("设置"),         "toggle_settings"},
+        {tr("编译并运行"),   "compile_and_run"},
+        {tr("仅编译"),       "compile_only"},
+        {tr("仅运行"),       "run_only"},
+        {tr("停止进程"),     "stop_process"},
+        {tr("放大"),         "zoom_in"},
+        {tr("缩小"),         "zoom_out"},
+        {tr("重置缩放"),     "zoom_reset"},
+        {tr("切换注释"),     "toggle_comment"},
+        {tr("删除文件"),     "delete_file"},
+    };
+
+    int rowCount = sizeof(items) / sizeof(items[0]);
+    table->setRowCount(rowCount);
+    table->setColumnWidth(0, 200);
+    table->horizontalHeader()->setStretchLastSection(true);
+
+    for (int i = 0; i < rowCount; ++i) {
+        QString shortcutStr = cfg.shortcut(items[i].configKey, "");
+
+        auto *nameItem = new QTableWidgetItem(items[i].displayName);
+        nameItem->setForeground(QColor("#cccccc"));
+        table->setItem(i, 0, nameItem);
+
+        auto *keyItem = new QTableWidgetItem(shortcutStr);
+        keyItem->setForeground(QColor("#569CD6"));
+        table->setItem(i, 1, keyItem);
+    }
+
+    layout->addWidget(table, 1);
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
+// Drag & Resize (unchanged)
+// ============================================================
+
+void SettingsPanel::syncFromSettings(SettingsManager &sm)
+{
+    const auto &cfg = ConfigManager::instance();
+
+    // Editor page
+    if (m_fontFamilyCombo) {
+        QString family = sm.value("editor.font.family", "").toString();
+        if (!family.isEmpty()) {
+            int idx = m_fontFamilyCombo->findText(family);
+            if (idx >= 0) m_fontFamilyCombo->setCurrentIndex(idx);
+        }
+    }
+    if (m_fontSizeSpin) {
+        m_fontSizeSpin->setValue(sm.value("editor.font.size", cfg.editorFontSize()).toInt());
+    }
+    if (m_indentWidthSpin) {
+        m_indentWidthSpin->setValue(sm.value("editor.indent_width", cfg.editorIndentWidth()).toInt());
+    }
+
+    // Output panel page
+    if (m_outputFontSizeSpin) {
+        m_outputFontSizeSpin->setValue(sm.value("output_panel.font.size", cfg.outputPanelFontSize()).toInt());
+    }
+
+    // Preview page
+    if (m_previewDebounceSpin) {
+        m_previewDebounceSpin->setValue(sm.value("preview.split_debounce_ms", cfg.previewSplitDebounceMs()).toInt());
+    }
+    if (m_previewRatioSpin) {
+        m_previewRatioSpin->setValue(sm.value("preview.split_preview_ratio", cfg.previewSplitPreviewRatio()).toInt());
+    }
+
+    // Search page
+    if (m_searchPerFileSpin) {
+        m_searchPerFileSpin->setValue(sm.value("search_panel.max_per_file", cfg.searchMaxPerFile()).toInt());
+    }
+    if (m_searchTotalSpin) {
+        m_searchTotalSpin->setValue(sm.value("search_panel.max_total_results", cfg.searchMaxTotalResults()).toInt());
+    }
+    if (m_searchSnippetSpin) {
+        m_searchSnippetSpin->setValue(sm.value("search_panel.snippet_max_length", cfg.searchSnippetMaxLength()).toInt());
+    }
 }
 
 void SettingsPanel::setDefaultZoom(qreal zoom)
@@ -301,12 +942,12 @@ void SettingsPanel::mousePressEvent(QMouseEvent *event)
         if (edge != Edge::None) {
             m_dragging = true;
             m_dragEdge = edge;
-            m_dragStartPos = event->globalPos();
+            m_dragStartPos = event->globalPosition().toPoint();
             m_dragStartGeometry = geometry();
         } else if (event->pos().y() < kTitleBarHeight) {
             m_dragging = true;
             m_dragEdge = Edge::None;
-            m_dragStartPos = event->globalPos() - frameGeometry().topLeft();
+            m_dragStartPos = event->globalPosition().toPoint() - frameGeometry().topLeft();
         }
     }
     QWidget::mousePressEvent(event);
@@ -315,7 +956,7 @@ void SettingsPanel::mousePressEvent(QMouseEvent *event)
 void SettingsPanel::mouseMoveEvent(QMouseEvent *event)
 {
     if (m_dragging) {
-        const QPoint delta = event->globalPos() - m_dragStartPos;
+        const QPoint delta = event->globalPosition().toPoint() - m_dragStartPos;
         QWidget *overlay = parentWidget();
 
         if (m_dragEdge != Edge::None) {
@@ -354,7 +995,7 @@ void SettingsPanel::mouseMoveEvent(QMouseEvent *event)
 
             setGeometry(newGeo);
         } else {
-            QPoint newPos = event->globalPos() - m_dragStartPos;
+            QPoint newPos = event->globalPosition().toPoint() - m_dragStartPos;
             if (overlay) {
                 newPos.setX(qBound(0, newPos.x(), overlay->width() - width()));
                 newPos.setY(qBound(0, newPos.y(), overlay->height() - height()));

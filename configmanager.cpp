@@ -291,10 +291,10 @@ QJsonObject ConfigManager::buildDefaultConfig()
 
     // ---- settings_panel ----
     QJsonObject settingsPanel;
-    settingsPanel["width"] = 500;
-    settingsPanel["height"] = 400;
-    settingsPanel["min_width"] = 300;
-    settingsPanel["min_height"] = 200;
+    settingsPanel["width"] = 680;
+    settingsPanel["height"] = 480;
+    settingsPanel["min_width"] = 400;
+    settingsPanel["min_height"] = 300;
     QJsonObject zoomSlider;
     zoomSlider["groove_color"] = "#555555";
     zoomSlider["groove_height"] = 4;

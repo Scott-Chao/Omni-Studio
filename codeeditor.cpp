@@ -1,6 +1,7 @@
 ﻿#include "codeeditor.h"
 #include "languageutils.h"
 #include "configmanager.h"
+#include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QKeyEvent>
@@ -34,19 +35,27 @@ CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
     const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
 
-    // Dark code editor theme
+    // Dark code editor theme (with override support)
     setStyleSheet(QString(
         "QPlainTextEdit { background-color: %1; color: %2; "
         "selection-background-color: %3; }")
-        .arg(cfg.editorBackground().name())
-        .arg(cfg.editorForeground().name())
-        .arg(cfg.editorSelection().name()));
+        .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
+        .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
+        .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));
 
-    QFont font(cfg.editorFontFamily(), cfg.editorFontSize());
+    QString fontFamily = sm.value("editor.font.family", cfg.editorFontFamily()).toString();
+    int fontSize = sm.value("editor.font.size", cfg.editorFontSize()).toInt();
+    QFont font(fontFamily, fontSize);
     font.setStyleHint(QFont::Monospace);
     setFont(font);
     setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
+
+    // Cache paint-time colors to avoid QSettings reads on every repaint
+    m_cachedLnBg = QColor(sm.value("appearance.colors.line_number.background", cfg.lineNumberBackground().name()).toString());
+    m_cachedLnFg = QColor(sm.value("appearance.colors.line_number.foreground", cfg.lineNumberForeground().name()).toString());
+    m_cachedCurrentLine = QColor(sm.value("appearance.colors.current_line.highlight", cfg.currentLineHighlight().name()).toString());
 
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
@@ -61,6 +70,32 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
+}
+
+void CodeEditor::setIndentWidth(int width)
+{
+    m_indentWidth = width;
+    setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
+}
+
+void CodeEditor::reloadColors()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto &sm = SettingsManager::instance();
+
+    setStyleSheet(QString(
+        "QPlainTextEdit { background-color: %1; color: %2; "
+        "selection-background-color: %3; }")
+        .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
+        .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
+        .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));
+
+    m_cachedLnBg = QColor(sm.value("appearance.colors.line_number.background", cfg.lineNumberBackground().name()).toString());
+    m_cachedLnFg = QColor(sm.value("appearance.colors.line_number.foreground", cfg.lineNumberForeground().name()).toString());
+    m_cachedCurrentLine = QColor(sm.value("appearance.colors.current_line.highlight", cfg.currentLineHighlight().name()).toString());
+
+    highlightCurrentLine();
+    m_lineNumberArea->update();
 }
 
 void CodeEditor::setLanguage(const QString &langId)
@@ -126,7 +161,7 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
     const auto &cfg = ConfigManager::instance();
     QPainter painter(m_lineNumberArea);
     painter.setFont(font());
-    painter.fillRect(event->rect(), cfg.lineNumberBackground());
+    painter.fillRect(event->rect(), m_cachedLnBg);
 
     QTextBlock block = firstVisibleBlock();
     int blockNumber = block.blockNumber();
@@ -136,7 +171,7 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
-            painter.setPen(cfg.lineNumberForeground());
+            painter.setPen(m_cachedLnFg);
             painter.drawText(0, top, m_lineNumberArea->width() - cfg.editorLineNumberRightPadding(),
                              fontMetrics().height(),
                              Qt::AlignRight, number);
@@ -157,7 +192,7 @@ void CodeEditor::highlightCurrentLine()
 
     if (!isReadOnly()) {
         QTextEdit::ExtraSelection selection;
-        selection.format.setBackground(ConfigManager::instance().currentLineHighlight());
+        selection.format.setBackground(m_cachedCurrentLine);
         selection.format.setProperty(QTextFormat::FullWidthSelection, true);
         selection.cursor = textCursor();
         selection.cursor.clearSelection();

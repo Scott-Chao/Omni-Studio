@@ -17,6 +17,11 @@ public:
     void setLanguage(const QString &langId);
     QString languageId() const { return m_languageId; }
 
+    void setIndentWidth(int width);
+    int indentWidth() const { return m_indentWidth; }
+
+    void reloadColors();
+
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
     void refreshLineNumberArea();
@@ -38,6 +43,9 @@ private:
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
     int m_indentWidth = 4;
+    QColor m_cachedLnBg;
+    QColor m_cachedLnFg;
+    QColor m_cachedCurrentLine;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
 
     void handleAutoIndent();

@@ -13,6 +13,12 @@ public:
     explicit SettingsManager(const QString &fileName = QString());
     ~SettingsManager();
 
+    // Singleton access — instance must be constructed first (done in MainWindow)
+    static SettingsManager &instance();
+
+    // Unified value lookup: checks settings_overrides first, falls back to ConfigManager
+    QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+
     // 窗口状态
     void setWindowGeometry(const QByteArray &geometry);
     QByteArray windowGeometry() const;
@@ -33,6 +39,12 @@ public:
     void setRecentFiles(const QStringList &files);
     QStringList recentFiles() const;
 
+    // 设置覆盖 (用于存储用户通过设置面板更改的值)
+    void setSettingOverride(const QString &key, const QVariant &value);
+    QVariant settingOverride(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    void removeSettingOverride(const QString &key);
+    QStringList allOverrideKeys() const;
+
     // 清除所有设置
     void clear();
 
@@ -49,6 +61,7 @@ public:
 
 private:
     QSettings *m_settings;
+    static SettingsManager *s_instance;
 };
 
 #endif // SETTINGSMANAGER_H

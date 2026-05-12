@@ -56,6 +56,12 @@ public:
     qreal zoomFactor() const;
     void setZoomFactor(qreal factor);
 
+    // 编辑器字体设置
+    void setEditorFont(const QString &family, int size);
+    void setCodeIndentWidth(int width);
+
+    void reloadEditorColors();
+
     void setFilePath(const QString &newPath);  // 更新文件路径（用于重命名后）
 
     // WikiLink 自动补全

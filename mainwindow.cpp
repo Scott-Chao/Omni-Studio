@@ -438,6 +438,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_settingsPanel = new SettingsPanel(m_settingsOverlay);
     connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
     connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
+    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
@@ -693,8 +698,8 @@ void MainWindow::toggleSettings()
         m_settingsOverlay->setGeometry(this->rect());
         m_settingsOverlay->raise();
 
-        // 同步滑块到当前保存的默认缩放值
         m_settingsPanel->setDefaultZoom(m_settings->editorDefaultZoom());
+        m_settingsPanel->syncFromSettings(*m_settings);
 
         int panelW = m_settingsPanel->width();
         int panelH = m_settingsPanel->height();
@@ -718,6 +723,75 @@ void MainWindow::onDefaultZoomChanged(qreal zoom)
         }
     }
     updateZoomLabel();
+}
+
+void MainWindow::onEditorSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+
+    if (key == "editor.indent_width") {
+        int width = value.toInt();
+        for (int i = 0; i < m_tabManager->count(); ++i) {
+            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+                if (editor->isCodeEdit())
+                    editor->setCodeIndentWidth(width);
+            }
+        }
+    } else if (key == "editor.font.family") {
+        QString family = value.toString();
+        int size = m_settings->settingOverride("editor.font.size",
+                     ConfigManager::instance().editorFontSize()).toInt();
+        for (int i = 0; i < m_tabManager->count(); ++i) {
+            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+                editor->setEditorFont(family, size);
+            }
+        }
+    } else if (key == "editor.font.size") {
+        int size = value.toInt();
+        QString family = m_settings->settingOverride("editor.font.family",
+                           ConfigManager::instance().editorFontFamily()).toString();
+        for (int i = 0; i < m_tabManager->count(); ++i) {
+            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+                editor->setEditorFont(family, size);
+            }
+        }
+    }
+}
+
+void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+
+    for (int i = 0; i < m_tabManager->count(); ++i) {
+        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+            editor->reloadEditorColors();
+        }
+    }
+}
+
+void MainWindow::onOutputPanelSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+
+    if (key == "output_panel.font.size") {
+        QFont font = m_outputPanel->font();
+        font.setPointSize(value.toInt());
+        m_outputPanel->setOutputFont(font);
+    } else if (key == "output_panel.max_blocks") {
+        // max_blocks is used during append, no live adjustment needed
+    }
+}
+
+void MainWindow::onPreviewSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+    // Preview settings apply on next split preview activation
+}
+
+void MainWindow::onSearchSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+    // Search settings take effect on next search operation
 }
 
 // 缩放相关槽函数
