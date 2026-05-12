@@ -22,6 +22,7 @@
 #include <QColorDialog>
 #include <QFontDatabase>
 #include <QPainter>
+#include <QMessageBox>
 #include <functional>
 
 namespace {
@@ -167,9 +168,15 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     bodyLayout->setContentsMargins(0, 0, 0, 0);
     bodyLayout->setSpacing(0);
 
-    // Left: category list
+    // Left: category list + reset button
+    auto *leftWidget = new QWidget;
+    leftWidget->setFixedWidth(kCategoryWidth);
+    leftWidget->setStyleSheet("background: #252525;");
+    auto *leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(0);
+
     m_categoryList = new QListWidget;
-    m_categoryList->setFixedWidth(kCategoryWidth);
     m_categoryList->setFrameShape(QFrame::NoFrame);
     m_categoryList->setStyleSheet(
         "QListWidget {"
@@ -204,6 +211,38 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_categoryList->addItem(tr("搜索"));
     m_categoryList->addItem(tr("快捷键"));
 
+    leftLayout->addWidget(m_categoryList, 1);
+
+    // Reset to defaults button at bottom of sidebar
+    auto *resetBtn = new QPushButton(tr("恢复默认设置"));
+    resetBtn->setCursor(Qt::PointingHandCursor);
+    resetBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: transparent;"
+        "  border: none;"
+        "  border-top: 1px solid #3c3c3c;"
+        "  color: #999999;"
+        "  font-size: 12px;"
+        "  padding: 10px 16px;"
+        "  text-align: left;"
+        "}"
+        "QPushButton:hover {"
+        "  color: #ffffff;"
+        "  background-color: #c42b1c;"
+        "}"
+    );
+    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this, tr("恢复默认设置"),
+            tr("确定要恢复所有设置到默认值吗？此操作无法撤销。"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (reply == QMessageBox::Yes)
+            emit resetToDefaultsRequested();
+    });
+    leftLayout->addWidget(resetBtn);
+
     // Right: stacked pages
     m_stackedWidget = new QStackedWidget;
     m_stackedWidget->setStyleSheet("background: #2b2b2b;");
@@ -218,7 +257,7 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     connect(m_categoryList, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
     m_categoryList->setCurrentRow(0);
 
-    bodyLayout->addWidget(m_categoryList);
+    bodyLayout->addWidget(leftWidget);
     bodyLayout->addWidget(m_stackedWidget, 1);
 
     // ---- Size grip ----

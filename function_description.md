@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.6）
+## 功能说明文档（v0.5.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -32,12 +32,8 @@
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - **自动保存**：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 
-### 新增 v0.5.6
-- 自动保存设置：设置面板编辑器栏目新增"自动保存"开关控件（Windows 风格 Toggle Switch，开启时显示蓝色 "开" 文字），默认开启。开关关联实际自动保存行为：
-  - `EditorWidget` 新增 `m_autoSaveEnabled` 标志位和 `setAutoSaveEnabled()` 方法，取代原先直接读取 `ConfigManager` 的硬编码判断
-  - 开关通过 `editorSettingChanged("editor.auto_save", checked)` 信号传递至 `MainWindow::onEditorSettingChanged()` → 调用 `SettingsManager::setSettingOverride()` 持久化 + 遍历所有编辑器调用 `setAutoSaveEnabled()`
-  - `loadFile()` 和 `saveFile()` 统一改为调用 `startAutoSave()`（内部检查 `m_autoSaveEnabled` 标志），新开文件自动沿用当前开关状态
-- 设置覆盖统一：`syncFromSettings()` 中自动保存开关从 `SettingsManager` 读取覆盖值（回退至 `ConfigManager` 默认值），与其他设置项行为一致
+### 新增 v0.5.7
+- 一键恢复默认设置：设置面板左侧栏底部新增"恢复默认设置"按钮，点击弹出确认对话框。确认后清除所有设置覆盖值，重置面板控件至 ConfigManager 默认值，遍历所有已打开编辑器恢复字体/字号/缩进/颜色/缩放，重置输出面板和预览设置。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -872,7 +868,7 @@
 - 遮罩层（`m_settingsOverlay`）由 `MainWindow` 创建并管理，半透明黑色背景（`rgba(0, 0, 0, 128)`），覆盖整个主窗口客户区。
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
-- **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QListWidget`（170px 宽、深色 `#252525`）作为分类列表，右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
+- **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
 - **6 个分类页面**：
   - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
   - **外观**：6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
@@ -881,7 +877,7 @@
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
   - **快捷键**：只读 `QTableWidget`，两列（动作名 + 按键序列），从 ConfigManager 读取。
 - **信号**：`editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
-- `syncFromSettings(SettingsManager &sm)`：面板打开时由 `MainWindow` 调用，从 `SettingsManager::value()` 读取已持久化的覆盖值回填所有控件（使用 ConfigManager 默认值作为 fallback）。
+- `syncFromSettings(SettingsManager &sm)`：面板打开时由 `MainWindow` 调用，从 `SettingsManager::value()` 读取已持久化的覆盖值回填所有控件（使用 ConfigManager 默认值作为 fallback）。恢复默认设置后同样调用此方法重置控件。
 - 支持标题栏拖拽移动：在标题栏区域按住鼠标左键拖动可移动面板位置，移动范围限制在遮罩层内。
 - 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 400×300 像素。
 - `QSizeGrip` 放置在右下角，提供可视化的调整大小手柄。
@@ -891,6 +887,7 @@
 **信号**：
 - `void closeRequested()`：用户点击关闭按钮时发出，由 `MainWindow::toggleSettings()` 响应。
 - `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应。
+- `void resetToDefaultsRequested()`：点击"恢复默认设置"并确认后发出，由 `MainWindow::onResetToDefaults()` 响应。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
@@ -936,4 +933,4 @@
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
-- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。
+- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。

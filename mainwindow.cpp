@@ -473,6 +473,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
 
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
@@ -841,6 +842,43 @@ void MainWindow::onSearchSettingChanged(const QString &key, const QVariant &valu
 {
     m_settings->setSettingOverride(key, value);
     // Search settings take effect on next search operation
+}
+
+void MainWindow::onResetToDefaults()
+{
+    const auto &cfg = ConfigManager::instance();
+
+    // Clear all setting overrides
+    for (const QString &key : m_settings->allOverrideKeys())
+        m_settings->removeSettingOverride(key);
+    m_settings->setEditorDefaultZoom(cfg.zoomDefault());
+    m_settings->flushOverrides();
+
+    // Reset settings panel controls to defaults
+    m_settingsPanel->syncFromSettings(*m_settings);
+
+    // Apply default zoom + editor font to all editors
+    for (int i = 0; i < m_tabManager->count(); ++i) {
+        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+            editor->setZoomFactor(cfg.zoomDefault());
+            editor->setEditorFont(cfg.editorFontFamily(), cfg.editorFontSize());
+            if (editor->isCodeEdit())
+                editor->setCodeIndentWidth(cfg.editorIndentWidth());
+            editor->reloadEditorColors();
+        }
+    }
+    updateZoomLabel();
+
+    // Reset output panel
+    QFont opFont = m_outputPanel->font();
+    opFont.setPointSize(cfg.outputPanelFontSize());
+    m_outputPanel->setOutputFont(opFont);
+    m_outputPanel->setMaxBlocks(cfg.outputPanelMaxBlocks());
+
+    // Reset preview settings on current editor
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->setSplitPreviewDebounceMs(cfg.previewSplitDebounceMs());
+    }
 }
 
 // 缩放相关槽函数

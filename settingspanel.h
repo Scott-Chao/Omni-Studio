@@ -74,6 +74,7 @@ signals:
     void outputPanelSettingChanged(const QString &key, const QVariant &value);
     void previewSettingChanged(const QString &key, const QVariant &value);
     void searchSettingChanged(const QString &key, const QVariant &value);
+    void resetToDefaultsRequested();
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
