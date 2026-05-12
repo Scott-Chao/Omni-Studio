@@ -3,6 +3,8 @@
 
 #include <QWidget>
 #include <QVariant>
+#include <QPainter>
+#include <functional>
 
 class QLabel;
 class QListWidget;
@@ -15,6 +17,41 @@ class QStackedWidget;
 class QLineEdit;
 class QVBoxLayout;
 class QSizeGrip;
+
+// 自定义开关控件，类似 Windows 系统设置的 Toggle Switch
+class ToggleSwitch : public QWidget
+{
+public:
+    explicit ToggleSwitch(QWidget *parent = nullptr)
+        : QWidget(parent) { setFixedSize(44, 24); setCursor(Qt::PointingHandCursor); }
+
+    bool isChecked() const { return m_checked; }
+    void setChecked(bool checked) {
+        if (m_checked != checked) { m_checked = checked; update(); if (onToggled) onToggled(checked); }
+    }
+
+    std::function<void(bool)> onToggled;
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        int w = width(), h = height();
+        int trackH = 14, trackY = (h - trackH) / 2;
+        int thumbSize = 20, thumbY = (h - thumbSize) / 2;
+        p.setPen(Qt::NoPen);
+        p.setBrush(m_checked ? QColor("#2196F3") : QColor("#999999"));
+        p.drawRoundedRect(1, trackY, w - 2, trackH, trackH / 2, trackH / 2);
+        int thumbX = m_checked ? w - thumbSize - 2 : 2;
+        p.setBrush(Qt::white);
+        p.setPen(QPen(QColor("#cccccc"), 1));
+        p.drawEllipse(QPointF(thumbX + thumbSize / 2.0, thumbY + thumbSize / 2.0), thumbSize / 2.0, thumbSize / 2.0);
+    }
+    void mousePressEvent(QMouseEvent *) override { setChecked(!m_checked); }
+
+private:
+    bool m_checked = true;
+};
 
 class SettingsPanel : public QWidget
 {
@@ -81,6 +118,7 @@ private:
     QComboBox *m_fontFamilyCombo = nullptr;
     QSpinBox *m_fontSizeSpin = nullptr;
     QSpinBox *m_indentWidthSpin = nullptr;
+    ToggleSwitch *m_autoSaveToggle = nullptr;
 
     // Output panel controls
     QSpinBox *m_outputFontSizeSpin = nullptr;

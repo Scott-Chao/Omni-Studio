@@ -75,6 +75,7 @@ public:
     // 自动保存
     void startAutoSave();
     void stopAutoSave();
+    void setAutoSaveEnabled(bool enabled);
     QString recoveryTempPath() const { return m_recoveryTempPath; }
     void setRecoveryTempPath(const QString &path) { m_recoveryTempPath = path; }
     QString autoSaveRecoveryDir() const; // 恢复文件目录路径（静态）
@@ -140,6 +141,7 @@ private:
     // 自动保存
     QTimer m_autoSaveTimer;
     QString m_recoveryTempPath; // 恢复文件路径（仅未命名文件使用）
+    bool m_autoSaveEnabled = true;
     void autoSaveNow(); // 执行自动保存（不修改 modified 状态）
 
 protected:

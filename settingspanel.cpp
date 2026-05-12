@@ -21,6 +21,8 @@
 #include <QHeaderView>
 #include <QColorDialog>
 #include <QFontDatabase>
+#include <QPainter>
+#include <functional>
 
 namespace {
 
@@ -259,6 +261,38 @@ QWidget *SettingsPanel::createEditorPage()
     layout->setSpacing(8);
 
     layout->addWidget(createSectionLabel(tr("编辑器")));
+
+    // ---- 自动保存 ----
+    auto *autoSaveRow = new QHBoxLayout;
+    auto *autoSaveLabel = new QLabel(tr("自动保存"));
+    autoSaveLabel->setStyleSheet(kLabelStyle);
+
+    m_autoSaveToggle = new ToggleSwitch;
+    m_autoSaveToggle->setChecked(true);
+
+    auto *autoSaveStateLabel = new QLabel(tr("开"));
+    autoSaveStateLabel->setStyleSheet("color: #2196F3; font-size: 13px;");
+
+    m_autoSaveToggle->onToggled = [this, autoSaveStateLabel](bool checked) {
+        autoSaveStateLabel->setText(checked ? tr("开") : tr("关"));
+        autoSaveStateLabel->setStyleSheet(QString("color: %1; font-size: 13px;")
+            .arg(checked ? "#2196F3" : "#999999"));
+        emit editorSettingChanged("editor.auto_save", checked);
+    };
+
+    auto *toggleWidget = new QWidget;
+    auto *toggleLayout = new QHBoxLayout(toggleWidget);
+    toggleLayout->setContentsMargins(0, 0, 0, 0);
+    toggleLayout->setSpacing(6);
+    toggleLayout->addWidget(m_autoSaveToggle);
+    toggleLayout->addWidget(autoSaveStateLabel);
+
+    autoSaveRow->addWidget(autoSaveLabel);
+    autoSaveRow->addStretch();
+    autoSaveRow->addWidget(toggleWidget);
+    layout->addLayout(autoSaveRow);
+
+    layout->addSpacing(6);
 
     // ---- 默认字体大小 (zoom) ----
     auto *zoomRow = new QHBoxLayout;
@@ -869,6 +903,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
     if (m_indentWidthSpin) {
         m_indentWidthSpin->setValue(sm.value("editor.indent_width", cfg.editorIndentWidth()).toInt());
+    }
+    if (m_autoSaveToggle) {
+        m_autoSaveToggle->setChecked(sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool());
     }
 
     // Output panel page

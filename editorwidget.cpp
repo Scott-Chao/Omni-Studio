@@ -176,6 +176,7 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     // 自动保存定时器（周期触发，每 30 秒检查一次）
     m_autoSaveTimer.setInterval(ConfigManager::instance().autoSaveIntervalMs());
+    m_autoSaveEnabled = sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool();
     connect(&m_autoSaveTimer, &QTimer::timeout, this, &EditorWidget::onAutoSaveTimeout);
 
     // 当文本编辑器内容变化时，重置计时器
@@ -827,9 +828,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     emit fileLoaded(filePath);
 
     // 文件加载后启动自动保存定时器
-    if (ConfigManager::instance().autoSaveEnabled()) {
-        m_autoSaveTimer.start();
-    }
+    startAutoSave();
 
     return true;
 }
@@ -856,9 +855,7 @@ bool EditorWidget::saveFile()
         QFile::remove(m_recoveryTempPath);
         m_recoveryTempPath.clear();
     }
-    if (ConfigManager::instance().autoSaveEnabled()) {
-        m_autoSaveTimer.start();
-    }
+    startAutoSave();
 
     return true;
 }
@@ -1397,7 +1394,7 @@ EditorWidget::~EditorWidget()
 
 void EditorWidget::startAutoSave()
 {
-    if (ConfigManager::instance().autoSaveEnabled()) {
+    if (m_autoSaveEnabled) {
         m_autoSaveTimer.start();
     }
 }
@@ -1405,6 +1402,15 @@ void EditorWidget::startAutoSave()
 void EditorWidget::stopAutoSave()
 {
     m_autoSaveTimer.stop();
+}
+
+void EditorWidget::setAutoSaveEnabled(bool enabled)
+{
+    m_autoSaveEnabled = enabled;
+    if (enabled)
+        m_autoSaveTimer.start();
+    else
+        m_autoSaveTimer.stop();
 }
 
 void EditorWidget::onAutoSaveTimeout()

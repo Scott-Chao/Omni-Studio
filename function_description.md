@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.5）
+## 功能说明文档（v0.5.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -30,20 +30,14 @@
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - **分屏预览模式**：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
+- **自动保存**：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 
-### 新增 v0.5.5
-- 设置面板 bug 修复与优化：
-  - "默认字体大小"重命名为"默认缩放比例"（更准确地反映其实际功能）
-  - QSpinBox 上下按钮和 QComboBox 下拉按钮使用 SVG 三角形图标替换 CSS border-triangle 渲染，解决三角形图标失效问题
-  - QSpinBox 显式添加 `up-button`/`down-button` 子控件样式，解决样式表模式下下键无法点击的问题
-  - "分屏比例"百分号移出 spinbox 编辑框，使用独立 `%` 标签，与其他控件风格一致
-- 设置项功能修复：
-  - **搜索面板**：`max_per_file`、`max_total_results`、`snippet_max_length` 三项限制改为通过 `SettingsManager::value()` 读取，设置面板中的修改立即生效
-  - **输出面板**：`max_blocks` 改为通过 `SettingsManager::value()` 读取，支持运行时即时更新（`setMaxBlocks()`）
-  - **分屏防抖**：debounce 间隔改为通过 `SettingsManager::value()` 读取，设置变更时实时更新计时器（`setSplitPreviewDebounceMs()`）
-  - **分屏比例**：`createSplitPreviewWidgets()` 中硬编码的 `{1,1}` 替换为从设置读取比例值，设置变更时实时调整分隔条位置（`applySplitPreviewRatio()`）
-- 设置持久化优化：`SettingsManager` 新增延迟写入机制——设置变更时仅更新内存 map（`m_overrideMap`），程序正常关闭时通过 `flushOverrides()` 统一写入 `config.ini`，避免滑块拖动时频繁磁盘 I/O
-- 清理 `searchpanel.h` 中 4 个未使用的 `static const int` 常量
+### 新增 v0.5.6
+- 自动保存设置：设置面板编辑器栏目新增"自动保存"开关控件（Windows 风格 Toggle Switch，开启时显示蓝色 "开" 文字），默认开启。开关关联实际自动保存行为：
+  - `EditorWidget` 新增 `m_autoSaveEnabled` 标志位和 `setAutoSaveEnabled()` 方法，取代原先直接读取 `ConfigManager` 的硬编码判断
+  - 开关通过 `editorSettingChanged("editor.auto_save", checked)` 信号传递至 `MainWindow::onEditorSettingChanged()` → 调用 `SettingsManager::setSettingOverride()` 持久化 + 遍历所有编辑器调用 `setAutoSaveEnabled()`
+  - `loadFile()` 和 `saveFile()` 统一改为调用 `startAutoSave()`（内部检查 `m_autoSaveEnabled` 标志），新开文件自动沿用当前开关状态
+- 设置覆盖统一：`syncFromSettings()` 中自动保存开关从 `SettingsManager` 读取覆盖值（回退至 `ConfigManager` 默认值），与其他设置项行为一致
 
 ### 1. `MainWindow` - 主窗口控制器
 
