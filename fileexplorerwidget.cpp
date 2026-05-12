@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QLabel>
+#include <QFileIconProvider>
 
 class NoGhostDelegate : public QStyledItemDelegate
 {
@@ -54,7 +55,6 @@ public:
                const QModelIndex &index) const override
     {
         if (option.state & QStyle::State_Editing) {
-            // 复制一份 option，清空文本，这样基类只会绘制图标、背景等，不会绘制文本
             QStyleOptionViewItem opt = option;
             opt.text = QString();
             QStyledItemDelegate::paint(painter, opt, index);
@@ -190,7 +190,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_sortProxy = new FileSortProxyModel(this);
     m_sortProxy->setSourceModel(m_fileModel);
     m_sortProxy->setSortRole(Qt::DisplayRole);
-    m_sortProxy->setDynamicSortFilter(false);
+    m_sortProxy->setDynamicSortFilter(true);
     m_sortProxy->sort(0, Qt::AscendingOrder);
 
     // 视图绑定代理模型
@@ -219,6 +219,11 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 连接模型的重命名信号
     connect(m_fileModel, &QFileSystemModel::fileRenamed, this, &FileExplorerWidget::onFileRenamed);
+
+    // 目录异步加载完成后强制刷新视图，确保图标正确渲染
+    connect(m_fileModel, &QFileSystemModel::directoryLoaded, this, [this]() {
+        m_treeView->viewport()->update();
+    });
 
     // 连接点击信号
     connect(m_treeView, &QTreeView::clicked, this, &FileExplorerWidget::onTreeViewClicked);
@@ -301,12 +306,15 @@ bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
 
 void FileExplorerWidget::setRootPath(const QString &path)
 {
-    // 设置根目录
     if (!path.isEmpty()) {
         m_fileModel->setRootPath(path);
         QModelIndex sourceRoot = m_fileModel->index(path);
+        m_treeView->setUpdatesEnabled(false);
+        m_sortProxy->invalidate();
+        m_sortProxy->sort(0, Qt::AscendingOrder);
         QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
         m_treeView->setRootIndex(proxyRoot);
+        m_treeView->setUpdatesEnabled(true);
     }
     updateBreadcrumb();
 }
@@ -605,6 +613,43 @@ void FileExplorerWidget::createNewFileInline(const QString &parentDir)
     m_treeView->setCurrentIndex(proxyIdx);
     m_treeView->scrollTo(proxyIdx);
     m_treeView->edit(proxyIdx);
+}
+
+QVariant FileSortProxyModel::data(const QModelIndex &index, int role) const
+{
+    QVariant result = QSortFilterProxyModel::data(index, role);
+    if (role == Qt::DecorationRole && index.isValid()) {
+        // 检查 QIcon 是否真的包含有效像素图。
+        // Windows 上 QFileSystemModel 通过 SHGetFileInfo→HICON 获取图标，
+        // setRootPath 切换后原监视根目录的 HICON 可能失效，导致 QIcon
+        // 报告 availableSizes 非空但所有 pixmap 均为 null（"空心"图标）。
+        QIcon icon = result.value<QIcon>();
+        bool hasValidPixmap = false;
+        if (!icon.isNull()) {
+            const QList<QSize> sizes = icon.availableSizes();
+            for (const QSize &sz : sizes) {
+                if (!icon.pixmap(sz).isNull()) {
+                    hasValidPixmap = true;
+                    break;
+                }
+            }
+        }
+        if (!hasValidPixmap) {
+            QFileSystemModel *fsModel = qobject_cast<QFileSystemModel*>(sourceModel());
+            if (fsModel) {
+                QModelIndex sourceIndex = mapToSource(index);
+                if (sourceIndex.isValid()) {
+                    QFileInfo info = fsModel->fileInfo(sourceIndex);
+                    QFileIconProvider provider;
+                    if (info.isDir())
+                        return provider.icon(QFileIconProvider::Folder);
+                    else
+                        return provider.icon(QFileIconProvider::File);
+                }
+            }
+        }
+    }
+    return result;
 }
 
 bool FileSortProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
