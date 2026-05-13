@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.14）
+## 功能说明文档（v0.5.15）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -34,8 +34,9 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 新增 v0.5.14
+### 新增 v0.5.15
 - PDF 导出：工具栏新增"导出PDF"按钮（快捷键 `Ctrl+E`），将当前 Markdown 笔记通过 WebEngine 渲染引擎导出为 PDF 文件。导出时自动切换为白底黑字的打印友好主题，支持 KaTeX 公式和 Mermaid 图表的正确渲染。仅对 `.md` 文件可见。
+- PDF 阅读：点击 `.pdf` 文件时不再弹出"不支持的文件类型"警告，而是使用 `QPdfView` + `QPdfDocument`（Qt PDF 模块）直接渲染 PDF 内容。支持分页浏览（Multipage 模式）、Ctrl+滚轮缩放。PDF 模式下编辑、保存、自动保存等操作均为无操作，工具栏预览和编译按钮自动隐藏。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -171,12 +172,12 @@
 **文件**：`editorwidget.h` / `editorwidget.cpp`
 
 **职责**：
-- 封装文本编辑功能，支持 **Markdown 源码编辑**、**全屏渲染预览**、**分屏预览** 与 **代码编辑** 四种模式。
-- Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；全屏预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染。
+- 封装文本编辑功能，支持 **Markdown 源码编辑**、**全屏渲染预览**、**分屏预览**、**代码编辑** 与 **PDF 阅读** 五种模式。
+- Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；全屏预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染；PDF 阅读模式使用 `QPdfView` + `QPdfDocument` 直接渲染 PDF 页面。
 - **分屏预览模式**：新增的第 4 种布局模式，通过 `QSplitter(Qt::Horizontal)` 将编辑器区域分为左右两部分——左侧为 Markdown 源码编辑器（复用 `m_textEdit`），右侧为第二个独立的 `QWebEngineView` 渲染预览。分屏预览与全屏预览互斥，切换标签页时保留各自状态。右侧预览采用可配置的防抖机制延迟刷新（默认 500ms，可通过设置面板调节），仅在文本变化后更新。分屏比例从 `SettingsManager` 覆盖值读取（默认 50%，可通过设置面板调节），设置变更时实时调整分隔条位置。复用与全屏预览完全相同的 `preparePreviewContent()` 管线、`PreviewPage` 链接拦截和信号转发逻辑。
 - 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。分屏预览的 `QWebEngineView` 同样采用延迟初始化（仅在首次进入分屏模式时创建），并共享同一套预处理和更新管线。
-- 四种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`）。
+- 五种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`），索引 4 = `QPdfView`（PDF 阅读，使用 `QPdfDocument` 加载）。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
@@ -189,7 +190,7 @@
 - **PDF 导出**：`exportToPdf()` 创建临时隐藏 `QWebEngineView` + 普通 `QWebEnginePage`，通过 `preparePreviewContent()` 预处理 Markdown 内容后注入模板，将 CSS 变量替换为浅色打印主题（白底黑字），设置白色背景后加载页面。`loadFinished` 后通过 JS Promise 轮询等待 Mermaid 异步渲染完成，最后调用 `printToPdf()` 将当前渲染页面直接写入目标文件。完成后发射 `pdfExportCompleted` 信号。
 
 **主要接口**：
-- `bool loadFile(const QString &filePath)`：加载指定文件，成功后更新内部路径并重置修改标记。
+- `bool loadFile(const QString &filePath)`：加载指定文件。`.pdf` 后缀自动切换到 `PdfView` 模式，使用 `QPdfDocument` 加载渲染；已知代码扩展名切换到 `CodeEdit` 模式；其余文件使用 `MarkdownEdit` 模式。成功后更新内部路径并重置修改标记。
 - `bool saveFile()`：保存到当前已打开的路径。如果路径为空则返回 `false`。
 - `bool saveAsFile(const QString &defaultDir = QString())`：弹出文件对话框，另存为指定路径，并更新当前文件路径。 `defaultDir` 参数，可指定对话框的起始目录，为空则使用主文件夹。
 - `QString currentFilePath() const`：返回当前正在编辑的文件路径（可能为空）。

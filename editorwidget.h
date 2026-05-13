@@ -4,6 +4,8 @@
 #include <QWidget>
 #include <QTextEdit>
 #include <QWebEngineView>
+#include <QPdfView>
+#include <QPdfDocument>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QTimer>
@@ -72,6 +74,7 @@ public:
     void setFileNames(const QStringList &names);
     void setTagNames(const QStringList &names);
     bool isCodeEdit() const { return m_editorMode == CodeEdit; }
+    bool isPdfView() const { return m_editorMode == PdfView; }
 
     // 自动保存
     void startAutoSave();
@@ -104,7 +107,7 @@ private slots:
     void onAutoSaveTimeout();
 
 private:
-    enum EditorMode { MarkdownEdit, CodeEdit };
+    enum EditorMode { MarkdownEdit, CodeEdit, PdfView };
     EditorMode m_editorMode = MarkdownEdit;
 
     QStackedWidget *m_stackedWidget;
@@ -115,6 +118,10 @@ private:
     QString m_filePath;
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板
+
+    // PDF 视图
+    QPdfView *m_pdfView = nullptr;
+    QPdfDocument *m_pdfDocument = nullptr;
 
     // 分屏预览
     bool m_splitPreview = false;

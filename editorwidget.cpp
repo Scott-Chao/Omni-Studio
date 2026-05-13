@@ -170,6 +170,17 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_stackedWidget->addWidget(m_previewContainer);
     m_stackedWidget->addWidget(m_codeEditor);
 
+    // PDF 视图
+    m_pdfDocument = new QPdfDocument(this);
+    m_pdfView = new QPdfView(this);
+    m_pdfView->setDocument(m_pdfDocument);
+    m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
+    m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
+    m_pdfView->installEventFilter(this);
+    if (auto *vp = m_pdfView->viewport())
+        vp->installEventFilter(this);
+    m_stackedWidget->addWidget(m_pdfView);
+
     // 预览调试：监听 stackedWidget 页面切换
     connect(m_stackedWidget, &QStackedWidget::currentChanged, this,
         [this](int index) {
@@ -247,8 +258,8 @@ void EditorWidget::setPreviewMode(bool preview)
                 << ", stackedWidget currentIndex=" << m_stackedWidget->currentIndex()
                 << ", previewView isVisible=" << m_previewView->isVisible());
 
-    if (m_editorMode == CodeEdit) {
-        PREVIEW_LOG("setPreviewMode — 退出(CodeEdit 模式)");
+    if (m_editorMode == CodeEdit || m_editorMode == PdfView) {
+        PREVIEW_LOG("setPreviewMode — 退出(CodeEdit/PdfView 模式)");
         return;
     }
     if (preview == m_previewMode) {
@@ -969,6 +980,27 @@ void EditorWidget::updateModificationChanged()
 bool EditorWidget::loadFile(const QString &filePath)
 {
     QString suffix = QFileInfo(filePath).suffix().toLower();
+
+    // PDF 特殊处理：绕过 textExtension 检查，使用 WebEngine 渲染
+    if (suffix == QStringLiteral("pdf")) {
+        m_editorMode = PdfView;
+        m_filePath = QFileInfo(filePath).absoluteFilePath();
+        // 退出分屏和全屏预览
+        if (m_splitPreview) {
+            m_splitTextWrapper->layout()->removeWidget(m_textEdit);
+            m_stackedWidget->insertWidget(0, m_textEdit);
+            m_splitPreview = false;
+            m_lastSplitPreviewContent.clear();
+        }
+        m_previewMode = false;
+        m_stackedWidget->setCurrentIndex(m_stackedWidget->indexOf(m_pdfView));
+        applyZoom();
+        setModified(false);
+        m_pdfDocument->load(filePath);
+        emit fileLoaded(filePath);
+        return true;
+    }
+
     if (!suffix.isEmpty() && !TextFileUtils::isTextExtension(suffix)) {
         QMessageBox::warning(this, tr("无法打开文件"),
                              tr("不支持的文件类型：.%1\n该文件可能是二进制格式。").arg(suffix));
@@ -1023,6 +1055,8 @@ bool EditorWidget::loadFile(const QString &filePath)
 
 bool EditorWidget::saveFile()
 {
+    if (m_editorMode == PdfView)
+        return false;
     // 保存
     if (m_filePath.isEmpty())
         return false;
@@ -1092,11 +1126,15 @@ QString EditorWidget::toPlainText() const
 {
     if (m_editorMode == CodeEdit)
         return m_codeEditor->toPlainText();
+    if (m_editorMode == PdfView)
+        return {};
     return m_textEdit->toPlainText();
 }
 
 void EditorWidget::setPlainText(const QString &text)
 {
+    if (m_editorMode == PdfView)
+        return;
     if (m_editorMode == CodeEdit)
         m_codeEditor->setPlainText(text);
     else
@@ -1106,6 +1144,8 @@ void EditorWidget::setPlainText(const QString &text)
 
 bool EditorWidget::isModified() const
 {
+    if (m_editorMode == PdfView)
+        return false;
     if (m_editorMode == CodeEdit)
         return m_codeEditor->document()->isModified();
     return m_textEdit->document()->isModified();
@@ -1113,6 +1153,8 @@ bool EditorWidget::isModified() const
 
 void EditorWidget::setModified(bool modified)
 {
+    if (m_editorMode == PdfView)
+        return;
     QTextDocument *doc = (m_editorMode == CodeEdit)
         ? m_codeEditor->document() : m_textEdit->document();
     if (doc->isModified() != modified) {
@@ -1177,6 +1219,11 @@ void EditorWidget::reloadEditorColors()
 
 void EditorWidget::applyZoom()
 {
+    if (m_editorMode == PdfView) {
+        m_pdfView->setZoomFactor(m_zoomFactor);
+        return;
+    }
+
     bool wasModified = isModified();
     QTextDocument *doc = (m_editorMode == CodeEdit)
         ? m_codeEditor->document() : m_textEdit->document();
@@ -1321,18 +1368,25 @@ void EditorWidget::setFilePath(const QString &newPath) {
 
 void EditorWidget::setFileNames(const QStringList &names)
 {
+    if (m_editorMode == PdfView)
+        return;
     if (m_editorMode != CodeEdit)
         m_textEdit->setFileNames(names);
 }
 
 void EditorWidget::setTagNames(const QStringList &names)
 {
+    if (m_editorMode == PdfView)
+        return;
     if (m_editorMode != CodeEdit)
         m_textEdit->setTagNames(names);
 }
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 {
+    if (m_editorMode == PdfView)
+        return;
+
     if (m_previewMode && !m_splitPreview) {
         setPreviewMode(false);
     }
@@ -1384,8 +1438,9 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 
 void EditorWidget::navigateToLine(int lineNumber)
 {
-    if (m_editorMode == CodeEdit) {
-        navigateEditorToLine(lineNumber);
+    if (m_editorMode == PdfView || m_editorMode == CodeEdit) {
+        if (m_editorMode == CodeEdit)
+            navigateEditorToLine(lineNumber);
         return;
     }
 
@@ -1416,6 +1471,9 @@ void EditorWidget::navigateToLine(int lineNumber)
 
 void EditorWidget::navigateEditorToLine(int lineNumber)
 {
+    if (m_editorMode == PdfView)
+        return;
+
     // Scroll to line and highlight the entire line in yellow (search-highlight style).
     // Unlike scrollToLine(,highlightText), this does NOT search the full document
     // for matching text — it precisely highlights only the target line.
@@ -1452,6 +1510,8 @@ void EditorWidget::navigateEditorToLine(int lineNumber)
 
 void EditorWidget::clearExtraSelections()
 {
+    if (m_editorMode == PdfView)
+        return;
     if (m_editorMode == CodeEdit)
         m_codeEditor->clearSearchHighlights();
     else
@@ -1503,7 +1563,7 @@ void EditorWidget::createSplitPreviewWidgets()
 
 void EditorWidget::setSplitPreviewMode(bool split)
 {
-    if (m_editorMode == CodeEdit)
+    if (m_editorMode == CodeEdit || m_editorMode == PdfView)
         return;
     if (split == m_splitPreview)
         return;
@@ -1614,6 +1674,8 @@ EditorWidget::~EditorWidget()
 
 void EditorWidget::startAutoSave()
 {
+    if (m_editorMode == PdfView)
+        return;
     if (m_autoSaveEnabled) {
         m_autoSaveTimer.start();
     }
@@ -1621,6 +1683,8 @@ void EditorWidget::startAutoSave()
 
 void EditorWidget::stopAutoSave()
 {
+    if (m_editorMode == PdfView)
+        return;
     m_autoSaveTimer.stop();
 }
 
