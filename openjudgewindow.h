@@ -103,6 +103,7 @@ private:
     QString m_currentHomeworkUrl;
     QString m_currentProblemUrl;
     bool m_currentHomeworkOngoing = false;
+    bool m_currentProblemSelected = false;
 
     SettingsManager *m_settingsManager = nullptr;
     bool m_autoLoginInProgress = false;

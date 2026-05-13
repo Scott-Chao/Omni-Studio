@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.12）
+## 功能说明文档（v0.5.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -34,8 +34,10 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 修复（v0.5.12）
-- 语法高亮注释误染：替换了 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 中基于简单正则的注释匹配方式。`CppSyntaxHighlighter` 将 `//` 和 `/* */` 注释处理合并为统一的字符串感知字符扫描（逐字符跟踪 `"..."` 和 `'...'` 状态），确保 `"//..."` 和 `"/*...*/"` 等字符串字面量内的内容不会被误染为注释；`PythonSyntaxHighlighter` 的注释和三引号处理同样改为字符串感知扫描，确保 `# {1:[2]}` 中的数字、"内含#的字符串"中的 `#`、以及 `"'''三引号'''"` 内的三引号不会被错误高亮。
+### 新增 v0.5.13
+- OpenJudge 临时缓存目录：每次选择题目时，不再创建带时间戳的唯一文件夹，改为使用固定临时文件夹 `SM-OJ-Cache`，每次选择时清空并写入新的测试用例，避免累积临时文件夹。同时移除了不再需要的 `#include <QDateTime>`。
+- "选择此题目"按钮支持选中/取消选中切换：点击后按钮文本变为"已选择"，颜色从 `#0078D4` 变为更浅的 `#4A9BE0`；再次点击取消选中，按钮恢复原样。切换查看其他题目或返回时自动取消选中状态。
+- 提交时校验题目选中状态：若题目尚未选中（已取消选中），提交操作会提示"请先在 OpenJudge 中选择一道题目"，阻止无效提交。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -834,16 +836,16 @@
 
 **职责**：
 - 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，深色主题（背景 `#2D2D30`，前景 `#D4D4D4`）。
-- 顶部工具栏：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。
+- 顶部工具栏：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。点击后切换为"已选择"状态（颜色变为 `#4A9BE0`），再次点击或查看其他题目时取消选中状态。
 - **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
 - **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
 - 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
 - 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧渲染内容（`QTextBrowser`），无间隔紧凑布局。选择按钮在此页可见。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
-- 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-<timestamp>"`，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
+- 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-Cache"`（固定目录），每次写入前清空已有内容，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
 - **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。
-- "选择此题目"按钮 emit `sampleSelected(folderPath)` 信号，由 `MainWindow` 回填至评测面板的测试用例文件夹。
+- "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 新增 `m_currentProblemSelected` 校验，未选中时拒绝提交。
 - 窗口为单例：`MainWindow` 通过 `QPointer<OpenJudgeWindow>` 管理，关闭后自动置 null，再次点击重新创建。
 
 **信号**：

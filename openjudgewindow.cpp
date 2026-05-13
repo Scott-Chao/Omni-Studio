@@ -23,7 +23,6 @@
 #include <QFile>
 #include <QTextStream>
 #include <QStandardPaths>
-#include <QDateTime>
 
 // ===== HomeworkDelegate: draws deadline right-aligned =====
 class HomeworkDelegate : public QStyledItemDelegate {
@@ -625,6 +624,7 @@ void OpenJudgeWindow::onHomeworkProblemsReady(const QString &homeworkTitle,
 void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
 {
     m_currentProblem = detail;
+    m_currentProblemSelected = false;
     m_viewState = OJ_PROBLEM_DETAIL;
     m_backBtn->setVisible(true);
     m_refreshBtn->setText(QStringLiteral("刷新"));
@@ -634,6 +634,12 @@ void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
     showDetailPage(detail);
     m_selectBtn->setVisible(true);
     m_selectBtn->setEnabled(true);
+    m_selectBtn->setText(QStringLiteral("选择此题目"));
+    m_selectBtn->setStyleSheet(
+        "QPushButton { background: #0078D4; color: white; font-weight: bold; "
+        "border: none; border-radius: 4px; padding: 6px 20px; } "
+        "QPushButton:hover { background: #1E90FF; } "
+        "QPushButton:disabled { background: #3E3E42; color: #666; }");
 }
 
 void OpenJudgeWindow::onNetworkError(const QString &error)
@@ -774,8 +780,13 @@ OpenJudgeWindow::extractSamples(const ProblemDetail &detail)
 QString OpenJudgeWindow::writeSamplesToCache(const QVector<SamplePair> &samples)
 {
     QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    QString cacheDir = tempRoot + QStringLiteral("/SM-OJ-")
-                       + QString::number(QDateTime::currentSecsSinceEpoch());
+    QString cacheDir = tempRoot + QStringLiteral("/SM-OJ-Cache");
+
+    // Clear existing contents and recreate
+    QDir dir(cacheDir);
+    if (dir.exists()) {
+        dir.removeRecursively();
+    }
     QDir().mkpath(cacheDir);
 
     for (int i = 0; i < samples.size(); ++i) {
@@ -800,6 +811,18 @@ QString OpenJudgeWindow::writeSamplesToCache(const QVector<SamplePair> &samples)
 
 void OpenJudgeWindow::onSelectClicked()
 {
+    if (m_currentProblemSelected) {
+        // Deselect
+        m_currentProblemSelected = false;
+        m_selectBtn->setText(QStringLiteral("选择此题目"));
+        m_selectBtn->setStyleSheet(
+            "QPushButton { background: #0078D4; color: white; font-weight: bold; "
+            "border: none; border-radius: 4px; padding: 6px 20px; } "
+            "QPushButton:hover { background: #1E90FF; } "
+            "QPushButton:disabled { background: #3E3E42; color: #666; }");
+        return;
+    }
+
     QVector<SamplePair> samples = extractSamples(m_currentProblem);
     if (samples.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("提示"),
@@ -808,11 +831,23 @@ void OpenJudgeWindow::onSelectClicked()
     }
     QString folderPath = writeSamplesToCache(samples);
     emit sampleSelected(folderPath);
+
+    m_currentProblemSelected = true;
+    m_selectBtn->setText(QStringLiteral("已选择"));
+    m_selectBtn->setStyleSheet(
+        "QPushButton { background: #4A9BE0; color: white; font-weight: bold; "
+        "border: none; border-radius: 4px; padding: 6px 20px; } "
+        "QPushButton:hover { background: #5FADF0; } "
+        "QPushButton:disabled { background: #3E3E42; color: #666; }");
 }
 
 void OpenJudgeWindow::submitCurrentProblem(const QString &sourceCode, int languageId)
 {
     if (m_currentProblemUrl.isEmpty()) {
+        emit submissionFailed(QStringLiteral("请先在 OpenJudge 中选择一道题目"));
+        return;
+    }
+    if (!m_currentProblemSelected) {
         emit submissionFailed(QStringLiteral("请先在 OpenJudge 中选择一道题目"));
         return;
     }
