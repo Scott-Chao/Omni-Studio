@@ -114,8 +114,10 @@ void RightPanelContainer::setActivePanel(int index)
     if (index < 0 || index >= m_tabButtons.size())
         return;
 
+    m_currentPanel = index;
     m_stack->setCurrentIndex(index);
     updateTabStyles(index);
+    emit activePanelChanged(index);
 }
 
 void RightPanelContainer::updateTabStyles(int activeIndex)

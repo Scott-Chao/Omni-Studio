@@ -24,11 +24,13 @@ public:
     BacklinksPanel *backlinksPanel() const { return m_backlinksPanel; }
 
     void setActivePanel(int index);
+    int currentPanel() const { return m_currentPanel; }
 
 signals:
     void fileClicked(const QString &filePath);
     void tagClicked(const QString &tag);
     void headingClicked(int lineNumber, const QString &headingText);
+    void activePanelChanged(int index);
 
 private:
     QPushButton *createTabButton(const QString &text, int index);
@@ -37,6 +39,7 @@ private:
     QWidget *m_tabBar;
     QVector<QPushButton*> m_tabButtons;
     QStackedWidget *m_stack;
+    int m_currentPanel = 0;
 
     HistoryPanel *m_historyPanel;
     OutlinePanel *m_outlinePanel;

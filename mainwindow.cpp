@@ -84,6 +84,7 @@ static void previewLogMw(const QString &msg)
 #include <QPushButton>
 #include <QInputDialog>
 #include <QWindow>
+#include <QMenu>
 #include <utility>
 #include <QDockWidget>
 #include <QDirIterator>
@@ -275,73 +276,69 @@ MainWindow::MainWindow(QWidget *parent)
     // 标签索引已随 m_backlinkIndex 在上方创建
     // 标签/大纲面板已集成到 m_rightPanel 中
 
-    // ----- 工具栏 -----
+    // ----- 工具栏（同时充当标题栏）-----
     QToolBar *toolBar = addToolBar("文件工具栏");
     toolBar->setMovable(false);
     toolBar->setFloatable(false);
+    toolBar->installEventFilter(this);
 
-    // 设置
-    m_settingsAction = new QAction(tr("设置"), this);
-    m_settingsAction->setShortcut(
-        QKeySequence(ConfigManager::instance().shortcut("toggle_settings", "Ctrl+,")));
-    m_settingsAction->setToolTip(tr("打开/关闭设置面板 (Ctrl+,)"));
-    addAction(m_settingsAction);
-    connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
-    toolBar->insertAction(nullptr, m_settingsAction);
+    // 左侧：[文件 ▼] 下拉菜单
+    QToolButton *fileMenuBtn = new QToolButton(toolBar);
+    fileMenuBtn->setText(tr("文件  "));
+    fileMenuBtn->setToolTip(tr("文件操作"));
+    fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    fileMenuBtn->setArrowType(Qt::DownArrow);
+    fileMenuBtn->setFixedHeight(32);
+    fileMenuBtn->setStyleSheet(
+        "QToolButton {"
+        "  color: #cccccc; background: transparent; border: none; padding: 0 8px;"
+        "  font-size: 12px;"
+        "}"
+        "QToolButton:hover { background: #3c3c3c; }"
+        "QToolButton::menu-indicator { image: none; }"
+    );
+    {
+        QMenu *fileMenu = new QMenu(fileMenuBtn);
+        fileMenu->setStyleSheet(
+            "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
+            "QMenu::item { padding: 6px 24px; color: #cccccc; }"
+            "QMenu::item:selected { background: #094771; color: #ffffff; }"
+            "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
+        );
 
-    // 右侧面板（历史/大纲/标签/反链）
-    toolBar->insertAction(nullptr, toggleRightPanelAction);
-    // 搜索
-    toolBar->insertAction(nullptr, toggleSearchAction);
-    // 代码评测
-    toolBar->insertAction(nullptr, m_toggleJudgeAction);
-    toolBar->insertSeparator(toggleRightPanelAction);
+        QAction *openDirAct = fileMenu->addAction(tr("打开目录"));
+        connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
 
-    // 打开目录
-    QAction *openDirAction = new QAction("打开目录", this);
-    toolBar->addAction(openDirAction);
-    connect(openDirAction, &QAction::triggered, this, &MainWindow::onOpenFolder); // 点击按钮
-    connect(m_explorer, &FileExplorerWidget::folderChanged, this, &MainWindow::onFolderChanged); // 响应打开路径改变
+        fileMenu->addSeparator();
 
-    toolBar->addSeparator();
+        QAction *newAct = fileMenu->addAction(tr("新建文件"));
+        newAct->setShortcut(QKeySequence::New);
+        connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
 
-    // 新建文件（快捷键 Ctrl+N）
-    QAction *newAction = new QAction("新建", this);
-    newAction->setShortcut(QKeySequence::New);
-    toolBar->addAction(newAction);
-    connect(newAction, &QAction::triggered, this, &MainWindow::newFile);
+        QAction *saveAct = fileMenu->addAction(tr("保存"));
+        saveAct->setShortcut(QKeySequence::Save);
+        addAction(saveAct);
+        connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
 
-    toolBar->addSeparator();
+        QAction *saveAsAct = fileMenu->addAction(tr("另存为"));
+        saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
+        addAction(saveAsAct);
+        connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
 
-    // 保存（快捷键 Ctrl+S）
-    QAction *saveAction = new QAction("保存", this);
-    saveAction->setShortcut(QKeySequence::Save);
-    addAction(saveAction);
-    toolBar->addAction(saveAction);
-    connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+        fileMenuBtn->setMenu(fileMenu);
+    }
+    toolBar->addWidget(fileMenuBtn);
 
-    toolBar->addSeparator();
+    // 中间可拖拽区域（Expanding spacer — 双击最大化/还原）
+    m_toolbarSpacer = new QWidget;
+    m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    toolBar->addWidget(m_toolbarSpacer);
 
-    // 另存为（快捷键Ctrl+Shift+S）
-    QAction *saveAsAction = new QAction("另存为", this);
-    saveAsAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
-    addAction(saveAsAction);
-    toolBar->addAction(saveAsAction);
-    connect(saveAsAction, &QAction::triggered, this, &MainWindow::onSaveFileAs);
-
-    // 导出PDF（快捷键Ctrl+E）
-    m_exportPdfAction = new QAction("导出PDF", this);
-    m_exportPdfAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
-    addAction(m_exportPdfAction);
-    toolBar->addAction(m_exportPdfAction);
-    connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::onExportPdf);
-
-    toolBar->addSeparator();
-
-    // 预览（快捷键Ctrl+Shift+P）
-    m_previewAction = new QAction("预览模式", this);
+    // 右侧：预览
+    m_previewAction = new QAction(tr("预览"), this);
     m_previewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_preview", "Ctrl+Shift+P")));
     m_previewAction->setCheckable(true);
+    addAction(m_previewAction);
     toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
         PREVIEW_LOG_MW("previewAction toggled, checked=" << checked);
@@ -361,8 +358,8 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // 分屏预览（快捷键Ctrl+P）
-    m_splitPreviewAction = new QAction(tr("分屏预览"), this);
+    // 分屏预览
+    m_splitPreviewAction = new QAction(tr("分屏"), this);
     m_splitPreviewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_split_preview", "Ctrl+P")));
     m_splitPreviewAction->setCheckable(true);
     addAction(m_splitPreviewAction);
@@ -380,8 +377,6 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
     });
-
-    toolBar->addSeparator();
 
     // 编译 (F6)
     m_compileAction = new QAction(tr("编译"), this);
@@ -414,8 +409,24 @@ MainWindow::MainWindow(QWidget *parent)
     m_stopAction->setEnabled(false);
     connect(m_stopAction, &QAction::triggered, this, &MainWindow::onStopProcess);
 
-    // 将工具栏改造为自定义标题栏
+    // 窗口控制按钮（置于最右）
     setupCustomTitleBar();
+
+    // 设置（快捷键 Ctrl+,，不在工具栏中）
+    m_settingsAction = new QAction(tr("设置"), this);
+    m_settingsAction->setShortcut(
+        QKeySequence(ConfigManager::instance().shortcut("toggle_settings", "Ctrl+,")));
+    addAction(m_settingsAction);
+    connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
+
+    // 导出 PDF（快捷键 Ctrl+E，不在工具栏中）
+    m_exportPdfAction = new QAction(tr("导出PDF"), this);
+    m_exportPdfAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
+    addAction(m_exportPdfAction);
+    connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::onExportPdf);
+
+    // 文件目录变更时重建索引
+    connect(m_explorer, &FileExplorerWidget::folderChanged, this, &MainWindow::onFolderChanged);
 
     // 添加缩放项
     QStatusBar *status = statusBar();
@@ -573,6 +584,42 @@ MainWindow::MainWindow(QWidget *parent)
             m_searchPanel->focusSearchInput();
         }
     });
+    connect(m_activityBar, &ActivityBar::historyClicked, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 0)
+            m_dockRightPanel->hide();
+        else {
+            m_rightPanel->setActivePanel(0);
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+        }
+    });
+    connect(m_activityBar, &ActivityBar::outlineClicked, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 1)
+            m_dockRightPanel->hide();
+        else {
+            m_rightPanel->setActivePanel(1);
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+        }
+    });
+    connect(m_activityBar, &ActivityBar::tagsClicked, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 2)
+            m_dockRightPanel->hide();
+        else {
+            m_rightPanel->setActivePanel(2);
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+        }
+    });
+    connect(m_activityBar, &ActivityBar::backlinksClicked, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 3)
+            m_dockRightPanel->hide();
+        else {
+            m_rightPanel->setActivePanel(3);
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+        }
+    });
     connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
     connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
     connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
@@ -591,6 +638,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         m_activityBar->setJudgeActive(visible);
     });
+    // 右侧面板激活状态同步
+    auto syncRightPanelState = [this]() {
+        bool visible = m_dockRightPanel->isVisible();
+        int idx = m_rightPanel->currentPanel();
+        m_activityBar->setHistoryActive(visible && idx == 0);
+        m_activityBar->setOutlineActive(visible && idx == 1);
+        m_activityBar->setTagsActive(visible && idx == 2);
+        m_activityBar->setBacklinksActive(visible && idx == 3);
+    };
+    connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, syncRightPanelState);
+    connect(m_rightPanel, &RightPanelContainer::activePanelChanged, this, syncRightPanelState);
 
     // 初始连接
     connectCurrentEditorZoomSignal();
@@ -802,10 +860,20 @@ void MainWindow::loadSettings()
     }
 
     QByteArray splitterData = m_settings->splitterState();
+    // 验证保存的分割条状态是否与当前 widget 数量匹配
+    bool validSplitter = false;
     if (!splitterData.isEmpty()) {
+        QSplitter testSplitter(Qt::Horizontal);
+        // 按相同顺序添加虚拟 widget 进行验证
+        testSplitter.addWidget(new QWidget);
+        testSplitter.addWidget(new QWidget);
+        testSplitter.addWidget(new QWidget);
+        validSplitter = testSplitter.restoreState(splitterData);
+    }
+    if (validSplitter) {
         m_splitter->restoreState(splitterData);
     } else {
-        m_splitter->setStretchFactor(1, cfg.mainSplitterDefaultRatio());
+        m_splitter->setStretchFactor(2, cfg.mainSplitterDefaultRatio());
     }
 }
 
@@ -1532,12 +1600,8 @@ void MainWindow::setupCustomTitleBar()
     QToolBar *tb = findChild<QToolBar*>();
     if (!tb) return;
 
-    tb->installEventFilter(this);
-
-    m_toolbarSpacer = new QWidget;
-    m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    // Spacer is already created and added before the call
     m_toolbarSpacer->installEventFilter(this);
-    tb->addWidget(m_toolbarSpacer);
 
     m_minimizeBtn = new CaptionBtn(QStyle::SP_TitleBarMinButton, false, this);
     m_minimizeBtn->setIconSize(QSize(28, 28));  // 横线图标视觉偏小，单独放大
@@ -1703,6 +1767,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if (btn && btn->defaultAction() == m_settingsAction)
                 return QMainWindow::eventFilter(watched, event);
             if (m_settingsPanel->isAncestorOf(clickedWidget))
+                return QMainWindow::eventFilter(watched, event);
+            // 点击活动栏（设置按钮所在处）时不关闭
+            if (m_activityBar && m_activityBar->isAncestorOf(clickedWidget))
                 return QMainWindow::eventFilter(watched, event);
             if (m_settingsOverlay->isAncestorOf(clickedWidget) &&
                 !m_settingsPanel->isAncestorOf(clickedWidget)) {
