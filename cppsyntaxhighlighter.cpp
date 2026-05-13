@@ -133,6 +133,9 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
+    // --- Single-line comment format (dim green, applied in highlightBlock via string-aware scanner) ---
+    m_singleLineCommentFormat.setForeground(cfg.syntaxComments());
+
     // --- Multi-line comment (block state tracking) ---
     m_multiLineCommentFormat.setForeground(cfg.syntaxComments());
     m_commentStartExpr = QRegularExpression(QStringLiteral("/\\*"));
@@ -150,58 +153,52 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
         }
     }
 
-    // Apply single-line comment format (// to end of line) — string-aware: skip // inside quotes
-    {
-        bool inString = false;
-        bool inChar = false;
-        for (int i = 0; i < text.length(); ++i) {
-            if (!inString && !inChar) {
-                if (text[i] == u'"') {
-                    inString = true;
-                } else if (text[i] == u'\'') {
-                    inChar = true;
-                } else if (text[i] == u'/' && i + 1 < text.length() && text[i+1] == u'/') {
+    // Combined single-line & multi-line comment handling — string-aware
+    setCurrentBlockState(0);
+
+    int searchFrom = 0;
+    if (previousBlockState() == 1) {
+        int endIdx = text.indexOf(QStringLiteral("*/"));
+        if (endIdx == -1) {
+            setFormat(0, text.length(), m_multiLineCommentFormat);
+            setCurrentBlockState(1);
+            return;
+        }
+        setFormat(0, endIdx + 2, m_multiLineCommentFormat);
+        searchFrom = endIdx + 2;
+    }
+
+    bool inString = false;
+    bool inChar = false;
+    for (int i = searchFrom; i < text.length(); ++i) {
+        if (inString) {
+            if (text[i] == u'\\') { ++i; continue; }
+            if (text[i] == u'"') inString = false;
+        } else if (inChar) {
+            if (text[i] == u'\\') { ++i; continue; }
+            if (text[i] == u'\'') inChar = false;
+        } else {
+            if (text[i] == u'"') {
+                inString = true;
+            } else if (text[i] == u'\'') {
+                inChar = true;
+            } else if (text[i] == u'/' && i + 1 < text.length()) {
+                if (text[i+1] == u'/') {
                     setFormat(i, text.length() - i, m_singleLineCommentFormat);
                     break;
-                }
-            } else if (inString) {
-                if (text[i] == u'\\') {
-                    ++i; // skip escaped char
-                } else if (text[i] == u'"') {
-                    inString = false;
-                }
-            } else if (inChar) {
-                if (text[i] == u'\\') {
-                    ++i; // skip escaped char
-                } else if (text[i] == u'\'') {
-                    inChar = false;
+                } else if (text[i+1] == u'*') {
+                    int endIdx = text.indexOf(QStringLiteral("*/"), i + 2);
+                    if (endIdx == -1) {
+                        setCurrentBlockState(1);
+                        setFormat(i, text.length() - i, m_multiLineCommentFormat);
+                        break;
+                    } else {
+                        setFormat(i, endIdx - i + 2, m_multiLineCommentFormat);
+                        i = endIdx + 1;
+                    }
                 }
             }
         }
-    }
-
-    // Multi-line comment handling
-    setCurrentBlockState(0);
-
-    int startIndex = 0;
-    if (previousBlockState() != 1)
-        startIndex = text.indexOf(m_commentStartExpr);
-
-    while (startIndex >= 0) {
-        QRegularExpressionMatch endMatch = m_commentEndExpr.match(text, startIndex + 2);
-        int endIndex = endMatch.capturedStart();
-        int commentLength;
-        if (endIndex == -1) {
-            setCurrentBlockState(1);
-            commentLength = text.length() - startIndex;
-        } else {
-            commentLength = endIndex - startIndex + endMatch.capturedLength();
-        }
-        setFormat(startIndex, commentLength, m_multiLineCommentFormat);
-
-        if (endIndex == -1)
-            break;
-        startIndex = text.indexOf(m_commentStartExpr, startIndex + commentLength);
     }
 
     // Apply preprocessor format last so it overrides keyword/type inside # lines

@@ -195,7 +195,7 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         }
     }
 
-    // Multi-line triple-quoted string handling
+    // Multi-line triple-quoted string handling — string-aware: skip triple quotes inside single-line strings
     setCurrentBlockState(0);
 
     int searchFrom = 0;
@@ -203,7 +203,7 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
 
     if (prevState == 1 || prevState == 2) {
         // Continuing a triple-quoted string from the previous block
-        int state = prevState; // 1 = """, 2 = '''
+        int state = prevState;
         QString closing = (state == 1) ? QStringLiteral("\"\"\"") : QStringLiteral("'''");
         int endIdx = text.indexOf(closing);
         if (endIdx == -1) {
@@ -215,32 +215,37 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         searchFrom = endIdx + 3;
     }
 
-    // Search for new triple-quoted strings in this block
-    while (true) {
-        int dPos = text.indexOf(QStringLiteral("\"\"\""), searchFrom);
-        int sPos = text.indexOf(QStringLiteral("'''"), searchFrom);
-
-        int tripleStart;
-        int tripleState;
-        if (dPos >= 0 && (sPos < 0 || dPos < sPos)) {
-            tripleStart = dPos;
-            tripleState = 1;
-        } else if (sPos >= 0) {
-            tripleStart = sPos;
-            tripleState = 2;
+    // Search for new triple-quoted strings in this block — skip positions inside single-line strings
+    bool inString = false;
+    QChar stringChar;
+    for (int i = searchFrom; i < text.length(); ++i) {
+        if (!inString) {
+            if (i + 2 < text.length() && text[i] == text[i+1] && text[i] == text[i+2]
+                && (text[i] == u'"' || text[i] == u'\'')) {
+                int tripleState = (text[i] == u'"') ? 1 : 2;
+                QString closeStr = (text[i] == u'"') ? QStringLiteral("\"\"\"") : QStringLiteral("'''");
+                int endIdx = text.indexOf(closeStr, i + 3);
+                if (endIdx == -1) {
+                    setFormat(i, text.length() - i, m_tripleFormat);
+                    setCurrentBlockState(tripleState);
+                    break;
+                } else {
+                    setFormat(i, endIdx - i + 3, m_tripleFormat);
+                    i = endIdx + 2;
+                    continue;
+                }
+            }
+            if (text[i] == u'\'' || text[i] == u'"') {
+                inString = true;
+                stringChar = text[i];
+            }
         } else {
-            break;
+            if (text[i] == u'\\') {
+                ++i;
+                continue;
+            }
+            if (text[i] == stringChar)
+                inString = false;
         }
-
-        QString closing = (tripleState == 1) ? QStringLiteral("\"\"\"") : QStringLiteral("'''");
-        int endIdx = text.indexOf(closing, tripleStart + 3);
-
-        if (endIdx == -1) {
-            setFormat(tripleStart, text.length() - tripleStart, m_tripleFormat);
-            setCurrentBlockState(tripleState);
-            break;
-        }
-        setFormat(tripleStart, endIdx - tripleStart + 3, m_tripleFormat);
-        searchFrom = endIdx + 3;
     }
 }
