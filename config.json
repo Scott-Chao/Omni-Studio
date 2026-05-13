@@ -160,6 +160,7 @@
 
   "extensions": {
     "text_files": [
+      "smd",
       "md", "markdown", "txt",
       "c", "cpp", "cxx", "cc", "h", "hpp", "hxx", "hh",
       "cs", "java", "py", "pyw", "pyx", "js", "jsx", "ts", "tsx", "mjs",

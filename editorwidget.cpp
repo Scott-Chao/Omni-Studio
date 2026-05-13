@@ -1,6 +1,7 @@
 ﻿#include "editorwidget.h"
 #include "wikilinktextedit.h"
 #include "codeeditor.h"
+#include "smdeditor.h"
 #include "tagindex.h"
 #include "languageutils.h"
 #include <memory>
@@ -181,6 +182,14 @@ EditorWidget::EditorWidget(QWidget *parent)
         vp->installEventFilter(this);
     m_stackedWidget->addWidget(m_pdfView);
 
+    // SMD 编辑器 (page 5)
+    m_smdEditor = new SmdEditor(this);
+    m_smdEditor->installEventFilter(this);
+    m_stackedWidget->addWidget(m_smdEditor);
+    connect(m_smdEditor, &SmdEditor::modificationChanged, this, &EditorWidget::modificationChanged);
+    connect(m_smdEditor, &SmdEditor::fileLoaded, this, &EditorWidget::fileLoaded);
+    connect(m_smdEditor, &SmdEditor::fileSaved, this, &EditorWidget::fileSaved);
+
     // 预览调试：监听 stackedWidget 页面切换
     connect(m_stackedWidget, &QStackedWidget::currentChanged, this,
         [this](int index) {
@@ -258,8 +267,8 @@ void EditorWidget::setPreviewMode(bool preview)
                 << ", stackedWidget currentIndex=" << m_stackedWidget->currentIndex()
                 << ", previewView isVisible=" << m_previewView->isVisible());
 
-    if (m_editorMode == CodeEdit || m_editorMode == PdfView) {
-        PREVIEW_LOG("setPreviewMode — 退出(CodeEdit/PdfView 模式)");
+    if (m_editorMode == CodeEdit || m_editorMode == PdfView || m_editorMode == SmdEdit) {
+        PREVIEW_LOG("setPreviewMode — 退出(CodeEdit/PdfView/SmdEdit 模式)");
         return;
     }
     if (preview == m_previewMode) {
@@ -1001,6 +1010,25 @@ bool EditorWidget::loadFile(const QString &filePath)
         return true;
     }
 
+    // SMD 文件特殊处理
+    if (suffix == QStringLiteral("smd")) {
+        m_editorMode = SmdEdit;
+        m_filePath = QFileInfo(filePath).absoluteFilePath();
+        if (m_splitPreview) {
+            m_splitTextWrapper->layout()->removeWidget(m_textEdit);
+            m_stackedWidget->insertWidget(0, m_textEdit);
+            m_splitPreview = false;
+            m_lastSplitPreviewContent.clear();
+        }
+        m_previewMode = false;
+        m_stackedWidget->setCurrentWidget(m_smdEditor);
+        m_smdEditor->loadFile(filePath);
+        applyZoom();
+        setModified(false);
+        emit fileLoaded(filePath);
+        return true;
+    }
+
     if (!suffix.isEmpty() && !TextFileUtils::isTextExtension(suffix)) {
         QMessageBox::warning(this, tr("无法打开文件"),
                              tr("不支持的文件类型：.%1\n该文件可能是二进制格式。").arg(suffix));
@@ -1057,6 +1085,11 @@ bool EditorWidget::saveFile()
 {
     if (m_editorMode == PdfView)
         return false;
+    if (m_editorMode == SmdEdit) {
+        if (m_filePath.isEmpty())
+            return false;
+        return m_smdEditor->saveFile();
+    }
     // 保存
     if (m_filePath.isEmpty())
         return false;
@@ -1087,9 +1120,22 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
     // 确定对话框起始目录，支持传入路径，否则用主文件夹
     QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
     QFileDialog dialog(this, tr("另存为"), startDir);
-    dialog.setNameFilters({tr("Markdown文件 (*.md)"), tr("文本文件 (*.txt)"), tr("所有文件 (*)")});
+
+    QStringList filters;
+    if (m_editorMode == SmdEdit) {
+        filters << tr("Smart Markdown文件 (*.smd)")
+                << tr("Markdown文件 (*.md)")
+                << tr("文本文件 (*.txt)")
+                << tr("所有文件 (*)");
+        dialog.setDefaultSuffix("smd");
+    } else {
+        filters << tr("Markdown文件 (*.md)")
+                << tr("文本文件 (*.txt)")
+                << tr("所有文件 (*)");
+        dialog.setDefaultSuffix("md");
+    }
+    dialog.setNameFilters(filters);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setDefaultSuffix("md");
 
     if (dialog.exec() != QDialog::Accepted)
         return false;
@@ -1105,7 +1151,9 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
     QFileInfo info(newPath);
     if (info.suffix().isEmpty()) {
         QString selectedFilter = dialog.selectedNameFilter();
-        if (selectedFilter.contains("*.txt"))
+        if (selectedFilter.contains("*.smd"))
+            newPath += ".smd";
+        else if (selectedFilter.contains("*.txt"))
             newPath += ".txt";
         else if (!selectedFilter.contains("(*)"))
             newPath += ".md";
@@ -1128,6 +1176,8 @@ QString EditorWidget::toPlainText() const
         return m_codeEditor->toPlainText();
     if (m_editorMode == PdfView)
         return {};
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->toPlainText();
     return m_textEdit->toPlainText();
 }
 
@@ -1137,6 +1187,8 @@ void EditorWidget::setPlainText(const QString &text)
         return;
     if (m_editorMode == CodeEdit)
         m_codeEditor->setPlainText(text);
+    else if (m_editorMode == SmdEdit)
+        m_smdEditor->setPlainText(text);
     else
         m_textEdit->setPlainText(text);
     setModified(false);
@@ -1146,6 +1198,8 @@ bool EditorWidget::isModified() const
 {
     if (m_editorMode == PdfView)
         return false;
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->isModified();
     if (m_editorMode == CodeEdit)
         return m_codeEditor->document()->isModified();
     return m_textEdit->document()->isModified();
@@ -1155,6 +1209,12 @@ void EditorWidget::setModified(bool modified)
 {
     if (m_editorMode == PdfView)
         return;
+    if (m_editorMode == SmdEdit) {
+        m_smdEditor->setModified(modified);
+        // SmdEditor's setModified already emits modificationChanged,
+        // which is connected to EditorWidget's signal
+        return;
+    }
     QTextDocument *doc = (m_editorMode == CodeEdit)
         ? m_codeEditor->document() : m_textEdit->document();
     if (doc->isModified() != modified) {
@@ -1174,6 +1234,9 @@ void EditorWidget::setEditorFont(const QString &family, int size)
     codeFont.setStyleHint(QFont::Monospace);
     m_codeEditor->setFont(codeFont);
     m_codeEditor->refreshLineNumberArea();
+
+    if (m_smdEditor)
+        m_smdEditor->setEditorFont(family, size);
 
     applyZoom();
 }
@@ -1206,6 +1269,8 @@ void EditorWidget::applySplitPreviewRatio()
 void EditorWidget::reloadEditorColors()
 {
     m_codeEditor->reloadColors();
+    if (m_smdEditor)
+        m_smdEditor->reloadColors();
 
     const auto &cfg = ConfigManager::instance();
     auto &sm = SettingsManager::instance();
@@ -1221,6 +1286,10 @@ void EditorWidget::applyZoom()
 {
     if (m_editorMode == PdfView) {
         m_pdfView->setZoomFactor(m_zoomFactor);
+        return;
+    }
+    if (m_editorMode == SmdEdit) {
+        m_smdEditor->applyZoom(m_zoomFactor, m_baseFontSize);
         return;
     }
 
@@ -1350,16 +1419,23 @@ void EditorWidget::setFilePath(const QString &newPath) {
 
     // Re-evaluate language on path change (handles save-as extension changes)
     QString ext = QFileInfo(newPath).suffix().toLower();
-    QString lang = LanguageUtils::languageForExtension(ext);
-    if (!lang.isEmpty()) {
-        m_editorMode = CodeEdit;
-        m_codeEditor->setLanguage(lang);
-        m_stackedWidget->setCurrentIndex(2);
+    if (ext == QStringLiteral("smd")) {
+        m_editorMode = SmdEdit;
+        m_smdEditor->setFilePath(normalized);
+        m_stackedWidget->setCurrentWidget(m_smdEditor);
         applyZoom();
     } else {
-        m_editorMode = MarkdownEdit;
-        if (m_stackedWidget->currentIndex() != 0)
-            m_stackedWidget->setCurrentIndex(0);
+        QString lang = LanguageUtils::languageForExtension(ext);
+        if (!lang.isEmpty()) {
+            m_editorMode = CodeEdit;
+            m_codeEditor->setLanguage(lang);
+            m_stackedWidget->setCurrentIndex(2);
+            applyZoom();
+        } else {
+            m_editorMode = MarkdownEdit;
+            if (m_stackedWidget->currentIndex() != 0)
+                m_stackedWidget->setCurrentIndex(0);
+        }
     }
 
     emit filePathChanged(oldPath, normalized);
@@ -1368,7 +1444,7 @@ void EditorWidget::setFilePath(const QString &newPath) {
 
 void EditorWidget::setFileNames(const QStringList &names)
 {
-    if (m_editorMode == PdfView)
+    if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
     if (m_editorMode != CodeEdit)
         m_textEdit->setFileNames(names);
@@ -1376,7 +1452,7 @@ void EditorWidget::setFileNames(const QStringList &names)
 
 void EditorWidget::setTagNames(const QStringList &names)
 {
-    if (m_editorMode == PdfView)
+    if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
     if (m_editorMode != CodeEdit)
         m_textEdit->setTagNames(names);
@@ -1384,7 +1460,7 @@ void EditorWidget::setTagNames(const QStringList &names)
 
 void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 {
-    if (m_editorMode == PdfView)
+    if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
 
     if (m_previewMode && !m_splitPreview) {
@@ -1438,7 +1514,7 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
 
 void EditorWidget::navigateToLine(int lineNumber)
 {
-    if (m_editorMode == PdfView || m_editorMode == CodeEdit) {
+    if (m_editorMode == PdfView || m_editorMode == CodeEdit || m_editorMode == SmdEdit) {
         if (m_editorMode == CodeEdit)
             navigateEditorToLine(lineNumber);
         return;
@@ -1510,7 +1586,7 @@ void EditorWidget::navigateEditorToLine(int lineNumber)
 
 void EditorWidget::clearExtraSelections()
 {
-    if (m_editorMode == PdfView)
+    if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
     if (m_editorMode == CodeEdit)
         m_codeEditor->clearSearchHighlights();
@@ -1563,7 +1639,7 @@ void EditorWidget::createSplitPreviewWidgets()
 
 void EditorWidget::setSplitPreviewMode(bool split)
 {
-    if (m_editorMode == CodeEdit || m_editorMode == PdfView)
+    if (m_editorMode == CodeEdit || m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
     if (split == m_splitPreview)
         return;

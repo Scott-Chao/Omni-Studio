@@ -16,6 +16,7 @@
 class WikiLinkTextEdit;
 class CodeEditor;
 class PreviewPage;
+class SmdEditor;
 
 class EditorWidget : public QWidget
 {
@@ -45,7 +46,7 @@ public:
 
     // 预览模式切换
     void setPreviewMode(bool preview);
-    bool isPreviewMode() const { return m_editorMode == MarkdownEdit && m_previewMode; }
+    bool isPreviewMode() const { return m_editorMode != SmdEdit && m_editorMode == MarkdownEdit && m_previewMode; }
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
     void updatePreviewContent(std::function<void()> onFinished); // 异步更新预览，完成后回调
 
@@ -75,6 +76,7 @@ public:
     void setTagNames(const QStringList &names);
     bool isCodeEdit() const { return m_editorMode == CodeEdit; }
     bool isPdfView() const { return m_editorMode == PdfView; }
+    bool isSmdEdit() const { return m_editorMode == SmdEdit; }
 
     // 自动保存
     void startAutoSave();
@@ -107,7 +109,7 @@ private slots:
     void onAutoSaveTimeout();
 
 private:
-    enum EditorMode { MarkdownEdit, CodeEdit, PdfView };
+    enum EditorMode { MarkdownEdit, CodeEdit, PdfView, SmdEdit };
     EditorMode m_editorMode = MarkdownEdit;
 
     QStackedWidget *m_stackedWidget;
@@ -122,6 +124,9 @@ private:
     // PDF 视图
     QPdfView *m_pdfView = nullptr;
     QPdfDocument *m_pdfDocument = nullptr;
+
+    // SMD 编辑器
+    SmdEditor *m_smdEditor = nullptr;
 
     // 分屏预览
     bool m_splitPreview = false;

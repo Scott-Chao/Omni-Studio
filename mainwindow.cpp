@@ -1148,26 +1148,27 @@ void MainWindow::updatePreviewActionState()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor) {
-        // 无编辑器：隐藏且禁用
         m_previewAction->setVisible(false);
         m_previewAction->setEnabled(false);
         return;
     }
 
     QString filePath = editor->currentFilePath();
-    // 检查是否为 .md 文件
     bool isMd = filePath.toLower().endsWith(".md");
+
+    if (editor->isSmdEdit()) {
+        m_previewAction->setVisible(false);
+        m_previewAction->setEnabled(false);
+        return;
+    }
 
     m_previewAction->setVisible(isMd);
     m_previewAction->setEnabled(isMd);
 
     if (!isMd && editor->isPreviewMode()) {
-        // 如果不是 md 文件但当前处于预览模式，强制切回编辑模式
         editor->setPreviewMode(false);
-        // 同步按钮勾选状态
         m_previewAction->setChecked(false);
     } else if (isMd) {
-        // 如果是 md 文件，同步按钮的勾选状态以反映当前编辑器的预览模式
         m_previewAction->setChecked(editor->isPreviewMode());
     }
 }
@@ -1176,6 +1177,12 @@ void MainWindow::updateSplitPreviewActionState()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor) {
+        m_splitPreviewAction->setVisible(false);
+        m_splitPreviewAction->setEnabled(false);
+        return;
+    }
+
+    if (editor->isSmdEdit()) {
         m_splitPreviewAction->setVisible(false);
         m_splitPreviewAction->setEnabled(false);
         return;

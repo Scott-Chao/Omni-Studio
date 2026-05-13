@@ -37,6 +37,8 @@ SOURCES += \
     pythonsyntaxhighlighter.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
+    smdcell.cpp \
+    smdeditor.cpp \
     submissionpanel.cpp \
     tagindex.cpp \
     tagpanel.cpp \
@@ -71,6 +73,9 @@ HEADERS += \
     pythonsyntaxhighlighter.h \
     searchpanel.h \
     settingspanel.h \
+    smdcell.h \
+    smdeditor.h \
+    smdformat.h \
     submissionpanel.h \
     tagindex.h \
     tagpanel.h \

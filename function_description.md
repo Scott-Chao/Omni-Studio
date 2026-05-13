@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.15）
+## 功能说明文档（v0.6.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -34,9 +34,13 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 新增 v0.5.15
-- PDF 导出：工具栏新增"导出PDF"按钮（快捷键 `Ctrl+E`），将当前 Markdown 笔记通过 WebEngine 渲染引擎导出为 PDF 文件。导出时自动切换为白底黑字的打印友好主题，支持 KaTeX 公式和 Mermaid 图表的正确渲染。仅对 `.md` 文件可见。
-- PDF 阅读：点击 `.pdf` 文件时不再弹出"不支持的文件类型"警告，而是使用 `QPdfView` + `QPdfDocument`（Qt PDF 模块）直接渲染 PDF 内容。支持分页浏览（Multipage 模式）、Ctrl+滚轮缩放。PDF 模式下编辑、保存、自动保存等操作均为无操作，工具栏预览和编译按钮自动隐藏。
+### 新增 v0.6.0
+- **SMD 文件格式**：新增 `.smd`（Smart Markdown）文件格式，采用 `---smd:<type>` 分隔符的纯文本格式（如 `---smd:markdown`、`---smd:cpp`、`---smd:python`），支持单元格（Cell）分块编辑，类似 Jupyter Notebook 的交互模式。
+- **SMD 单元格编辑器**：打开 `.smd` 文件时自动切换到 `SmdEdit` 模式。每个单元格独立编辑，支持三种类型：Markdown 文本、C++ 代码、Python 代码。代码单元格复用 `CodeEditor` 的语法高亮、行号显示、自动缩进等功能。
+- **编辑/命令双模式**：默认为编辑模式，按 `Esc` 进入命令模式；命令模式下按 `Enter` 回到编辑模式。命令模式下支持 `A`（上方插入）、`B`（下方插入）、`↑/↓` 导航单元格、`Delete` 删除、`Ctrl+D` 复制单元格等快捷键。
+- **语言选择**：命令模式下按 `Ctrl+K` 弹出语言选择下拉菜单，支持 `↑/↓` 导航、`Enter` 确认，快捷键 `1`=Markdown、`2`=C++、`3`=Python。插入新单元格时自动弹出语言选择。
+- **单元格执行**：`Ctrl+Enter` 运行当前单元格并跳转到下一个。Markdown 单元格使用 `QTextBrowser::setMarkdown()` 渲染，按 `Ctrl+Shift+Z` 返回编辑模式。C++ 单元格编译并运行，Python 单元格直接运行，输出显示在单元格下方，不支持标准输入交互。
+- **自适应高度**：单元格高度根据内容动态调整（最小 1 行，最大约 40 行），编辑器内部不显示滚动条，整个页面通过 `QScrollArea` 统一滚动。选中单元格四周显示蓝色边框。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -172,12 +176,12 @@
 **文件**：`editorwidget.h` / `editorwidget.cpp`
 
 **职责**：
-- 封装文本编辑功能，支持 **Markdown 源码编辑**、**全屏渲染预览**、**分屏预览**、**代码编辑** 与 **PDF 阅读** 五种模式。
+- 封装文本编辑功能，支持 **Markdown 源码编辑**、**全屏渲染预览**、**分屏预览**、**代码编辑**、**PDF 阅读** 与 **SMD 单元格编辑** 六种模式。
 - Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；全屏预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染；PDF 阅读模式使用 `QPdfView` + `QPdfDocument` 直接渲染 PDF 页面。
 - **分屏预览模式**：新增的第 4 种布局模式，通过 `QSplitter(Qt::Horizontal)` 将编辑器区域分为左右两部分——左侧为 Markdown 源码编辑器（复用 `m_textEdit`），右侧为第二个独立的 `QWebEngineView` 渲染预览。分屏预览与全屏预览互斥，切换标签页时保留各自状态。右侧预览采用可配置的防抖机制延迟刷新（默认 500ms，可通过设置面板调节），仅在文本变化后更新。分屏比例从 `SettingsManager` 覆盖值读取（默认 50%，可通过设置面板调节），设置变更时实时调整分隔条位置。复用与全屏预览完全相同的 `preparePreviewContent()` 管线、`PreviewPage` 链接拦截和信号转发逻辑。
 - 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
 - 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。分屏预览的 `QWebEngineView` 同样采用延迟初始化（仅在首次进入分屏模式时创建），并共享同一套预处理和更新管线。
-- 五种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`），索引 4 = `QPdfView`（PDF 阅读，使用 `QPdfDocument` 加载）。
+- 六种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`），索引 4 = `QPdfView`（PDF 阅读，使用 `QPdfDocument` 加载），索引 5 = `SmdEditor`（SMD 单元格编辑器）。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
@@ -190,14 +194,15 @@
 - **PDF 导出**：`exportToPdf()` 创建临时隐藏 `QWebEngineView` + 普通 `QWebEnginePage`，通过 `preparePreviewContent()` 预处理 Markdown 内容后注入模板，将 CSS 变量替换为浅色打印主题（白底黑字），设置白色背景后加载页面。`loadFinished` 后通过 JS Promise 轮询等待 Mermaid 异步渲染完成，最后调用 `printToPdf()` 将当前渲染页面直接写入目标文件。完成后发射 `pdfExportCompleted` 信号。
 
 **主要接口**：
-- `bool loadFile(const QString &filePath)`：加载指定文件。`.pdf` 后缀自动切换到 `PdfView` 模式，使用 `QPdfDocument` 加载渲染；已知代码扩展名切换到 `CodeEdit` 模式；其余文件使用 `MarkdownEdit` 模式。成功后更新内部路径并重置修改标记。
+- `bool loadFile(const QString &filePath)`：加载指定文件。`.pdf` 后缀自动切换到 `PdfView` 模式，使用 `QPdfDocument` 加载渲染；`.smd` 后缀自动切换到 `SmdEdit` 模式，通过 `SmdEditor::loadFile()` 解析单元格；已知代码扩展名切换到 `CodeEdit` 模式；其余文件使用 `MarkdownEdit` 模式。成功后更新内部路径并重置修改标记。
 - `bool saveFile()`：保存到当前已打开的路径。如果路径为空则返回 `false`。
 - `bool saveAsFile(const QString &defaultDir = QString())`：弹出文件对话框，另存为指定路径，并更新当前文件路径。 `defaultDir` 参数，可指定对话框的起始目录，为空则使用主文件夹。
 - `QString currentFilePath() const`：返回当前正在编辑的文件路径（可能为空）。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：访问编辑器内容。
 - `bool isModified() const` / `void setModified(bool)`：管理文档修改状态。
 - `void setPreviewMode(bool preview)`：切换预览模式（`true` 显示渲染视图，`false` 显示源码视图）。代码编辑模式下为无操作。首次切换时加载模板页面（`setHtml`），`loadFinished` 后再切换视图栈；后续切换使用 `runJavaScript` 原地更新，通过回调在 JS 渲染完成后才切换以避免闪烁。
-- `bool isPreviewMode() const`：返回当前是否为预览模式（代码编辑模式下始终返回 `false`）。
+- `bool isPreviewMode() const`：返回当前是否为预览模式（代码编辑模式、SMD 编辑模式下始终返回 `false`）。
+- `bool isCodeEdit() const` / `bool isPdfView() const` / `bool isSmdEdit() const`：查询当前编辑模式。
 - `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
 - `void setTagNames(const QStringList &names)`：设置 #tag 自动补全的标签列表。
 - `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
@@ -902,6 +907,151 @@
 - 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。
 - `MainWindow::resizeEvent()` 中处理遮罩层尺寸同步和面板位置约束。
 - `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
+
+---
+
+### 25. `SmdFormat` — SMD 文件格式解析/序列化
+
+**文件**：`smdformat.h`
+
+**职责**：
+- 头文件（header-only）命名空间 `SmdFormat`，提供 `.smd` 文件格式的解析与序列化。
+- 文件格式以 `---smd:<type>` 为单元格分隔符，`type` 可取 `markdown`、`cpp`、`python`。
+- 首个分隔符之前的任何内容视为默认 markdown 单元格（或忽略空内容）。
+- 每个单元格的前导和尾部空白行在解析时自动裁剪。
+
+**数据结构 `SmdFormat::Cell`**：
+- `QString type`：单元格类型（"markdown"/"cpp"/"python"）。
+- `QString content`：单元格文本内容（已裁剪前后空白行）。
+
+**主要接口**：
+- `QList<Cell> parse(const QString &text)`：将原始 `.smd` 文本解析为单元格列表。按行扫描，以正则 `^---smd:(\w+)$` 匹配分隔符，类型名自动转小写。
+- `QString serialize(const QList<Cell> &cells)`：将单元格列表序列化为 `.smd` 格式文本。每单元格写入 `---smd:<type>\n<content>`，单元格间空行分隔，末尾保留一个空行。
+- `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式（桩实现）。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block（\`\`\`cpp / \`\`\`python）。
+- `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表（桩实现）。检测 fenced code block 分隔符并拆分单元格。
+
+**协作关系**：
+- 被 `SmdEditor` 在 `loadFile()` 和 `saveFile()` 中调用以解析和序列化文件内容。
+
+---
+
+### 26. `SmdCell` — SMD 单元格控件
+
+**文件**：`smdcell.h` / `smdcell.cpp`
+
+**职责**：
+- 继承 `QFrame`，表示 `.smd` 文件中的一个单元格（Cell），包含类型标签、编辑器/渲染视图栈和输出区域。
+- 支持三种 `CellType`：`Markdown`、`Cpp`、`Python`。
+- **自适应高度**：编辑器高度根据文档内容动态调整（基于 `blockCount × lineSpacing + padding`，最小 1 行，最大约 40 行），关闭编辑器内部滚动条，整个页面通过父级 `QScrollArea` 统一滚动。
+- **选中视觉效果**：active 状态下四周显示 2px 蓝色边框（`#0078d4`），背景微亮（`#252526`）；非 active 命令模式显示灰色边框（`#3c3c3c`）；编辑模式透明边框。
+
+**布局结构（垂直）**：
+1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
+2. **编辑器/视图栈**（`m_editorStack`，`QStackedWidget`）：
+   - Page 0：编辑器——Markdown 单元格使用 `QPlainTextEdit`（等宽字体、深色主题），C++/Python 单元格使用 `CodeEditor`（带语法高亮和行号）。
+   - Page 1：渲染视图（仅 Markdown）——`QTextBrowser`，通过 `setMarkdown()` 渲染 Markdown 为 HTML。
+3. **输出区域**（`m_outputArea`，`QPlainTextEdit`）：只读，深色终端风格，默认隐藏，执行代码时显示 stdout/stderr。
+
+**主要接口**：
+- `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容。
+- `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
+- `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）。
+- `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。渲染时调用 `m_renderView->setMarkdown()` 并切换栈到第 1 页，取消渲染时切回编辑器。
+- `void showOutput/appendOutput/clearOutput/hideOutput()`：管理输出区域显示。stderr 以红色（`#F48771`）显示。
+- `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染视图）。
+- `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
+- `void applyZoom(qreal factor, int baseFontSize)`：根据缩放因子和基础字号调整编辑器字体大小及行号区域。
+- `void updateEditorHeight()`：根据编辑器文档的行数和字体行高动态计算并设置编辑器固定高度。
+
+**信号**：
+- `void focusEntered()`：编辑器获得焦点时发出，用于 `SmdEditor` 更新选中单元格。
+- `void cellTypeChanged()`：单元格类型变更时发出，用于 `SmdEditor` 重新安装事件过滤器。
+- `void contentChanged()`：内容变更时发出。
+
+**事件处理**：
+- 重写 `eventFilter(QObject*, QEvent*)`：拦截编辑器控件的 `FocusIn` 事件，发射 `focusEntered()` 信号。
+
+**协作关系**：
+- 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
+- 代码单元格通过 `CodeEditor` 和 `LanguageUtils::createHighlighter()` 获取语法高亮。
+- 字体缩放由 `EditorWidget::applyZoom()` → `SmdEditor::applyZoom()` 触发。
+
+---
+
+### 27. `SmdEditor` — SMD 单元格编辑器主控件
+
+**文件**：`smdeditor.h` / `smdeditor.cpp`
+
+**职责**：
+- 继承 `QWidget`，作为 `EditorWidget` 的 `SmdEdit` 模式的内部主控件，管理 `.smd` 文件的加载、保存、单元格编辑和代码执行。
+- 拥有一个 `QScrollArea`，内含 `m_cellContainer`（`QVBoxLayout`），所有 `SmdCell` 竖直排列，超出视口时滚动。
+- 拥有独立的 `ProcessRunner` 实例，用于代码单元格的编译和执行。
+
+**模式管理**：
+- **编辑模式**（默认）：当前活动单元格的编辑器获得焦点，用户可直接输入内容。边框透明。
+- **命令模式**（`Esc` 进入）：所有编辑器失焦，活动单元格显示蓝色边框。通过键盘快捷键操作单元格。
+- 按 `Enter`（命令模式）回到编辑模式；按 `Esc`（编辑模式）进入命令模式。
+
+**命令模式快捷键**：
+| 快捷键 | 功能 |
+|--------|------|
+| `A` | 当前单元格上方插入新单元格（Markdown），弹出语言选择菜单 |
+| `B` | 当前单元格下方插入新单元格（Markdown），弹出语言选择菜单 |
+| `↑` / `↓` | 上下导航单元格 |
+| `Enter`（无 Ctrl） | 进入编辑模式 |
+| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
+| `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
+| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
+| `Delete` | 删除当前单元格（至少保留一个） |
+| `Ctrl+D` | 复制当前单元格到下方 |
+
+**语言选择器（`LangSelectorPopup`）**：
+- 继承 `QFrame`（`Qt::Popup`），深色主题无边框下拉菜单。
+- 三个选项（`QLabel`）：`1. Markdown`、`2. C++`、`3. Python`，默认选中第一个（蓝色高亮背景 `#094771`）。
+- 键盘操作：`↑/↓` 导航、`Enter` 确认、`1/2/3` 直接选择、`Esc` 关闭。
+- 鼠标点击选项直接确认并关闭。
+- 确认后通过回调设置单元格类型，自动进入编辑模式。
+
+**单元格执行**：
+- `executeCurrentCell()`：根据当前活动单元格类型分发执行。
+- **Markdown 单元格**：调用 `SmdCell::setRendered(true)` → `QTextBrowser::setMarkdown()` 渲染。若已渲染则取消渲染。执行后进入命令模式并跳转下一个单元格。
+- **C++ 单元格**：将代码保存到临时文件 → `ProcessRunner::startCompileAndRun()` → stdout/stderr 流式输出到单元格输出区域 → 完成后显示退出码，清理临时文件。
+- **Python 单元格**：将代码保存到临时文件 → `ProcessRunner::startRunPython()` → 输出到单元格输出区域 → 完成后清理临时文件。
+- 执行期间不支持标准输入交互。
+- 临时文件路径：`QDir::tempPath()/smd_cell_<PID>_<counter>.<ext>`。
+
+**文件 I/O**：
+- `loadFile()`：读取文件 → `SmdFormat::parse()` 解析 → `addCell()` 创建单元格。至少保留一个单元格（空文件时默认 Markdown）。
+- `saveFile()`：遍历所有单元格调用 `SmdCell::content()` → `SmdFormat::serialize()` → 写入文件。
+- `saveAsFile()`：通过 `EditorWidget::saveAsFile()` 间接支持（对话框包含 `*.smd` 过滤器）。
+
+**修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
+
+**主要接口**：
+- `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
+- `QString toPlainText() const` / `void setPlainText(const QString &text)`：序列化/反序列化所有单元格内容。
+- `bool isModified() const` / `void setModified(bool modified)`：修改状态管理。
+- `void applyZoom(qreal factor, int baseFontSize)`：遍历所有单元格调用 `SmdCell::applyZoom()`。
+- `void setEditorFont(const QString &family, int size)` / `void reloadColors()`：字体和颜色更新。
+
+**事件处理**：
+- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理所有快捷键（A/B/Enter/Esc/↑/↓/Ctrl+K/Ctrl+Enter/Ctrl+Shift+Z/Delete/Ctrl+D）。
+- 重写 `eventFilter(QObject*, QEvent*)`：拦截编辑模式下编辑器控件的 `Esc`（进入命令模式）和 `Ctrl+Enter`（执行单元格）。
+
+**信号**：
+- `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
+
+**内部类 `LangSelectorPopup`**：
+- 在 `smdeditor.cpp` 中定义，`Q_OBJECT` 宏，MOC 通过 `#include "smdeditor.moc"` 处理。
+- 键盘事件处理：`↑/↓` 导航选项、`Enter` 确认选择并销毁、`1/2/3` 快捷键、`Esc` 取消。
+- 点击 `QLabel` 选项通过 `eventFilter` 检测 `MouseButtonRelease` 并确认选择。
+
+**协作关系**：
+- 由 `EditorWidget` 创建并作为 `QStackedWidget` 的第 5 页（索引 5）。
+- 被 `EditorWidget` 的 `loadFile()`、`saveFile()`、`toPlainText()`、`applyZoom()` 等方法调用调度。
+- 拥有独立的 `ProcessRunner`，通过 `CompilerUtils` 检测编译器。
+- 通过 `SmdFormat` 解析和序列化文件格式。
+- `.smd` 文件扩展名已在 `config.json` 的 `text_files` 数组中注册，使其可被 `TextFileUtils` 和文件浏览器识别。
 
 
 ### 配置存储说明
