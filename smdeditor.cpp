@@ -165,6 +165,7 @@ SmdEditor::SmdEditor(QWidget *parent)
     m_cellLayout = new QVBoxLayout(m_cellContainer);
     m_cellLayout->setContentsMargins(8, 8, 8, 8);
     m_cellLayout->setSpacing(4);
+    m_cellLayout->addStretch();
 
     m_scrollArea->setWidget(m_cellContainer);
     mainLayout->addWidget(m_scrollArea);

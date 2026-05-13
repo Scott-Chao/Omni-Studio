@@ -1122,18 +1122,14 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
     QFileDialog dialog(this, tr("另存为"), startDir);
 
     QStringList filters;
-    if (m_editorMode == SmdEdit) {
-        filters << tr("Smart Markdown文件 (*.smd)")
-                << tr("Markdown文件 (*.md)")
-                << tr("文本文件 (*.txt)")
-                << tr("所有文件 (*)");
+    filters << tr("Markdown文件 (*.md)")
+            << tr("Smart Markdown文件 (*.smd)")
+            << tr("文本文件 (*.txt)")
+            << tr("所有文件 (*)");
+    if (m_editorMode == SmdEdit)
         dialog.setDefaultSuffix("smd");
-    } else {
-        filters << tr("Markdown文件 (*.md)")
-                << tr("文本文件 (*.txt)")
-                << tr("所有文件 (*)");
+    else
         dialog.setDefaultSuffix("md");
-    }
     dialog.setNameFilters(filters);
     dialog.setAcceptMode(QFileDialog::AcceptSave);
 
@@ -1167,6 +1163,20 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
         m_filePath = oldPath;
         return false;
     }
+
+    // 若另存为 .smd 且当前不是 SmdEdit 模式，切换到 SMD 编辑器并显示内容
+    if (QFileInfo(newPath).suffix().compare("smd", Qt::CaseInsensitive) == 0
+        && m_editorMode != SmdEdit) {
+        QString content = toPlainText();
+        m_editorMode = SmdEdit;
+        m_smdEditor->setFilePath(newPath);
+        m_smdEditor->setPlainText(content);
+        m_smdEditor->setModified(false);
+        m_stackedWidget->setCurrentWidget(m_smdEditor);
+        applyZoom();
+        setModified(false);
+    }
+
     return true;
 }
 
