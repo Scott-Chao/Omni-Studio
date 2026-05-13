@@ -11,6 +11,7 @@
 #include <atomic>
 #include <memory>
 
+class ActivityBar;
 class TabManager;
 class FileExplorerWidget;
 class EditorWidget;
@@ -46,6 +47,7 @@ public:
 private:
     Ui::MainWindow *ui;
     SettingsManager *m_settings; // 配置信息
+    ActivityBar *m_activityBar; // 活动栏（左侧竖条按钮）
     FileExplorerWidget *m_explorer; // 文件浏览器控件
     QSplitter *m_splitter; // 分隔条
     TabManager *m_tabManager; // 标签页栏

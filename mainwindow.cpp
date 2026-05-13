@@ -10,6 +10,7 @@
 #include "backlinkspanel.h"
 #include "searchpanel.h"
 #include "fileutils.h"
+#include "activitybar.h"
 #include "rightpanelcontainer.h"
 #include "processrunner.h"
 #include "outputpanel.h"
@@ -516,6 +517,9 @@ MainWindow::MainWindow(QWidget *parent)
         );
     }
 
+    // 左侧活动栏（搜索/设置/导出PDF/评测）
+    m_activityBar = new ActivityBar(this);
+
     // 右侧垂直分割线：编辑器在上，输出面板在下
     m_rightSplitter = new QSplitter(Qt::Vertical, this);
     m_rightSplitter->addWidget(m_tabManager);
@@ -523,8 +527,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
+    m_splitter->addWidget(m_activityBar);
     m_splitter->addWidget(m_explorer);
     m_splitter->addWidget(m_rightSplitter);
+    m_splitter->setStretchFactor(0, 0);
+    m_splitter->setStretchFactor(1, 0);
+    m_splitter->setStretchFactor(2, 1);
     setCentralWidget(m_splitter);
 
     // 当标签页切换时，更新缩放标签并重新连接当前编辑器的缩放信号
@@ -552,6 +560,36 @@ MainWindow::MainWindow(QWidget *parent)
         bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
         m_exportPdfAction->setVisible(isMd);
         m_exportPdfAction->setEnabled(isMd);
+        m_activityBar->setExportPdfVisible(isMd);
+    });
+
+    // ActivityBar 信号连接
+    connect(m_activityBar, &ActivityBar::searchClicked, this, [this]() {
+        if (m_dockSearch->isVisible()) {
+            m_dockSearch->hide();
+        } else {
+            m_dockSearch->show();
+            m_dockSearch->raise();
+            m_searchPanel->focusSearchInput();
+        }
+    });
+    connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
+    connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
+    connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
+        if (m_dockJudge->isVisible()) {
+            m_dockJudge->hide();
+        } else {
+            m_dockJudge->show();
+            m_dockJudge->raise();
+        }
+    });
+
+    // 同步 ActivityBar 激活状态与面板可见性
+    connect(m_dockSearch, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        m_activityBar->setSearchActive(visible);
+    });
+    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        m_activityBar->setJudgeActive(visible);
     });
 
     // 初始连接
