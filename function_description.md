@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.10）
+## 功能说明文档（v0.5.11）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -34,12 +34,8 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 新增（v0.5.10）
-- 自定义标题栏与无边框窗口：隐藏系统原生标题栏（`Qt::FramelessWindowHint`），将工具栏上移至标题栏位置，窗口标题设为 "Smart Markdown"。
-  工具栏右侧新增最小化、最大化/还原、关闭三个窗口控制按钮，使用 Windows 系统原生图标（`QStyle::SP_TitleBarMinButton` / `SP_TitleBarMaxButton` / `SP_TitleBarNormalButton` / `SP_TitleBarCloseButton`）。按钮类 `CaptionBtn` 通过 `enterEvent`/`leaveEvent` + `repaint()` + `QPainter::fillRect` 自绘 hover 背景，避免 Qt stylesheet `:hover` 伪类重解析导致的响应延迟，关闭按钮 hover 红色背景（`#c42b1c`）。最大化/还原状态自动切换图标。
-  窗口管理：工具栏空白区域拖拽移动窗口（`startSystemMove()`），双击切换最大化/还原；最大化状态拖拽自动还原并定位到鼠标位置后启动移动（`showNormal()` + `processEvents()` + `move()`）。窗口边缘 10px 范围内支持拖拽缩放，由 `WM_NCHITTEST`（系统级）和 `event()`（Qt 级）双重保障。窗口创建时通过 `SetWindowLongPtr` 添加 `WS_THICKFRAME` 样式以启用 Aero Snap 窗口贴靠；`nativeEvent` 中 `WM_NCCREATE` 确保样式不被覆盖。
-  编译链接新增 `user32.lib`（用于 `GetWindowLongPtr`、`SetWindowLongPtr`、`GetWindowRect` 等 Win32 API）。
-  相关文件：`mainwindow.h`（新增 `CaptionBtn*` 成员、`setupCustomTitleBar()`、`event()`、`nativeEvent()`、`changeEvent()`）、`mainwindow.cpp`（新增 `CaptionBtn` 类、`setupCustomTitleBar()` 实现、无边框窗口管理代码）、`mainwindow.ui`（标题更新）、`smart-markdown.pro`（新增 `user32.lib`）。
+### 修复（v0.5.11）
+修复了语法高亮时将单行注释中的一些数字/关键字被错误高亮的问题（如'# [1, 2, 3]'等）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -601,13 +597,13 @@
 
 **职责**：
 - 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
-- 高亮规则按优先级排列（先匹配优先），具体颜色方案：
+- 高亮规则具体颜色方案：
   - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。
   - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
   - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。
-  - **字符串**（`#CE9178`）：双引号字符串，支持转义字符。
+  - **字符串**（`#CE9178`）：双引号字符串、单引号字符字面量、原始字符串字面量，均支持转义字符。
   - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
-  - **单行注释**（`#6A9955`）：`// ...`
+  - **单行注释**（`#6A9955`）：`// ...`，通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `"..."` 字符串和 `'...'` 字符字面量状态，仅在字符串外检测到 `//` 时应用注释格式，避免误将字符串内的 `//` 着色为注释。
   - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。
 
 **协作关系**：
@@ -627,9 +623,9 @@
 - 常量（`True`/`False`/`None`）：蓝色加粗。
 - 装饰器（`@` 开头）：紫色 `#C586C0`。
 - `self`/`cls`：黄色 `#DCDCAA`。
-- 字符串（普通、f-string、raw string）：橙色 `#CE9178`。
+- 字符串（普通、f-string、raw string，含前缀 `f`/`r`/`b`/`u`）：橙色 `#CE9178`。
 - 数字：绿色 `#B5CEA8`。
-- 注释（`#` 行）：绿色 `#6A9955`。
+- **注释**（`# 行`）：绿色 `#6A9955`。注释通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `'...'` 和 `"..."` 字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。这确保了注释内部的数字、字符串、关键字等内容不会被其他规则错误高亮（例如 `# {1:[2]}` 中 `1` 和 `2` 不会被错误着色为数字），同时字符串内部的 `#` 不会被误当作注释（例如 `x = "# not a comment"`）。
 - 三引号字符串（`"""` / `'''`）：绿色，支持跨行块状态跟踪。
 
 **协作关系**：

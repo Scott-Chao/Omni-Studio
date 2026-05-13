@@ -6,14 +6,8 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
 {
     const auto &cfg = ConfigManager::instance();
 
-    // --- Comment format (dim green) ---
+    // --- Comment format (dim green, applied in highlightBlock via string-aware scanner) ---
     m_commentFormat.setForeground(cfg.syntaxComments());
-    {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#[^\n]*"));
-        rule.format = m_commentFormat;
-        m_rules.append(rule);
-    }
 
     // --- Decorator format (purple) ---
     m_decoratorFormat.setForeground(cfg.syntaxPythonDecorators());
@@ -169,6 +163,35 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         while (it.hasNext()) {
             QRegularExpressionMatch match = it.next();
             setFormat(match.capturedStart(), match.capturedLength(), rule.format);
+        }
+    }
+
+    // Apply comment format (# to end of line) — string-aware: skip # inside quoted strings
+    {
+        bool inString = false;
+        QChar stringChar;
+        for (int i = 0; i < text.length(); ++i) {
+            if (!inString) {
+                if (text[i] == u'\'' || text[i] == u'"') {
+                    // Skip triple-quoted strings (handled separately below)
+                    if (i + 2 < text.length() && text[i] == text[i+1] && text[i] == text[i+2]) {
+                        i += 2;
+                        continue;
+                    }
+                    inString = true;
+                    stringChar = text[i];
+                } else if (text[i] == u'#') {
+                    setFormat(i, text.length() - i, m_commentFormat);
+                    break;
+                }
+            } else {
+                if (text[i] == u'\\') {
+                    ++i; // skip escaped character
+                    continue;
+                }
+                if (text[i] == stringChar)
+                    inString = false;
+            }
         }
     }
 
