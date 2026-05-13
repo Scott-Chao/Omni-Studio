@@ -28,12 +28,9 @@ inline QList<Cell> parse(const QString &text)
             return;
         if (currentType.isEmpty())
             currentType = QStringLiteral("markdown");
-        // Trim trailing blank lines
-        while (!currentContent.isEmpty() && currentContent.last().trimmed().isEmpty())
+        // Trim one trailing blank line to strip cell separator ambiguity
+        if (!currentContent.isEmpty() && currentContent.last().trimmed().isEmpty())
             currentContent.removeLast();
-        // Trim leading blank lines
-        while (!currentContent.isEmpty() && currentContent.first().trimmed().isEmpty())
-            currentContent.removeFirst();
         Cell cell;
         cell.type = currentType;
         cell.content = currentContent.join(QLatin1Char('\n'));
@@ -65,7 +62,6 @@ inline QString serialize(const QList<Cell> &cells)
         if (i < cells.size() - 1)
             result.append(QString()); // blank line between cells
     }
-    result.append(QString()); // trailing newline
     return result.join(QLatin1Char('\n'));
 }
 

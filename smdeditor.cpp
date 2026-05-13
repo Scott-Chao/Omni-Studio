@@ -253,8 +253,12 @@ void SmdEditor::setPlainText(const QString &text)
         }
     }
 
-    if (!m_cells.isEmpty())
+    if (!m_cells.isEmpty()) {
+        // 清除所有单元格的默认高亮，再激活第一个
+        for (SmdCell *c : m_cells)
+            c->setActive(false);
         setActiveCell(0);
+    }
     m_commandMode = false;
 }
 
@@ -434,6 +438,7 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
 
     // Auto-scroll to keep cursor visible when cell height grows (e.g., Enter)
     connect(cell, &SmdCell::contentChanged, this, [this, cell]() {
+        emit contentChanged();
         if (m_commandMode || m_cells.indexOf(cell) != m_activeCellIndex)
             return;
         if (auto *pte = qobject_cast<QPlainTextEdit*>(cell->editorWidget())) {

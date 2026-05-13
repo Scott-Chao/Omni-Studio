@@ -666,3 +666,13 @@ void CodeEditor::clearSearchHighlights()
     m_searchHighlights.clear();
     highlightCurrentLine();
 }
+
+void CodeEditor::clearCurrentLineHighlight()
+{
+    setExtraSelections(m_searchHighlights);
+}
+
+void CodeEditor::refreshCurrentLineHighlight()
+{
+    highlightCurrentLine();
+}

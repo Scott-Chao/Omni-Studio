@@ -224,6 +224,12 @@ void SmdCell::setActive(bool active)
 {
     m_active = active;
     updateBorderStyle();
+    if (m_codeEditor) {
+        if (active)
+            m_codeEditor->refreshCurrentLineHighlight();
+        else
+            m_codeEditor->clearCurrentLineHighlight();
+    }
 }
 
 void SmdCell::setRendered(bool rendered)

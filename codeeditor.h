@@ -24,6 +24,8 @@ public:
 
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
+    void clearCurrentLineHighlight();
+    void refreshCurrentLineHighlight();
     void refreshLineNumberArea();
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);

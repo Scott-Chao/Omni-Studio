@@ -36,6 +36,7 @@ signals:
     void modificationChanged(bool modified);
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
+    void contentChanged();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

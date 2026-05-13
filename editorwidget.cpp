@@ -256,6 +256,10 @@ EditorWidget::EditorWidget(QWidget *parent)
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, [this]() {
         m_contentCheckTimer.start();
     });
+    connect(m_smdEditor, &SmdEditor::contentChanged, this, [this]() {
+        if (m_editorMode == SmdEdit)
+            m_contentCheckTimer.start();
+    });
     m_originalContent = toPlainText(); // 记录当前内容，用于内容比较
 }
 
@@ -1413,6 +1417,10 @@ bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
 
 void EditorWidget::onContentCheckTimeout()
 {
+    if (m_editorMode == SmdEdit) {
+        setModified(m_smdEditor->isModified());
+        return;
+    }
     // 检查文件内容是否被修改
     bool contentChanged = (toPlainText() != m_originalContent);
     if (isModified() != contentChanged) {
