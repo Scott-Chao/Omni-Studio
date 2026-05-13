@@ -302,6 +302,7 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
 
     for (int i = layoutIdx; i < m_cells.size(); ++i) {
         disconnect(m_cells[i], &SmdCell::focusEntered, nullptr, nullptr);
+        disconnect(m_cells[i], &SmdCell::contentChanged, nullptr, nullptr);
         connectCellSignals(m_cells[i], i);
     }
 
@@ -330,6 +331,7 @@ void SmdEditor::removeCell(int index)
 
     for (int i = 0; i < m_cells.size(); ++i) {
         disconnect(m_cells[i], &SmdCell::focusEntered, nullptr, nullptr);
+        disconnect(m_cells[i], &SmdCell::contentChanged, nullptr, nullptr);
         connectCellSignals(m_cells[i], i);
     }
 }
@@ -428,6 +430,18 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
     connect(cell, &SmdCell::cellTypeChanged, this, [this, cell]() {
         if (QWidget *ed = cell->editorWidget())
             ed->installEventFilter(this);
+    });
+
+    // Auto-scroll to keep cursor visible when cell height grows (e.g., Enter)
+    connect(cell, &SmdCell::contentChanged, this, [this, cell]() {
+        if (m_commandMode || m_cells.indexOf(cell) != m_activeCellIndex)
+            return;
+        if (auto *pte = qobject_cast<QPlainTextEdit*>(cell->editorWidget())) {
+            QRect cr = pte->cursorRect();
+            // Map cursor bottom to scroll area content widget coordinates
+            QPoint cursorBottom = pte->viewport()->mapTo(m_cellContainer, cr.bottomLeft());
+            m_scrollArea->ensureVisible(cursorBottom.x(), cursorBottom.y(), 0, 30);
+        }
     });
 }
 

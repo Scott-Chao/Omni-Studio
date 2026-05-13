@@ -106,6 +106,7 @@ void SmdCell::setupMarkdownEditor()
     m_markdownEditor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_markdownEditor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_markdownEditor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_markdownEditor->document()->setDocumentMargin(0);
     const auto &cfg = ConfigManager::instance();
     auto &sm = SettingsManager::instance();
     QString family = sm.value("editor.font.family", cfg.editorFontFamily()).toString();
@@ -136,6 +137,7 @@ void SmdCell::setupCodeEditor(const QString &langId)
     m_codeEditor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_codeEditor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_codeEditor->setTabChangesFocus(false);
+    m_codeEditor->document()->setDocumentMargin(0);
 
     connect(m_codeEditor->document(), &QTextDocument::blockCountChanged,
             this, &SmdCell::updateEditorHeight);
@@ -352,13 +354,11 @@ void SmdCell::updateEditorHeight()
     int minH = lineSpacing + padding;
     if (contentH < minH)
         contentH = minH;
-    int maxH = lineSpacing * 40 + padding; // cap at ~40 lines
-    if (contentH > maxH)
-        contentH = maxH;
 
     ed->setFixedHeight(contentH);
     m_editorStack->setFixedHeight(contentH);
     updateGeometry();
+    emit contentChanged();
 }
 
 void SmdCell::updateTypeLabel()
