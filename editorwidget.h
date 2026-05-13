@@ -8,6 +8,7 @@
 #include <QVBoxLayout>
 #include <QTimer>
 #include <QSplitter>
+#include <QPageLayout>
 #include <functional>
 
 class WikiLinkTextEdit;
@@ -80,6 +81,9 @@ public:
     void setRecoveryTempPath(const QString &path) { m_recoveryTempPath = path; }
     QString autoSaveRecoveryDir() const; // 恢复文件目录路径（静态）
 
+    // PDF 导出
+    void exportToPdf(const QString &filePath, const QPageLayout &layout);
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
@@ -91,6 +95,7 @@ signals:
     void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
     void runCodeBlockRequested(const QString &language, const QString &code); // 转发代码块运行请求
     void tagClicked(const QString &tag); // 点击 #tag 时发出
+    void pdfExportCompleted(const QString &filePath, bool success); // PDF 导出完成
 
 private slots:
     void onTextChanged();

@@ -35,6 +35,8 @@
 #include <QTextStream>
 #include <QCoreApplication>
 #include <QDir>
+#include <QPageSize>
+#include <QWebEngineView>
 
 // 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
 static void previewLog(const QString &msg)
@@ -820,6 +822,90 @@ QString EditorWidget::preparePreviewContent(const QString &rawMarkdown)
     content = TagIndex::processTagsForPreview(content);
     content.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
     return content;
+}
+
+void EditorWidget::exportToPdf(const QString &filePath, const QPageLayout &layout)
+{
+    // 1. Prepare the HTML from current markdown content
+    QString mdContent = toPlainText();
+    QString processedContent = preparePreviewContent(mdContent);
+
+    // 2. Read the preview template
+    QFile tmplFile(QStringLiteral(":/preview/template.html"));
+    if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        emit pdfExportCompleted(filePath, false);
+        return;
+    }
+    QString tmpl = QString::fromUtf8(tmplFile.readAll());
+    tmplFile.close();
+
+    // 3. Inject content into template
+    tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), processedContent);
+
+    // 4. Override CSS variables to light/print-friendly theme (PDF needs white bg, dark text)
+    tmpl.replace(QStringLiteral("--bg: #2d2d2d;"),     QStringLiteral("--bg: #ffffff;"));
+    tmpl.replace(QStringLiteral("--fg: #e0e0e0;"),     QStringLiteral("--fg: #1e1e1e;"));
+    tmpl.replace(QStringLiteral("--code-bg: #1e1e1e;"),QStringLiteral("--code-bg: #f5f5f5;"));
+    tmpl.replace(QStringLiteral("--border: #555;"),     QStringLiteral("--border: #ddd;"));
+    tmpl.replace(QStringLiteral("--link: #569cd6;"),    QStringLiteral("--link: #1a73e8;"));
+    tmpl.replace(QStringLiteral("--heading: #ffffff;"), QStringLiteral("--heading: #000000;"));
+    tmpl.replace(QStringLiteral("--blockquote: #aaa;"), QStringLiteral("--blockquote: #666;"));
+    tmpl.replace(QStringLiteral("--th-bg: #3c3c3c;"),   QStringLiteral("--th-bg: #f0f0f0;"));
+    tmpl.replace(QStringLiteral("--hr: #444;"),          QStringLiteral("--hr: #ccc;"));
+
+    // 5. Create a hidden, off-screen WebEngine view for rendering
+    QWebEngineView *pdfView = new QWebEngineView();
+    pdfView->resize(1024, 768);
+    QWebEnginePage *pdfPage = new QWebEnginePage(pdfView);
+    pdfView->setPage(pdfPage);
+
+    // 6. White background for print-friendly PDF
+    pdfPage->setBackgroundColor(Qt::white);
+
+    // 7. Load the page. When done, poll for Mermaid async completion, then print to PDF.
+    connect(pdfPage, &QWebEnginePage::loadFinished, this,
+        [this, pdfView, pdfPage, filePath, layout](bool ok) {
+            if (!ok) {
+                pdfView->deleteLater();
+                emit pdfExportCompleted(filePath, false);
+                return;
+            }
+
+            // 8. Wait for Mermaid async rendering (if any mermaid blocks exist)
+            pdfPage->runJavaScript(
+                QStringLiteral(
+                    "new Promise(function(resolve) {"
+                    "  var check = function() {"
+                    "    var mermaidEls = document.querySelectorAll('.mermaid');"
+                    "    var svgEls = document.querySelectorAll('.mermaid svg');"
+                    "    if (mermaidEls.length === 0 || mermaidEls.length === svgEls.length) {"
+                    "      resolve(true);"
+                    "    } else {"
+                    "      setTimeout(check, 100);"
+                    "    }"
+                    "  };"
+                    "  check();"
+                    "});"
+                ),
+                [this, pdfView, filePath, layout](const QVariant &) {
+                    // 9. Mermaid done (or no mermaid blocks). Print to PDF.
+                    pdfView->page()->printToPdf(
+                        [this, pdfView, filePath](const QByteArray &pdfData) {
+                            // 10. Write PDF to disk
+                            QFile outFile(filePath);
+                            bool ok = outFile.open(QIODevice::WriteOnly)
+                                      && outFile.write(pdfData) == pdfData.size();
+                            outFile.close();
+                            emit pdfExportCompleted(filePath, ok);
+                            // 11. Clean up
+                            pdfView->deleteLater();
+                        },
+                        layout);
+                });
+        });
+
+    // 12. Start loading the page
+    pdfView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 }
 
 QString EditorWidget::injectHeadingAnchors(const QString &markdown)

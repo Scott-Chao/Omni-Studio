@@ -1,4 +1,4 @@
-## 功能说明文档（v0.5.13）
+## 功能说明文档（v0.5.14）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -34,10 +34,8 @@
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 
-### 新增 v0.5.13
-- OpenJudge 临时缓存目录：每次选择题目时，不再创建带时间戳的唯一文件夹，改为使用固定临时文件夹 `SM-OJ-Cache`，每次选择时清空并写入新的测试用例，避免累积临时文件夹。同时移除了不再需要的 `#include <QDateTime>`。
-- "选择此题目"按钮支持选中/取消选中切换：点击后按钮文本变为"已选择"，颜色从 `#0078D4` 变为更浅的 `#4A9BE0`；再次点击取消选中，按钮恢复原样。切换查看其他题目或返回时自动取消选中状态。
-- 提交时校验题目选中状态：若题目尚未选中（已取消选中），提交操作会提示"请先在 OpenJudge 中选择一道题目"，阻止无效提交。
+### 新增 v0.5.14
+- PDF 导出：工具栏新增"导出PDF"按钮（快捷键 `Ctrl+E`），将当前 Markdown 笔记通过 WebEngine 渲染引擎导出为 PDF 文件。导出时自动切换为白底黑字的打印友好主题，支持 KaTeX 公式和 Mermaid 图表的正确渲染。仅对 `.md` 文件可见。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -51,9 +49,9 @@
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
 - 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
-- 管理工具栏，包括文件操作（新建、保存、另存为）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。
+- 管理工具栏，包括文件操作（新建、保存、另存为、导出PDF）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。导出PDF按钮仅 `.md` 文件可见。
 - 支持以下快捷键：
-  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
+  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放至设置面板中配置的默认缩放比例
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
@@ -83,6 +81,7 @@
 - `void newFile()`：转发给 `TabManager::newFile`。
 - `void saveFile()`：若当前文件无路径则调用 `onSaveFileAs()`（使用记忆路径），否则直接调用编辑器的 `saveFile()`。
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
+- `void onExportPdf()`：弹出保存对话框，将当前 Markdown 文档通过新建隐藏 WebEngine 视图渲染后导出为 PDF，完成后在状态栏显示结果。
 - `void onOpenFolder()`：从配置读取上次打开的目录，调用文件浏览器的 `selectFolder()`。
 - `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。
 - `void loadSettings()` / `void saveSettings()`：配置读写。`loadSettings()` 中若无保存分割状态，默认设置左侧文件树与右侧编辑区拉伸比例为 1:4。
@@ -187,6 +186,7 @@
 - 预览内容预处理：`preparePreviewContent()` 统一编排预处理管线——先调用 `preHighlightCodeBlocks()` 对 fenced 代码块进行 C++ 端语法高亮（`highlightCodeBlock()` 使用直接正则匹配 + ConfigManager 颜色生成内联样式 HTML，经 Base64 编码后以 ````highlighted``` 自定义围栏块形式交给 marked.js 解码透传），再调用 `processWikiLinks()` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">`（使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]`，链接目标通过 `QUrl::toPercentEncoding` 编码），接着通过 `TagIndex::processTagsForPreview()` 将 `#tag` 转换为 `<a href="tag:tag">#tag</a>`，最后转义 `</script>` 防止 HTML 注入。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:`、`tag:`、`runblock:` scheme 的导航请求并发出对应信号，外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
 - Mermaid 图表支持：通过 Mermaid.js 将 ` ```mermaid ` 代码块渲染为 SVG 图表，支持流程图、时序图、甘特图等。
+- **PDF 导出**：`exportToPdf()` 创建临时隐藏 `QWebEngineView` + 普通 `QWebEnginePage`，通过 `preparePreviewContent()` 预处理 Markdown 内容后注入模板，将 CSS 变量替换为浅色打印主题（白底黑字），设置白色背景后加载页面。`loadFinished` 后通过 JS Promise 轮询等待 Mermaid 异步渲染完成，最后调用 `printToPdf()` 将当前渲染页面直接写入目标文件。完成后发射 `pdfExportCompleted` 信号。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)`：加载指定文件，成功后更新内部路径并重置修改标记。
@@ -213,6 +213,7 @@
 - `void setFilePath(const QString &newPath)`：更新当前编辑器的文件路径（不改变文档内容），用于外部重命名后同步。
 - `void setSplitPreviewDebounceMs(int ms)`：动态更新分屏预览的防抖延迟间隔，用于设置面板实时调整。
 - `void applySplitPreviewRatio()`：从 `SettingsManager` 读取最新的分屏比例值并立即调整 `QSplitter` 分隔条位置。
+- `void exportToPdf(const QString &filePath, const QPageLayout &layout)`：将当前 Markdown 内容通过临时隐藏 QWebEngineView 渲染后导出为 PDF。
 
 **信号**：
 - `void fileLoaded(const QString &filePath)`
@@ -223,6 +224,7 @@
 - `void wikiLinkClicked(const QString &fileName)`：当预览模式下的 WikiLink 被点击时发出。
 - `void runCodeBlockRequested(const QString &language, const QString &code)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码并转发。
 - `void tagClicked(const QString &tag)`：预览模式下点击 `#tag` 链接时发出，由 PreviewPage 拦截 `tag:` scheme 后转发。
+- `void pdfExportCompleted(const QString &filePath, bool success)`：PDF 导出完成时发出，供主窗口显示状态信息。
 
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。

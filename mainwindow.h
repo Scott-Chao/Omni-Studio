@@ -58,6 +58,7 @@ private slots:
     void onFileSelected(const QString &filePath); // 选中文件（打开）
     void saveFile(); // 保存文件
     void onSaveFileAs(); // 另存为
+    void onExportPdf(); // 导出 PDF
     void newFile(); // 新建文件
     void saveSettings(); // 保存设置
     void onOpenFolder(); // 打开文件夹
@@ -106,6 +107,7 @@ private:
     // 预览模式激活状态调整
     QAction *m_previewAction = nullptr;
     QAction *m_splitPreviewAction = nullptr;
+    QAction *m_exportPdfAction = nullptr;
     void updatePreviewActionState();
     void updateSplitPreviewActionState();
     // 历史记录

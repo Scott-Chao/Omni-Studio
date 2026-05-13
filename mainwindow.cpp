@@ -28,6 +28,11 @@
 #include <QPainter>
 #include <QTextStream>
 #include <QCoreApplication>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QPageLayout>
+#include <QPageSize>
+#include <QStatusBar>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <windowsx.h>
@@ -384,6 +389,13 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->addAction(saveAsAction);
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::onSaveFileAs);
 
+    // 导出PDF（快捷键Ctrl+E）
+    m_exportPdfAction = new QAction("导出PDF", this);
+    m_exportPdfAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
+    addAction(m_exportPdfAction);
+    toolBar->addAction(m_exportPdfAction);
+    connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::onExportPdf);
+
     toolBar->addSeparator();
 
     // 预览（快捷键Ctrl+Shift+P）
@@ -596,6 +608,11 @@ MainWindow::MainWindow(QWidget *parent)
         m_runAction->setEnabled(isCode && !running);
         m_compileRunAction->setVisible(isCode);
         m_compileRunAction->setEnabled(isCode && !running);
+
+        // 导出PDF按钮仅对 .md 文件可见
+        bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
+        m_exportPdfAction->setVisible(isMd);
+        m_exportPdfAction->setEnabled(isMd);
     });
 
     // 初始连接
@@ -702,6 +719,55 @@ void MainWindow::onSaveFileAs()
         refreshBacklinks();
         refreshTags();
     }
+}
+
+void MainWindow::onExportPdf()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) return;
+
+    // 构造默认文件名和路径
+    QString defaultName = QStringLiteral("untitled.pdf");
+    QString lastDir = m_settings->lastSaveAsFolderPath(QDir::homePath());
+    if (!editor->currentFilePath().isEmpty()) {
+        QFileInfo info(editor->currentFilePath());
+        defaultName = info.completeBaseName() + QStringLiteral(".pdf");
+        lastDir = info.absolutePath();
+    }
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("导出为PDF"),
+        lastDir + QStringLiteral("/") + defaultName,
+        tr("PDF文件 (*.pdf)"));
+
+    if (filePath.isEmpty())
+        return;
+
+    // 记忆导出目录
+    m_settings->setLastSaveAsFolderPath(QFileInfo(filePath).absolutePath());
+
+    // A4 纵向，20mm 侧边距，25mm 上下边距
+    QPageLayout pageLayout(
+        QPageSize(QPageSize::A4),
+        QPageLayout::Portrait,
+        QMarginsF(20, 25, 20, 25),
+        QPageLayout::Millimeter);
+
+    // 单次连接导出完成信号
+    connect(editor, &EditorWidget::pdfExportCompleted, this,
+        [this](const QString &path, bool success) {
+            if (success) {
+                statusBar()->showMessage(
+                    tr("PDF 导出成功: %1").arg(QFileInfo(path).fileName()), 5000);
+            } else {
+                QMessageBox::warning(this, tr("导出失败"),
+                    tr("无法导出 PDF：%1").arg(path));
+            }
+        },
+        Qt::SingleShotConnection);
+
+    editor->exportToPdf(filePath, pageLayout);
 }
 
 // ----- 转发给FileExplorerWidget的槽函数 -----

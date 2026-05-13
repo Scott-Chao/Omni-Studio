@@ -506,6 +506,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["stop_in_output"] = "Ctrl+C";
     shortcuts["paste_in_output"] = "Ctrl+V";
     shortcuts["delete_file"] = "Delete";
+    shortcuts["export_pdf"] = "Ctrl+E";
     root["shortcuts"] = shortcuts;
 
     return root;
