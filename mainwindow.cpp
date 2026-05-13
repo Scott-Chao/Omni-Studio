@@ -10,6 +10,7 @@
 #include "backlinkspanel.h"
 #include "searchpanel.h"
 #include "fileutils.h"
+#include "rightpanelcontainer.h"
 #include "processrunner.h"
 #include "outputpanel.h"
 #include "judgepanel.h"
@@ -140,48 +141,35 @@ MainWindow::MainWindow(QWidget *parent)
                      GetWindowLongPtr(hwnd, GWL_STYLE) | WS_THICKFRAME);
 #endif
 
-    // 创建历史记录面板
-    m_historyPanel = new HistoryPanel(m_settings, this);
-    m_historyPanel->loadHistory();
-    connect(m_historyPanel, &HistoryPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
-
-    // 将面板放入 QDockWidget，放在右侧
-    m_dockHistory = new QDockWidget(tr("历史记录"), this);
-    m_dockHistory->setWidget(m_historyPanel);
-    m_dockHistory->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::RightDockWidgetArea, m_dockHistory);
-
-    m_dockHistory->hide(); // 默认隐藏历史记录
-
-    // 左右侧边栏互斥：当右侧面板显示时隐藏左侧搜索面板
-    connect(m_dockHistory, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
-    });
-
-    // 工具栏最左侧插入显示/隐藏面板的按钮
-    toggleHistoryAction = m_dockHistory->toggleViewAction();
-    toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
-    toggleHistoryAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_history", "Ctrl+H")));
-
-    // 创建反向链接索引与面板
+    // 创建反向链接索引与标签索引（独立于面板）
     m_backlinkIndex = new BacklinkIndex;
+    m_tagIndex = new TagIndex;
 
-    m_backlinksPanel = new BacklinksPanel(this);
-    connect(m_backlinksPanel, &BacklinksPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
+    // 统一右侧面板（历史/大纲/标签/反链）
+    m_rightPanel = new RightPanelContainer(m_settings, this);
+    connect(m_rightPanel, &RightPanelContainer::fileClicked, this, &MainWindow::onHistoryFileClicked);
+    connect(m_rightPanel, &RightPanelContainer::tagClicked, this, &MainWindow::onTagClicked);
+    connect(m_rightPanel, &RightPanelContainer::headingClicked, this, [this](int line, const QString &) {
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (editor)
+            editor->navigateToLine(line);
+    });
 
-    m_dockBacklinks = new QDockWidget(tr("反向链接"), this);
-    m_dockBacklinks->setWidget(m_backlinksPanel);
-    m_dockBacklinks->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::RightDockWidgetArea, m_dockBacklinks);
-    m_dockBacklinks->hide();
+    m_dockRightPanel = new QDockWidget(tr("面板"), this);
+    m_dockRightPanel->setWidget(m_rightPanel);
+    m_dockRightPanel->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockRightPanel);
+    m_dockRightPanel->hide();
 
-    connect(m_dockBacklinks, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+    connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         if (visible) m_dockSearch->hide();
     });
 
-    toggleBacklinksAction = m_dockBacklinks->toggleViewAction();
-    toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
-    toggleBacklinksAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_backlinks", "Ctrl+Shift+B")));
+    toggleRightPanelAction = m_dockRightPanel->toggleViewAction();
+    toggleRightPanelAction->setToolTip(tr("显示/隐藏右侧面板 (历史/大纲/标签/反链)"));
+    toggleRightPanelAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_right_panel", "Ctrl+Shift+E")));
+
+    m_rightPanel->historyPanel()->loadHistory();
 
     // 创建搜索面板
     m_searchPanel = new SearchPanel(this);
@@ -203,10 +191,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (visible) {
             m_searchPanel->focusSearchInput();
             // 隐藏所有右侧面板
-            m_dockHistory->hide();
-            m_dockBacklinks->hide();
-            m_dockTag->hide();
-            m_dockOutline->hide();
+            m_dockRightPanel->hide();
             m_dockJudge->hide();
         }
     });
@@ -286,48 +271,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
             this, &MainWindow::onSubmitToOpenJudge);
 
-    // ----- 标签面板 -----
-    m_tagIndex = new TagIndex;
-
-    m_tagPanel = new TagPanel(this);
-    connect(m_tagPanel, &TagPanel::fileClicked, this, &MainWindow::onHistoryFileClicked);
-    connect(m_tagPanel, &TagPanel::tagClicked, this, &MainWindow::onTagClicked);
-
-    m_dockTag = new QDockWidget(tr("标签"), this);
-    m_dockTag->setWidget(m_tagPanel);
-    m_dockTag->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::RightDockWidgetArea, m_dockTag);
-    m_dockTag->hide();
-
-    connect(m_dockTag, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
-    });
-
-    toggleTagAction = m_dockTag->toggleViewAction();
-    toggleTagAction->setToolTip(tr("显示/隐藏标签"));
-    toggleTagAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_tags", "Ctrl+Shift+T")));
-
-    // ----- 大纲面板 -----
-    m_outlinePanel = new OutlinePanel(this);
-    connect(m_outlinePanel, &OutlinePanel::headingClicked, this, [this](int line, const QString &) {
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor)
-            editor->navigateToLine(line);
-    });
-
-    m_dockOutline = new QDockWidget(tr("大纲"), this);
-    m_dockOutline->setWidget(m_outlinePanel);
-    m_dockOutline->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::RightDockWidgetArea, m_dockOutline);
-    m_dockOutline->hide();
-
-    connect(m_dockOutline, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
-    });
-
-    toggleOutlineAction = m_dockOutline->toggleViewAction();
-    toggleOutlineAction->setToolTip(tr("显示/隐藏大纲"));
-    toggleOutlineAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_outline", "Ctrl+Shift+O")));
+    // 标签索引已随 m_backlinkIndex 在上方创建
+    // 标签/大纲面板已集成到 m_rightPanel 中
 
     // ----- 工具栏 -----
     QToolBar *toolBar = addToolBar("文件工具栏");
@@ -343,19 +288,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
     toolBar->insertAction(nullptr, m_settingsAction);
 
-    // 历史记录
-    toolBar->insertAction(nullptr, toggleHistoryAction);
-    // 反向链接
-    toolBar->insertAction(nullptr, toggleBacklinksAction);
+    // 右侧面板（历史/大纲/标签/反链）
+    toolBar->insertAction(nullptr, toggleRightPanelAction);
     // 搜索
     toolBar->insertAction(nullptr, toggleSearchAction);
-    // 标签
-    toolBar->insertAction(nullptr, toggleTagAction);
-    // 大纲
-    toolBar->insertAction(nullptr, toggleOutlineAction);
     // 代码评测
     toolBar->insertAction(nullptr, m_toggleJudgeAction);
-    toolBar->insertSeparator(toggleHistoryAction);
+    toolBar->insertSeparator(toggleRightPanelAction);
 
     // 打开目录
     QAction *openDirAction = new QAction("打开目录", this);
@@ -800,7 +739,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
         return;
     }
     // 所有标签都已安全关闭，保存配置并退出
-    m_historyPanel->saveHistory();
+    m_rightPanel->historyPanel()->saveHistory();
     m_settings->flushOverrides();
     saveSettings();
     clearRecoveryDirectory(); // 正常关闭，清理恢复目录
@@ -1206,48 +1145,49 @@ void MainWindow::addToRecentFiles(const QString &filePath)
 {
     QString cleanPath = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
     if (!cleanPath.isEmpty())
-        m_historyPanel->addFile(cleanPath);
+        m_rightPanel->historyPanel()->addFile(cleanPath);
 }
 
 void MainWindow::refreshBacklinks()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || editor->currentFilePath().isEmpty()) {
-        m_backlinksPanel->showBacklinks({});
+        m_rightPanel->backlinksPanel()->showBacklinks({});
         return;
     }
 
     QString filePath = editor->currentFilePath();
     QStringList sources = m_backlinkIndex->backlinksFor(filePath);
-    m_backlinksPanel->showBacklinks(sources);
+    m_rightPanel->backlinksPanel()->showBacklinks(sources);
 }
 
 void MainWindow::refreshTags()
 {
     QStringList tags = m_tagIndex->allTags();
     tags.sort(Qt::CaseInsensitive);
-    m_tagPanel->showAllTags(tags);
+    m_rightPanel->tagPanel()->showAllTags(tags);
 }
 
 void MainWindow::refreshOutline()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || !editor->currentFilePath().toLower().endsWith(QStringLiteral(".md"))) {
-        m_outlinePanel->clear();
+        m_rightPanel->outlinePanel()->clear();
         return;
     }
     QString content = editor->toPlainText();
     auto headings = extractHeadingsFromContent(content);
-    m_outlinePanel->showHeadings(headings);
+    m_rightPanel->outlinePanel()->showHeadings(headings);
 }
 
 void MainWindow::onTagClicked(const QString &tag)
 {
     QStringList files = m_tagIndex->filesForTag(tag);
     files.sort();
-    m_tagPanel->showFilesForTag(tag, files);
-    m_dockTag->show();
-    m_dockTag->raise();
+    m_rightPanel->tagPanel()->showFilesForTag(tag, files);
+    m_rightPanel->setActivePanel(2); // 切换到标签面板
+    m_dockRightPanel->show();
+    m_dockRightPanel->raise();
 }
 
 void MainWindow::onHistoryFileClicked(const QString &filePath)
@@ -1255,7 +1195,7 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
     if (!QFile::exists(filePath)) {
         QMessageBox::warning(this, tr("文件不存在"),
                              tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
-        m_historyPanel->removeFile(filePath);
+        m_rightPanel->historyPanel()->removeFile(filePath);
         return;
     }
 
@@ -1275,7 +1215,7 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
         syncFileTreeSelection();
     }
     addToRecentFiles(absolutePath); // 记录到历史（置顶）
-    m_dockHistory->hide(); // 隐藏面板
+    m_dockRightPanel->hide(); // 隐藏面板
 }
 
 void MainWindow::onSearchResultClicked(const QString &filePath,
@@ -1452,7 +1392,7 @@ void MainWindow::onFileDeletedInIndex(const QString &path)
     buildFileIndex();
     m_backlinkIndex->onFileDeleted(path);
     m_tagIndex->onFileDeleted(path);
-    m_historyPanel->removeFile(path);
+    m_rightPanel->historyPanel()->removeFile(path);
     refreshBacklinks();
 }
 
@@ -1712,36 +1652,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
         QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
 
-        // Auto-hide history panel when clicking outside
-        if (m_dockHistory->isVisible()) {
-            if (btn && btn->defaultAction() == toggleHistoryAction)
+        // Auto-hide right panel when clicking outside
+        if (m_dockRightPanel->isVisible()) {
+            if (btn && btn->defaultAction() == toggleRightPanelAction)
                 return QMainWindow::eventFilter(watched, event);
-            if (!m_dockHistory->isAncestorOf(clickedWidget))
-                m_dockHistory->hide();
-        }
-
-        // Auto-hide backlinks panel when clicking outside
-        if (m_dockBacklinks->isVisible()) {
-            if (btn && btn->defaultAction() == toggleBacklinksAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (!m_dockBacklinks->isAncestorOf(clickedWidget))
-                m_dockBacklinks->hide();
-        }
-
-        // Auto-hide tag panel when clicking outside
-        if (m_dockTag->isVisible()) {
-            if (btn && btn->defaultAction() == toggleTagAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (!m_dockTag->isAncestorOf(clickedWidget))
-                m_dockTag->hide();
-        }
-
-        // Auto-hide outline panel when clicking outside
-        if (m_dockOutline->isVisible()) {
-            if (btn && btn->defaultAction() == toggleOutlineAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (!m_dockOutline->isAncestorOf(clickedWidget))
-                m_dockOutline->hide();
+            if (!m_dockRightPanel->isAncestorOf(clickedWidget))
+                m_dockRightPanel->hide();
         }
 
         // Close settings panel when clicking overlay background
@@ -1820,7 +1736,7 @@ void MainWindow::onFileMovedOrRenamed(const QString &oldPath, const QString &new
 {
     onFileRenamedInIndex(oldPath, newPath); // 更新全局双向链接索引
     m_tabManager->updatePathsAfterMove(oldPath, newPath); // 更新所有已打开标签页的路径
-    m_historyPanel->replacePath(oldPath, newPath); // 更新历史记录中的路径
+    m_rightPanel->historyPanel()->replacePath(oldPath, newPath); // 更新历史记录中的路径
 }
 
 // ============================================================

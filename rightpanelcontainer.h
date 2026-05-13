@@ -1,0 +1,47 @@
+#ifndef RIGHTPANELCONTAINER_H
+#define RIGHTPANELCONTAINER_H
+
+#include <QWidget>
+#include <QStackedWidget>
+#include <QPushButton>
+#include <QVector>
+
+class HistoryPanel;
+class OutlinePanel;
+class TagPanel;
+class BacklinksPanel;
+class SettingsManager;
+
+class RightPanelContainer : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit RightPanelContainer(SettingsManager *settings, QWidget *parent = nullptr);
+
+    HistoryPanel *historyPanel() const { return m_historyPanel; }
+    OutlinePanel *outlinePanel() const { return m_outlinePanel; }
+    TagPanel *tagPanel() const { return m_tagPanel; }
+    BacklinksPanel *backlinksPanel() const { return m_backlinksPanel; }
+
+    void setActivePanel(int index);
+
+signals:
+    void fileClicked(const QString &filePath);
+    void tagClicked(const QString &tag);
+    void headingClicked(int lineNumber, const QString &headingText);
+
+private:
+    QPushButton *createTabButton(const QString &text, int index);
+    void updateTabStyles(int activeIndex);
+
+    QWidget *m_tabBar;
+    QVector<QPushButton*> m_tabButtons;
+    QStackedWidget *m_stack;
+
+    HistoryPanel *m_historyPanel;
+    OutlinePanel *m_outlinePanel;
+    TagPanel *m_tagPanel;
+    BacklinksPanel *m_backlinksPanel;
+};
+
+#endif // RIGHTPANELCONTAINER_H

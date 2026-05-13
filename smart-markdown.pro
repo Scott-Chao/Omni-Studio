@@ -35,6 +35,7 @@ SOURCES += \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
+    rightpanelcontainer.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
     smdcell.cpp \
@@ -71,6 +72,7 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
+    rightpanelcontainer.h \
     searchpanel.h \
     settingspanel.h \
     smdcell.h \
