@@ -4,6 +4,8 @@
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include <QTimer>
+#include <QTextBlock>
+#include <QTextLayout>
 
 SmdCell::SmdCell(CellType type, const QString &content, QWidget *parent)
     : QFrame(parent)
@@ -314,6 +316,7 @@ void SmdCell::applyZoom(qreal factor, int baseFontSize)
     int pointSize = qBound(cfg.fontMinPointSize(),
                            qRound(baseFontSize * factor),
                            cfg.fontMaxPointSize());
+
     if (m_markdownEditor) {
         QFont f = m_markdownEditor->font();
         f.setPointSize(pointSize);
@@ -325,6 +328,21 @@ void SmdCell::applyZoom(qreal factor, int baseFontSize)
         m_codeEditor->setFont(f);
         m_codeEditor->refreshLineNumberArea();
     }
+
+    // repaint() only lays out blocks visible in the current viewport. After
+    // setFont() the viewport is sized for the old font — blocks outside the
+    // visible area won't be relaid out, causing layout->boundingRect() to
+    // return 0 and forcing fallback to font metrics. Temporarily stretch the
+    // editor so repaint() covers ALL blocks, then measure the correct height.
+    QPlainTextEdit *ed = m_markdownEditor
+        ? static_cast<QPlainTextEdit*>(m_markdownEditor)
+        : static_cast<QPlainTextEdit*>(m_codeEditor);
+    if (ed) {
+        ed->setFixedHeight(50000);
+        m_editorStack->setFixedHeight(50000);
+        ed->repaint();
+    }
+
     updateEditorHeight();
 }
 
@@ -332,7 +350,6 @@ void SmdCell::updateEditorHeight()
 {
     QPlainTextEdit *ed = nullptr;
     if (m_rendered) {
-        // Render view — size to content
         int docH = static_cast<int>(m_renderView->document()->size().height());
         m_renderView->setFixedHeight(docH + 16);
         m_editorStack->setFixedHeight(docH + 16);
@@ -347,17 +364,38 @@ void SmdCell::updateEditorHeight()
     if (!ed)
         return;
 
-    QFontMetrics fm(ed->font());
-    int lineSpacing = fm.lineSpacing();
-    int blockCount = ed->document()->blockCount();
-    // Ensure at least 1 line visible
-    if (blockCount < 1)
-        blockCount = 1;
-    int padding = 18; // 8px top + 8px bottom + small extra
-    int contentH = lineSpacing * blockCount + padding;
+    // Measure actual content height by summing each block's QTextLayout
+    // bounding rect. QFontMetrics::lineSpacing() is integer-truncated and
+    // differs from QPlainTextEdit's internal layout by ~0.1px/line, which
+    // accumulates to visible scroll overflow on multi-line blocks.
+    QFontMetricsF fmf(ed->font());
+    qreal fallbackLH = fmf.lineSpacing();
+    qreal totalDocH = 0;
+    int visualLines = 0;
 
-    // Set minimum to avoid collapsing
-    int minH = lineSpacing + padding;
+    for (QTextBlock block = ed->document()->begin(); block.isValid(); block = block.next()) {
+        QTextLayout *layout = block.layout();
+        int lc = 1;
+        if (layout) {
+            lc = layout->lineCount();
+            if (lc < 1) lc = 1;
+            qreal h = layout->boundingRect().height();
+            if (h > 0)
+                totalDocH += h;
+            else
+                totalDocH += fallbackLH * lc;
+        } else {
+            totalDocH += fallbackLH * lc;
+        }
+        visualLines += lc;
+    }
+    if (visualLines < 1)
+        visualLines = 1;
+
+    QMargins cm = ed->contentsMargins();
+    int marginH = cm.top() + cm.bottom();
+    int contentH = qCeil(totalDocH) + marginH + 2;
+    int minH = qCeil(fallbackLH) + marginH + 2;
     if (contentH < minH)
         contentH = minH;
 

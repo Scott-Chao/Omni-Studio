@@ -1,4 +1,4 @@
-## 功能说明文档（v0.6.3）
+## 功能说明文档（v0.6.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -35,10 +35,25 @@
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-### 修复 v0.6.3
-- 修复 SMD 文件保存后空白行合并：取消 `SmdFormat::parse` 中首尾空白行整体裁剪（改为仅裁剪一行消除单元格分隔符歧义），取消 `serialize` 末尾自动追加换行，确保单元格内容完整保留。
-- 新增 SMD 编辑器修改标识：连接单元格内容变更到编辑器内容检查定时器，使标签页在内容未保存时正确显示 `*` 标识，与其他文本文件行为一致。
-- 修复代码单元格当前行高亮问题：打开文件时先清除所有单元格的默认高亮再激活第一个单元格，切换单元格时失活清除高亮、激活恢复高亮，确保仅当前活跃的代码块显示所在行突出背景。
+### 修复 v0.6.4
+- 修复 SMD 单元格高度计算导致内部滚动空间问题：
+  **问题现象**：打开 `.smd` 文件或编辑单元格时，部分单元格内部存在可滚动空间（框不够大，行数越多滚动空间越大），鼠标滚轮可在单元格内上下滚动。
+  **根因分析**：
+  1. 旧公式 `QFontMetrics(ed->font()).lineSpacing() * blockCount + 18` 存在三层误差：
+     - `QFontMetrics::lineSpacing()` 返回 **int** 类型（如 19px），而 `QPlainTextEdit` 内部通过 `QTextLayout` 渲染时的实际行高约为 19.1px，每行截断误差 ~0.1px，随行数线性累积（34 行累积约 3px 误差）。
+     - `blockCount` 统计的是段落数而非视觉行数，当 MD 单元格（`WidgetWidth` 自动换行）存在折行时，`blockCount` 小于实际视觉行数，导致高度低估。
+     - `padding = 18` 为硬编码常量，未反映不同编辑器（MD 编辑器 `padding: 8px` → `contentsMargins=8+8=16`；CodeEditor 无样式表 padding → `contentsMargins=2+2=4`）的实际边距差异。
+  2. `QTextDocument::size().height()` 在 `blockCountChanged` 信号触发时返回未完成布局的文档高度（值为 `blockCount` 而非像素值），不可用于高度计算。
+  3. 尝试通过 `QScrollBar::maximum()` 事后检测溢出并在同一调用中自修正，由于 `setFixedHeight()` 后布局更新是异步的（需等待事件循环），重读滚动条返回的仍是旧值，导致修正无效或过修正振荡。
+  **解决方案**：
+  1. **直接测量布局高度**：遍历文档所有 `QTextBlock`，对每个块调用 `QTextLayout::boundingRect().height()` 获取实际渲染高度（含折行后的多行高度），累加得到精确的文档像素高度 `totalDocH`。若某块的布局尚未完成（`height() == 0`），回退到 `QFontMetricsF::lineSpacing() * lineCount`。
+  2. **子像素精度**：使用 `QFontMetricsF`（`qreal`）替代 `QFontMetrics`（`int`），并通过 `qCeil()` 向上取整，避免浮点截断误差。
+  3. **动态边距**：使用 `ed->contentsMargins().top() + .bottom()` 替代硬编码 `18`，自动适配不同编辑器的实际样式表边距。
+  4. **`+2px` 缓冲**：消除 `QTextLayout::boundingRect` 总和与 `QPlainTextEdit` 视口实际布局之间约 1-2px 的亚像素舍入误差。
+  5. **移除异步自修正**：取消基于 `QScrollBar::maximum()` 的事后检测修正（因布局异步更新无法在同一调用中生效）。
+  6. **缩放后强制全部块布局**：`applyZoom()` 中字体变更后，`repaint()` 仅对当前视口内的可见块触发布局重算。由于此时 widget 高度仍为旧字号下的 `fixedHeight`，视口仅约数十 px，大部分块不在可见区域内，其 `QTextLayout::boundingRect()` 返回 0，强制回退到字体度量（存在比例误差），导致缩放后滚动空间重现。修复方法：调用 `repaint()` 前临时将编辑器设为 `setFixedHeight(50000)`，使所有块在视口内可见，确保 `repaint()` 触发全文档布局重算，再由 `updateEditorHeight()` 测量并设置正确高度。
+
+  最终公式：`height = qCeil(Σ boundingRect.height()) + contentsMargins.top + contentsMargins.bottom + 2`
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -940,7 +955,7 @@
 **职责**：
 - 继承 `QFrame`，表示 `.smd` 文件中的一个单元格（Cell），包含类型标签、编辑器/渲染视图栈和输出区域。
 - 支持三种 `CellType`：`Markdown`、`Cpp`、`Python`。
-- **自适应高度**：编辑器高度根据文档内容动态调整（基于 `blockCount × lineSpacing + padding`，最小 1 行，最大约 40 行），关闭编辑器内部滚动条，整个页面通过父级 `QScrollArea` 统一滚动。
+- **自适应高度**：编辑器高度通过遍历所有 `QTextBlock` 的 `QTextLayout::boundingRect()` 精确求和得出，覆盖通过 `QFontMetricsF` 获取子像素精度，加上 `contentsMargins` 边距和 `+2px` 浮点舍入缓冲，确保编辑器内容完整可见无内部滚动条。整个页面通过父级 `QScrollArea` 统一滚动。
 - **选中视觉效果**：active 状态下四周显示 2px 蓝色边框（`#0078d4`），背景微亮（`#252526`）；非 active 命令模式显示灰色边框（`#3c3c3c`）；编辑模式透明边框。
 
 **布局结构（垂直）**：
@@ -959,7 +974,7 @@
 - `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染视图）。
 - `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：根据缩放因子和基础字号调整编辑器字体大小及行号区域。
-- `void updateEditorHeight()`：根据编辑器文档的行数和字体行高动态计算并设置编辑器固定高度。
+- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，对每个块通过 `QTextLayout::boundingRect().height()` 获取实际渲染高度（若布局尚未完成则回退到 `QFontMetricsF::lineSpacing()`），累加得到总文档高度后，加上 `contentsMargins` 上下边距和 `+2px` 缓冲（消除浮点舍入误差），通过 `qCeil` 向上取整后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 信号自动触发，也通过 `QTimer::singleShot(0, ...)` 在初始化后异步调用。
 
 **信号**：
 - `void focusEntered()`：编辑器获得焦点时发出，用于 `SmdEditor` 更新选中单元格。
