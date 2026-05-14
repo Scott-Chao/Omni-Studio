@@ -1,4 +1,4 @@
-## 功能说明文档（v0.6.5）
+## 功能说明文档（v0.6.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -35,14 +35,11 @@
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-### 新增 v0.6.5
-- SMD Markdown 块支持 LaTeX 公式和 Mermaid 图表渲染：将渲染引擎从 `QTextBrowser` 替换为 `QWebEngineView`，复用全文预览的 `preview-template.html`（KaTeX + Mermaid + marked.js），实现与 `.md` 文件预览一致的渲染效果。
-  - **架构**：`SmdCell` 内部 `QStackedWidget` 保持 3 页结构 — 页 0（编辑控件）、页 1（QWebEngineView 实时渲染）、页 2（QLabel 展示抓取后的静态位图）。QWebEngineView 采用**按需创建**（`ensureRenderView()`），仅在首次 `Ctrl+Enter` 渲染时才初始化 Chromium，避免加载 `.smd` 文件时批量创建导致卡死。
-  - **高度自适应**：渲染后通过 `runJavaScript()` 执行简单 IIFE 表达式获取 `document.body.scrollHeight`（优先）→ `document.documentElement.scrollHeight` → `#preview.offsetHeight` 的多级回退链，返回数字直接用于设置 `QWebEngineView::setFixedHeight`。同时 600ms/1500ms 两次延迟重测，捕获 Mermaid 异步渲染完成后的高度变化。
-  - **减少拖影**：QWebEngineView 内部 Chromium 使用独立原生 HWND（GPU 加速），位于 QScrollArea 内滚动时，Qt widget 移动与 Windows 原生窗口重定位不同步，产生短暂拖影（ghosting）。`eventFilter` 中监听 `QEvent::Move` 并调用 `repaint()` 可减轻但无法根除。作为折衷方案：渲染完成 1800ms 后执行**一次性 `grab()` 抓取**为 `QPixmap`，设置到页 2 的 QLabel（纯 Qt widget，无原生 HWND），此后滚动完全由 Qt 控制，拖影彻底消除。页面切换仅发生一次，后续不重复抓取。
-  - **HiDPI 适配**：`grab()` 返回物理像素尺寸（如 2x 下为逻辑尺寸的 2 倍），通过 `devicePixelRatioF()` 换算逻辑尺寸，并用 `QLabel::setScaledContents(true)` 缩放显示，确保高 DPI 屏幕下位图清晰。
-- Ctrl+Enter 行为变更：仅将原始文本渲染为预览，**不执行切换回操作**。已渲染时按 Ctrl+Enter 无操作。返回编辑需通过 `Ctrl+Shift+Z` 或 Enter 进入编辑模式。命令模式下未渲染的 MD 块显示 "Ctrl+Enter: 渲染" 提示，已渲染显示 "Ctrl+Shift+Z: 编辑"。
-- 渲染块的交互：通过 `eventFilter` 捕获 `FocusIn` 和 `MouseButtonPress` 事件，点击渲染后的内容可激活所在单元格（支持键盘导航和命令操作）。
+### 新增 v0.6.6
+- **消除最小化还原闪烁**：QWebEngineView 改为**独立顶层窗口**（`new QWebEngineView(nullptr)`，无父控件），定位在主窗口后方渲染。渲染完成后通过 `PrintWindow` 抓取为 QPixmap 设置到 QLabel，立即销毁顶层窗口。由于 QWebEngineView 不在 SmdCell 控件树内，不会触发 Qt 将原生 HWND 级联到所有祖先控件（QScrollArea viewport 等），抓取后控件树中原生窗口计数为 0，最小化还原时再无原生子窗口先于 Qt 控件绘制的问题。
+- **自适应抓取时机**：用**轮询机制**（200ms 间隔）替代固定 600/1500/1800ms 延迟。通过 `runJavaScript` 检测文档 `scrollHeight` 稳定（连续 3 次相同）且所有 `.mermaid` 元素已包含 `<svg>` 子节点后立即执行抓取。最大超时 5s 兜底。简单的纯文本 Markdown 可在 3 次轮询（~600ms）后即显示，含 Mermaid 图表时等待图表异步渲染完成。
+- **渲染遮盖**：渲染期间在编辑区上方覆盖非原生 QWidget 遮罩（深色背景 `#1E1E1E`），编辑器保持在遮罩下方可见。
+- **滚动位置保持**：`SmdEditor` 监听顶层窗口的 `WindowStateChange` 事件，最小化时保存 `QScrollArea` 垂直滚动位置，还原时先 `setUpdatesEnabled(false)` 阻塞绘制，设置滚动位置后延迟 10ms 恢复绘制，避免还原时先显示错误位置再跳转的闪烁。
 
 ### 1. `MainWindow` - 主窗口控制器
 

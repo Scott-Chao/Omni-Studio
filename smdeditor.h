@@ -70,6 +70,7 @@ private:
     QScrollArea *m_scrollArea;
     QWidget *m_cellContainer;
     QVBoxLayout *m_cellLayout;
+    int m_savedScrollPos = 0;
 
     QList<SmdCell*> m_cells;
     int m_activeCellIndex = -1;

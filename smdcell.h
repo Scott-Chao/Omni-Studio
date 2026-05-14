@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QTimer>
+#include <QList>
 
 class CodeEditor;
 
@@ -58,6 +60,7 @@ signals:
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     void setupUi(CellType type);
@@ -69,6 +72,10 @@ private:
     void applyRenderHeight(int contentH);
     void updateEditorHeight();
     void onRenderLoadFinished(bool ok);
+    void startGrabPolling();
+    void pollGrabReady();
+    void performGrab();
+    void cleanupRenderView();
 
     CellType m_type;
     bool m_commandMode = false;
@@ -78,13 +85,19 @@ private:
     QWidget *m_headerBar = nullptr;
     QLabel *m_typeLabel = nullptr;
     QLabel *m_executeHint = nullptr;
-    QStackedWidget *m_editorStack = nullptr;   // page 0 = editor, page 1 = rendered view
+    QStackedWidget *m_editorStack = nullptr;   // page 0 = editor, page 1 = static QLabel
     QPlainTextEdit *m_markdownEditor = nullptr;
     CodeEditor *m_codeEditor = nullptr;
-    QWidget *m_renderPlaceholder = nullptr;      // lightweight placeholder until lazy init
-    QWebEngineView *m_renderView = nullptr;
+    QWebEngineView *m_renderView = nullptr;      // direct child, off-stack, overlays editor
     QLabel *m_renderImage = nullptr;             // pixmap replacement (no native HWND)
     QPlainTextEdit *m_outputArea = nullptr;
+
+    // Adaptive grab state
+    QWidget *m_renderOverlay = nullptr;           // native overlay hides QWebEngineView during render
+    QTimer *m_grabTimer = nullptr;
+    int m_pollCount = 0;
+    QList<int> m_polledHeights;
+    static constexpr int kMaxPollCount = 25;      // 5s at 200ms interval
 
     QString m_languageId;
 };

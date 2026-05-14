@@ -174,11 +174,20 @@ SmdEditor::SmdEditor(QWidget *parent)
 
     setFocusPolicy(Qt::StrongFocus);
     installEventFilter(this);
+
+    // Watch top-level window for minimize/restore to preserve scroll position
+    QTimer::singleShot(0, this, [this]() {
+        if (QWidget *tlw = window())
+            tlw->installEventFilter(this);
+    });
 }
 
 SmdEditor::~SmdEditor()
 {
     m_processRunner->stop();
+    // Remove event filter from top-level window
+    if (QWidget *tlw = window())
+        tlw->removeEventFilter(this);
 }
 
 // ---- File I/O ----
@@ -659,6 +668,29 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             }
         }
     }
+
+    // Preserve scroll position across minimize/restore
+    if (event->type() == QEvent::WindowStateChange) {
+        auto *wsc = static_cast<QWindowStateChangeEvent*>(event);
+        bool wasMinimized = (wsc->oldState() & Qt::WindowMinimized);
+        bool nowMinimized = window()->isMinimized();
+
+        if (!wasMinimized && nowMinimized) {
+            // About to minimize: save scroll position
+            m_savedScrollPos = m_scrollArea->verticalScrollBar()->value();
+        } else if (wasMinimized && !nowMinimized) {
+            // Just restored: block paints, set scroll position, then re-enable.
+            // This prevents the first frame from showing the wrong scroll position.
+            int saved = m_savedScrollPos;
+            m_scrollArea->setUpdatesEnabled(false);
+            m_scrollArea->verticalScrollBar()->setValue(saved);
+            QTimer::singleShot(10, this, [this, saved]() {
+                m_scrollArea->verticalScrollBar()->setValue(saved);
+                m_scrollArea->setUpdatesEnabled(true);
+            });
+        }
+    }
+
     return QWidget::eventFilter(obj, event);
 }
 

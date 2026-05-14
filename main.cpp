@@ -11,6 +11,7 @@ int main(int argc, char *argv[])
 
     qputenv("QTWEBENGINE_REMOTE_DEBUGGING",
             ConfigManager::instance().webEngineDebuggingPort().toUtf8());
+
     QApplication a(argc, argv);
 
     QTranslator translator;
