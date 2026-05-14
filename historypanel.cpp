@@ -12,7 +12,9 @@ HistoryPanel::HistoryPanel(SettingsManager *settings, QWidget *parent)
     connect(m_listWidget, &QListWidget::itemClicked, this, &HistoryPanel::onItemClicked);
 
     m_clearButton = new QPushButton(tr("清空历史记录"), this);
-    m_clearButton->setStyleSheet("color: red");
+    m_clearButton->setStyleSheet(
+        "QPushButton { color: #E74C3C; background: transparent; border: none; padding: 4px 8px; }"
+        "QPushButton:hover { color: #FF6B5A; }");
     connect(m_clearButton, &QPushButton::clicked, this, &HistoryPanel::clearHistory);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
