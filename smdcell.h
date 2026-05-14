@@ -37,12 +37,6 @@ public:
     bool isRendered() const { return m_rendered; }
     void setRendered(bool rendered);
 
-    // Output
-    void showOutput(const QString &text, bool isStderr = false);
-    void appendOutput(const QString &text, bool isStderr = false);
-    void clearOutput();
-    void hideOutput();
-
     QWidget *editorWidget() const;
     void setEditorFocus();
 
@@ -81,6 +75,7 @@ private:
     bool m_commandMode = false;
     bool m_active = false;
     bool m_rendered = false;
+    bool m_grabbing = false;  // suppress focusEntered during performGrab
 
     QWidget *m_headerBar = nullptr;
     QLabel *m_typeLabel = nullptr;
@@ -90,7 +85,6 @@ private:
     CodeEditor *m_codeEditor = nullptr;
     QWebEngineView *m_renderView = nullptr;      // direct child, off-stack, overlays editor
     QLabel *m_renderImage = nullptr;             // pixmap replacement (no native HWND)
-    QPlainTextEdit *m_outputArea = nullptr;
 
     // Adaptive grab state
     QWidget *m_renderOverlay = nullptr;           // native overlay hides QWebEngineView during render

@@ -1,6 +1,7 @@
 #include "smdeditor.h"
 #include "smdcell.h"
 #include "smdformat.h"
+#include "smdoutputwidget.h"
 #include "processrunner.h"
 #include "compilerutils.h"
 #include "configmanager.h"
@@ -185,6 +186,11 @@ SmdEditor::SmdEditor(QWidget *parent)
 SmdEditor::~SmdEditor()
 {
     m_processRunner->stop();
+    if (m_autoRenderTimer) {
+        m_autoRenderTimer->stop();
+        delete m_autoRenderTimer;
+        m_autoRenderTimer = nullptr;
+    }
     // Remove event filter from top-level window
     if (QWidget *tlw = window())
         tlw->removeEventFilter(this);
@@ -234,10 +240,12 @@ bool SmdEditor::saveFile()
 QString SmdEditor::toPlainText() const
 {
     QList<SmdFormat::Cell> fmtCells;
-    for (SmdCell *c : m_cells) {
+    for (int i = 0; i < m_cells.size(); ++i) {
         SmdFormat::Cell fc;
-        fc.type = SmdCell::langIdFromType(c->cellType());
-        fc.content = c->content();
+        fc.type = SmdCell::langIdFromType(m_cells[i]->cellType());
+        fc.content = m_cells[i]->content();
+        fc.rendered = m_cells[i]->isRendered();
+        fc.output = m_outputWidgets[i]->outputText();
         fmtCells.append(fc);
     }
     return SmdFormat::serialize(fmtCells);
@@ -245,7 +253,20 @@ QString SmdEditor::toPlainText() const
 
 void SmdEditor::setPlainText(const QString &text)
 {
-    // Clear existing cells
+    // Stop any in-progress auto-render
+    if (m_autoRenderTimer) {
+        m_autoRenderTimer->stop();
+        m_autoRenderTimer->deleteLater();
+        m_autoRenderTimer = nullptr;
+    }
+    m_autoRenderQueue.clear();
+
+    // Clear existing cells and output widgets
+    for (SmdOutputWidget *w : m_outputWidgets) {
+        m_cellLayout->removeWidget(w);
+        w->deleteLater();
+    }
+    m_outputWidgets.clear();
     for (SmdCell *c : m_cells) {
         m_cellLayout->removeWidget(c);
         c->deleteLater();
@@ -259,16 +280,27 @@ void SmdEditor::setPlainText(const QString &text)
     } else {
         for (int i = 0; i < fmtCells.size(); ++i) {
             addCell(i, SmdCell::typeFromLangId(fmtCells[i].type), fmtCells[i].content);
+            // Restore output
+            if (!fmtCells[i].output.isEmpty())
+                m_outputWidgets[i]->setOutput(fmtCells[i].output);
+            // Queue for auto-render
+            if (fmtCells[i].rendered
+                && fmtCells[i].type == QStringLiteral("markdown")) {
+                m_autoRenderQueue.append(m_cells[i]);
+            }
         }
     }
 
     if (!m_cells.isEmpty()) {
-        // 清除所有单元格的默认高亮，再激活第一个
         for (SmdCell *c : m_cells)
             c->setActive(false);
         setActiveCell(0);
     }
     m_commandMode = false;
+
+    // Start auto-render if there are cells to render
+    if (!m_autoRenderQueue.isEmpty())
+        startAutoRender();
 }
 
 bool SmdEditor::isModified() const
@@ -310,8 +342,16 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
     connectCellSignals(cell, index);
 
     int layoutIdx = qBound(0, index, m_cells.size());
-    m_cellLayout->insertWidget(layoutIdx, cell);
+    // Cells and outputs are interleaved: cell at 2*i, output at 2*i+1
+    int cellLayoutPos = layoutIdx * 2;
+    int outLayoutPos = cellLayoutPos + 1;
+
+    m_cellLayout->insertWidget(cellLayoutPos, cell);
     m_cells.insert(layoutIdx, cell);
+
+    SmdOutputWidget *outputWidget = new SmdOutputWidget(m_cellContainer);
+    m_cellLayout->insertWidget(outLayoutPos, outputWidget);
+    m_outputWidgets.insert(layoutIdx, outputWidget);
 
     for (int i = layoutIdx; i < m_cells.size(); ++i) {
         disconnect(m_cells[i], &SmdCell::focusEntered, nullptr, nullptr);
@@ -331,8 +371,14 @@ void SmdEditor::removeCell(int index)
         return;
 
     SmdCell *cell = m_cells[index];
+    SmdOutputWidget *output = m_outputWidgets[index];
+
+    // Remove output widget first (higher layout index), then cell
+    m_cellLayout->removeWidget(output);
     m_cellLayout->removeWidget(cell);
     m_cells.removeAt(index);
+    m_outputWidgets.removeAt(index);
+    output->deleteLater();
     cell->deleteLater();
 
     if (m_activeCellIndex >= m_cells.size())
@@ -459,6 +505,36 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
     });
 }
 
+// ---- Auto-Render ----
+
+void SmdEditor::startAutoRender()
+{
+    if (m_autoRenderQueue.isEmpty())
+        return;
+
+    m_autoRenderIndex = 0;
+    m_autoRenderTimer = new QTimer(this);
+    m_autoRenderTimer->setInterval(200);
+
+    connect(m_autoRenderTimer, &QTimer::timeout, this, [this]() {
+        if (m_autoRenderIndex >= m_autoRenderQueue.size()) {
+            m_autoRenderTimer->stop();
+            m_autoRenderTimer->deleteLater();
+            m_autoRenderTimer = nullptr;
+            m_autoRenderQueue.clear();
+            return;
+        }
+        SmdCell *cell = m_autoRenderQueue[m_autoRenderIndex];
+        if (cell && !cell->isRendered()) {
+            cell->setRendered(true);
+            cell->setCommandMode(true);
+        }
+        ++m_autoRenderIndex;
+    });
+
+    m_autoRenderTimer->start();
+}
+
 // ---- Execution ----
 
 void SmdEditor::executeCurrentCell()
@@ -475,11 +551,9 @@ void SmdEditor::executeCurrentCell()
 
 void SmdEditor::executeMarkdownCell(SmdCell *cell)
 {
-    if (cell->isRendered()) {
-        // Already rendered — Ctrl+Enter only renders, does not toggle back.
-        return;
+    if (!cell->isRendered()) {
+        cell->setRendered(true);
     }
-    cell->setRendered(true);
     if (!m_commandMode)
         enterCommandMode();
     jumpToNextCell();
@@ -488,8 +562,13 @@ void SmdEditor::executeMarkdownCell(SmdCell *cell)
 void SmdEditor::executeCodeCell(SmdCell *cell)
 {
     QString code = cell->content();
-    if (code.trimmed().isEmpty())
+    if (code.trimmed().isEmpty()) {
+        // Empty cell — just jump to next without execution
+        if (!m_commandMode)
+            enterCommandMode();
+        jumpToNextCell();
         return;
+    }
 
     bool isPython = (cell->cellType() == SmdCell::Python);
     QString ext = isPython ? QStringLiteral("py") : QStringLiteral("cpp");
@@ -504,7 +583,11 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 
     QFile file(tempPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        cell->showOutput(tr("Error: Cannot create temp file.\n"), true);
+        int idx = m_cells.indexOf(cell);
+        if (idx >= 0 && idx < m_outputWidgets.size()) {
+            m_outputWidgets[idx]->clearOutput();
+            m_outputWidgets[idx]->appendText(tr("Error: Cannot create temp file.\n"), true);
+        }
         return;
     }
     file.write(code.toUtf8());
@@ -513,7 +596,9 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     m_executingCellIndex = m_cells.indexOf(cell);
     m_executingTempFile = tempPath;
 
-    cell->showOutput(QStringLiteral("--- ") + tr("Running") + QStringLiteral(" ---\n"), false);
+    // Clear previous output
+    m_outputWidgets[m_executingCellIndex]->clearOutput();
+    m_outputWidgets[m_executingCellIndex]->setVisible(true);
 
     // Connect output
     m_execOutputConn = connect(m_processRunner, &ProcessRunner::outputReceived,
@@ -549,19 +634,16 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 
 void SmdEditor::onProcessOutput(const QString &text, bool isStderr)
 {
-    if (m_executingCellIndex >= 0 && m_executingCellIndex < m_cells.size()) {
-        m_cells[m_executingCellIndex]->appendOutput(text, isStderr);
+    if (m_executingCellIndex >= 0 && m_executingCellIndex < m_outputWidgets.size()) {
+        m_outputWidgets[m_executingCellIndex]->appendText(text, isStderr);
     }
 }
 
 void SmdEditor::onProcessFinished(int exitCode)
 {
-    if (m_executingCellIndex >= 0 && m_executingCellIndex < m_cells.size()) {
-        SmdCell *cell = m_cells[m_executingCellIndex];
-        cell->appendOutput(
-            QStringLiteral("\n--- ") + tr("Exit code: %1").arg(exitCode) + QStringLiteral(" ---\n"),
-            exitCode != 0);
-    }
+    Q_UNUSED(exitCode);
+
+    int finishedIdx = m_executingCellIndex;
 
     // Clean up temp files
     QFile::remove(m_executingTempFile);
@@ -572,7 +654,12 @@ void SmdEditor::onProcessFinished(int exitCode)
     m_executingTempFile.clear();
     m_executingCellIndex = -1;
 
-    jumpToNextCell();
+    // Only jump if the user is still on the executed cell
+    if (finishedIdx == m_activeCellIndex) {
+        if (!m_commandMode)
+            enterCommandMode();
+        jumpToNextCell();
+    }
 }
 
 void SmdEditor::jumpToNextCell()
@@ -653,17 +740,24 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
 
 bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::KeyPress) {
+    if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
         if (!m_commandMode) {
             if (key->key() == Qt::Key_Escape) {
-                enterCommandMode();
+                if (event->type() == QEvent::ShortcutOverride)
+                    event->accept();
+                else
+                    enterCommandMode();
                 return true;
             }
             if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
                 && (key->modifiers() & Qt::ControlModifier)) {
-                executeCurrentCell();
+                if (event->type() == QEvent::ShortcutOverride) {
+                    event->accept();
+                } else {
+                    executeCurrentCell();
+                }
                 return true;
             }
         }

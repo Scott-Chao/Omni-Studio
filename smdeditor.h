@@ -10,6 +10,7 @@
 #include "smdcell.h"
 
 class ProcessRunner;
+class SmdOutputWidget;
 
 class SmdEditor : public QWidget
 {
@@ -73,8 +74,17 @@ private:
     int m_savedScrollPos = 0;
 
     QList<SmdCell*> m_cells;
+    QList<SmdOutputWidget*> m_outputWidgets;
     int m_activeCellIndex = -1;
     bool m_commandMode = false;
+
+    // Auto-render state
+    QList<SmdCell*> m_autoRenderQueue;
+    int m_autoRenderIndex = 0;
+    QTimer *m_autoRenderTimer = nullptr;
+
+    // Auto-render on file open
+    void startAutoRender();
 
     // Execution callbacks
     void onProcessOutput(const QString &text, bool isStderr);

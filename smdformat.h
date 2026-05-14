@@ -5,15 +5,20 @@
 #include <QStringList>
 #include <QList>
 #include <QRegularExpression>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QByteArray>
 
 namespace SmdFormat {
 
 struct Cell {
     QString type;    // "markdown", "cpp", "python"
     QString content;
+    bool rendered = false;   // MD cell render state
+    QString output;          // raw stdout/stderr for code cells
 };
 
-static const QRegularExpression DELIM_RE(QStringLiteral(R"(^---smd:(\w+)$)"));
+static const QRegularExpression DELIM_RE(QStringLiteral(R"(^---smd:(\w+)\s*(\{.*\})?$)"));
 
 inline QList<Cell> parse(const QString &text)
 {
@@ -22,6 +27,8 @@ inline QList<Cell> parse(const QString &text)
 
     QString currentType;
     QStringList currentContent;
+    bool currentRendered = false;
+    QString currentOutput;
 
     auto flushCell = [&]() {
         if (currentType.isEmpty() && currentContent.isEmpty())
@@ -34,7 +41,12 @@ inline QList<Cell> parse(const QString &text)
         Cell cell;
         cell.type = currentType;
         cell.content = currentContent.join(QLatin1Char('\n'));
+        cell.rendered = currentRendered;
+        cell.output = currentOutput;
         cells.append(cell);
+        // Reset metadata for next cell
+        currentRendered = false;
+        currentOutput.clear();
     };
 
     for (const QString &line : lines) {
@@ -43,6 +55,20 @@ inline QList<Cell> parse(const QString &text)
             flushCell();
             currentType = m.captured(1).toLower();
             currentContent.clear();
+            // Parse optional JSON metadata
+            QString metaJson = m.captured(2).trimmed();
+            if (!metaJson.isEmpty()) {
+                QJsonDocument doc = QJsonDocument::fromJson(metaJson.toUtf8());
+                if (doc.isObject()) {
+                    QJsonObject obj = doc.object();
+                    currentRendered = obj.value(QStringLiteral("rendered")).toBool(false);
+                    if (obj.contains(QStringLiteral("output"))) {
+                        QString b64 = obj.value(QStringLiteral("output")).toString();
+                        currentOutput = QString::fromUtf8(
+                            QByteArray::fromBase64(b64.toLatin1()));
+                    }
+                }
+            }
         } else {
             currentContent.append(line);
         }
@@ -56,7 +82,20 @@ inline QString serialize(const QList<Cell> &cells)
     QStringList result;
     for (int i = 0; i < cells.size(); ++i) {
         const Cell &cell = cells[i];
-        result.append(QStringLiteral("---smd:%1").arg(cell.type));
+        QString header = QStringLiteral("---smd:%1").arg(cell.type);
+        // Build optional metadata JSON
+        QJsonObject meta;
+        if (cell.rendered)
+            meta.insert(QStringLiteral("rendered"), true);
+        if (!cell.output.isEmpty()) {
+            QString b64 = QString::fromLatin1(cell.output.toUtf8().toBase64());
+            meta.insert(QStringLiteral("output"), b64);
+        }
+        if (!meta.isEmpty()) {
+            QJsonDocument doc(meta);
+            header += QLatin1Char(' ') + QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+        }
+        result.append(header);
         if (!cell.content.isEmpty())
             result.append(cell.content);
         if (i < cells.size() - 1)

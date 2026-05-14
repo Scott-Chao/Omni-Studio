@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.0）
+## 功能说明文档（v0.7.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -36,7 +36,18 @@
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
-- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
+- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
+
+# 新增/修复 v0.7.1
+- SMD 编辑器改进：                        
+  - 输出区域从单元格内移至下方独立 SmdOutputWidget，自适应高度（1-15行）
+  - 输出内容上限1000行，超出显示 "[... more lines]"
+  - 去除 "--- Running ---" / "--- Exit code: N ---" 头尾信息   
+  - SMD 文件格式扩展：分隔线支持 JSON 元数据（rendered / outputbase64）
+  - 文件保存时持久化输出内容和 MD 块渲染状态，重新打开时自动恢复
+  - 打开文件时隐式自动渲染已渲染的 MD 块（200ms间隔顺序渲染）
+- Ctrl+Enter执行后自动跳转到下一个单元格，空代码块也支持跳转
+- 修复渲染完成后焦点回跳至渲染单元格（grabbing标志位）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -912,22 +923,25 @@
 
 **职责**：
 - 头文件（header-only）命名空间 `SmdFormat`，提供 `.smd` 文件格式的解析与序列化。
-- 文件格式以 `---smd:<type>` 为单元格分隔符，`type` 可取 `markdown`、`cpp`、`python`。
+- 文件格式以 `---smd:<type>` 为单元格分隔符，`type` 可取 `markdown`、`cpp`、`python`。分隔线后可选 JSON 元数据（如 `{"rendered":true,"output":"..."}`），用于持久化输出内容和渲染状态。
 - 首个分隔符之前的任何内容视为默认 markdown 单元格（或忽略空内容）。
 - 每个单元格的前导和尾部空白行在解析时自动裁剪。
 
 **数据结构 `SmdFormat::Cell`**：
 - `QString type`：单元格类型（"markdown"/"cpp"/"python"）。
 - `QString content`：单元格文本内容（已裁剪前后空白行）。
+- `bool rendered`：Markdown 单元格的渲染状态（默认 false）。
+- `QString output`：代码单元格的执行输出文本（默认空，序列化时 base64 编码）。
 
 **主要接口**：
-- `QList<Cell> parse(const QString &text)`：将原始 `.smd` 文本解析为单元格列表。按行扫描，以正则 `^---smd:(\w+)$` 匹配分隔符，类型名自动转小写。
-- `QString serialize(const QList<Cell> &cells)`：将单元格列表序列化为 `.smd` 格式文本。每单元格写入 `---smd:<type>\n<content>`，单元格间空行分隔，末尾保留一个空行。
+- `QList<Cell> parse(const QString &text)`：将原始 `.smd` 文本解析为单元格列表。按行扫描，以正则 `^---smd:(\w+)\s*(\{.*\})?$` 匹配分隔符，类型名自动转小写。若存在 JSON 元数据则解析 `rendered` 和 `output`（base64 解码）字段。
+- `QString serialize(const QList<Cell> &cells)`：将单元格列表序列化为 `.smd` 格式文本。每单元格写入 `---smd:<type>`，若有非默认元数据则追加 JSON（`rendered` 为 true 或 `output` 非空时 base64 编码）。单元格间空行分隔。
 - `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式（桩实现）。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block（\`\`\`cpp / \`\`\`python）。
 - `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表（桩实现）。检测 fenced code block 分隔符并拆分单元格。
 
 **协作关系**：
 - 被 `SmdEditor` 在 `loadFile()` 和 `saveFile()` 中调用以解析和序列化文件内容。
+- `output` 字段的 base64 编解码仅在序列化/反序列化边界，内存中为原始文本。
 
 ---
 
@@ -936,7 +950,7 @@
 **文件**：`smdcell.h` / `smdcell.cpp`
 
 **职责**：
-- 继承 `QFrame`，表示 `.smd` 文件中的一个单元格（Cell），包含类型标签、编辑器/渲染视图栈和输出区域。
+- 继承 `QFrame`，表示 `.smd` 文件中的一个单元格（Cell），包含类型标签和编辑器/渲染视图栈。输出区域已移出至独立的 `SmdOutputWidget`，由 `SmdEditor` 管理。
 - 支持三种 `CellType`：`Markdown`、`Cpp`、`Python`。
 - **自适应高度**：编辑器高度通过遍历所有 `QTextBlock` 的 `QTextLayout::boundingRect()` 精确求和得出，覆盖通过 `QFontMetricsF` 获取子像素精度，加上 `contentsMargins` 边距和 `+2px` 浮点舍入缓冲，确保编辑器内容完整可见无内部滚动条。整个页面通过父级 `QScrollArea` 统一滚动。
 - **选中视觉效果**：active 状态下四周显示 2px 蓝色边框（`#0078d4`），背景微亮（`#252526`）；非 active 命令模式显示灰色边框（`#3c3c3c`）；编辑模式透明边框。
@@ -945,32 +959,26 @@
 1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
 2. **编辑器/视图栈**（`m_editorStack`，`QStackedWidget`）：
    - Page 0：编辑器——Markdown 单元格使用 `QPlainTextEdit`（等宽字体、深色主题），C++/Python 单元格使用 `CodeEditor`（带语法高亮和行号）。
-   - Page 1：渲染视图（仅 Markdown）——`QTextBrowser`，通过 `setMarkdown()` 渲染 Markdown 为 HTML。
-3. **输出区域**（`m_outputArea`，`QPlainTextEdit`）：只读，深色终端风格，默认隐藏，执行代码时显示 stdout/stderr。
+   - Page 1：渲染视图（仅 Markdown）——`QLabel`，通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后显示在 QLabel 中，销毁 QWebEngineView 释放 GPU 资源。
 
 **主要接口**：
 - `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容。
 - `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
 - `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）。
-- `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。渲染时调用 `m_renderView->setMarkdown()` 并切换栈到第 1 页，取消渲染时切回编辑器。
-- `void showOutput/appendOutput/clearOutput/hideOutput()`：管理输出区域显示。stderr 以红色（`#F48771`）显示。
-- `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染视图）。
+- `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源。
+- `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 QLabel）。
 - `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：根据缩放因子和基础字号调整编辑器字体大小及行号区域。
-- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，对每个块通过 `QTextLayout::boundingRect().height()` 获取实际渲染高度（若布局尚未完成则回退到 `QFontMetricsF::lineSpacing()`），累加得到总文档高度后，加上 `contentsMargins` 上下边距和 `+2px` 缓冲（消除浮点舍入误差），通过 `qCeil` 向上取整后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 信号自动触发，也通过 `QTimer::singleShot(0, ...)` 在初始化后异步调用。
+- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
 
-**信号**：
-- `void focusEntered()`：编辑器获得焦点时发出，用于 `SmdEditor` 更新选中单元格。
-- `void cellTypeChanged()`：单元格类型变更时发出，用于 `SmdEditor` 重新安装事件过滤器。
-- `void contentChanged()`：内容变更时发出。
+**信号**：同上。
 
 **事件处理**：
-- 重写 `eventFilter(QObject*, QEvent*)`：拦截编辑器控件的 `FocusIn` 事件，发射 `focusEntered()` 信号。
+- 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` / `MouseButtonPress` 事件发射 `focusEntered()` 信号。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
-- 代码单元格通过 `CodeEditor` 和 `LanguageUtils::createHighlighter()` 获取语法高亮。
-- 字体缩放由 `EditorWidget::applyZoom()` → `SmdEditor::applyZoom()` 触发。
+- 输出内容由独立的 `SmdOutputWidget` 管理，与 SmdCell 分离。
 
 ---
 
@@ -980,8 +988,9 @@
 
 **职责**：
 - 继承 `QWidget`，作为 `EditorWidget` 的 `SmdEdit` 模式的内部主控件，管理 `.smd` 文件的加载、保存、单元格编辑和代码执行。
-- 拥有一个 `QScrollArea`，内含 `m_cellContainer`（`QVBoxLayout`），所有 `SmdCell` 竖直排列，超出视口时滚动。
+- 拥有一个 `QScrollArea`，内含 `m_cellContainer`（`QVBoxLayout`），所有 `SmdCell` 和 `SmdOutputWidget` 交错排列（每个单元格下方紧跟一个输出控件），超出视口时滚动。
 - 拥有独立的 `ProcessRunner` 实例，用于代码单元格的编译和执行。
+- 管理 `m_outputWidgets` 列表，与 `m_cells` 一一对应，负责输出的持久化与恢复。
 
 **模式管理**：
 - **编辑模式**（默认）：当前活动单元格的编辑器获得焦点，用户可直接输入内容。边框透明。
@@ -1009,17 +1018,20 @@
 - 确认后通过回调设置单元格类型，自动进入编辑模式。
 
 **单元格执行**：
-- `executeCurrentCell()`：根据当前活动单元格类型分发执行。
-- **Markdown 单元格**：调用 `SmdCell::setRendered(true)` → `QTextBrowser::setMarkdown()` 渲染。若已渲染则取消渲染。执行后进入命令模式并跳转下一个单元格。
-- **C++ 单元格**：将代码保存到临时文件 → `ProcessRunner::startCompileAndRun()` → stdout/stderr 流式输出到单元格输出区域 → 完成后显示退出码，清理临时文件。
-- **Python 单元格**：将代码保存到临时文件 → `ProcessRunner::startRunPython()` → 输出到单元格输出区域 → 完成后清理临时文件。
+- `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。
+- **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
+- **C++ 单元格**：将代码保存到临时文件 → `ProcessRunner::startCompileAndRun()` → stdout/stderr 流式输出到独立的 `SmdOutputWidget`（无 "--- Running ---" 头） → 清理临时文件 → 进入命令模式并跳转下一个单元格。
+- **Python 单元格**：将代码保存到临时文件 → `ProcessRunner::startRunPython()` → 输出到 `SmdOutputWidget` → 清理临时文件 → 命令模式 + 跳转。
+- **空代码单元格**：不启动执行流程，直接进入命令模式并跳转。
 - 执行期间不支持标准输入交互。
 - 临时文件路径：`QDir::tempPath()/smd_cell_<PID>_<counter>.<ext>`。
+- 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
 
 **文件 I/O**：
-- `loadFile()`：读取文件 → `SmdFormat::parse()` 解析 → `addCell()` 创建单元格。至少保留一个单元格（空文件时默认 Markdown）。
-- `saveFile()`：遍历所有单元格调用 `SmdCell::content()` → `SmdFormat::serialize()` → 写入文件。
+- `loadFile()`：读取文件 → `SmdFormat::parse()` 解析（含元数据） → `addCell()` 创建单元格和输出控件。恢复输出到 `m_outputWidgets[i]`，若有已渲染的 MD 单元格则加入 `m_autoRenderQueue`。
+- `saveFile()`：遍历单元格获取 `content()` 和 `isRendered()`，遍历输出控件获取 `outputText()` → `SmdFormat::serialize()` 序列化为带 JSON 元数据的格式 → 写入文件。
 - `saveAsFile()`：通过 `EditorWidget::saveAsFile()` 间接支持（对话框包含 `*.smd` 过滤器）。
+- 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`，不改变活动单元格和焦点，隐式完成渲染。
 
 **修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
 
@@ -1032,7 +1044,7 @@
 
 **事件处理**：
 - 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理所有快捷键（A/B/Enter/Esc/↑/↓/Ctrl+K/Ctrl+Enter/Ctrl+Shift+Z/Delete/Ctrl+D）。
-- 重写 `eventFilter(QObject*, QEvent*)`：拦截编辑模式下编辑器控件的 `Esc`（进入命令模式）和 `Ctrl+Enter`（执行单元格）。
+- 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。对 `Esc` 和 `Ctrl+Enter` 在 `ShortcutOverride` 阶段就 `event->accept()`，确保 Qt 快捷键系统不拦截这些组合键；`KeyPress` 阶段执行实际操作（进入命令模式/执行单元格）。
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
@@ -1048,6 +1060,33 @@
 - 拥有独立的 `ProcessRunner`，通过 `CompilerUtils` 检测编译器。
 - 通过 `SmdFormat` 解析和序列化文件格式。
 - `.smd` 文件扩展名已在 `config.json` 的 `text_files` 数组中注册，使其可被 `TextFileUtils` 和文件浏览器识别。
+
+---
+
+### 28. `SmdOutputWidget` — SMD 输出控件
+
+**文件**：`smdoutputwidget.h` / `smdoutputwidget.cpp`
+
+**职责**：
+- 继承 `QWidget`，位于每个 `SmdCell` 下方，显示代码单元格的执行输出（stdout/stderr）。
+- 内部包含一个只读 `QPlainTextEdit`，`NoFocus` 策略确保键盘焦点永不落在此控件上，无蓝色焦点边框，文本仍可鼠标选中复制。
+- 深色主题（`#1E1E1E` 背景、`#D4D4D4` 前景、`#264F78` 选区、顶部 `1px solid #3c3c3c` 分隔线），等宽字体 Consolas 10pt。
+
+**自适应高度**：
+- `kMaxVisibleLines = 15`：高度随内容行数增长，最多显示 15 行。未达上限时滚动条强制关闭（`ScrollBarAlwaysOff`），超出时启用滚动条（`ScrollBarAsNeeded`）。
+- `kMaxOutputLines = 1000`：内容行数上限。超出的行从开头删除，替换为灰色 `[... more lines]` 提示。
+- `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，自动调整固定高度。
+
+**主要接口**：
+- `void setOutput(const QString &text)`：清除后设置输出文本，超行截断，自动显示控件。
+- `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
+- `void clearOutput()`：清空内容并隐藏控件。
+- `QString outputText() const`：返回原始输出文本（用于序列化）。
+- `bool hasOutput() const`：是否有输出内容。
+
+**协作关系**：
+- 由 `SmdEditor` 创建和管理，与 `SmdCell` 通过 `m_outputWidgets` 列表一一对应。
+- 内容通过 `SmdEditor::toPlainText()` 序列化（base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。
 
 
 ### 配置存储说明

@@ -162,24 +162,6 @@ void SmdCell::setupUi(CellType type)
 
     mainLayout->addWidget(m_editorStack);
 
-    // Output area (hidden by default)
-    m_outputArea = new QPlainTextEdit(this);
-    m_outputArea->setReadOnly(true);
-    m_outputArea->setMaximumBlockCount(
-        ConfigManager::instance().outputPanelMaxBlocks());
-    m_outputArea->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: #1E1E1E; color: #D4D4D4; "
-        "selection-background-color: #264F78; border: none; "
-        "border-top: 1px solid #3c3c3c; }"
-    ));
-    QFont outFont(QStringLiteral("Consolas"), 10);
-    outFont.setStyleHint(QFont::Monospace);
-    m_outputArea->setFont(outFont);
-    m_outputArea->setVisible(false);
-    m_outputArea->setMinimumHeight(40);
-    m_outputArea->setMaximumHeight(200);
-    mainLayout->addWidget(m_outputArea);
-
     updateTypeLabel();
     updateBorderStyle();
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -617,6 +599,7 @@ void SmdCell::performGrab()
 
     // Grab the top-level render window, then immediately hide it.
     smdDebugLog(QStringLiteral("performGrab — grabbing window %1x%2").arg(vw).arg(vh));
+    m_grabbing = true; // suppress focusEntered during hide/cleanup
     QPixmap pm = m_renderView->grab();
     m_renderView->hide(); // hide immediately after grab — no linger
     if (pm.isNull() || pm.height() <= 0) {
@@ -648,6 +631,7 @@ void SmdCell::performGrab()
     }
 
     updateGeometry();
+    m_grabbing = false;
     emit contentChanged();
     smdDebugLog(QStringLiteral("performGrab — done"));
 }
@@ -667,40 +651,6 @@ void SmdCell::cleanupRenderView()
         m_renderView = nullptr;
         smdDebugLog(QStringLiteral("cleanupRenderView — done"));
     }
-}
-
-void SmdCell::showOutput(const QString &text, bool isStderr)
-{
-    m_outputArea->setVisible(true);
-    m_outputArea->clear();
-    appendOutput(text, isStderr);
-}
-
-void SmdCell::appendOutput(const QString &text, bool isStderr)
-{
-    m_outputArea->setVisible(true);
-    QTextCursor cursor = m_outputArea->textCursor();
-    cursor.movePosition(QTextCursor::End);
-
-    if (isStderr) {
-        QTextCharFormat fmt;
-        fmt.setForeground(QColor(QStringLiteral("#F48771")));
-        cursor.insertText(text, fmt);
-    } else {
-        cursor.insertText(text);
-    }
-    m_outputArea->ensureCursorVisible();
-}
-
-void SmdCell::clearOutput()
-{
-    m_outputArea->clear();
-}
-
-void SmdCell::hideOutput()
-{
-    m_outputArea->setVisible(false);
-    m_outputArea->clear();
 }
 
 QWidget *SmdCell::editorWidget() const
@@ -901,7 +851,8 @@ bool SmdCell::eventFilter(QObject *obj, QEvent *event)
     }
 
     if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
-        emit focusEntered();
+        if (!m_grabbing)
+            emit focusEntered();
     }
     return QFrame::eventFilter(obj, event);
 }

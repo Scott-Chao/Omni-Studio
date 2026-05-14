@@ -41,6 +41,7 @@ SOURCES += \
     settingspanel.cpp \
     smdcell.cpp \
     smdeditor.cpp \
+    smdoutputwidget.cpp \
     submissionpanel.cpp \
     tagindex.cpp \
     tagpanel.cpp \
@@ -80,6 +81,7 @@ HEADERS += \
     smdcell.h \
     smdeditor.h \
     smdformat.h \
+    smdoutputwidget.h \
     submissionpanel.h \
     tagindex.h \
     tagpanel.h \
