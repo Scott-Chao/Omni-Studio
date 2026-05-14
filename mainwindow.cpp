@@ -255,7 +255,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockJudge = new QDockWidget(tr("代码评测"), this);
     m_dockJudge->setWidget(m_judgePanel);
     m_dockJudge->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::RightDockWidgetArea, m_dockJudge);
+    addDockWidget(Qt::LeftDockWidgetArea, m_dockJudge);
+    tabifyDockWidget(m_dockSearch, m_dockJudge);
+    m_dockSearch->raise();
     m_dockJudge->hide();
 
     connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
@@ -333,6 +335,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolbarSpacer = new QWidget;
     m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolBar->addWidget(m_toolbarSpacer);
+
+    // 右侧面板（历史/大纲/标签/反链）
+    toolBar->addAction(toggleRightPanelAction);
 
     // 右侧：预览
     m_previewAction = new QAction(tr("预览"), this);
@@ -584,42 +589,6 @@ MainWindow::MainWindow(QWidget *parent)
             m_searchPanel->focusSearchInput();
         }
     });
-    connect(m_activityBar, &ActivityBar::historyClicked, this, [this]() {
-        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 0)
-            m_dockRightPanel->hide();
-        else {
-            m_rightPanel->setActivePanel(0);
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-        }
-    });
-    connect(m_activityBar, &ActivityBar::outlineClicked, this, [this]() {
-        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 1)
-            m_dockRightPanel->hide();
-        else {
-            m_rightPanel->setActivePanel(1);
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-        }
-    });
-    connect(m_activityBar, &ActivityBar::tagsClicked, this, [this]() {
-        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 2)
-            m_dockRightPanel->hide();
-        else {
-            m_rightPanel->setActivePanel(2);
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-        }
-    });
-    connect(m_activityBar, &ActivityBar::backlinksClicked, this, [this]() {
-        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 3)
-            m_dockRightPanel->hide();
-        else {
-            m_rightPanel->setActivePanel(3);
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-        }
-    });
     connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
     connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
     connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
@@ -638,17 +607,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         m_activityBar->setJudgeActive(visible);
     });
-    // 右侧面板激活状态同步
-    auto syncRightPanelState = [this]() {
-        bool visible = m_dockRightPanel->isVisible();
-        int idx = m_rightPanel->currentPanel();
-        m_activityBar->setHistoryActive(visible && idx == 0);
-        m_activityBar->setOutlineActive(visible && idx == 1);
-        m_activityBar->setTagsActive(visible && idx == 2);
-        m_activityBar->setBacklinksActive(visible && idx == 3);
-    };
-    connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, syncRightPanelState);
-    connect(m_rightPanel, &RightPanelContainer::activePanelChanged, this, syncRightPanelState);
 
     // 初始连接
     connectCurrentEditorZoomSignal();
