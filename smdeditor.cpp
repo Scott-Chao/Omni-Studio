@@ -298,6 +298,12 @@ void SmdEditor::setPlainText(const QString &text)
     }
     m_commandMode = false;
 
+    // Pre-mark rendered flag so toPlainText() matches the file content.
+    // Actual rendering happens async via auto-render — without this the
+    // rendered→false→true transition would make isModified() trip falsely.
+    for (SmdCell *cell : m_autoRenderQueue)
+        cell->setRenderedState(true);
+
     // Start auto-render if there are cells to render
     if (!m_autoRenderQueue.isEmpty())
         startAutoRender();
@@ -654,6 +660,9 @@ void SmdEditor::onProcessFinished(int exitCode)
     m_executingTempFile.clear();
     m_executingCellIndex = -1;
 
+    // Output may have changed — let the modification indicator update
+    emit contentChanged();
+
     // Only jump if the user is still on the executed cell
     if (finishedIdx == m_activeCellIndex) {
         if (!m_commandMode)
@@ -786,6 +795,18 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
     }
 
     return QWidget::eventFilter(obj, event);
+}
+
+void SmdEditor::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    // Check all rendered cells for needed re-renders after layout settles
+    QTimer::singleShot(0, this, [this]() {
+        for (SmdCell *cell : m_cells) {
+            if (cell->isRendered())
+                cell->checkReRender();
+        }
+    });
 }
 
 #include "smdeditor.moc"

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.1）
+## 功能说明文档（v0.7.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,16 +38,11 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.7.1
-- SMD 编辑器改进：                        
-  - 输出区域从单元格内移至下方独立 SmdOutputWidget，自适应高度（1-15行）
-  - 输出内容上限1000行，超出显示 "[... more lines]"
-  - 去除 "--- Running ---" / "--- Exit code: N ---" 头尾信息   
-  - SMD 文件格式扩展：分隔线支持 JSON 元数据（rendered / outputbase64）
-  - 文件保存时持久化输出内容和 MD 块渲染状态，重新打开时自动恢复
-  - 打开文件时隐式自动渲染已渲染的 MD 块（200ms间隔顺序渲染）
-- Ctrl+Enter执行后自动跳转到下一个单元格，空代码块也支持跳转
-- 修复渲染完成后焦点回跳至渲染单元格（grabbing标志位）
+# 新增/修复 v0.7.2
+- SMD 单元格窗口缩放自动重排：窗口缩放时重新渲染 MD 块以适应新宽度，RenderPixmapWidget 替代 QLabel 消除 sizeHint 对父布局的宽度约束
+- SMD 缩放同步影响渲染字号：缩放时渲染块内字体随缩放比例同步调整
+- 修复自动渲染导致打开文件时误判为已修改：预置渲染标志位后再捕获原始内容快照
+- 修复代码执行后未显示未保存标识：执行完成后发射 contentChanged 信号
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -959,22 +954,25 @@
 1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
 2. **编辑器/视图栈**（`m_editorStack`，`QStackedWidget`）：
    - Page 0：编辑器——Markdown 单元格使用 `QPlainTextEdit`（等宽字体、深色主题），C++/Python 单元格使用 `CodeEditor`（带语法高亮和行号）。
-   - Page 1：渲染视图（仅 Markdown）——`QLabel`，通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后显示在 QLabel 中，销毁 QWebEngineView 释放 GPU 资源。
+   - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示，销毁 QWebEngineView 释放 GPU 资源。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
 
 **主要接口**：
 - `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容。
 - `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
 - `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）。
 - `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源。
-- `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 QLabel）。
+- `void setRenderedState(bool rendered)`：仅设置渲染标志位，不触发实际渲染管线。用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
+- `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 RenderPixmapWidget）。
 - `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
-- `void applyZoom(qreal factor, int baseFontSize)`：根据缩放因子和基础字号调整编辑器字体大小及行号区域。
+- `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
+- `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
 
 **信号**：同上。
 
 **事件处理**：
 - 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` / `MouseButtonPress` 事件发射 `focusEntered()` 信号。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
+- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：保留本地遮罩层避免闪烁 → `setRendered(false)` → 恢复内容 → `setRendered(true)` → 恢复命令模式。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
@@ -1026,12 +1024,14 @@
 - 执行期间不支持标准输入交互。
 - 临时文件路径：`QDir::tempPath()/smd_cell_<PID>_<counter>.<ext>`。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
+- 修改跟踪：执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出内容的变化能反映在文件修改状态上（未保存标识）。
 
 **文件 I/O**：
 - `loadFile()`：读取文件 → `SmdFormat::parse()` 解析（含元数据） → `addCell()` 创建单元格和输出控件。恢复输出到 `m_outputWidgets[i]`，若有已渲染的 MD 单元格则加入 `m_autoRenderQueue`。
 - `saveFile()`：遍历单元格获取 `content()` 和 `isRendered()`，遍历输出控件获取 `outputText()` → `SmdFormat::serialize()` 序列化为带 JSON 元数据的格式 → 写入文件。
 - `saveAsFile()`：通过 `EditorWidget::saveAsFile()` 间接支持（对话框包含 `*.smd` 过滤器）。
 - 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`，不改变活动单元格和焦点，隐式完成渲染。
+- 修改状态同步：文件加载时先通过 `setRenderedState(true)` 预置已渲染单元格的标志位，然后采集 `m_originalContent`，使序列化结果与文件内容一致，避免自动渲染完成后误判为已修改。
 
 **修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
 
@@ -1040,9 +1040,11 @@
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：序列化/反序列化所有单元格内容。
 - `bool isModified() const` / `void setModified(bool modified)`：修改状态管理。
 - `void applyZoom(qreal factor, int baseFontSize)`：遍历所有单元格调用 `SmdCell::applyZoom()`。
+- `void checkCellRenderWidths()`：遍历所有已渲染单元格调用 `SmdCell::checkReRender()`，在 `resizeEvent` 中延迟执行，确保布局稳定后检测宽度变化。
 - `void setEditorFont(const QString &family, int size)` / `void reloadColors()`：字体和颜色更新。
 
 **事件处理**：
+- 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
 - 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理所有快捷键（A/B/Enter/Esc/↑/↓/Ctrl+K/Ctrl+Enter/Ctrl+Shift+Z/Delete/Ctrl+D）。
 - 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。对 `Esc` 和 `Ctrl+Enter` 在 `ShortcutOverride` 阶段就 `event->accept()`，确保 Qt 快捷键系统不拦截这些组合键；`KeyPress` 阶段执行实际操作（进入命令模式/执行单元格）。
 

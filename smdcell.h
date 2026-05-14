@@ -12,6 +12,7 @@
 #include <QList>
 
 class CodeEditor;
+class RenderPixmapWidget;
 
 class SmdCell : public QFrame
 {
@@ -36,11 +37,14 @@ public:
     // MD rendering
     bool isRendered() const { return m_rendered; }
     void setRendered(bool rendered);
+    // Set rendered flag without triggering render pipeline (for load-time sync)
+    void setRenderedState(bool rendered);
 
     QWidget *editorWidget() const;
     void setEditorFocus();
 
     void applyZoom(qreal factor, int baseFontSize);
+    void checkReRender();
 
     static CellType typeFromLangId(const QString &langId);
     static QString langIdFromType(CellType type);
@@ -70,6 +74,8 @@ private:
     void pollGrabReady();
     void performGrab();
     void cleanupRenderView();
+    void scheduleReRender();
+    void performReRender();
 
     CellType m_type;
     bool m_commandMode = false;
@@ -84,7 +90,7 @@ private:
     QPlainTextEdit *m_markdownEditor = nullptr;
     CodeEditor *m_codeEditor = nullptr;
     QWebEngineView *m_renderView = nullptr;      // direct child, off-stack, overlays editor
-    QLabel *m_renderImage = nullptr;             // pixmap replacement (no native HWND)
+    RenderPixmapWidget *m_renderImage = nullptr;   // pixmap replacement (no native HWND, no sizeHint)
 
     // Adaptive grab state
     QWidget *m_renderOverlay = nullptr;           // native overlay hides QWebEngineView during render
@@ -92,6 +98,11 @@ private:
     int m_pollCount = 0;
     QList<int> m_polledHeights;
     static constexpr int kMaxPollCount = 25;      // 5s at 200ms interval
+
+    // Re-render on resize
+    QTimer *m_renderDebounceTimer = nullptr;
+    int m_lastRenderWidth = 0;
+    qreal m_zoomFactor = 1.0;
 
     QString m_languageId;
 };

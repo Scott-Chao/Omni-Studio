@@ -14,6 +14,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QThread>
+#include <QPainter>
 
 // Minimal HTML page that embeds KaTeX + Mermaid + marked.js for
 // rendering Markdown cells with full math / diagram support.
@@ -101,7 +102,32 @@ static void smdDebugLog(const QString &msg)
     }
 }
 
-// Recursively find and log all widgets with native windows
+// QWidget that paints a pixmap scaled to fit, with NO sizeHint influence.
+// Unlike QLabel, sizeHint() returns (-1,-1) so parent layouts won't prevent
+// the cell from shrinking on window resize.
+class RenderPixmapWidget : public QWidget
+{
+public:
+    explicit RenderPixmapWidget(QWidget *parent = nullptr) : QWidget(parent) {}
+
+    void setPixmap(const QPixmap &pm) { m_pm = pm; update(); }
+    QPixmap pixmap() const { return m_pm; }
+    bool isNull() const { return m_pm.isNull(); }
+    void clear() { m_pm = QPixmap(); update(); }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        if (m_pm.isNull()) return;
+        QPainter p(this);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+        p.drawPixmap(rect(), m_pm);
+    }
+
+private:
+    QPixmap m_pm;
+};
+
 SmdCell::SmdCell(CellType type, const QString &content, QWidget *parent)
     : QFrame(parent)
     , m_type(type)
@@ -153,14 +179,20 @@ void SmdCell::setupUi(CellType type)
     else
         setupCodeEditor(m_languageId);
 
-    // Page 1: QLabel that replaces QWebEngineView after grab (no native HWND)
-    m_renderImage = new QLabel(this);
+    // Page 1: QWidget that paints the pixmap (no native HWND, no sizeHint pollution)
+    m_renderImage = new RenderPixmapWidget(this);
     m_renderImage->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
     m_renderImage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_renderImage->installEventFilter(this);
     m_editorStack->addWidget(m_renderImage);          // page 1
 
     mainLayout->addWidget(m_editorStack);
+
+    // Debounce timer for re-rendering on resize
+    m_renderDebounceTimer = new QTimer(this);
+    m_renderDebounceTimer->setSingleShot(true);
+    m_renderDebounceTimer->setInterval(300);
+    connect(m_renderDebounceTimer, &QTimer::timeout, this, &SmdCell::performReRender);
 
     updateTypeLabel();
     updateBorderStyle();
@@ -342,6 +374,7 @@ void SmdCell::setRendered(bool rendered)
 
         int viewW = m_editorStack->width();
         if (viewW < 100) viewW = 600;
+        m_lastRenderWidth = width();  // cell width for resize comparison
         int initH = 60;
         if (m_markdownEditor && m_markdownEditor->height() > initH)
             initH = m_markdownEditor->height();
@@ -399,6 +432,13 @@ void SmdCell::setRendered(bool rendered)
             .arg(m_renderView->x()).arg(m_renderView->y())
             .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
 
+        // Inject zoom-adjusted font size into rendered content
+        int renderFontPt = qBound(10, qRound(16 * m_zoomFactor), 32);
+        QString fsStyle = QStringLiteral(
+            "<style>body{font-size:%1px!important}</style>"
+        ).arg(renderFontPt);
+        tmpl.replace(QStringLiteral("</head>"), fsStyle + QStringLiteral("</head>"));
+
         m_renderView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
     } else {
         smdDebugLog(QStringLiteral("setRendered(false) — stop+cleanup+switch to editor"));
@@ -419,6 +459,21 @@ void SmdCell::setRendered(bool rendered)
             m_markdownEditor->setFocus();
         updateEditorHeight();
     }
+    if (m_commandMode) {
+        if (rendered) {
+            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+        } else {
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+        }
+        m_executeHint->setVisible(true);
+    }
+}
+
+void SmdCell::setRenderedState(bool rendered)
+{
+    if (m_type != Markdown)
+        return;
+    m_rendered = rendered;
     if (m_commandMode) {
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
@@ -612,12 +667,20 @@ void SmdCell::performGrab()
     int lh = qRound(pm.height() / dpr);
     smdDebugLog(QStringLiteral("performGrab — OK %1x%2 @dpr=%3").arg(lw).arg(lh).arg(dpr));
 
-    // Set up QLabel with pixmap, switch stack, hide overlay
+    // Set up pixmap widget, switch stack, hide overlay
     m_renderImage->setPixmap(pm);
-    m_renderImage->setScaledContents(true);
-    m_renderImage->setFixedSize(lw, lh);
+    // Only fix height — width must be free so the cell can shrink on window resize.
+    m_renderImage->setFixedHeight(lh);
+    m_renderImage->setMinimumWidth(0);
     m_editorStack->setFixedHeight(lh);
     m_editorStack->setCurrentIndex(1);
+
+    // If width changed during async render, schedule another re-render
+    int cellW = width();
+    if (qAbs(cellW - m_lastRenderWidth) > 20) {
+        m_lastRenderWidth = cellW;
+        scheduleReRender();
+    }
     if (m_renderOverlay) {
         m_renderOverlay->hide();
     }
@@ -653,6 +716,50 @@ void SmdCell::cleanupRenderView()
     }
 }
 
+void SmdCell::scheduleReRender()
+{
+    if (!m_rendered || !m_renderDebounceTimer)
+        return;
+    m_renderDebounceTimer->start();
+}
+
+void SmdCell::checkReRender()
+{
+    if (!m_rendered || !m_renderImage || m_renderImage->pixmap().isNull())
+        return;
+    int cellW = width();
+    if (m_lastRenderWidth > 0 && qAbs(cellW - m_lastRenderWidth) > 20)
+        scheduleReRender();
+}
+
+void SmdCell::performReRender()
+{
+    if (!m_rendered)
+        return;
+    smdDebugLog(QStringLiteral("performReRender — width changed from %1 to %2")
+        .arg(m_lastRenderWidth).arg(m_editorStack->width()));
+
+    QString savedContent = content();
+    bool wasCmd = m_commandMode;
+
+    // Local overlay that won't be touched by setRendered(false):
+    // setRendered(false) only deletes m_renderOverlay, not this one.
+    QWidget *localOverlay = new QWidget(this);
+    localOverlay->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
+    localOverlay->setGeometry(m_editorStack->geometry());
+    localOverlay->setVisible(true);
+    localOverlay->raise();
+
+    setRendered(false);
+    setContent(savedContent);
+    setRendered(true);
+
+    setCommandMode(wasCmd);
+
+    localOverlay->hide();
+    localOverlay->deleteLater();
+}
+
 QWidget *SmdCell::editorWidget() const
 {
     if (m_rendered) {
@@ -683,6 +790,8 @@ void SmdCell::setEditorFocus()
 
 void SmdCell::applyZoom(qreal factor, int baseFontSize)
 {
+    m_zoomFactor = factor;
+
     const auto &cfg = ConfigManager::instance();
     int pointSize = qBound(cfg.fontMinPointSize(),
                            qRound(baseFontSize * factor),
@@ -698,6 +807,13 @@ void SmdCell::applyZoom(qreal factor, int baseFontSize)
         f.setPointSize(pointSize);
         m_codeEditor->setFont(f);
         m_codeEditor->refreshLineNumberArea();
+    }
+
+    // For rendered cells the pixmap is static — re-render with new font size.
+    if (m_rendered) {
+        m_lastRenderWidth = 0;  // force re-render
+        scheduleReRender();
+        return;
     }
 
     // repaint() only lays out blocks visible in the current viewport. After
@@ -863,6 +979,14 @@ void SmdCell::resizeEvent(QResizeEvent *event)
     // Keep overlay positioned over the editor stack (non-native, safe)
     if (m_renderOverlay && m_renderOverlay->isVisible()) {
         m_renderOverlay->setGeometry(m_editorStack->geometry());
+    }
+    // Re-render if rendered pixmap width no longer matches available width.
+    // Use event->size() (the cell's own new size) rather than m_editorStack->width()
+    // because child widgets may not yet be laid out at this point.
+    if (m_rendered && m_renderImage && !m_renderImage->pixmap().isNull()) {
+        int newCellW = event->size().width();
+        if (m_lastRenderWidth > 0 && qAbs(newCellW - m_lastRenderWidth) > 20)
+            scheduleReRender();
     }
 }
 
