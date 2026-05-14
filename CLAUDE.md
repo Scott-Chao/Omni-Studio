@@ -25,15 +25,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full component map, data flows, and c
 ```
 main.cpp                     → QApplication + MainWindow bootstrap
 MainWindow                   → frameless orchestrator, owns all widgets
-  ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left dock)
+  ├── ActivityBar            → 48px left vertical bar with SVG icon buttons: Search, Settings, Export PDF, Judge
+  ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left, in splitter)
   ├── TabManager             → QTabWidget, owns EditorWidget tabs (center)
   │   └── EditorWidget       → QStackedWidget, 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
-  ├── OutlinePanel           → heading navigation for current .md file (right dock)
-  ├── SearchPanel            → full-text search (left dock)
-  ├── HistoryPanel           → recent files (right dock)
-  ├── BacklinksPanel         → [[wikilink]] reverse index (right dock)
-  ├── TagPanel               → #tag browser (right dock)
-  ├── JudgePanel + JudgeEngine → local OJ-style judge (right dock)
+  ├── RightPanelContainer    → unified right dock with tab bar: History / Outline / Tags / Backlinks
+  ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
+  ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
   ├── OpenJudgeWindow        → separate QMainWindow for OpenJudge browsing + submission
   ├── OutputPanel            → bottom dock, terminal-style stdout/stderr
   ├── SettingsPanel          → floating overlay settings panel
@@ -41,6 +39,11 @@ MainWindow                   → frameless orchestrator, owns all widgets
 ```
 
 ### Key Conventions (not obvious from source)
+
+- **Toolbar = title bar**: Single QToolBar serves as frameless title bar. Layout: [文件▼] | drag area | [面板][预览][分屏][运行▼] | [min][max][close]
+- **ActivityBar**: Always-visible 48px left bar. Search/Settings/Export PDF top group, Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files.
+- **Right panel tabs**: History/Outline/Tags/Backlinks in a single QDockWidget with QStackedWidget. Toggled via toolbar [面板] button. Click-outside auto-hides.
+- **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.
 
 - **File → mode mapping**: `.pdf` → PdfView, `.smd` → SmdEditor (cell-based), code extensions (`.cpp`/`.py` etc.) → CodeEditor with syntax highlighting, everything else → MarkdownEdit (WikiLinkTextEdit with `[[wikilink]]` autocomplete).
 - **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files.
