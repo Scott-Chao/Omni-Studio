@@ -25,7 +25,7 @@ static QString smdRenderTemplate()
         "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
         "<link rel=\"stylesheet\" href=\"katex.min.css\">"
         "<style>"
-        "body{background:#1E1E1E;color:#D4D4D4;"
+        "body{background:#2d2d2d;color:#D4D4D4;"
         "font-family:-apple-system,\"Microsoft YaHei\",sans-serif;"
         "line-height:1.7;padding:8px 12px;margin:0}"
         "h1,h2,h3,h4,h5,h6{color:#569CD6}"
@@ -121,7 +121,10 @@ protected:
         if (m_pm.isNull()) return;
         QPainter p(this);
         p.setRenderHint(QPainter::SmoothPixmapTransform);
-        p.drawPixmap(rect(), m_pm);
+        QSize scaled = m_pm.size().scaled(size(), Qt::KeepAspectRatio);
+        int x = (width() - scaled.width()) / 2;
+        int y = (height() - scaled.height()) / 2;
+        p.drawPixmap(x, y, scaled.width(), scaled.height(), m_pm);
     }
 
 private:
@@ -181,7 +184,7 @@ void SmdCell::setupUi(CellType type)
 
     // Page 1: QWidget that paints the pixmap (no native HWND, no sizeHint pollution)
     m_renderImage = new RenderPixmapWidget(this);
-    m_renderImage->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
+    m_renderImage->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
     m_renderImage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_renderImage->installEventFilter(this);
     m_editorStack->addWidget(m_renderImage);          // page 1
@@ -216,7 +219,7 @@ void SmdCell::setupMarkdownEditor()
     f.setStyleHint(QFont::Monospace);
     m_markdownEditor->setFont(f);
     m_markdownEditor->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: #1E1E1E; color: #D4D4D4; "
+        "QPlainTextEdit { background-color: #2d2d2d; color: #D4D4D4; "
         "selection-background-color: #264F78; border: none; padding: 8px; }"
     ));
     m_markdownEditor->setTabChangesFocus(false);
@@ -357,11 +360,107 @@ void SmdCell::ensureRenderView()
     m_renderView->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     m_renderView->setAttribute(Qt::WA_ShowWithoutActivating, true);
     m_renderView->setAttribute(Qt::WA_NoSystemBackground, true);
-    m_renderView->page()->setBackgroundColor(QColor(QStringLiteral("#1E1E1E")));
+    m_renderView->page()->setBackgroundColor(QColor(QStringLiteral("#2d2d2d")));
     m_renderView->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
     m_renderView->setVisible(false);
     connect(m_renderView->page(), &QWebEnginePage::loadFinished,
             this, &SmdCell::onRenderLoadFinished);
+}
+
+void SmdCell::startRenderPipeline(bool isInitialRender)
+{
+    int viewW = m_editorStack->width();
+    if (viewW < 100) viewW = 600;
+    m_lastRenderWidth = width();
+
+    // For initial render, start at editor height; for re-render, keep current stack height
+    int initH;
+    if (isInitialRender) {
+        initH = 60;
+        if (m_markdownEditor && m_markdownEditor->height() > initH)
+            initH = m_markdownEditor->height();
+        m_editorStack->setFixedHeight(initH);
+    } else {
+        initH = m_editorStack->height();
+        if (initH < 40) initH = 60;
+    }
+
+    smdDebugLog(QStringLiteral("startRenderPipeline — isInitial=%1, stackW=%2, initH=%3")
+        .arg(isInitialRender).arg(m_editorStack->width()).arg(initH));
+
+    // Position QWebEngineView at the cell's screen position.
+    // It's a separate top-level window (no native cascade into SmdCell).
+    // For initial render: show at full size (overlay covers the cell, so any flash
+    // is hidden from the user).
+    // For re-render: show at 1x1 first, lower behind main window, then resize to
+    // full size — this eliminates the visible flash that would otherwise occur
+    // when a new top-level window appears at the cell position.
+    QPoint cellPos = m_editorStack->mapToGlobal(QPoint(0, 0));
+    if (isInitialRender) {
+        m_renderView->setGeometry(cellPos.x(), cellPos.y(), viewW, initH);
+        m_renderView->setFixedSize(viewW, initH);
+        m_renderView->show();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        m_renderView->lower();
+    } else {
+        // Minimal 1×1 show — Chromium gets a real visible window to paint into,
+        // but the flash is only a single pixel, effectively invisible.
+        m_renderView->setGeometry(cellPos.x(), cellPos.y(), 1, 1);
+        m_renderView->setFixedSize(1, 1);
+        m_renderView->show();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        m_renderView->lower();
+        // Now resize to the real dimensions behind the main window
+        m_renderView->setGeometry(cellPos.x(), cellPos.y(), viewW, initH);
+        m_renderView->setFixedSize(viewW, initH);
+    }
+
+    // Non-native overlay (no WA_NativeWindow) as loading indicator — only for initial render.
+    // For re-render the old pixmap on page 1 serves as a seamless placeholder.
+    if (isInitialRender) {
+        if (!m_renderOverlay) {
+            m_renderOverlay = new QWidget(this);
+            m_renderOverlay->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
+        }
+        m_renderOverlay->setGeometry(m_editorStack->geometry());
+        m_renderOverlay->setVisible(true);
+        m_renderOverlay->raise();
+        m_editorStack->setCurrentIndex(0);
+    }
+
+    // Load template
+    QFile tmplFile(QStringLiteral(":/preview/template.html"));
+    QString tmpl;
+    if (tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        tmpl = QString::fromUtf8(tmplFile.readAll());
+        tmplFile.close();
+    }
+    if (tmpl.isEmpty()) {
+        smdDebugLog(QStringLiteral("startRenderPipeline — template read FAILED"));
+        tmpl = smdRenderTemplate().arg(
+            QString::fromLatin1(content().toUtf8().toBase64()));
+    } else {
+        QString safeContent = content();
+        safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+        tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+        tmpl.replace(QStringLiteral("padding: 24px 32px;"),
+                     QStringLiteral("padding: 8px 12px;"));
+        tmpl.replace(QStringLiteral("max-width: 960px;"),
+                     QStringLiteral(""));
+    }
+
+    smdDebugLog(QStringLiteral("startRenderPipeline — top-level win at (%1,%2) size=%3x%4, htmlLen=%5")
+        .arg(m_renderView->x()).arg(m_renderView->y())
+        .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
+
+    // Inject zoom-adjusted font size into rendered content
+    int renderFontPt = qBound(10, qRound(16 * m_zoomFactor), 32);
+    QString fsStyle = QStringLiteral(
+        "<style>body{font-size:%1px!important}</style>"
+    ).arg(renderFontPt);
+    tmpl.replace(QStringLiteral("</head>"), fsStyle + QStringLiteral("</head>"));
+
+    m_renderView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 }
 
 void SmdCell::setRendered(bool rendered)
@@ -371,75 +470,7 @@ void SmdCell::setRendered(bool rendered)
     m_rendered = rendered;
     if (rendered) {
         ensureRenderView();
-
-        int viewW = m_editorStack->width();
-        if (viewW < 100) viewW = 600;
-        m_lastRenderWidth = width();  // cell width for resize comparison
-        int initH = 60;
-        if (m_markdownEditor && m_markdownEditor->height() > initH)
-            initH = m_markdownEditor->height();
-
-        smdDebugLog(QStringLiteral("setRendered(true) — stackW=%1, editorH=%2, initSize=%3x%4")
-            .arg(m_editorStack->width()).arg(m_markdownEditor ? m_markdownEditor->height() : -1)
-            .arg(viewW).arg(initH));
-
-        m_editorStack->setFixedHeight(initH);
-
-        // Position QWebEngineView at the cell's screen position.
-        // It's a separate top-level window (no native cascade into SmdCell).
-        // Show window at cell position so Chromium renders content.
-        // Need a real visible window for proper paint — then immediately
-        // lower behind main window. processEvents minimizes the visible time.
-        QPoint cellPos = m_editorStack->mapToGlobal(QPoint(0, 0));
-        m_renderView->setGeometry(cellPos.x(), cellPos.y(), viewW, initH);
-        m_renderView->setFixedSize(viewW, initH);
-        m_renderView->show();
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        m_renderView->lower();
-
-        // Non-native overlay (no WA_NativeWindow) as loading indicator
-        if (!m_renderOverlay) {
-            m_renderOverlay = new QWidget(this);
-            m_renderOverlay->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
-        }
-        m_renderOverlay->setGeometry(m_editorStack->geometry());
-        m_renderOverlay->setVisible(true);
-        m_renderOverlay->raise();
-        m_editorStack->setCurrentIndex(0);
-
-        // Load template
-        QFile tmplFile(QStringLiteral(":/preview/template.html"));
-        QString tmpl;
-        if (tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            tmpl = QString::fromUtf8(tmplFile.readAll());
-            tmplFile.close();
-        }
-        if (tmpl.isEmpty()) {
-            smdDebugLog(QStringLiteral("setRendered — template read FAILED"));
-            tmpl = smdRenderTemplate().arg(
-                QString::fromLatin1(content().toUtf8().toBase64()));
-        } else {
-            QString safeContent = content();
-            safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
-            tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
-            tmpl.replace(QStringLiteral("padding: 24px 32px;"),
-                         QStringLiteral("padding: 8px 12px;"));
-            tmpl.replace(QStringLiteral("max-width: 960px;"),
-                         QStringLiteral(""));
-        }
-
-        smdDebugLog(QStringLiteral("setRendered(true) — top-level win at (%1,%2) size=%3x%4, htmlLen=%5")
-            .arg(m_renderView->x()).arg(m_renderView->y())
-            .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
-
-        // Inject zoom-adjusted font size into rendered content
-        int renderFontPt = qBound(10, qRound(16 * m_zoomFactor), 32);
-        QString fsStyle = QStringLiteral(
-            "<style>body{font-size:%1px!important}</style>"
-        ).arg(renderFontPt);
-        tmpl.replace(QStringLiteral("</head>"), fsStyle + QStringLiteral("</head>"));
-
-        m_renderView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
+        startRenderPipeline(true);
     } else {
         smdDebugLog(QStringLiteral("setRendered(false) — stop+cleanup+switch to editor"));
         if (m_grabTimer)
@@ -739,25 +770,24 @@ void SmdCell::performReRender()
     smdDebugLog(QStringLiteral("performReRender — width changed from %1 to %2")
         .arg(m_lastRenderWidth).arg(m_editorStack->width()));
 
-    QString savedContent = content();
-    bool wasCmd = m_commandMode;
+    // Stop any in-progress grab polling
+    if (m_grabTimer)
+        m_grabTimer->stop();
 
-    // Local overlay that won't be touched by setRendered(false):
-    // setRendered(false) only deletes m_renderOverlay, not this one.
-    QWidget *localOverlay = new QWidget(this);
-    localOverlay->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
-    localOverlay->setGeometry(m_editorStack->geometry());
-    localOverlay->setVisible(true);
-    localOverlay->raise();
+    // Clean up stale render state from a previous render (initial or re-render)
+    cleanupRenderView();
 
-    setRendered(false);
-    setContent(savedContent);
-    setRendered(true);
+    // Clean up overlay if left over from an interrupted initial render
+    if (m_renderOverlay) {
+        m_renderOverlay->hide();
+        delete m_renderOverlay;
+        m_renderOverlay = nullptr;
+    }
 
-    setCommandMode(wasCmd);
-
-    localOverlay->hide();
-    localOverlay->deleteLater();
+    // Create a fresh QWebEngineView and start the render pipeline.
+    // The old pixmap stays visible on QStackedWidget page 1 as a seamless placeholder.
+    ensureRenderView();
+    startRenderPipeline(false);
 }
 
 QWidget *SmdCell::editorWidget() const

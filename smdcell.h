@@ -74,6 +74,7 @@ private:
     void pollGrabReady();
     void performGrab();
     void cleanupRenderView();
+    void startRenderPipeline(bool isInitialRender);
     void scheduleReRender();
     void performReRender();
 
