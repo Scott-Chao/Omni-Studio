@@ -14,6 +14,7 @@
 JudgePanel::JudgePanel(QWidget *parent)
     : QWidget(parent)
 {
+    setStyleSheet("JudgePanel { background-color: #1E1E1E; }");
     m_engine = new JudgeEngine(this);
 
     connect(m_engine, &JudgeEngine::testStarted,
@@ -37,6 +38,9 @@ void JudgePanel::setupUi()
     // ---- Folder selector ----
     m_folderEdit = new QLineEdit(this);
     m_folderEdit->setPlaceholderText(tr("选择评测用例文件夹..."));
+    m_folderEdit->setStyleSheet(
+        "QLineEdit { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
+        "  border-radius: 3px; padding: 3px 6px; }");
 
     m_browseBtn = new QPushButton(tr("浏览..."), this);
     m_browseBtn->setFixedWidth(ConfigManager::instance().judgeBrowseButtonWidth());
@@ -44,6 +48,16 @@ void JudgePanel::setupUi()
     m_openJudgeBtn = new QPushButton(tr("从OpenJudge获取"), this);
 
     m_submitOJBtn = new QPushButton(tr("提交到OpenJudge"), this);
+
+    const QString btnStyle = QStringLiteral(
+        "QPushButton { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
+        "  border-radius: 3px; padding: 4px 12px; }"
+        "QPushButton:hover { background: #505050; }"
+        "QPushButton:disabled { color: #666; background: #2d2d2d; }"
+    );
+    m_browseBtn->setStyleSheet(btnStyle);
+    m_openJudgeBtn->setStyleSheet(btnStyle);
+    m_submitOJBtn->setStyleSheet(btnStyle);
 
     QVBoxLayout *folderLayout = new QVBoxLayout;
     folderLayout->setContentsMargins(4, 4, 4, 0);
@@ -87,6 +101,12 @@ void JudgePanel::setupUi()
     m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     m_table->setMinimumHeight(ConfigManager::instance().judgeTableMinHeight());
+    m_table->setStyleSheet(
+        "QTableWidget { background: #1E1E1E; color: #D4D4D4; border: 1px solid #3c3c3c;"
+        "  gridline-color: #3c3c3c; }"
+        "QTableWidget::item { padding: 2px 4px; }"
+        "QHeaderView::section { background: #252525; color: #D4D4D4;"
+        "  border: none; border-bottom: 1px solid #3c3c3c; padding: 4px; }");
 
     connect(m_table, &QTableWidget::cellClicked,
             this, &JudgePanel::onTableItemClicked);
@@ -116,6 +136,14 @@ void JudgePanel::setupUi()
     m_runAllBtn = new QPushButton(tr("运行全部"), this);
     m_stopBtn = new QPushButton(tr("停止"), this);
     m_stopBtn->setEnabled(false);
+    const QString runStyle = QStringLiteral(
+        "QPushButton { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
+        "  border-radius: 3px; padding: 4px 12px; }"
+        "QPushButton:hover { background: #505050; }"
+        "QPushButton:disabled { color: #666; background: #2d2d2d; }"
+    );
+    m_runAllBtn->setStyleSheet(runStyle);
+    m_stopBtn->setStyleSheet(runStyle);
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
     buttonLayout->setContentsMargins(4, 2, 4, 4);

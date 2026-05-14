@@ -14,6 +14,7 @@ win32: LIBS += -luser32
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    activitybar.cpp \
     configmanager.cpp \
     backlinkindex.cpp \
     backlinkspanel.cpp \
@@ -35,6 +36,7 @@ SOURCES += \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
+    rightpanelcontainer.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
     smdcell.cpp \
@@ -48,6 +50,7 @@ SOURCES += \
     tabmanager.cpp
 
 HEADERS += \
+    activitybar.h \
     configmanager.h \
     backlinkindex.h \
     backlinkspanel.h \
@@ -71,6 +74,7 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
+    rightpanelcontainer.h \
     searchpanel.h \
     settingspanel.h \
     smdcell.h \

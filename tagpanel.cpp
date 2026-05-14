@@ -21,14 +21,15 @@ TagPanel::TagPanel(QWidget *parent)
     m_backButton = new QPushButton(QStringLiteral("← ") + tr("返回"), this);
     m_backButton->setFlat(true);
     m_backButton->setStyleSheet(
-        QStringLiteral("QPushButton { color: #569cd6; text-align: left; padding: 2px 6px; }"
-                       "QPushButton:hover { color: #75b8f0; }"));
+        "QPushButton { color: #569CD6; text-align: left; padding: 2px 6px;"
+        "  background: transparent; border: none; }"
+        "QPushButton:hover { color: #75B8F0; }");
     m_backButton->hide();
     connect(m_backButton, &QPushButton::clicked, this, &TagPanel::onBackClicked);
     headerLayout->addWidget(m_backButton);
 
     m_titleLabel = new QLabel(tr("标签"), this);
-    m_titleLabel->setStyleSheet(QStringLiteral("color: #ccc; font-weight: bold; padding: 4px;"));
+    m_titleLabel->setStyleSheet("color: #D4D4D4; font-weight: bold; padding: 4px;");
     headerLayout->addWidget(m_titleLabel, 1);
 
     mainLayout->addLayout(headerLayout);

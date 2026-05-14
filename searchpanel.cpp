@@ -15,14 +15,22 @@
 SearchPanel::SearchPanel(QWidget *parent)
     : QWidget(parent)
 {
+    setStyleSheet("SearchPanel { background-color: #1E1E1E; }");
     m_searchInput = new QLineEdit(this);
     m_searchInput->setPlaceholderText(tr("搜索文件..."));
     m_searchInput->setClearButtonEnabled(true);
+    m_searchInput->setStyleSheet(
+        "QLineEdit { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
+        "  border-radius: 3px; padding: 3px 6px; }");
 
     m_resultList = new QListWidget(this);
     m_resultList->setSelectionMode(QAbstractItemView::NoSelection);
     m_resultList->setWordWrap(true);
     m_resultList->setSpacing(2);
+    m_resultList->setStyleSheet(
+        "QListWidget { background: #1E1E1E; color: #D4D4D4; border: none; }"
+        "QListWidget::item { padding: 2px 0; }"
+        "QListWidget::item:hover { background: #2a2d2e; }");
 
     m_statusLabel = new QLabel(tr("打开文件夹以搜索文件"), this);
     m_statusLabel->setStyleSheet(QString("color: #888; padding: 4px 8px; font-size: 12px;"));
@@ -195,10 +203,10 @@ void SearchPanel::addResultItem(const SearchResult &result)
         QString("%1  (第 %2 行)")
             .arg(fi.fileName())
             .arg(result.lineNumber));
-    titleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 12px;"));
+    titleLabel->setStyleSheet("font-weight: bold; font-size: 12px; color: #D4D4D4;");
 
     QLabel *snippetLabel = new QLabel(result.snippet);
-    snippetLabel->setStyleSheet(QStringLiteral("color: #aaa; font-size: 11px;"));
+    snippetLabel->setStyleSheet("color: #aaa; font-size: 11px;");
     snippetLabel->setWordWrap(true);
 
     itemLayout->addWidget(titleLabel);

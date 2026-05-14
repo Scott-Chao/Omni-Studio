@@ -1,0 +1,36 @@
+#ifndef ACTIVITYBAR_H
+#define ACTIVITYBAR_H
+
+#include <QWidget>
+#include <QPushButton>
+#include <QIcon>
+#include <QVBoxLayout>
+
+class ActivityBar : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit ActivityBar(QWidget *parent = nullptr);
+
+    void setSearchActive(bool active);
+    void setJudgeActive(bool active);
+    void setExportPdfVisible(bool visible);
+
+signals:
+    void searchClicked();
+    void settingsClicked();
+    void exportPdfClicked();
+    void judgeClicked();
+
+private:
+    QPushButton *createButton(const QIcon &icon, const QString &tooltip);
+    void updateButtonStyle(QPushButton *btn, bool active);
+    QString buttonStyleSheet(bool active) const;
+
+    QPushButton *m_searchBtn;
+    QPushButton *m_settingsBtn;
+    QPushButton *m_exportPdfBtn;
+    QPushButton *m_judgeBtn;
+};
+
+#endif // ACTIVITYBAR_H

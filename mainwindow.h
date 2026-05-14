@@ -11,15 +11,17 @@
 #include <atomic>
 #include <memory>
 
+class ActivityBar;
 class TabManager;
 class FileExplorerWidget;
 class EditorWidget;
 class SettingsManager;
 class QDockWidget;
 class QPushButton;
-class HistoryPanel;
+class QToolButton;
+class QMenu;
+class RightPanelContainer;
 class BacklinkIndex;
-class BacklinksPanel;
 class SearchPanel;
 class ProcessRunner;
 class OutputPanel;
@@ -28,8 +30,6 @@ class OpenJudgeWindow;
 class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
-class TagPanel;
-class OutlinePanel;
 class SettingsPanel;
 
 QT_BEGIN_NAMESPACE
@@ -49,6 +49,7 @@ public:
 private:
     Ui::MainWindow *ui;
     SettingsManager *m_settings; // 配置信息
+    ActivityBar *m_activityBar; // 活动栏（左侧竖条按钮）
     FileExplorerWidget *m_explorer; // 文件浏览器控件
     QSplitter *m_splitter; // 分隔条
     TabManager *m_tabManager; // 标签页栏
@@ -110,17 +111,15 @@ private:
     QAction *m_exportPdfAction = nullptr;
     void updatePreviewActionState();
     void updateSplitPreviewActionState();
-    // 历史记录
+    // 右侧统一面板（历史/大纲/标签/反链）
+    RightPanelContainer *m_rightPanel;
+    QDockWidget *m_dockRightPanel;
+    QAction *toggleRightPanelAction;
     void addToRecentFiles(const QString &filePath);
-    HistoryPanel *m_historyPanel;
-    QDockWidget *m_dockHistory;
-    QAction *toggleHistoryAction;
-    // 反向链接
     void refreshBacklinks();
+    void refreshTags();
+    void onTagClicked(const QString &tag);
     BacklinkIndex *m_backlinkIndex;
-    BacklinksPanel *m_backlinksPanel;
-    QDockWidget *m_dockBacklinks;
-    QAction *toggleBacklinksAction;
     // 搜索面板
     SearchPanel *m_searchPanel;
     QDockWidget *m_dockSearch;
@@ -128,6 +127,8 @@ private:
 
     // 编译运行
     ProcessRunner *m_processRunner;
+    QAction *m_runToolAction = nullptr;
+    QMenu *m_runMenu = nullptr;
     OutputPanel *m_outputPanel;
     QSplitter *m_rightSplitter;
     QAction *m_compileAction;
@@ -150,16 +151,8 @@ private:
 
     // 标签系统
     TagIndex *m_tagIndex;
-    TagPanel *m_tagPanel;
-    QDockWidget *m_dockTag;
-    QAction *toggleTagAction;
-    void refreshTags();
-    void onTagClicked(const QString &tag);
 
-    // 大纲面板
-    OutlinePanel *m_outlinePanel;
-    QDockWidget *m_dockOutline;
-    QAction *toggleOutlineAction;
+    // 大纲面板 —— 移至 RightPanelContainer
     void refreshOutline();
 
     // 设置面板

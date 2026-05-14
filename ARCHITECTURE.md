@@ -4,40 +4,34 @@
 
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
-MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with custom title bar (toolbar + caption buttons), window drag/resize via nativeEvent & event()
-  ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg for instant response
-  ├── OutlinePanel        → QDockWidget + QListWidget, heading navigation for current Markdown file (right, hidden by default)
-  ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree panel (left)
-  ├── TabManager          → QTabWidget, manages EditorWidget tabs (center)
-  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView | CodeEditor | QSplitter(edit+preview) | QPdfView | SmdEditor], six-mode editor (Markdown edit, full preview, code edit, split preview, PDF view, SMD cell edit)
+MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event()
+  ├── ActivityBar         → 48px fixed left bar, 4 SVG icon buttons (Search/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
+  ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
+  ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree (in splitter, left of editor)
+  ├── TabManager          → QTabWidget, owns EditorWidget tabs (center, right splitter top)
+  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView | CodeEditor | QSplitter(edit+preview) | QPdfView | SmdEditor], six-mode editor
   │       ├── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
   │       ├── CodeEditor  → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent
   │       ├── SmdEditor   → QScrollArea-based cell editor for `.smd` files, Jupyter-like command/edit dual mode
   │       │   └── SmdCell → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack + output area
   │       └── SmdFormat   → header-only namespace, parse/serialize `---smd:<type>` delimiter format
-  ├── HistoryPanel        → QDockWidget + QListWidget, recent files (right, hidden by default)
-  ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left, hidden by default)
-  ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
-  ├── BacklinksPanel      → QDockWidget + QListWidget, backlinks for current file (right, hidden by default)
-  ├── TagIndex            → QMap-based bidirectional index: tag ↔ files for `#tag` syntax
-  ├── TagPanel            → QDockWidget + QListWidget, tag browser (right, hidden by default) with back-navigation
-  ├── ConfigManager      → Singleton, reads config.json for static configuration (colors, fonts, timeouts, shortcuts, etc.)
-  ├── SettingsManager     → QSettings wrapper, config.ini for runtime session state (window geometry, recent files, OJ credentials)
-  ├── TextFileUtils       → Utility (fileutils.h), 40+ text extension list & scan filters
-  ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
-  ├── CppSyntaxHighlighter → QSyntaxHighlighter, C/C++ dark-theme highlighting
-  ├── PythonSyntaxHighlighter → QSyntaxHighlighter, Python dark-theme highlighting (keywords, builtins, decorators, triple-quote strings)
-  ├── CompilerUtils       → Header-only (compilerutils.h), g++/MSVC/python detection & compile args
-  ├── ProcessRunner       → QObject managing compile→run QProcess pipeline (+ startRunPython)
-  ├── OutputPanel         → Bottom QDockWidget, dark-terminal output with stop/clear buttons
-  ├── JudgePanel          → QDockWidget + QTableWidget + JudgeEngine, local judge (right, hidden by default)
+  ├── RightPanelContainer → Unified right QDockWidget with tab bar (History/Outline/Tags/Backlinks) + QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E.
+  ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
+  ├── JudgePanel          → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
   │   └── JudgeEngine     → QObject managing compile→test QProcess pipeline, OJ-style results (AC/WA/RE/TLE/MLE)
-  ├── OpenJudgeWindow     → QMainWindow singleton, browse OpenJudge homework→problems→detail, extract samples, login management, submit code
-  │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn (browse + submit + poll status)
-  ├── SubmitResultPanel   → QWidget, dark-themed submission result display (AC/WA/TLE/CE/PE/OLE with time & memory)
-  ├── LoginDialog         → QDialog, username/password + auto-login checkbox for OpenJudge login
-  ├── SettingsPanel       → QWidget, floating settings panel with dimming overlay, drag/resize, empty content area for future options
-  └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout for breadcrumb
+  ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
+  ├── TagIndex            → QMap-based bidirectional index: tag ↔ files for `#tag` syntax
+  ├── ConfigManager       → Singleton, reads config.json for static configuration
+  ├── SettingsManager     → QSettings wrapper, config.ini for runtime session state
+  ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
+  ├── ProcessRunner       → QObject managing compile→run QProcess pipeline
+  ├── OutputPanel         → Bottom QDockWidget (right splitter bottom), dark-terminal output with stop/clear buttons
+  ├── OpenJudgeWindow     → QMainWindow singleton, browse OpenJudge homework→problems→detail, submit code
+  │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn
+  ├── SubmitResultPanel   → QWidget, dark-themed submission result display
+  ├── LoginDialog         → QDialog, username/password + auto-login checkbox
+  ├── SettingsPanel       → Floating overlay with dimming background, drag/resize
+  └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout
 ```
 
 ## Key Data Flow
