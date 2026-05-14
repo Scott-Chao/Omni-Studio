@@ -174,6 +174,63 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_rightPanel->historyPanel()->loadHistory();
 
+    // 各面板的独立快捷键（切换标签并显示右侧面板）
+    m_toggleHistoryAction = new QAction(tr("历史记录"), this);
+    m_toggleHistoryAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_history", "Ctrl+H")));
+    m_toggleHistoryAction->setToolTip(tr("显示/隐藏历史记录"));
+    addAction(m_toggleHistoryAction);
+    connect(m_toggleHistoryAction, &QAction::triggered, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 0)
+            m_dockRightPanel->hide();
+        else {
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+            m_rightPanel->setActivePanel(0);
+        }
+    });
+
+    m_toggleOutlineAction = new QAction(tr("大纲"), this);
+    m_toggleOutlineAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_outline", "Ctrl+Shift+O")));
+    m_toggleOutlineAction->setToolTip(tr("显示/隐藏大纲"));
+    addAction(m_toggleOutlineAction);
+    connect(m_toggleOutlineAction, &QAction::triggered, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 1)
+            m_dockRightPanel->hide();
+        else {
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+            m_rightPanel->setActivePanel(1);
+        }
+    });
+
+    m_toggleTagsAction = new QAction(tr("标签"), this);
+    m_toggleTagsAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_tags", "Ctrl+Shift+T")));
+    m_toggleTagsAction->setToolTip(tr("显示/隐藏标签"));
+    addAction(m_toggleTagsAction);
+    connect(m_toggleTagsAction, &QAction::triggered, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 2)
+            m_dockRightPanel->hide();
+        else {
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+            m_rightPanel->setActivePanel(2);
+        }
+    });
+
+    m_toggleBacklinksAction = new QAction(tr("反向链接"), this);
+    m_toggleBacklinksAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_backlinks", "Ctrl+Shift+B")));
+    m_toggleBacklinksAction->setToolTip(tr("显示/隐藏反向链接"));
+    addAction(m_toggleBacklinksAction);
+    connect(m_toggleBacklinksAction, &QAction::triggered, this, [this]() {
+        if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 3)
+            m_dockRightPanel->hide();
+        else {
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+            m_rightPanel->setActivePanel(3);
+        }
+    });
+
     // 创建搜索面板
     m_searchPanel = new SearchPanel(this);
     connect(m_searchPanel, &SearchPanel::resultClicked,
@@ -188,6 +245,7 @@ MainWindow::MainWindow(QWidget *parent)
     toggleSearchAction = m_dockSearch->toggleViewAction();
     toggleSearchAction->setToolTip(tr("显示/隐藏搜索"));
     toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
+    addAction(toggleSearchAction);
 
     connect(m_dockSearch, &QDockWidget::visibilityChanged,
             this, [this](bool visible) {
@@ -268,6 +326,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_toggleJudgeAction = m_dockJudge->toggleViewAction();
     m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
+    addAction(m_toggleJudgeAction);
 
     connect(m_judgePanel, &JudgePanel::runAllRequested,
             this, &MainWindow::onJudgeRunAll);

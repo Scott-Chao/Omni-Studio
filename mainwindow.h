@@ -115,6 +115,10 @@ private:
     RightPanelContainer *m_rightPanel;
     QDockWidget *m_dockRightPanel;
     QAction *toggleRightPanelAction;
+    QAction *m_toggleHistoryAction = nullptr;
+    QAction *m_toggleOutlineAction = nullptr;
+    QAction *m_toggleTagsAction = nullptr;
+    QAction *m_toggleBacklinksAction = nullptr;
     void addToRecentFiles(const QString &filePath);
     void refreshBacklinks();
     void refreshTags();
