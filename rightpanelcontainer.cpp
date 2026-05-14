@@ -7,6 +7,7 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 
 RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *parent)
     : QWidget(parent)
@@ -22,16 +23,16 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
     tabLayout->setContentsMargins(4, 0, 4, 0);
     tabLayout->setSpacing(0);
 
-    struct TabInfo { QString label; };
+    struct TabInfo { QString label; QString icon; };
     const TabInfo tabs[] = {
-        {tr("历史")},      // 历史
-        {tr("大纲")},      // 大纲
-        {tr("标签")},      // 标签
-        {tr("反链")},      // 反链
+        {tr("历史"), QStringLiteral(":/icons/history")},
+        {tr("大纲"), QStringLiteral(":/icons/outline")},
+        {tr("标签"), QStringLiteral(":/icons/tags")},
+        {tr("反链"), QStringLiteral(":/icons/backlinks")},
     };
 
     for (int i = 0; i < 4; ++i) {
-        QPushButton *btn = createTabButton(tabs[i].label, i);
+        QPushButton *btn = createTabButton(tabs[i].label, QIcon(tabs[i].icon), i);
         m_tabButtons.append(btn);
         tabLayout->addWidget(btn);
     }
@@ -81,12 +82,13 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
     );
 }
 
-QPushButton *RightPanelContainer::createTabButton(const QString &text, int index)
+QPushButton *RightPanelContainer::createTabButton(const QString &text, const QIcon &icon, int index)
 {
-    QPushButton *btn = new QPushButton(text, m_tabBar);
+    QPushButton *btn = new QPushButton(icon, text, m_tabBar);
     btn->setFlat(true);
     btn->setCursor(Qt::PointingHandCursor);
     btn->setFixedHeight(32);
+    btn->setIconSize(QSize(14, 14));
     btn->setStyleSheet(
         "QPushButton {"
         "  background: transparent;"

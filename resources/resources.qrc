@@ -30,4 +30,21 @@
     <file alias="spin-up.svg">spin-up.svg</file>
     <file alias="spin-down.svg">spin-down.svg</file>
   </qresource>
+  <qresource prefix="/icons">
+    <file alias="file">icons/icon-file.svg</file>
+    <file alias="panel">icons/icon-panel.svg</file>
+    <file alias="preview">icons/icon-preview.svg</file>
+    <file alias="split">icons/icon-split.svg</file>
+    <file alias="run">icons/icon-run.svg</file>
+    <file alias="search">icons/icon-search.svg</file>
+    <file alias="settings">icons/icon-settings.svg</file>
+    <file alias="judge">icons/icon-judge.svg</file>
+    <file alias="new">icons/icon-new.svg</file>
+    <file alias="save">icons/icon-save.svg</file>
+    <file alias="history">icons/icon-history.svg</file>
+    <file alias="outline">icons/icon-outline.svg</file>
+    <file alias="tags">icons/icon-tags.svg</file>
+    <file alias="backlinks">icons/icon-backlinks.svg</file>
+    <file alias="pdf">icons/icon-pdf.svg</file>
+  </qresource>
 </RCC>

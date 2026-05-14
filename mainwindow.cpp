@@ -83,6 +83,7 @@ static void previewLogMw(const QString &msg)
 #include <QToolButton>
 #include <QPushButton>
 #include <QInputDialog>
+#include <QIcon>
 #include <QWindow>
 #include <QMenu>
 #include <utility>
@@ -222,6 +223,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_compileAction->setEnabled(false);
         m_runAction->setEnabled(false);
         m_compileRunAction->setEnabled(false);
+        if (m_runToolAction) m_runToolAction->setEnabled(false);
         // 编译阶段禁止交互（无光标、不可选），运行阶段延迟启用输入
         if (m_processRunner->isAcceptingInput()) {
             QTimer::singleShot(50, this, [this]() {
@@ -242,12 +244,11 @@ MainWindow::MainWindow(QWidget *parent)
             editor->setFocus();
         // Re-enable buttons based on current tab
         bool isCode = editor && editor->isCodeEdit();
-        m_compileAction->setVisible(isCode);
         m_compileAction->setEnabled(isCode);
-        m_runAction->setVisible(isCode);
         m_runAction->setEnabled(isCode);
-        m_compileRunAction->setVisible(isCode);
         m_compileRunAction->setEnabled(isCode);
+        if (m_runToolAction)
+            m_runToolAction->setEnabled(isCode);
     });
 
     // ----- 本地评测面板 -----
@@ -337,10 +338,11 @@ MainWindow::MainWindow(QWidget *parent)
     toolBar->addWidget(m_toolbarSpacer);
 
     // 右侧面板（历史/大纲/标签/反链）
+    toggleRightPanelAction->setIcon(QIcon(":/icons/panel"));
     toolBar->addAction(toggleRightPanelAction);
 
     // 右侧：预览
-    m_previewAction = new QAction(tr("预览"), this);
+    m_previewAction = new QAction(QIcon(":/icons/preview"), tr("预览"), this);
     m_previewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_preview", "Ctrl+Shift+P")));
     m_previewAction->setCheckable(true);
     addAction(m_previewAction);
@@ -364,7 +366,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 分屏预览
-    m_splitPreviewAction = new QAction(tr("分屏"), this);
+    m_splitPreviewAction = new QAction(QIcon(":/icons/split"), tr("分屏"), this);
     m_splitPreviewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_split_preview", "Ctrl+P")));
     m_splitPreviewAction->setCheckable(true);
     addAction(m_splitPreviewAction);
@@ -383,29 +385,41 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // 编译 (F6)
+    // 运行 ▼ (编译 / 运行 / 编译运行)
     m_compileAction = new QAction(tr("编译"), this);
     m_compileAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_only", "F6")));
     addAction(m_compileAction);
-    m_compileAction->setVisible(false);
-    toolBar->addAction(m_compileAction);
     connect(m_compileAction, &QAction::triggered, this, &MainWindow::onCompile);
 
-    // 运行 (F7)
     m_runAction = new QAction(tr("运行"), this);
     m_runAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("run_only", "F7")));
     addAction(m_runAction);
-    m_runAction->setVisible(false);
-    toolBar->addAction(m_runAction);
     connect(m_runAction, &QAction::triggered, this, &MainWindow::onRun);
 
-    // 编译运行 (F5)
     m_compileRunAction = new QAction(tr("编译运行"), this);
     m_compileRunAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_and_run", "F5")));
     addAction(m_compileRunAction);
-    m_compileRunAction->setVisible(false);
-    toolBar->addAction(m_compileRunAction);
     connect(m_compileRunAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
+
+    // 工具栏运行按钮（带下拉菜单）
+    m_runMenu = new QMenu(this);
+    m_runMenu->setStyleSheet(
+        "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
+        "QMenu::item { padding: 6px 24px; color: #ccc; }"
+        "QMenu::item:selected { background: #094771; color: #fff; }"
+        "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
+    );
+    m_runMenu->addAction(m_compileAction);
+    m_runMenu->addAction(m_runAction);
+    m_runMenu->addSeparator();
+    m_runMenu->addAction(m_compileRunAction);
+    m_runMenu->setTitle(tr("运行"));
+
+    m_runToolAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
+    m_runToolAction->setMenu(m_runMenu);
+    m_runToolAction->setToolTip(tr("运行 (编译/运行/编译运行)"));
+    m_runToolAction->setVisible(false); // 只对代码文件显示
+    toolBar->addAction(m_runToolAction);
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
@@ -565,12 +579,13 @@ MainWindow::MainWindow(QWidget *parent)
         EditorWidget *editor = m_tabManager->currentEditor();
         bool isCode = editor && editor->isCodeEdit();
         bool running = m_processRunner->isRunning();
-        m_compileAction->setVisible(isCode);
         m_compileAction->setEnabled(isCode && !running);
-        m_runAction->setVisible(isCode);
         m_runAction->setEnabled(isCode && !running);
-        m_compileRunAction->setVisible(isCode);
         m_compileRunAction->setEnabled(isCode && !running);
+        if (m_runToolAction) {
+            m_runToolAction->setVisible(isCode);
+            m_runToolAction->setEnabled(isCode && !running);
+        }
 
         // 导出PDF按钮仅对 .md 文件可见
         bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
@@ -653,6 +668,14 @@ void MainWindow::onFileSelected(const QString &filePath)
     updatePreviewActionState();
     updateSplitPreviewActionState();
     addToRecentFiles(filePath);
+    // 更新运行按钮显隐
+    if (auto *ed = m_tabManager->currentEditor()) {
+        bool isCode = ed->isCodeEdit();
+        if (m_runToolAction) {
+            m_runToolAction->setVisible(isCode);
+            m_runToolAction->setEnabled(isCode);
+        }
+    }
 }
 
 void MainWindow::newFile()

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#D4D4D4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 12a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5l4 4v4a2 2 0 0 1-2 2H3z"/>
+  <path d="M10 2v4h4"/>
+  <text x="4" y="11" font-size="7" fill="#D4D4D4" stroke="none" font-family="sans-serif" font-weight="bold">P</text>
+</svg>

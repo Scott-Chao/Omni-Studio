@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QPushButton>
+#include <QIcon>
 #include <QVBoxLayout>
 
 class ActivityBar : public QWidget
@@ -22,7 +23,7 @@ signals:
     void judgeClicked();
 
 private:
-    QPushButton *createButton(const QString &text, const QString &tooltip);
+    QPushButton *createButton(const QIcon &icon, const QString &tooltip);
     void updateButtonStyle(QPushButton *btn, bool active);
     QString buttonStyleSheet(bool active) const;
 

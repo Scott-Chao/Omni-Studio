@@ -18,6 +18,8 @@ class EditorWidget;
 class SettingsManager;
 class QDockWidget;
 class QPushButton;
+class QToolButton;
+class QMenu;
 class RightPanelContainer;
 class BacklinkIndex;
 class SearchPanel;
@@ -125,6 +127,8 @@ private:
 
     // 编译运行
     ProcessRunner *m_processRunner;
+    QAction *m_runToolAction = nullptr;
+    QMenu *m_runMenu = nullptr;
     OutputPanel *m_outputPanel;
     QSplitter *m_rightSplitter;
     QAction *m_compileAction;

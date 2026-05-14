@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QStackedWidget>
 #include <QPushButton>
+#include <QIcon>
 #include <QVector>
 
 class HistoryPanel;
@@ -33,7 +34,7 @@ signals:
     void activePanelChanged(int index);
 
 private:
-    QPushButton *createTabButton(const QString &text, int index);
+    QPushButton *createTabButton(const QString &text, const QIcon &icon, int index);
     void updateTabStyles(int activeIndex);
 
     QWidget *m_tabBar;
