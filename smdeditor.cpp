@@ -467,10 +467,10 @@ void SmdEditor::executeCurrentCell()
 void SmdEditor::executeMarkdownCell(SmdCell *cell)
 {
     if (cell->isRendered()) {
-        cell->setRendered(false);
-    } else {
-        cell->setRendered(true);
+        // Already rendered — Ctrl+Enter only renders, does not toggle back.
+        return;
     }
+    cell->setRendered(true);
     if (!m_commandMode)
         enterCommandMode();
     jumpToNextCell();

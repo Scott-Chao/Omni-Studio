@@ -1,4 +1,4 @@
-## 功能说明文档（v0.6.4）
+## 功能说明文档（v0.6.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -35,25 +35,14 @@
 - 大纲/标题导航面板：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+Shift+O` 打开大纲面板（右侧，默认隐藏）。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转：编辑模式下滚动到对应行并用黄色全宽高亮；预览/分屏预览模式下滚动渲染视图到对应锚点位置并用黄色动画高亮。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。点击面板外部自动隐藏。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-### 修复 v0.6.4
-- 修复 SMD 单元格高度计算导致内部滚动空间问题：
-  **问题现象**：打开 `.smd` 文件或编辑单元格时，部分单元格内部存在可滚动空间（框不够大，行数越多滚动空间越大），鼠标滚轮可在单元格内上下滚动。
-  **根因分析**：
-  1. 旧公式 `QFontMetrics(ed->font()).lineSpacing() * blockCount + 18` 存在三层误差：
-     - `QFontMetrics::lineSpacing()` 返回 **int** 类型（如 19px），而 `QPlainTextEdit` 内部通过 `QTextLayout` 渲染时的实际行高约为 19.1px，每行截断误差 ~0.1px，随行数线性累积（34 行累积约 3px 误差）。
-     - `blockCount` 统计的是段落数而非视觉行数，当 MD 单元格（`WidgetWidth` 自动换行）存在折行时，`blockCount` 小于实际视觉行数，导致高度低估。
-     - `padding = 18` 为硬编码常量，未反映不同编辑器（MD 编辑器 `padding: 8px` → `contentsMargins=8+8=16`；CodeEditor 无样式表 padding → `contentsMargins=2+2=4`）的实际边距差异。
-  2. `QTextDocument::size().height()` 在 `blockCountChanged` 信号触发时返回未完成布局的文档高度（值为 `blockCount` 而非像素值），不可用于高度计算。
-  3. 尝试通过 `QScrollBar::maximum()` 事后检测溢出并在同一调用中自修正，由于 `setFixedHeight()` 后布局更新是异步的（需等待事件循环），重读滚动条返回的仍是旧值，导致修正无效或过修正振荡。
-  **解决方案**：
-  1. **直接测量布局高度**：遍历文档所有 `QTextBlock`，对每个块调用 `QTextLayout::boundingRect().height()` 获取实际渲染高度（含折行后的多行高度），累加得到精确的文档像素高度 `totalDocH`。若某块的布局尚未完成（`height() == 0`），回退到 `QFontMetricsF::lineSpacing() * lineCount`。
-  2. **子像素精度**：使用 `QFontMetricsF`（`qreal`）替代 `QFontMetrics`（`int`），并通过 `qCeil()` 向上取整，避免浮点截断误差。
-  3. **动态边距**：使用 `ed->contentsMargins().top() + .bottom()` 替代硬编码 `18`，自动适配不同编辑器的实际样式表边距。
-  4. **`+2px` 缓冲**：消除 `QTextLayout::boundingRect` 总和与 `QPlainTextEdit` 视口实际布局之间约 1-2px 的亚像素舍入误差。
-  5. **移除异步自修正**：取消基于 `QScrollBar::maximum()` 的事后检测修正（因布局异步更新无法在同一调用中生效）。
-  6. **缩放后强制全部块布局**：`applyZoom()` 中字体变更后，`repaint()` 仅对当前视口内的可见块触发布局重算。由于此时 widget 高度仍为旧字号下的 `fixedHeight`，视口仅约数十 px，大部分块不在可见区域内，其 `QTextLayout::boundingRect()` 返回 0，强制回退到字体度量（存在比例误差），导致缩放后滚动空间重现。修复方法：调用 `repaint()` 前临时将编辑器设为 `setFixedHeight(50000)`，使所有块在视口内可见，确保 `repaint()` 触发全文档布局重算，再由 `updateEditorHeight()` 测量并设置正确高度。
-
-  最终公式：`height = qCeil(Σ boundingRect.height()) + contentsMargins.top + contentsMargins.bottom + 2`
+### 新增 v0.6.5
+- SMD Markdown 块支持 LaTeX 公式和 Mermaid 图表渲染：将渲染引擎从 `QTextBrowser` 替换为 `QWebEngineView`，复用全文预览的 `preview-template.html`（KaTeX + Mermaid + marked.js），实现与 `.md` 文件预览一致的渲染效果。
+  - **架构**：`SmdCell` 内部 `QStackedWidget` 保持 3 页结构 — 页 0（编辑控件）、页 1（QWebEngineView 实时渲染）、页 2（QLabel 展示抓取后的静态位图）。QWebEngineView 采用**按需创建**（`ensureRenderView()`），仅在首次 `Ctrl+Enter` 渲染时才初始化 Chromium，避免加载 `.smd` 文件时批量创建导致卡死。
+  - **高度自适应**：渲染后通过 `runJavaScript()` 执行简单 IIFE 表达式获取 `document.body.scrollHeight`（优先）→ `document.documentElement.scrollHeight` → `#preview.offsetHeight` 的多级回退链，返回数字直接用于设置 `QWebEngineView::setFixedHeight`。同时 600ms/1500ms 两次延迟重测，捕获 Mermaid 异步渲染完成后的高度变化。
+  - **减少拖影**：QWebEngineView 内部 Chromium 使用独立原生 HWND（GPU 加速），位于 QScrollArea 内滚动时，Qt widget 移动与 Windows 原生窗口重定位不同步，产生短暂拖影（ghosting）。`eventFilter` 中监听 `QEvent::Move` 并调用 `repaint()` 可减轻但无法根除。作为折衷方案：渲染完成 1800ms 后执行**一次性 `grab()` 抓取**为 `QPixmap`，设置到页 2 的 QLabel（纯 Qt widget，无原生 HWND），此后滚动完全由 Qt 控制，拖影彻底消除。页面切换仅发生一次，后续不重复抓取。
+  - **HiDPI 适配**：`grab()` 返回物理像素尺寸（如 2x 下为逻辑尺寸的 2 倍），通过 `devicePixelRatioF()` 换算逻辑尺寸，并用 `QLabel::setScaledContents(true)` 缩放显示，确保高 DPI 屏幕下位图清晰。
+- Ctrl+Enter 行为变更：仅将原始文本渲染为预览，**不执行切换回操作**。已渲染时按 Ctrl+Enter 无操作。返回编辑需通过 `Ctrl+Shift+Z` 或 Enter 进入编辑模式。命令模式下未渲染的 MD 块显示 "Ctrl+Enter: 渲染" 提示，已渲染显示 "Ctrl+Shift+Z: 编辑"。
+- 渲染块的交互：通过 `eventFilter` 捕获 `FocusIn` 和 `MouseButtonPress` 事件，点击渲染后的内容可激活所在单元格（支持键盘导航和命令操作）。
 
 ### 1. `MainWindow` - 主窗口控制器
 

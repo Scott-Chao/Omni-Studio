@@ -6,6 +6,100 @@
 #include <QTimer>
 #include <QTextBlock>
 #include <QTextLayout>
+#include <QWebEngineSettings>
+#include <QWebEnginePage>
+#include <QCoreApplication>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QDir>
+#include <QThread>
+
+// Minimal HTML page that embeds KaTeX + Mermaid + marked.js for
+// rendering Markdown cells with full math / diagram support.
+// Uses %1 as placeholder for the base64-encoded markdown content.
+static QString smdRenderTemplate()
+{
+    return QStringLiteral(
+        "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
+        "<link rel=\"stylesheet\" href=\"katex.min.css\">"
+        "<style>"
+        "body{background:#1E1E1E;color:#D4D4D4;"
+        "font-family:-apple-system,\"Microsoft YaHei\",sans-serif;"
+        "line-height:1.7;padding:8px 12px;margin:0}"
+        "h1,h2,h3,h4,h5,h6{color:#569CD6}"
+        "a{color:#4EC9B0}"
+        "pre{background:#2D2D30;padding:12px;border-radius:4px;overflow-x:auto}"
+        "code{background:#2D2D30;padding:2px 6px;border-radius:3px;"
+        "font-family:Consolas,\"Courier New\",monospace;font-size:0.9em}"
+        "pre code{background:none;padding:0}"
+        "table{border-collapse:collapse}"
+        "th,td{border:1px solid #555;padding:6px 10px}"
+        "th{background:#3c3c3c}"
+        "blockquote{border-left:4px solid #569CD6;padding-left:16px;color:#aaa;margin-left:0}"
+        "hr{border:none;border-top:1px solid #444}"
+        "img{max-width:100%}"
+        ".katex{color:#D4D4D4}"
+        ".mermaid{text-align:center;margin:1em 0}"
+        ".mermaid svg{max-width:100%;background:#fff;border-radius:4px;padding:4px}"
+        ".task-list-item{list-style:none;margin-left:-1.5em}"
+        "</style></head><body>"
+        "<div id=\"preview\"></div>"
+        "<script src=\"marked.min.js\"></script>"
+        "<script src=\"katex.min.js\"></script>"
+        "<script src=\"mermaid.min.js\"></script>"
+        "<script>"
+        "mermaid.initialize({startOnLoad:false,theme:'default',securityLevel:'loose'});"
+        "marked.use({breaks:true,gfm:true});"
+        "var r={code:function(t){"
+        "if(t.lang==='mermaid')return '<div class=\"mermaid\">'+t.text+'</div>';"
+        "var c=t.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');"
+        "return '<pre><code>'+c+'</code></pre>';"
+        "}};marked.use({renderer:r});"
+        "var b64=\"%1\";"
+        "var bin=atob(b64),bytes=new Uint8Array(bin.length);"
+        "for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);"
+        "var md=new TextDecoder('utf-8').decode(bytes);"
+        "var mb=[];"
+        "function sm(latex,dm){"
+        "var idx=mb.length;"
+        "try{mb[idx]=katex.renderToString(latex.trim(),{displayMode:dm,throwOnError:false});}"
+        "catch(e){mb[idx]='<span style=\"color:#f88\">KaTeX: '+(e.message||e)+'</span>';}"
+        "return '\\x00MATH'+idx+'\\x00';"
+        "}"
+        "md=md.replace(/\\$\\$([\\s\\S]*?)\\$\\$/g,function(m,latex){return sm(latex,true);});"
+        "md=md.replace(/\\\\\\[([\\s\\S]*?)\\\\\\]/g,function(m,latex){return sm(latex,true);});"
+        "md=md.replace(/\\\\\\(([\\s\\S]*?)\\\\\\)/g,function(m,latex){return sm(latex,false);});"
+        "md=md.replace(/\\$([^$\\n]+?)\\$/g,function(m,latex){return sm(latex,false);});"
+        "var html=marked.parse(md);"
+        "for(var i=0;i<mb.length;i++)html=html.split('\\x00MATH'+i+'\\x00').join(mb[i]);"
+        "document.getElementById('preview').innerHTML=html;"
+        "(async function(){"
+        "var els=document.querySelectorAll('.mermaid');"
+        "for(var i=0;i<els.length;i++){"
+        "try{"
+        "var mr=await mermaid.render('mermaid-svg-'+i,els[i].textContent.trim());"
+        "els[i].innerHTML=mr.svg;"
+        "}catch(e){els[i].innerHTML='<span style=\"color:#f88\">Mermaid: '+(e.message||e)+'</span>';}"
+        "}"
+        "})();"
+        "</script></body></html>"
+    );
+}
+
+// Write debug log to release/smd_render_debug.log
+static void smdDebugLog(const QString &msg)
+{
+    QFile file(QCoreApplication::applicationDirPath()
+               + QStringLiteral("/smd_render_debug.log"));
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream ts(&file);
+        ts << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"))
+           << QStringLiteral(" [%1] ").arg(reinterpret_cast<quintptr>(QThread::currentThread()), 0, 16)
+           << msg << QStringLiteral("\n");
+        file.close();
+    }
+}
 
 SmdCell::SmdCell(CellType type, const QString &content, QWidget *parent)
     : QFrame(parent)
@@ -58,24 +152,19 @@ void SmdCell::setupUi(CellType type)
     else
         setupCodeEditor(m_languageId);
 
-    // Render view (page 1)
-    m_renderView = new QTextBrowser(this);
-    m_renderView->setOpenExternalLinks(false);
-    m_renderView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_renderView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_renderView->setStyleSheet(QStringLiteral(
-        "QTextBrowser { background-color: #1E1E1E; color: #D4D4D4; border: none; "
-        "selection-background-color: #264F78; }"
-    ));
-    m_renderView->document()->setDefaultStyleSheet(QStringLiteral(
-        "body { color: #D4D4D4; background-color: #1E1E1E; }"
-        "h1 { color: #569CD6; } h2 { color: #569CD6; } h3 { color: #569CD6; }"
-        "code { background-color: #2D2D30; padding: 2px 4px; border-radius: 3px; }"
-        "pre { background-color: #2D2D30; padding: 8px; border-radius: 4px; }"
-        "a { color: #4EC9B0; }"
-    ));
-    m_renderView->installEventFilter(this);
-    m_editorStack->addWidget(m_renderView);
+    // Render view — page 1 = QWebEngineView placeholder, page 2 = QLabel
+    // for grabbed pixmap (no native window → no scroll ghosting).
+    // Both are created lazily in ensureRenderView().
+    m_renderPlaceholder = new QWidget(this);
+    m_renderPlaceholder->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
+    m_editorStack->addWidget(m_renderPlaceholder);   // page 1
+
+    // Page 2: QLabel that replaces QWebEngineView after grab (no native HWND)
+    m_renderImage = new QLabel(this);
+    m_renderImage->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
+    m_renderImage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_renderImage->installEventFilter(this);
+    m_editorStack->addWidget(m_renderImage);          // page 2
 
     mainLayout->addWidget(m_editorStack);
 
@@ -100,6 +189,8 @@ void SmdCell::setupUi(CellType type)
     updateTypeLabel();
     updateBorderStyle();
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    // Catch Move events on self to repaint QWebEngineView during scroll
+    installEventFilter(this);
 }
 
 void SmdCell::setupMarkdownEditor()
@@ -217,9 +308,19 @@ void SmdCell::setCommandMode(bool cmd)
 {
     m_commandMode = cmd;
     updateBorderStyle();
-    m_executeHint->setVisible(cmd && m_rendered);
-    if (cmd && m_rendered)
-        m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+    if (cmd) {
+        if (m_rendered) {
+            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+            m_executeHint->setVisible(true);
+        } else if (m_type == Markdown) {
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setVisible(true);
+        } else {
+            m_executeHint->setVisible(false);
+        }
+    } else {
+        m_executeHint->setVisible(false);
+    }
 }
 
 void SmdCell::setActive(bool active)
@@ -234,23 +335,193 @@ void SmdCell::setActive(bool active)
     }
 }
 
+void SmdCell::ensureRenderView()
+{
+    if (m_renderView)
+        return;
+
+    smdDebugLog(QStringLiteral("ensureRenderView — creating QWebEngineView"));
+
+    m_renderView = new QWebEngineView(this);
+    m_renderView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_renderView->setAttribute(Qt::WA_NoSystemBackground, true);
+    m_renderView->page()->setBackgroundColor(QColor(QStringLiteral("#1E1E1E")));
+    m_renderView->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
+    connect(m_renderView->page(), &QWebEnginePage::loadFinished,
+            this, &SmdCell::onRenderLoadFinished);
+    m_renderView->installEventFilter(this);
+    QTimer::singleShot(0, this, [this]() {
+        if (QWidget *fp = m_renderView->focusProxy())
+            fp->installEventFilter(this);
+    });
+
+    // Replace placeholder at page 1 with the live view
+    if (m_renderPlaceholder) {
+        m_editorStack->removeWidget(m_renderPlaceholder);
+        m_renderPlaceholder->deleteLater();
+        m_renderPlaceholder = nullptr;
+    }
+    m_editorStack->insertWidget(1, m_renderView);
+}
+
 void SmdCell::setRendered(bool rendered)
 {
     if (m_type != Markdown)
         return;
     m_rendered = rendered;
     if (rendered) {
-        m_renderView->setMarkdown(content());
+        ensureRenderView();
+
+        int viewW = m_editorStack->width();
+        if (viewW < 100) viewW = 600;
+        int initH = 60;
+        if (m_markdownEditor && m_markdownEditor->height() > initH)
+            initH = m_markdownEditor->height();
+
+        smdDebugLog(QStringLiteral("setRendered(true) — stackW=%1, editorH=%2, initSize=%3x%4")
+            .arg(m_editorStack->width()).arg(m_markdownEditor ? m_markdownEditor->height() : -1)
+            .arg(viewW).arg(initH));
+
+        m_renderView->setFixedSize(viewW, initH);
+        m_editorStack->setFixedHeight(initH);
+
+        m_renderView->setAttribute(Qt::WA_NativeWindow, true);
+        m_renderView->winId();
+
+        // Use the same preview template that powers the full Markdown preview.
+        // It already handles KaTeX + Mermaid + marked.js and is proven to work.
+        QFile tmplFile(QStringLiteral(":/preview/template.html"));
+        QString tmpl;
+        if (tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            tmpl = QString::fromUtf8(tmplFile.readAll());
+            tmplFile.close();
+        }
+        if (tmpl.isEmpty()) {
+            // Fallback: inline template (should never happen)
+            smdDebugLog(QStringLiteral("setRendered — template read FAILED"));
+            tmpl = smdRenderTemplate().arg(
+                QString::fromLatin1(content().toUtf8().toBase64()));
+        } else {
+            QString safeContent = content();
+            safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+            tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+            // Tighten padding for cell display (full preview uses 24px 32px)
+            tmpl.replace(QStringLiteral("padding: 24px 32px;"),
+                         QStringLiteral("padding: 8px 12px;"));
+            // Remove max-width so content fills the cell width
+            tmpl.replace(QStringLiteral("max-width: 960px;"),
+                         QStringLiteral(""));
+        }
+
+        smdDebugLog(QStringLiteral("setRendered(true) — after winId, size=%1x%2, htmlLen=%3")
+            .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
+
+        m_renderView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
         m_editorStack->setCurrentIndex(1);
-        QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);
     } else {
+        smdDebugLog(QStringLiteral("setRendered(false) — stop+switch to editor"));
+        if (m_renderView)
+            m_renderView->stop();
+        if (m_renderImage)
+            m_renderImage->clear();
         m_editorStack->setCurrentIndex(0);
         if (m_markdownEditor)
             m_markdownEditor->setFocus();
         updateEditorHeight();
     }
-    if (m_commandMode)
-        m_executeHint->setVisible(rendered);
+    if (m_commandMode) {
+        if (rendered) {
+            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+        } else {
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+        }
+        m_executeHint->setVisible(true);
+    }
+}
+
+void SmdCell::applyRenderHeight(int contentH)
+{
+    if (!m_rendered || !m_renderView || contentH <= 0)
+        return;
+    int totalH = contentH + 4;
+    smdDebugLog(QStringLiteral("applyRenderHeight — contentH=%1, totalH=%2")
+        .arg(contentH).arg(totalH));
+
+    m_renderView->setFixedHeight(totalH);
+    m_editorStack->setFixedHeight(totalH);
+    updateGeometry();
+    emit contentChanged();
+}
+
+void SmdCell::onRenderLoadFinished(bool ok)
+{
+    smdDebugLog(QStringLiteral("onRenderLoadFinished — ok=%1, m_rendered=%2")
+        .arg(ok).arg(m_rendered));
+
+    if (!m_rendered) {
+        smdDebugLog(QStringLiteral("onRenderLoadFinished — cell no longer rendered, ignoring"));
+        return;
+    }
+
+    if (!ok) {
+        smdDebugLog(QStringLiteral("onRenderLoadFinished — load FAILED, using fallback"));
+        int lineCount = content().count(QLatin1Char('\n')) + 1;
+        applyRenderHeight(qMax(60, lineCount * 22 + 32));
+        return;
+    }
+
+    // --- Immediate measurement ---
+    m_renderView->page()->runJavaScript(
+        QStringLiteral("(function(){"
+        "  var h=document.body.scrollHeight;"
+        "  if(!h) h=document.documentElement.scrollHeight;"
+        "  if(!h){var el=document.getElementById('preview');if(el)h=el.offsetHeight||el.scrollHeight;}"
+        "  return h||0;"
+        "})()"),
+        [this](const QVariant &v) {
+            smdDebugLog(QStringLiteral("runJS immediate — raw=%1").arg(v.toInt()));
+            if (v.isValid()) applyRenderHeight(v.toInt());
+        });
+
+    // --- Delayed re-measure for async Mermaid rendering ---
+    for (int delayMs : {600, 1500}) {
+        QTimer::singleShot(delayMs, this, [this]() {
+            if (!m_rendered) return;
+            m_renderView->page()->runJavaScript(
+                QStringLiteral("(function(){"
+                "  var h=document.body.scrollHeight;"
+                "  if(!h) h=document.documentElement.scrollHeight;"
+                "  if(!h){var el=document.getElementById('preview');if(el)h=el.offsetHeight||el.scrollHeight;}"
+                "  return h||0;"
+                "})()"),
+                [this](const QVariant &v) {
+                    smdDebugLog(QStringLiteral("runJS delayed — raw=%1").arg(v.toInt()));
+                    if (v.isValid()) applyRenderHeight(v.toInt());
+                });
+        });
+    }
+
+    // --- One-time grab at 1800ms: replace QWebEngineView with QLabel ---
+    // By now Mermaid has rendered. QLabel has no native HWND → no ghosting.
+    QTimer::singleShot(1800, this, [this]() {
+        if (!m_rendered || !m_renderView || !m_renderImage) return;
+        int vh = m_renderView->height();
+        if (vh < 40) return;
+        smdDebugLog(QStringLiteral("grab — view=%1x%2").arg(m_renderView->width()).arg(vh));
+        QPixmap pm = m_renderView->grab();
+        if (pm.isNull() || pm.height() <= 0) { smdDebugLog(QStringLiteral("grab FAILED")); return; }
+        qreal dpr = m_renderView->devicePixelRatioF();
+        int lw = qRound(pm.width() / dpr);
+        int lh = qRound(pm.height() / dpr);
+        smdDebugLog(QStringLiteral("grab OK — %1x%2").arg(lw).arg(lh));
+        m_renderImage->setPixmap(pm);
+        m_renderImage->setScaledContents(true);
+        m_renderImage->setFixedSize(lw, lh);
+        m_editorStack->setFixedHeight(lh);
+        m_editorStack->setCurrentIndex(2);
+        updateGeometry();
+        emit contentChanged();
+    });
 }
 
 void SmdCell::showOutput(const QString &text, bool isStderr)
@@ -289,8 +560,12 @@ void SmdCell::hideOutput()
 
 QWidget *SmdCell::editorWidget() const
 {
-    if (m_rendered)
+    if (m_rendered) {
+        // After one-time grab, QLabel (page 2) replaces QWebEngineView
+        if (m_renderImage && !m_renderImage->pixmap().isNull())
+            return m_renderImage;
         return m_renderView;
+    }
     if (m_type == Markdown)
         return m_markdownEditor;
     return m_codeEditor;
@@ -350,9 +625,17 @@ void SmdCell::updateEditorHeight()
 {
     QPlainTextEdit *ed = nullptr;
     if (m_rendered) {
-        int docH = static_cast<int>(m_renderView->document()->size().height());
-        m_renderView->setFixedHeight(docH + 16);
-        m_editorStack->setFixedHeight(docH + 16);
+        if (!m_renderView) {
+            updateGeometry();
+            return;
+        }
+        // The WebEngine view height is set asynchronously by
+        // onRenderLoadFinished() after the page loads + Mermaid renders.
+        // Keep whatever height is currently set and just sync the stack.
+        smdDebugLog(QStringLiteral("updateEditorHeight(rendered) — viewSize=%1x%2, stackH=%3")
+            .arg(m_renderView->width()).arg(m_renderView->height())
+            .arg(m_editorStack->height()));
+        m_editorStack->setFixedHeight(m_renderView->height());
         updateGeometry();
         return;
     }
@@ -461,7 +744,29 @@ SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)
 
 bool SmdCell::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::FocusIn) {
+    // Repaint the QWebEngineView when the cell moves (scroll area scrolled)
+    // to minimize native-window ghosting artifacts.
+    if (obj == this && event->type() == QEvent::Move && m_rendered && m_renderView) {
+        m_renderView->repaint();
+    }
+
+    // Log events on the render view / render image for debugging
+    if ((m_renderView && (obj == m_renderView || obj == m_renderView->focusProxy()))
+        || (m_renderImage && obj == m_renderImage)) {
+        if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress
+            || event->type() == QEvent::MouseButtonRelease) {
+            const QString oName = (m_renderImage && obj == m_renderImage) ? QStringLiteral("renderImage")
+                : (obj == m_renderView ? QStringLiteral("renderView") : QStringLiteral("focusProxy"));
+            smdDebugLog(QStringLiteral("eventFilter — obj=%1, event=%2, m_rendered=%3")
+                .arg(oName)
+                .arg(event->type() == QEvent::FocusIn ? QStringLiteral("FocusIn")
+                     : event->type() == QEvent::MouseButtonPress ? QStringLiteral("MousePress")
+                     : QStringLiteral("MouseRelease"))
+                .arg(m_rendered));
+        }
+    }
+
+    if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
         emit focusEntered();
     }
     return QFrame::eventFilter(obj, event);

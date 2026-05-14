@@ -4,7 +4,7 @@
 #include <QFrame>
 #include <QStackedWidget>
 #include <QPlainTextEdit>
-#include <QTextBrowser>
+#include <QWebEngineView>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -65,7 +65,10 @@ private:
     void setupCodeEditor(const QString &langId);
     void updateTypeLabel();
     void updateBorderStyle();
+    void ensureRenderView();
+    void applyRenderHeight(int contentH);
     void updateEditorHeight();
+    void onRenderLoadFinished(bool ok);
 
     CellType m_type;
     bool m_commandMode = false;
@@ -78,7 +81,9 @@ private:
     QStackedWidget *m_editorStack = nullptr;   // page 0 = editor, page 1 = rendered view
     QPlainTextEdit *m_markdownEditor = nullptr;
     CodeEditor *m_codeEditor = nullptr;
-    QTextBrowser *m_renderView = nullptr;
+    QWidget *m_renderPlaceholder = nullptr;      // lightweight placeholder until lazy init
+    QWebEngineView *m_renderView = nullptr;
+    QLabel *m_renderImage = nullptr;             // pixmap replacement (no native HWND)
     QPlainTextEdit *m_outputArea = nullptr;
 
     QString m_languageId;
