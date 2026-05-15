@@ -56,6 +56,7 @@ signals:
     void focusEntered();
     void focusLeft();
     void contentChanged();
+    void renderFinished();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

@@ -33,6 +33,8 @@ public:
     void setEditorFont(const QString &family, int size);
     void reloadColors();
 
+    QString toPlainTextContentOnly() const;
+
 signals:
     void modificationChanged(bool modified);
     void fileLoaded(const QString &filePath);
@@ -62,6 +64,8 @@ private:
     void executeMarkdownCell(SmdCell *cell);
     void executeCodeCell(SmdCell *cell);
     void jumpToNextCell();
+    void onCellRenderFinished();
+    void handleProcessStop();
 
     // Language selector
     void showLanguageSelector(int cellIndex);
@@ -93,6 +97,8 @@ private:
 
     ProcessRunner *m_processRunner;
     int m_executingCellIndex = -1;
+    int m_pendingRenderJumpIndex = -1;
+    bool m_userTerminated = false;
     QString m_executingTempFile;
     int m_executeCounter = 0;
     QMetaObject::Connection m_execOutputConn;

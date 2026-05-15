@@ -15,6 +15,7 @@ public:
     void setOutput(const QString &text);
     void appendText(const QString &text, bool isStderr = false);
     void clearOutput();
+    void scrollToTop();
     QString outputText() const;
     bool hasOutput() const;
 
@@ -26,6 +27,7 @@ private slots:
 
 private:
     QPlainTextEdit *m_outputEdit = nullptr;
+    int m_hiddenLineCount = 0;
 };
 
 #endif // SMDOUTPUTWIDGET_H

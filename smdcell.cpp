@@ -730,6 +730,7 @@ void SmdCell::performGrab()
     updateGeometry();
     m_grabbing = false;
     emit contentChanged();
+    emit renderFinished();
     smdDebugLog(QStringLiteral("performGrab — done"));
 }
 

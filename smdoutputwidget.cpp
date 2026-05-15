@@ -38,10 +38,14 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
 
 void SmdOutputWidget::setOutput(const QString &text)
 {
+    m_hiddenLineCount = 0;
     QStringList lines = text.split(QLatin1Char('\n'));
+    if (!lines.isEmpty() && lines.constLast().isEmpty())
+        lines.removeLast();
     if (lines.size() > kMaxOutputLines) {
+        m_hiddenLineCount = lines.size() - kMaxOutputLines;
         lines = lines.mid(0, kMaxOutputLines);
-        lines.append(QStringLiteral("[... more lines]"));
+        lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
     }
     m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
     setVisible(true);
@@ -53,6 +57,16 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
     QTextCursor cursor = m_outputEdit->textCursor();
     cursor.movePosition(QTextCursor::End);
 
+    // Remove existing indicator so it doesn't skew the block count
+    if (m_hiddenLineCount > 0) {
+        cursor.movePosition(QTextCursor::End);
+        cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        if (cursor.position() > 0)
+            cursor.deletePreviousChar();
+    }
+
+    // Append the new text
     if (isStderr) {
         QTextCharFormat fmt;
         fmt.setForeground(QColor(QStringLiteral("#F48771")));
@@ -61,31 +75,45 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
         cursor.insertText(text);
     }
 
-    // Enforce max output lines
+    // Enforce max output lines: keep first kMaxOutputLines, drop from the end.
+    // Don't count trailing empty block (artifact of \n-terminated output).
     int blockCount = m_outputEdit->document()->blockCount();
+    if (blockCount > 1 && m_outputEdit->document()->lastBlock().text().isEmpty())
+        --blockCount;
     if (blockCount > kMaxOutputLines) {
-        // Remove excess lines from the beginning
-        cursor.movePosition(QTextCursor::Start);
-        for (int i = 0; i < blockCount - kMaxOutputLines; ++i) {
-            cursor.movePosition(QTextCursor::Start);
-            cursor.movePosition(QTextCursor::Down, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-            cursor.deleteChar(); // remove the newline
-        }
-        // Prepend truncation indicator
-        cursor.movePosition(QTextCursor::Start);
+        int newHidden = blockCount - kMaxOutputLines;
+        m_hiddenLineCount += newHidden;
+
+        QTextBlock targetBlock = m_outputEdit->document()->findBlockByNumber(kMaxOutputLines);
+        cursor.movePosition(QTextCursor::End);
+        cursor.setPosition(targetBlock.position(), QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+
+        cursor.movePosition(QTextCursor::End);
         QTextCharFormat grayFmt;
         grayFmt.setForeground(QColor(QStringLiteral("#858585")));
-        cursor.insertText(QStringLiteral("[... more lines]\n"), grayFmt);
+        cursor.insertText(QStringLiteral("\n[%1 more lines]").arg(m_hiddenLineCount), grayFmt);
+    } else if (m_hiddenLineCount > 0) {
+        // Re-add indicator after removing it, since we're still under the limit
+        cursor.movePosition(QTextCursor::End);
+        QTextCharFormat grayFmt;
+        grayFmt.setForeground(QColor(QStringLiteral("#858585")));
+        cursor.insertText(QStringLiteral("\n[%1 more lines]").arg(m_hiddenLineCount), grayFmt);
     }
-
-    m_outputEdit->ensureCursorVisible();
 }
 
 void SmdOutputWidget::clearOutput()
 {
+    m_hiddenLineCount = 0;
     m_outputEdit->clear();
     setVisible(false);
+}
+
+void SmdOutputWidget::scrollToTop()
+{
+    QTextCursor cursor = m_outputEdit->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    m_outputEdit->setTextCursor(cursor);
 }
 
 QString SmdOutputWidget::outputText() const

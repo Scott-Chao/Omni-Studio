@@ -217,7 +217,7 @@ bool SmdEditor::loadFile(const QString &filePath)
 
     m_filePath = QFileInfo(filePath).absoluteFilePath();
     setPlainText(text);
-    m_originalContent = toPlainText();
+    m_originalContent = toPlainTextContentOnly();
     emit fileLoaded(m_filePath);
     return true;
 }
@@ -238,7 +238,7 @@ bool SmdEditor::saveFile()
     stream << text;
     file.close();
 
-    m_originalContent = text;
+    m_originalContent = toPlainTextContentOnly();
     setModified(false);
     emit fileSaved(m_filePath);
     return true;
@@ -253,6 +253,19 @@ QString SmdEditor::toPlainText() const
         fc.content = m_cells[i]->content();
         fc.rendered = m_cells[i]->isRendered();
         fc.output = m_outputWidgets[i]->outputText();
+        fmtCells.append(fc);
+    }
+    return SmdFormat::serialize(fmtCells);
+}
+
+QString SmdEditor::toPlainTextContentOnly() const
+{
+    QList<SmdFormat::Cell> fmtCells;
+    for (int i = 0; i < m_cells.size(); ++i) {
+        SmdFormat::Cell fc;
+        fc.type = SmdCell::langIdFromType(m_cells[i]->cellType());
+        fc.content = m_cells[i]->content();
+        fc.rendered = m_cells[i]->isRendered();
         fmtCells.append(fc);
     }
     return SmdFormat::serialize(fmtCells);
@@ -318,13 +331,13 @@ void SmdEditor::setPlainText(const QString &text)
 
 bool SmdEditor::isModified() const
 {
-    return toPlainText() != m_originalContent;
+    return toPlainTextContentOnly() != m_originalContent;
 }
 
 void SmdEditor::setModified(bool modified)
 {
     if (!modified)
-        m_originalContent = toPlainText();
+        m_originalContent = toPlainTextContentOnly();
     emit modificationChanged(modified);
 }
 
@@ -434,6 +447,10 @@ void SmdEditor::setActiveCell(int index)
     m_cells[index]->setActive(true);
     m_cells[index]->setCommandMode(m_commandMode);
     m_scrollArea->ensureWidgetVisible(m_cells[index], 0, 20);
+
+    // Cancel pending post-render jump if user manually switched cells (Req 5)
+    if (m_pendingRenderJumpIndex >= 0 && index != m_pendingRenderJumpIndex)
+        m_pendingRenderJumpIndex = -1;
 }
 
 // ---- Mode Management ----
@@ -569,11 +586,17 @@ void SmdEditor::executeCurrentCell()
 void SmdEditor::executeMarkdownCell(SmdCell *cell)
 {
     if (!cell->isRendered()) {
+        m_pendingRenderJumpIndex = m_cells.indexOf(cell);
+        connect(cell, &SmdCell::renderFinished, this, [this, cell]() {
+            disconnect(cell, &SmdCell::renderFinished, this, nullptr);
+            onCellRenderFinished();
+        });
         cell->setRendered(true);
+    } else {
+        if (!m_commandMode)
+            enterCommandMode();
+        jumpToNextCell();
     }
-    if (!m_commandMode)
-        enterCommandMode();
-    jumpToNextCell();
 }
 
 void SmdEditor::executeCodeCell(SmdCell *cell)
@@ -671,14 +694,19 @@ void SmdEditor::onProcessFinished(int exitCode)
     m_executingTempFile.clear();
     m_executingCellIndex = -1;
 
-    // Output may have changed — let the modification indicator update
+    // Scroll output to top so user sees the beginning (Req 1)
+    if (finishedIdx >= 0 && finishedIdx < m_outputWidgets.size())
+        m_outputWidgets[finishedIdx]->scrollToTop();
+
     emit contentChanged();
 
-    // Only jump if the user is still on the executed cell
+    // Jump to next cell after execution completes (unless user terminated)
     if (finishedIdx == m_activeCellIndex) {
         if (!m_commandMode)
             enterCommandMode();
-        jumpToNextCell();
+        if (!m_userTerminated)
+            jumpToNextCell();
+        m_userTerminated = false;
     }
 }
 
@@ -689,6 +717,49 @@ void SmdEditor::jumpToNextCell()
             setActiveCell(m_activeCellIndex + 1);
         }
     }
+}
+
+void SmdEditor::handleProcessStop()
+{
+    int stoppedIdx = m_executingCellIndex;
+
+    // Clean up temp files
+    if (!m_executingTempFile.isEmpty()) {
+        QFile::remove(m_executingTempFile);
+        QFileInfo fi(m_executingTempFile);
+        QString exePath = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
+                          + QStringLiteral(".exe");
+        QFile::remove(exePath);
+    }
+
+    // Append termination message
+    if (stoppedIdx >= 0 && stoppedIdx < m_outputWidgets.size()) {
+        m_outputWidgets[stoppedIdx]->appendText(
+            QStringLiteral("\n--- ") + tr("Terminated by user") + QStringLiteral(" ---\n"), true);
+    }
+
+    // Disconnect execution signal connections
+    disconnect(m_execOutputConn);
+    disconnect(m_execCompileConn);
+    disconnect(m_execRunConn);
+
+    m_executingTempFile.clear();
+    m_executingCellIndex = -1;
+    m_userTerminated = false;
+
+    emit contentChanged();
+}
+
+void SmdEditor::onCellRenderFinished()
+{
+    int jumpedIndex = m_pendingRenderJumpIndex;
+    m_pendingRenderJumpIndex = -1;
+
+    if (!m_commandMode)
+        enterCommandMode();
+
+    if (jumpedIndex == m_activeCellIndex)
+        jumpToNextCell();
 }
 
 // ---- Event Handling ----
@@ -802,21 +873,43 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             return true;
         }
 
-        if (!m_commandMode) {
-            // Ctrl+Shift+Z: un-render current cell in edit mode
-            if (key->key() == Qt::Key_Z
-                && (key->modifiers() & Qt::ControlModifier)
-                && (key->modifiers() & Qt::ShiftModifier)) {
-                if (event->type() == QEvent::ShortcutOverride) {
-                    event->accept();
-                } else if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
-                    SmdCell *cell = m_cells[m_activeCellIndex];
-                    if (cell->isRendered())
-                        cell->setRendered(false);
-                }
+        // Ctrl+C: terminate cell execution (Req 6)
+        if ((key->key() == Qt::Key_C)
+            && (key->modifiers() & Qt::ControlModifier)
+            && m_executingCellIndex >= 0) {
+            if (event->type() == QEvent::ShortcutOverride) {
+                event->accept();
+            } else {
+                m_userTerminated = true;
+                m_processRunner->stop();
+                handleProcessStop();
+            }
+            return true;
+        }
+
+        // Ctrl+Shift+Z: always accept ShortcutOverride so Qt doesn't
+        // convert it to Redo. The actual un-render is handled in
+        // keyPressEvent (command mode) or below (edit mode).
+        if (key->key() == Qt::Key_Z
+            && (key->modifiers() & Qt::ControlModifier)
+            && (key->modifiers() & Qt::ShiftModifier)) {
+            if (event->type() == QEvent::ShortcutOverride) {
+                event->accept();
                 return true;
             }
+            if (!m_commandMode) {
+                if (event->type() == QEvent::KeyPress) {
+                    if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
+                        SmdCell *cell = m_cells[m_activeCellIndex];
+                        if (cell->isRendered())
+                            cell->setRendered(false);
+                    }
+                    return true;
+                }
+            }
+            // In command mode, KeyPress falls through to keyPressEvent
         }
+
     }
 
     // ── Preserve scroll position across minimize/restore ──
