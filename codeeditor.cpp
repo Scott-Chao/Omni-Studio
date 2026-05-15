@@ -1,4 +1,5 @@
 ﻿#include "codeeditor.h"
+#include "completionmanager.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -60,6 +61,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
     m_lineNumberArea = new LineNumberArea(this);
+    m_completionManager = new CompletionManager(this);
 
     connect(this, &QPlainTextEdit::blockCountChanged,
             this, &CodeEditor::updateLineNumberAreaWidth);
@@ -106,6 +108,7 @@ void CodeEditor::setLanguage(const QString &langId)
     }
     m_languageId = langId;
     m_highlighter = LanguageUtils::createHighlighter(langId, document());
+    m_completionManager->setLanguage(langId);
 }
 
 // ---- Line number area ----

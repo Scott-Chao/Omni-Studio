@@ -5,6 +5,7 @@
 #include <QTextEdit>
 
 class QSyntaxHighlighter;
+class CompletionManager;
 class LineNumberArea;
 
 class CodeEditor : public QPlainTextEdit
@@ -16,6 +17,8 @@ public:
 
     void setLanguage(const QString &langId);
     QString languageId() const { return m_languageId; }
+
+    CompletionManager *completionManager() const { return m_completionManager; }
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }
@@ -42,6 +45,7 @@ private slots:
 
 private:
     QSyntaxHighlighter *m_highlighter = nullptr;
+    CompletionManager *m_completionManager = nullptr;
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
     int m_indentWidth = 4;

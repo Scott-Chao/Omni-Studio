@@ -19,6 +19,7 @@ SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
+    completionmanager.cpp \
     compilerutils.h \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
@@ -56,6 +57,8 @@ HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \
+    completionmanager.h \
+    completionprovider.h \
     compilerutils.h \
     cppsyntaxhighlighter.h \
     crawler.h \
