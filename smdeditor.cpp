@@ -27,9 +27,12 @@ class LangSelectorPopup : public QFrame
 {
     Q_OBJECT
 public:
-    LangSelectorPopup(QWidget *parent, std::function<void(SmdCell::CellType)> onSelected)
+    LangSelectorPopup(QWidget *parent,
+                      std::function<void(SmdCell::CellType)> onSelected,
+                      std::function<void()> onCancelled = nullptr)
         : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint)
         , m_onSelected(onSelected)
+        , m_onCancelled(onCancelled)
     {
         setStyleSheet(QStringLiteral(
             "LangSelectorPopup { background: #2d2d30; border: 1px solid #555555; "
@@ -83,13 +86,21 @@ public:
 
     void confirm()
     {
+        m_confirmed = true;
         if (m_onSelected)
             m_onSelected(selectedType());
         close();
-        deleteLater();
     }
 
 protected:
+    void hideEvent(QHideEvent *event) override
+    {
+        if (!m_confirmed && m_onCancelled)
+            m_onCancelled();
+        deleteLater();
+        QFrame::hideEvent(event);
+    }
+
     bool eventFilter(QObject *obj, QEvent *event) override
     {
         if (event->type() == QEvent::MouseButtonRelease) {
@@ -108,7 +119,6 @@ protected:
         switch (event->key()) {
         case Qt::Key_Escape:
             close();
-            deleteLater();
             return;
         case Qt::Key_Up:
             selectIndex(qMax(0, m_selectedIndex - 1));
@@ -141,7 +151,9 @@ protected:
 private:
     QList<QLabel*> m_items;
     int m_selectedIndex = 0;
+    bool m_confirmed = false;
     std::function<void(SmdCell::CellType)> m_onSelected;
+    std::function<void()> m_onCancelled;
 };
 
 // ============================================================
@@ -424,17 +436,19 @@ void SmdEditor::removeCell(int index)
 void SmdEditor::insertCellAbove()
 {
     int idx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
+    int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
     setActiveCell(idx);
-    showLanguageSelector(idx);
+    showLanguageSelector(idx, true, originalIdx);
 }
 
 void SmdEditor::insertCellBelow()
 {
     int idx = m_activeCellIndex >= 0 ? m_activeCellIndex + 1 : m_cells.size();
+    int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
     setActiveCell(idx);
-    showLanguageSelector(idx);
+    showLanguageSelector(idx, true, originalIdx);
 }
 
 void SmdEditor::setActiveCell(int index)
@@ -480,25 +494,43 @@ void SmdEditor::enterEditMode()
 
 // ---- Language Selector ----
 
-void SmdEditor::showLanguageSelector(int cellIndex)
+void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int originalCellIndex)
 {
     if (cellIndex < 0 || cellIndex >= m_cells.size())
         return;
 
-    SmdCell *cell = m_cells[cellIndex];
-    auto *popup = new LangSelectorPopup(m_cellContainer, [this, cellIndex](SmdCell::CellType type) {
-        if (cellIndex >= 0 && cellIndex < m_cells.size()) {
-            m_cells[cellIndex]->setCellType(type);
-        }
-        setFocus();
-        QTimer::singleShot(0, this, [this]() {
-            if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size())
-                enterEditMode();
-        });
-    });
+    std::function<void()> onCancelled;
+    if (isNewCell) {
+        int capturedIdx = cellIndex;
+        int restoreIdx = originalCellIndex >= 0 ? originalCellIndex : cellIndex;
+        onCancelled = [this, capturedIdx, restoreIdx]() {
+            removeCell(capturedIdx);
+            setActiveCell(qMin(restoreIdx, m_cells.size() - 1));
+            // The add+remove cycle left the visual modified flag set
+            // even though content is unchanged. Reset to clear it.
+            setModified(false);
+        };
+    }
 
-    QPoint pos = cell->mapToGlobal(QPoint(20, cell->height() / 2));
-    popup->move(pos);
+    auto *popup = new LangSelectorPopup(m_cellContainer,
+        [this, cellIndex](SmdCell::CellType type) {
+            if (cellIndex >= 0 && cellIndex < m_cells.size()) {
+                m_cells[cellIndex]->setCellType(type);
+            }
+            setFocus();
+            QTimer::singleShot(0, this, [this]() {
+                if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size())
+                    enterEditMode();
+            });
+        },
+        onCancelled
+    );
+
+    QWidget *vp = m_scrollArea->viewport();
+    QPoint vpTopLeft = vp->mapToGlobal(QPoint(0, 0));
+    int popupX = vpTopLeft.x() + (vp->width() - popup->width()) / 2;
+    int popupY = vpTopLeft.y() + 8;
+    popup->move(qMax(vpTopLeft.x() + 4, popupX), popupY);
     popup->show();
     popup->setFocus();
 }
@@ -798,14 +830,6 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
                 setActiveCell(m_activeCellIndex + 1);
             return;
 
-        case Qt::Key_K:
-            if (event->modifiers() & Qt::ControlModifier) {
-                if (m_activeCellIndex >= 0)
-                    showLanguageSelector(m_activeCellIndex);
-                return;
-            }
-            break;
-
         case Qt::Key_Z:
             if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
                 if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
@@ -865,11 +889,21 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         }
 
         // Esc: always enter command mode, regardless of current mode.
-        if (key->key() == Qt::Key_Escape) {
+        // Don't intercept when a Qt::Popup is active (e.g. language selector).
+        if (key->key() == Qt::Key_Escape && !QApplication::activePopupWidget()) {
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
             else
                 enterCommandMode();
+            return true;
+        }
+
+        // Ctrl+K: show language selector in any mode (command or edit).
+        if (key->key() == Qt::Key_K && (key->modifiers() & Qt::ControlModifier)) {
+            if (event->type() == QEvent::ShortcutOverride)
+                event->accept();
+            else if (m_activeCellIndex >= 0)
+                showLanguageSelector(m_activeCellIndex);
             return true;
         }
 

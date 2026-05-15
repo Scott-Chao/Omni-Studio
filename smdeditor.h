@@ -68,7 +68,7 @@ private:
     void handleProcessStop();
 
     // Language selector
-    void showLanguageSelector(int cellIndex);
+    void showLanguageSelector(int cellIndex, bool isNewCell = false, int originalCellIndex = -1);
 
     // Connections
     void connectCellSignals(SmdCell *cell, int index);

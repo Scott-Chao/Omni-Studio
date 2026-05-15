@@ -91,6 +91,10 @@ deploy_msvc.bat
 
 # Runtime config (user-specific)
 config.ini
+settings.local.json
+
+# clangd user config
+.clangd
 
 # Temporary files
 *.tmp

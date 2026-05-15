@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.6）
+## 功能说明文档（v0.7.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,15 +38,13 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.7.6
-- 优化：SMD 代码块输出区在运行完毕后自动滚动到顶部（输出开头），便于查看
-- 优化：SMD 输出截断逻辑 — 超过 1000 行上限时保留前 1000 行，截断指示器移至末尾并显示隐藏行数
-- 修复：SMD 代码块运行后输出内容导致自动保存覆盖原始文件的问题
-  - 仅单元格代码内容变更才会触发未保存标识和关闭提示，运行产生的输出变更不触发自动保存
-- 修复：SMD Markdown 块渲染时框会先跳到下一格、渲染完毕后又跳回的视觉闪烁问题
-  - 已渲染的 Markdown 块（再次执行时直接跳转）不受影响
-  - `setActiveCell()` 中检测手动切换单元格时取消待处理的渲染后跳转
-- 新增：SMD 代码块执行期间按 `Ctrl+C` 可终止程序运行
+# 新增/修复 v0.7.7
+- 新增：SMD 语言选择菜单（`LangSelectorPopup`）支持取消创建 — 新建单元格时按 `Esc` 或点击菜单外部，自动删除已创建的单元格并恢复原始活动单元格，同时清除误触发的修改状态标识。
+- 新增：`Ctrl+K` 在编辑模式下也可弹出语言选择菜单（此前仅命令模式有效）。
+- 优化：语言选择菜单位置改为当前编辑区域顶部居中（此前在单元格中部右侧，易超出窗口）。
+- 修复：语言选择菜单弹出时按 `Esc` 无响应的问题（全局事件过滤器误拦截了 `Esc` 按键）。
+- 修复：取消新建单元格后焦点错误跳到下方单元格的问题（恢复至原始活动单元格）。
+- 修复：语言选择菜单在点击外部关闭时未释放内存（`deleteLater` 缺失）的问题。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1007,17 +1005,25 @@
 | `↑` / `↓` | 上下导航单元格 |
 | `Enter`（无 Ctrl） | 进入编辑模式 |
 | `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
-| `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
 | `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
 | `Delete` | 删除当前单元格（至少保留一个） |
 | `Ctrl+D` | 复制当前单元格到下方 |
 
+**通用快捷键（命令模式与编辑模式均有效）**：
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
+| `Esc` | 进入命令模式（语言选择菜单弹出时：关闭菜单） |
+| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
+| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
+
 **语言选择器（`LangSelectorPopup`）**：
-- 继承 `QFrame`（`Qt::Popup`），深色主题无边框下拉菜单。
+- 继承 `QFrame`（`Qt::Popup`），深色主题无边框下拉菜单，出现于编辑区域顶部居中位置。
 - 三个选项（`QLabel`）：`1. Markdown`、`2. C++`、`3. Python`，默认选中第一个（蓝色高亮背景 `#094771`）。
-- 键盘操作：`↑/↓` 导航、`Enter` 确认、`1/2/3` 直接选择、`Esc` 关闭。
-- 鼠标点击选项直接确认并关闭。
+- 键盘操作：`↑/↓` 导航、`Enter` 确认、`1/2/3` 直接选择、`Esc` 取消。
+- 鼠标点击选项直接确认并关闭；点击菜单外部取消。
 - 确认后通过回调设置单元格类型，自动进入编辑模式。
+- **取消行为**：如果在新建单元格流程中弹出（按 `A`/`B`），取消时自动删除该单元格、恢复原始活动单元格、清除修改状态标识。
 
 **单元格执行**：
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。
@@ -1049,16 +1055,25 @@
 
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
-- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理所有快捷键（A/B/Enter/Esc/↑/↓/Ctrl+K/Ctrl+Enter/Ctrl+Shift+Z/Delete/Ctrl+D）。
-- 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。对 `Esc` 和 `Ctrl+Enter` 在 `ShortcutOverride` 阶段就 `event->accept()`，确保 Qt 快捷键系统不拦截这些组合键；`KeyPress` 阶段执行实际操作（进入命令模式/执行单元格）。
+- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。
+  `Ctrl+K` 不再在此处理（提升到全局 `eventFilter`，编辑模式下也可用）。
+- 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
+  - `Ctrl+Enter`：`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段执行单元格。
+  - `Esc`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段进入命令模式。当 `Qt::Popup` 窗口（如语言选择菜单）激活时跳过拦截，使菜单能正常响应 `Esc`。
+  - `Ctrl+K`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段弹出语言选择菜单（命令模式与编辑模式均生效）。
+  - `Ctrl+C`：执行期间终止进程（`ShortcutOverride` + `KeyPress`）。
+  - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段在编辑模式下直接取消渲染，命令模式放行给 `keyPressEvent`。
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
 
 **内部类 `LangSelectorPopup`**：
 - 在 `smdeditor.cpp` 中定义，`Q_OBJECT` 宏，MOC 通过 `#include "smdeditor.moc"` 处理。
-- 键盘事件处理：`↑/↓` 导航选项、`Enter` 确认选择并销毁、`1/2/3` 快捷键、`Esc` 取消。
+- 键盘事件处理：`↑/↓` 导航选项、`Enter` 确认选择、`1/2/3` 快捷键、`Esc` 关闭。
 - 点击 `QLabel` 选项通过 `eventFilter` 检测 `MouseButtonRelease` 并确认选择。
+- 确认时设置 `m_confirmed = true` 再关闭，避免 `hideEvent` 触发取消回调。
+- 重写 `hideEvent`：若未确认且有取消回调则执行取消逻辑（如新建单元格时删除单元格），然后自动 `deleteLater()` 释放内存。
+- 构造函数新增 `onCancelled` 参数，用于取消时的回调（新建单元格流程传入 `removeCell` + 恢复活动单元格 + 清除修改标识；已有单元格流程不传入，取消时无副作用）。
 
 **协作关系**：
 - 由 `EditorWidget` 创建并作为 `QStackedWidget` 的第 5 页（索引 5）。
