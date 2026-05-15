@@ -2,6 +2,7 @@
 #include "lspclient.h"
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QDebug>
 #include <QStandardPaths>
 #include <QTimer>
@@ -81,6 +82,13 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 
         // Tell the owner (CodeEditor) that we're ready — it will call openDocument()
         emit serverReady();
+
+    } else if (id == m_completionRequestId) {
+        m_completionRequestId = -1;
+
+        QList<CompletionItem> items = parseCompletionResponse(result);
+        qDebug() << "CppCompletionProvider: completion returned" << items.size() << "items";
+        emit completionReady(items);
     }
 }
 
@@ -200,12 +208,115 @@ void CppCompletionProvider::sendDidChange(const QString &text)
     m_client->sendNotification(QStringLiteral("textDocument/didChange"), params);
 }
 
-// ---- Completion / Hover / Signature (stubs for later steps) ----
+// ---- Completion request ----
 
 void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos)
 {
-    Q_UNUSED(text);
-    Q_UNUSED(cursorPos);
+    if (!m_initialized || m_documentUri.isEmpty() || !m_client)
+        return;
+
+    // Convert absolute cursorPos to LSP line (0-based) and character (0-based)
+    int line = 0;
+    int col = 0;
+    int len = qMin(cursorPos, text.length());
+    for (int i = 0; i < len; ++i) {
+        if (text.at(i) == QLatin1Char('\n')) {
+            ++line;
+            col = 0;
+        } else {
+            ++col;
+        }
+    }
+
+    QJsonObject position;
+    position[QStringLiteral("line")] = line;
+    position[QStringLiteral("character")] = col;
+
+    QJsonObject textDocument;
+    textDocument[QStringLiteral("uri")] = m_documentUri;
+
+    QJsonObject params;
+    params[QStringLiteral("textDocument")] = textDocument;
+    params[QStringLiteral("position")] = position;
+
+    // Context: we are triggering explicitly (not automatically on type)
+    QJsonObject context;
+    context[QStringLiteral("triggerKind")] = 2; // 1=Invoked, 2=TriggerCharacter, 3=ContentChange
+    params[QStringLiteral("context")] = context;
+
+    m_completionRequestId = m_client->sendRequest(QStringLiteral("textDocument/completion"), params);
+    qDebug() << "CppCompletionProvider: sent completion request id=" << m_completionRequestId
+             << "at (" << line << "," << col << ")";
+}
+
+QString CppCompletionProvider::completionKindToString(int kind)
+{
+    switch (kind) {
+    case 1:  return QStringLiteral("Text");
+    case 2:  return QStringLiteral("Method");
+    case 3:  return QStringLiteral("Function");
+    case 4:  return QStringLiteral("Constructor");
+    case 5:  return QStringLiteral("Field");
+    case 6:  return QStringLiteral("Variable");
+    case 7:  return QStringLiteral("Class");
+    case 8:  return QStringLiteral("Interface");
+    case 9:  return QStringLiteral("Module");
+    case 10: return QStringLiteral("Property");
+    case 11: return QStringLiteral("Unit");
+    case 12: return QStringLiteral("Value");
+    case 13: return QStringLiteral("Enum");
+    case 14: return QStringLiteral("Keyword");
+    case 15: return QStringLiteral("Snippet");
+    case 18: return QStringLiteral("Reference");
+    case 20: return QStringLiteral("EnumMember");
+    case 21: return QStringLiteral("Constant");
+    case 22: return QStringLiteral("Struct");
+    case 23: return QStringLiteral("Event");
+    case 24: return QStringLiteral("Operator");
+    case 25: return QStringLiteral("TypeParameter");
+    default: return QStringLiteral("Text");
+    }
+}
+
+QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJsonObject &result)
+{
+    QList<CompletionItem> items;
+
+    // LSP can return CompletionList { isIncomplete, items[] } or bare CompletionItem[]
+    QJsonArray itemArray;
+    if (result.contains(QStringLiteral("items"))) {
+        itemArray = result.value(QStringLiteral("items")).toArray();
+    }
+
+    for (const QJsonValue &val : itemArray) {
+        QJsonObject item = val.toObject();
+
+        CompletionItem ci;
+        ci.name = item.value(QStringLiteral("label")).toString();
+        ci.detail = item.value(QStringLiteral("detail")).toString();
+
+        // Map LSP CompletionItemKind to our type string
+        int kind = item.value(QStringLiteral("kind")).toInt(0);
+        ci.type = completionKindToString(kind);
+
+        // Build a basic signature: for functions, label is already the signature
+        ci.signature = ci.name;
+
+        // Extract documentation if present
+        QJsonValue docVal = item.value(QStringLiteral("documentation"));
+        if (docVal.isString()) {
+            ci.doc = docVal.toString();
+        } else if (docVal.isObject()) {
+            ci.doc = docVal.toObject().value(QStringLiteral("value")).toString();
+        }
+
+        qDebug() << "  completion item:" << ci.name << "type=" << ci.type
+                 << "detail=" << ci.detail;
+
+        items.append(ci);
+    }
+
+    return items;
 }
 
 void CppCompletionProvider::requestHover(const QString &text, int cursorPos)

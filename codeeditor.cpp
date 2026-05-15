@@ -72,6 +72,8 @@ CodeEditor::CodeEditor(QWidget *parent)
             this, &CodeEditor::highlightCurrentLine);
     connect(m_completionManager, &CompletionManager::serverReady,
             this, &CodeEditor::onServerReady);
+    connect(m_completionManager, &CompletionManager::completionReady,
+            this, &CodeEditor::onCompletionsReady);
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
@@ -138,6 +140,25 @@ void CodeEditor::onServerReady()
 void CodeEditor::onEditorTextChanged()
 {
     m_completionManager->updateText(toPlainText());
+}
+
+void CodeEditor::triggerCompletion()
+{
+    QString text = toPlainText();
+    if (text.length() > 1024 * 1024) // >1MB: skip for performance
+        return;
+
+    QTextCursor cursor = textCursor();
+    m_completionManager->requestCompletion(text, cursor.position());
+}
+
+void CodeEditor::onCompletionsReady(QList<CompletionItem> items)
+{
+    Q_UNUSED(items);
+    // Step 5: log only — CompletionPopup (Step 6) will connect here to show the list
+    if (items.isEmpty()) {
+        qDebug() << "CodeEditor: no completions returned";
+    }
 }
 
 // ---- Line number area ----
@@ -244,6 +265,12 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    // Ctrl+Space — manual completion trigger
+    if (event->key() == Qt::Key_Space && (event->modifiers() & Qt::ControlModifier)) {
+        triggerCompletion();
+        return;
+    }
+
     switch (event->key()) {
     case Qt::Key_Return:
     case Qt::Key_Enter:
@@ -287,6 +314,23 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     }
 
     QPlainTextEdit::keyPressEvent(event);
+
+    // After text insertion, check for completion auto-trigger characters
+    if (!text.isEmpty() && !event->matches(QKeySequence::Paste)) {
+        if (text == QStringLiteral(".")) {
+            triggerCompletion();
+        } else if (text == QStringLiteral(">")) {
+            // -> 成员指针访问才触发，> 单独（模板关括号、iostream>）不触发
+            int pos = textCursor().position();
+            if (pos >= 2 && document()->characterAt(pos - 2) == QLatin1Char('-'))
+                triggerCompletion();
+        } else if (text == QStringLiteral(":")) {
+            // :: 作用域解析 — 仅当上一个字符也是 : 时触发
+            int pos = textCursor().position();
+            if (pos >= 2 && document()->characterAt(pos - 2) == QLatin1Char(':'))
+                triggerCompletion();
+        }
+    }
 }
 
 // ---- Auto-indent ----

@@ -4,6 +4,8 @@
 #include <QPlainTextEdit>
 #include <QTextEdit>
 
+#include "completionprovider.h"
+
 class QSyntaxHighlighter;
 class CompletionManager;
 class LineNumberArea;
@@ -44,6 +46,7 @@ private slots:
     void highlightCurrentLine();
     void onServerReady();
     void onEditorTextChanged();
+    void onCompletionsReady(QList<CompletionItem> items);
 
 private:
     QSyntaxHighlighter *m_highlighter = nullptr;
@@ -63,6 +66,7 @@ private:
     bool handleTabKey(QKeyEvent *event);
     bool handleClosingBracketSkip(QKeyEvent *event);
     void handleToggleComment();
+    void triggerCompletion();
     QString commentPrefix() const;
     bool isCursorInStringOrComment() const;
     QString indentString() const;

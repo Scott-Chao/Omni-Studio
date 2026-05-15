@@ -42,6 +42,9 @@ private:
     bool m_initialized = false;
     int m_initRequestId = -1;
 
+    // Request tracking
+    int m_completionRequestId = -1;
+
     // Document sync state
     QString m_documentUri;
     QString m_documentLanguageId;
@@ -55,6 +58,9 @@ private:
     void restartServer();
     void sendDidOpen(const QString &text);
     void sendDidChange(const QString &text);
+
+    QList<CompletionItem> parseCompletionResponse(const QJsonObject &result);
+    static QString completionKindToString(int kind);
 };
 
 #endif // CPPCOMPLETIONPROVIDER_H
