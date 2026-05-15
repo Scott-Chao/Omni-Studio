@@ -44,6 +44,11 @@ public:
     QWidget *renderImageWidget() const;
     void setEditorFocus();
 
+    // Cursor position
+    int cursorLine() const;
+    int cursorColumn() const;
+    void setCursorPosition(int line, int column);
+
     void applyZoom(qreal factor, int baseFontSize);
     void checkReRender();
 

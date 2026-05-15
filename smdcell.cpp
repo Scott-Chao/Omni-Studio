@@ -827,6 +827,34 @@ void SmdCell::setEditorFocus()
     }
 }
 
+int SmdCell::cursorLine() const
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    return pte ? pte->textCursor().blockNumber() : 0;
+}
+
+int SmdCell::cursorColumn() const
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    return pte ? pte->textCursor().positionInBlock() : 0;
+}
+
+void SmdCell::setCursorPosition(int line, int column)
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    if (!pte) return;
+    QTextBlock block = pte->document()->findBlockByLineNumber(line);
+    if (!block.isValid()) return;
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                        qMin(column, block.length() - 1));
+    pte->setTextCursor(cursor);
+    pte->ensureCursorVisible();
+}
+
 void SmdCell::applyZoom(qreal factor, int baseFontSize)
 {
     m_zoomFactor = factor;
@@ -906,6 +934,9 @@ void SmdCell::updateEditorHeight()
     int visualLines = 0;
 
     for (QTextBlock block = ed->document()->begin(); block.isValid(); block = block.next()) {
+        // Skip trailing empty block that QPlainTextEdit always appends internally
+        if (!block.next().isValid() && block.text().isEmpty())
+            continue;
         QTextLayout *layout = block.layout();
         int lc = 1;
         if (layout) {

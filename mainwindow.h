@@ -164,6 +164,9 @@ private:
     QWidget *m_settingsOverlay = nullptr;
     QAction *m_settingsAction = nullptr;
 
+    // .md ↔ .smd 转换
+    QAction *m_convertMdSmdAction = nullptr;
+
     // 自定义标题栏控件
     QPushButton *m_minimizeBtn = nullptr;
     QPushButton *m_maximizeBtn = nullptr;
@@ -182,6 +185,7 @@ private:
     void onOpenJudgeSampleSelected(const QString &folderPath);
     void onCodeBlockRequested(const QString &language, const QString &code);
     void onSubmitToOpenJudge();
+    void onConvertMdSmd();
     void onSubmissionResultReady(const SubmissionResult &result);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
@@ -195,6 +199,8 @@ private:
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
+    void convertMdToSmd(EditorWidget *editor, const QFileInfo &fi);
+    void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
 
     // 崩溃恢复
     void checkCrashRecovery();

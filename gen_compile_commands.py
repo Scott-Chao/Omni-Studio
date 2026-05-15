@@ -8,12 +8,27 @@ def generate_compilation_database():
     # 1. 寻找存放编译参数的 Makefile
     # qmake 通常会生成 Makefile.Debug 和 Makefile.Release，我们优先解析 Debug 端的参数
     candidates = ['Makefile.Debug', 'Makefile.Release', 'Makefile']
+    # 也搜索标准构建目录
+    build_dirs = [
+        'build/Desktop_Qt_6_11_0_MSVC2022_64_bit-Debug',
+        'build/Desktop_Qt_6_11_0_MSVC2022_64_bit-Release',
+        'build',
+    ]
     makefile_path = None
     for c in candidates:
         if os.path.exists(c):
             makefile_path = c
             break
-            
+    if not makefile_path:
+        for bd in build_dirs:
+            for c in candidates:
+                path = os.path.join(bd, c)
+                if os.path.exists(path):
+                    makefile_path = path
+                    break
+            if makefile_path:
+                break
+
     if not makefile_path:
         print("[Error] 未找到 Makefile。请确保已经先运行了 qmake。")
         return

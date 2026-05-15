@@ -467,6 +467,44 @@ void SmdEditor::setActiveCell(int index)
         m_pendingRenderJumpIndex = -1;
 }
 
+SmdCell *SmdEditor::cellAt(int index) const
+{
+    if (index < 0 || index >= m_cells.size()) return nullptr;
+    return m_cells[index];
+}
+
+int SmdEditor::activeCellCursorLine() const
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return 0;
+    return m_cells[m_activeCellIndex]->cursorLine();
+}
+
+int SmdEditor::activeCellCursorColumn() const
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return 0;
+    return m_cells[m_activeCellIndex]->cursorColumn();
+}
+
+void SmdEditor::setActiveCellCursor(int line, int column)
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return;
+    m_cells[m_activeCellIndex]->setCursorPosition(line, column);
+}
+
+QList<SmdFormat::Cell> SmdEditor::exportCells() const
+{
+    QList<SmdFormat::Cell> result;
+    for (const auto *cell : m_cells) {
+        SmdFormat::Cell fc;
+        fc.type = SmdCell::langIdFromType(cell->cellType());
+        fc.content = cell->content();
+        fc.rendered = cell->isRendered();
+        // output intentionally excluded
+        result.append(fc);
+    }
+    return result;
+}
+
 // ---- Mode Management ----
 
 void SmdEditor::enterCommandMode()

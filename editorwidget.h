@@ -77,6 +77,15 @@ public:
     bool isCodeEdit() const { return m_editorMode == CodeEdit; }
     bool isPdfView() const { return m_editorMode == PdfView; }
     bool isSmdEdit() const { return m_editorMode == SmdEdit; }
+    SmdEditor* smdEditor() const { return m_smdEditor; }
+
+    // Cursor position
+    int cursorLine() const;
+    int cursorColumn() const;
+    void setCursorPosition(int line, int column);
+
+    // Sync original content baseline to given disk content
+    void setOriginalContent(const QString &diskContent);
 
     // 自动保存
     void startAutoSave();

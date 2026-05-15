@@ -24,6 +24,8 @@
 #include "outlinepanel.h"
 #include "outlineutils.h"
 #include "settingspanel.h"
+#include "smdformat.h"
+#include "smdeditor.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
@@ -502,6 +504,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_exportPdfAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
     addAction(m_exportPdfAction);
     connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::onExportPdf);
+
+    // .md ↔ .smd 转换（快捷键 Ctrl+T）
+    m_convertMdSmdAction = new QAction(tr("转换 .md ↔ .smd"), this);
+    m_convertMdSmdAction->setShortcut(
+        QKeySequence(ConfigManager::instance().shortcut("convert_md_smd", "Ctrl+T")));
+    addAction(m_convertMdSmdAction);
+    connect(m_convertMdSmdAction, &QAction::triggered, this, &MainWindow::onConvertMdSmd);
 
     // 文件目录变更时重建索引
     connect(m_explorer, &FileExplorerWidget::folderChanged, this, &MainWindow::onFolderChanged);
@@ -2277,6 +2286,180 @@ QString MainWindow::saveCodeBlockToTempFile(const QString &language, const QStri
     out << code;
     file.close();
     return tempPath;
+}
+
+// ---- .md ↔ .smd 转换 ----
+
+void MainWindow::onConvertMdSmd()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) return;
+
+    QString currentPath = editor->currentFilePath();
+    if (currentPath.isEmpty()) return;
+
+    QFileInfo fi(currentPath);
+    QString suffix = fi.suffix().toLower();
+
+    if (suffix == QStringLiteral("md"))
+        convertMdToSmd(editor, fi);
+    else if (suffix == QStringLiteral("smd"))
+        convertSmdToMd(editor, fi);
+}
+
+void MainWindow::convertMdToSmd(EditorWidget *editor, const QFileInfo &fi)
+{
+    // 1. Capture source state (including unsaved changes)
+    QString mdContent = editor->toPlainText();
+    int mdCursorLine = editor->cursorLine();
+    int mdCursorColumn = editor->cursorColumn();
+    bool sourceWasModified = editor->isModified();
+
+    // 2. Run conversion with mapping
+    SmdFormat::FromMarkdownResult result = SmdFormat::fromMarkdownWithMapping(mdContent);
+    if (result.cells.isEmpty()) return;
+
+    QString smdContent = SmdFormat::serialize(result.cells);
+
+    // 3. Determine target path
+    QString smdPath = fi.absolutePath() + QDir::separator() + fi.completeBaseName() + QStringLiteral(".smd");
+
+    // 4. Map cursor from md line to SMD cell + cell line
+    int mappedCellIndex = 0;
+    int mappedCellLine = 0;
+    if (mdCursorLine >= 0 && mdCursorLine < result.mdLineToCell.size()) {
+        int ci = result.mdLineToCell[mdCursorLine];
+        int cl = result.mdLineToCellLine[mdCursorLine];
+        if (ci >= 0) {
+            mappedCellIndex = qMin(ci, result.cells.size() - 1);
+            mappedCellLine = qMax(0, cl);
+        } else {
+            for (int l = mdCursorLine - 1; l >= 0; --l) {
+                if (result.mdLineToCell[l] >= 0) {
+                    mappedCellIndex = qMin(result.mdLineToCell[l], result.cells.size() - 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    // 5. Open or update target
+    EditorWidget *targetEditor = m_tabManager->findEditorByPath(smdPath);
+    if (targetEditor) {
+        // Already open — update in-memory only, don't touch disk
+        m_tabManager->openFile(smdPath);
+        targetEditor->setPlainText(smdContent);
+        // Read disk content as baseline for modified-state comparison
+        QString diskContent;
+        QFile diskFile(smdPath);
+        if (diskFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&diskFile);
+            diskContent = in.readAll();
+            diskFile.close();
+        }
+        targetEditor->setOriginalContent(diskContent);
+        SmdEditor *smdEditor = targetEditor->smdEditor();
+        if (smdEditor && mappedCellIndex < smdEditor->cellCount()) {
+            smdEditor->setActiveCell(mappedCellIndex);
+            smdEditor->setActiveCellCursor(mappedCellLine, mdCursorColumn);
+            if (SmdCell *cell = smdEditor->cellAt(mappedCellIndex)) {
+                if (QWidget *w = cell->editorWidget())
+                    w->setFocus();
+            }
+        }
+    } else {
+        // Not open — write to disk then open
+        QFile outFile(smdPath);
+        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::warning(nullptr, tr("转换失败"),
+                                 tr("无法写入文件: %1").arg(smdPath));
+            return;
+        }
+        QTextStream out(&outFile);
+        out << smdContent;
+        outFile.close();
+
+        targetEditor = m_tabManager->openFile(smdPath);
+        if (targetEditor && targetEditor->isSmdEdit()) {
+            SmdEditor *smdEditor = targetEditor->smdEditor();
+            if (smdEditor && mappedCellIndex < smdEditor->cellCount()) {
+                smdEditor->setActiveCell(mappedCellIndex);
+                smdEditor->setActiveCellCursor(mappedCellLine, mdCursorColumn);
+                if (SmdCell *cell = smdEditor->cellAt(mappedCellIndex)) {
+                    if (QWidget *w = cell->editorWidget())
+                        w->setFocus();
+                }
+            }
+        }
+    }
+
+    // 6. Restore source modified state
+    editor->setModified(sourceWasModified);
+}
+
+void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
+{
+    // 1. Capture source state
+    SmdEditor *smdEditor = editor->smdEditor();
+    if (!smdEditor) return;
+
+    int activeCell = smdEditor->activeCellIndex();
+    int cursorLineInCell = smdEditor->activeCellCursorLine();
+    int cursorColumn = smdEditor->activeCellCursorColumn();
+    bool sourceWasModified = smdEditor->isModified();
+
+    // 2. Get cell content (unsaved edits, no outputs)
+    QList<SmdFormat::Cell> cells = smdEditor->exportCells();
+
+    // 3. Convert with offset mapping
+    SmdFormat::ToMarkdownResult mdResult = SmdFormat::toMarkdownWithMapping(cells);
+    QString mdContent = mdResult.markdown;
+
+    // 4. Map cursor using cellContentStartLine (accounts for code fence openers)
+    int mdCursorLine = 0;
+    if (activeCell >= 0 && activeCell < mdResult.cellContentStartLine.size())
+        mdCursorLine = mdResult.cellContentStartLine[activeCell] + cursorLineInCell;
+
+    // 5. Determine target path
+    QString mdPath = fi.absolutePath() + QDir::separator() + fi.completeBaseName() + QStringLiteral(".md");
+
+    // 6. Open or update target
+    EditorWidget *targetEditor = m_tabManager->findEditorByPath(mdPath);
+    if (targetEditor) {
+        // Already open — update in-memory only, don't touch disk
+        m_tabManager->openFile(mdPath);
+        targetEditor->setPlainText(mdContent);
+        // Read disk content as baseline for modified-state comparison
+        QString diskContent;
+        QFile diskFile(mdPath);
+        if (diskFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&diskFile);
+            diskContent = in.readAll();
+            diskFile.close();
+        }
+        targetEditor->setOriginalContent(diskContent);
+    } else {
+        // Not open — write to disk then open
+        QFile outFile(mdPath);
+        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::warning(nullptr, tr("转换失败"),
+                                 tr("无法写入文件: %1").arg(mdPath));
+            return;
+        }
+        QTextStream out(&outFile);
+        out << mdContent;
+        outFile.close();
+
+        targetEditor = m_tabManager->openFile(mdPath);
+    }
+
+    // 7. Set cursor in target
+    if (targetEditor)
+        targetEditor->setCursorPosition(mdCursorLine, cursorColumn);
+
+    // 8. Restore source modified state
+    smdEditor->setModified(sourceWasModified);
+    editor->setModified(sourceWasModified);
 }
 
 void MainWindow::onCodeBlockRequested(const QString &language, const QString &code)

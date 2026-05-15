@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.7）
+## 功能说明文档（v0.7.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,13 +38,12 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.7.7
-- 新增：SMD 语言选择菜单（`LangSelectorPopup`）支持取消创建 — 新建单元格时按 `Esc` 或点击菜单外部，自动删除已创建的单元格并恢复原始活动单元格，同时清除误触发的修改状态标识。
-- 新增：`Ctrl+K` 在编辑模式下也可弹出语言选择菜单（此前仅命令模式有效）。
-- 优化：语言选择菜单位置改为当前编辑区域顶部居中（此前在单元格中部右侧，易超出窗口）。
-- 修复：语言选择菜单弹出时按 `Esc` 无响应的问题（全局事件过滤器误拦截了 `Esc` 按键）。
-- 修复：取消新建单元格后焦点错误跳到下方单元格的问题（恢复至原始活动单元格）。
-- 修复：语言选择菜单在点击外部关闭时未释放内存（`deleteLater` 缺失）的问题。
+# 新增/修复 v0.7.8
+- 新增：**`.md` ↔ `.smd` 双向转换（Ctrl+T）** — 在编辑 `.md` 或 `.smd` 文件时按 `Ctrl+T`，自动生成对应格式的文件并打开。`.md` 中的 ````cpp` / ````python` 代码块转换为 SMD 代码单元格，Mermaid 图表转换为独立 Markdown 单元格，其他连续文本合并为 Markdown 单元格。`.smd` 转换为 `.md` 时将各单元格内容依次合并，代码单元格自动包装为对应语言的 fenced code block。转换保留光标位置，并正确处理未保存状态与已打开目标文件的同步。
+- 新增：`SmdEditor` 公开访问器 — `cellCount()`、`cellAt(index)`、`activeCellIndex()`（公开）、`setActiveCell()`（公开）、光标读/写方法、`exportCells()`（导出纯内容不含 output）。
+- 新增：`EditorWidget` — `cursorLine()` / `cursorColumn()` / `setCursorPosition()` 跨模式光标方法、`smdEditor()` 公开访问器、`setOriginalContent()` 内容基线同步方法。
+- 新增：`SmdCell` — `cursorLine()` / `cursorColumn()` / `setCursorPosition()` 光标定位方法。
+- 新增：`SmdFormat` — `FromMarkdownResult` / `ToMarkdownResult` 结构体（含行号→单元格映射）、`fromMarkdownWithMapping()` / `toMarkdownWithMapping()` 双向转换函数、Mermaid 块支持。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -60,7 +59,7 @@
 - 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
 - 管理工具栏，包括文件操作（新建、保存、另存为、导出PDF）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。导出PDF按钮仅 `.md` 文件可见。
 - 支持以下快捷键：
-  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
+  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+T` .md ↔ .smd 转换（仅 `.md` / `.smd` 文件）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放至设置面板中配置的默认缩放比例
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
@@ -84,6 +83,7 @@
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
+- `.md` ↔ `.smd` 双向转换：通过 `m_convertMdSmdAction`（快捷键 `Ctrl+T`）触发 `onConvertMdSmd()`。对当前 `.md` 或 `.smd` 文件调用 `convertMdToSmd()` / `convertSmdToMd()`，生成对应格式文件并写入磁盘（目标未打开时）或直接更新内存内容（目标已打开时）。转换使用 `SmdFormat::fromMarkdownWithMapping()` / `toMarkdownWithMapping()`，保留光标位置（通过行→单元格映射），源文件修改状态保持不变。
 
 **主要接口（槽函数）**：
 - `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
@@ -91,6 +91,7 @@
 - `void saveFile()`：若当前文件无路径则调用 `onSaveFileAs()`（使用记忆路径），否则直接调用编辑器的 `saveFile()`。
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
 - `void onExportPdf()`：弹出保存对话框，将当前 Markdown 文档通过新建隐藏 WebEngine 视图渲染后导出为 PDF，完成后在状态栏显示结果。
+- `void onConvertMdSmd()`：处理 `Ctrl+T` 快捷键，根据当前文件扩展名（`.md` 或 `.smd`）分派到 `convertMdToSmd()` 或 `convertSmdToMd()`。
 - `void onOpenFolder()`：从配置读取上次打开的目录，调用文件浏览器的 `selectFolder()`。
 - `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。
 - `void loadSettings()` / `void saveSettings()`：配置读写。`loadSettings()` 中若无保存分割状态，默认设置左侧文件树与右侧编辑区拉伸比例为 1:4。
@@ -933,7 +934,10 @@
 **主要接口**：
 - `QList<Cell> parse(const QString &text)`：将原始 `.smd` 文本解析为单元格列表。按行扫描，以正则 `^---smd:(\w+)\s*(\{.*\})?$` 匹配分隔符，类型名自动转小写。若存在 JSON 元数据则解析 `rendered` 和 `output`（base64 解码）字段。
 - `QString serialize(const QList<Cell> &cells)`：将单元格列表序列化为 `.smd` 格式文本。每单元格写入 `---smd:<type>`，若有非默认元数据则追加 JSON（`rendered` 为 true 或 `output` 非空时 base64 编码）。单元格间空行分隔。
-- `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式（桩实现）。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block（\`\`\`cpp / \`\`\`python）。
+- `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block。
+- `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表。检测 fenced code block 分隔符并拆分单元格，Mermaid 图表保留为独立 Markdown 单元格。
+- `FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)`：增强版，额外返回 `mdLineToCell` / `mdLineToCellLine` 映射，用于 `.md` → `.smd` 光标定位。
+- `ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)`：增强版，额外返回 `cellContentStartLine` 向量，用于 `.smd` → `.md` 光标定位。
 - `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表（桩实现）。检测 fenced code block 分隔符并拆分单元格。
 
 **协作关系**：

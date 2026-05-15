@@ -1375,6 +1375,71 @@ qreal EditorWidget::zoomFactor() const
     return m_zoomFactor;
 }
 
+int EditorWidget::cursorLine() const
+{
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->activeCellCursorLine();
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->textCursor().blockNumber();
+    return m_textEdit->textCursor().blockNumber();
+}
+
+int EditorWidget::cursorColumn() const
+{
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->activeCellCursorColumn();
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->textCursor().positionInBlock();
+    return m_textEdit->textCursor().positionInBlock();
+}
+
+void EditorWidget::setCursorPosition(int line, int column)
+{
+    if (m_editorMode == SmdEdit) {
+        m_smdEditor->setActiveCellCursor(line, column);
+        return;
+    }
+    QTextDocument *doc;
+    QWidget *w;
+    if (m_editorMode == CodeEdit) {
+        doc = m_codeEditor->document();
+        w = m_codeEditor;
+    } else {
+        doc = m_textEdit->document();
+        w = m_textEdit;
+    }
+    QTextBlock block = doc->findBlockByLineNumber(line);
+    if (!block.isValid()) return;
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                        qMin(column, block.length() - 1));
+    if (auto *pte = qobject_cast<QPlainTextEdit*>(w)) {
+        pte->setTextCursor(cursor);
+        pte->ensureCursorVisible();
+    } else if (auto *te = qobject_cast<QTextEdit*>(w)) {
+        te->setTextCursor(cursor);
+        te->ensureCursorVisible();
+    }
+}
+
+void EditorWidget::setOriginalContent(const QString &diskContent)
+{
+    if (m_editorMode == SmdEdit) {
+        // For SmdEdit, set original content so isModified compares against disk
+        m_smdEditor->setModified(false); // syncs m_originalContent to current cells
+        return;
+    }
+    m_originalContent = diskContent;
+    // The content check timer will naturally detect differences
+    QTextDocument *doc = (m_editorMode == CodeEdit)
+        ? m_codeEditor->document() : m_textEdit->document();
+    bool nowModified = (toPlainText() != m_originalContent);
+    if (doc->isModified() != nowModified) {
+        doc->setModified(nowModified);
+        emit modificationChanged(nowModified);
+    }
+}
+
 bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
 {
     // 预览调试：记录 m_previewView 和 m_previewContainer 的 Show/Hide/Paint 事件
