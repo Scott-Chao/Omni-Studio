@@ -11,6 +11,43 @@
 #include <QSyntaxHighlighter>
 #include <QMouseEvent>
 #include <QApplication>
+#include <QPointer>
+#include <QAbstractNativeEventFilter>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
+// ============================================================
+// EscNativeFilter — catches VK_ESCAPE at the Windows message level
+// before Qt gets a chance to route it to the wrong HWND.
+// ============================================================
+
+class EscNativeFilter : public QAbstractNativeEventFilter
+{
+public:
+    QPointer<CompletionPopup> popup;
+
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
+    {
+        Q_UNUSED(result);
+#ifdef Q_OS_WIN
+        if (eventType == "windows_generic_MSG") {
+            MSG *msg = static_cast<MSG *>(message);
+            if (msg->message == WM_KEYDOWN && msg->wParam == VK_ESCAPE) {
+                if (popup && popup->isActive()) {
+                    popup->hide();
+                    return true;
+                }
+            }
+        }
+#else
+        Q_UNUSED(eventType);
+        Q_UNUSED(message);
+#endif
+        return false;
+    }
+};
 
 // ============================================================
 // LineNumberArea
@@ -67,6 +104,14 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_lineNumberArea = new LineNumberArea(this);
     m_completionManager = new CompletionManager(this);
     m_completionPopup = new CompletionPopup(this);
+
+    // Native Windows event filter — the only way to catch Esc when
+    // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
+    {
+        auto *nativeFilter = new EscNativeFilter();
+        nativeFilter->popup = m_completionPopup;
+        qApp->installNativeEventFilter(nativeFilter);
+    }
 
     viewport()->installEventFilter(this);
 

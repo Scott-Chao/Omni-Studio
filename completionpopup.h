@@ -35,6 +35,9 @@ public:
 signals:
     void itemSelected(const CompletionItem &item);
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 private:
     QListWidget *m_listWidget;
     QLabel *m_hintLabel;

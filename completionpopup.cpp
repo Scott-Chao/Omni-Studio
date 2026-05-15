@@ -3,7 +3,7 @@
 #include <QPainter>
 #include <QScreen>
 #include <QGuiApplication>
-#include <QDebug>
+#include <QKeyEvent>
 
 // ============================================================
 // CompletionItemDelegate
@@ -96,6 +96,7 @@ CompletionPopup::CompletionPopup(QWidget *parent)
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
     );
     m_listWidget->setCursor(Qt::ArrowCursor);
+    m_listWidget->installEventFilter(this);
     layout->addWidget(m_listWidget);
 
     // Hint bar
@@ -240,4 +241,18 @@ QIcon CompletionPopup::iconForType(const QString &type) const
         }
     }
     return QIcon(pixmap);
+}
+
+// ---- Event handling ----
+
+bool CompletionPopup::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_listWidget && event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Escape) {
+            hide();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }
