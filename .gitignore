@@ -97,3 +97,4 @@ config.ini
 
 # Claude Code
 .claude/
+compile_commands.json
