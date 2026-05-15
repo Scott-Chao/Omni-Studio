@@ -1,4 +1,5 @@
 #include "completionmanager.h"
+#include "cppcompletionprovider.h"
 
 CompletionManager::CompletionManager(QObject *parent)
     : QObject(parent)
@@ -28,10 +29,16 @@ void CompletionManager::setLanguage(const QString &langId)
 
 void CompletionManager::createProvider()
 {
-    // Provider creation will be added when CppCompletionProvider
-    // and PythonCompletionProvider are implemented (Steps 4 & 11).
-    // For now, leave m_provider as nullptr — requests are no-ops.
-    Q_UNUSED(m_languageId);
+    if (m_languageId == QStringLiteral("cpp")) {
+        m_provider = new CppCompletionProvider(this);
+        connect(m_provider, &CompletionProvider::completionReady,
+                this, &CompletionManager::completionReady);
+        connect(m_provider, &CompletionProvider::hoverReady,
+                this, &CompletionManager::hoverReady);
+        connect(m_provider, &CompletionProvider::signatureHelpReady,
+                this, &CompletionManager::signatureHelpReady);
+    }
+    // Python support will be added in Step 11
 }
 
 void CompletionManager::requestCompletion(const QString &text, int cursorPos)

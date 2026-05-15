@@ -21,11 +21,13 @@ SOURCES += \
     codeeditor.cpp \
     completionmanager.cpp \
     compilerutils.h \
+    cppcompletionprovider.cpp \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
     languageutils.cpp \
+    lspclient.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
@@ -60,11 +62,13 @@ HEADERS += \
     completionmanager.h \
     completionprovider.h \
     compilerutils.h \
+    cppcompletionprovider.h \
     cppsyntaxhighlighter.h \
     crawler.h \
     editorwidget.h \
     flowlayout.h \
     languageutils.h \
+    lspclient.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \
     fileutils.h \
