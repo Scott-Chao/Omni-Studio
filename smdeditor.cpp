@@ -490,6 +490,10 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
     // Install event filter on cell's editor widget for Esc / Ctrl+Enter
     if (QWidget *ed = cell->editorWidget())
         ed->installEventFilter(this);
+    // Also install on the render image widget so Esc/Ctrl+Enter work
+    // on rendered cells (where editorWidget() may switch to m_renderImage).
+    if (QWidget *ri = cell->renderImageWidget())
+        ri->installEventFilter(this);
 
     // Re-install event filter when cell type changes (editor is recreated)
     connect(cell, &SmdCell::cellTypeChanged, this, [this, cell]() {
@@ -752,20 +756,42 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
+        // Ctrl+Enter: always execute, regardless of command/edit mode.
+        // Fixes issue where Ctrl+Enter could fall through to CodeEditor's
+        // keyPressEvent (e.g., after mode transition) and trigger auto-indent.
+        if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
+            && (key->modifiers() & Qt::ControlModifier)) {
+            if (event->type() == QEvent::ShortcutOverride)
+                event->accept();
+            else
+                executeCurrentCell();
+            return true;
+        }
+
+        // Esc: always enter command mode, regardless of current mode.
+        // This ensures Esc reliably exits edit mode even if m_commandMode
+        // has been set inconsistently (e.g., after cell type changes or
+        // auto-render transitions).  enterCommandMode() is idempotent so
+        // calling it when already in command mode is harmless.
+        if (key->key() == Qt::Key_Escape) {
+            if (event->type() == QEvent::ShortcutOverride)
+                event->accept();
+            else
+                enterCommandMode();
+            return true;
+        }
+
         if (!m_commandMode) {
-            if (key->key() == Qt::Key_Escape) {
-                if (event->type() == QEvent::ShortcutOverride)
-                    event->accept();
-                else
-                    enterCommandMode();
-                return true;
-            }
-            if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
-                && (key->modifiers() & Qt::ControlModifier)) {
+            // Ctrl+Shift+Z: un-render current cell in edit mode
+            if (key->key() == Qt::Key_Z
+                && (key->modifiers() & Qt::ControlModifier)
+                && (key->modifiers() & Qt::ShiftModifier)) {
                 if (event->type() == QEvent::ShortcutOverride) {
                     event->accept();
-                } else {
-                    executeCurrentCell();
+                } else if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
+                    SmdCell *cell = m_cells[m_activeCellIndex];
+                    if (cell->isRendered())
+                        cell->setRendered(false);
                 }
                 return true;
             }

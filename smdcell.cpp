@@ -804,6 +804,11 @@ QWidget *SmdCell::editorWidget() const
     return m_codeEditor;
 }
 
+QWidget *SmdCell::renderImageWidget() const
+{
+    return m_renderImage;
+}
+
 void SmdCell::setEditorFocus()
 {
     if (m_rendered) {

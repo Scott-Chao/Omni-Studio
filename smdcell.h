@@ -41,6 +41,7 @@ public:
     void setRenderedState(bool rendered);
 
     QWidget *editorWidget() const;
+    QWidget *renderImageWidget() const;
     void setEditorFocus();
 
     void applyZoom(qreal factor, int baseFontSize);
