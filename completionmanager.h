@@ -23,10 +23,18 @@ public:
     void requestHover(const QString &text, int cursorPos);
     void requestSignatureHelp(const QString &text, int cursorPos);
 
+    // Document sync (forwards to active provider)
+    void openDocument(const QString &uri, const QString &languageId, const QString &text);
+    void updateText(const QString &text);
+
 signals:
     void completionReady(QList<CompletionItem> items);
     void hoverReady(HoverInfo info);
     void signatureHelpReady(QList<SignatureInfo> signatures, int activeIndex);
+
+    // Forwarded from the active provider
+    void serverReady();
+    void serverFailed(const QString &reason);
 
 private:
     void createProvider();

@@ -42,6 +42,8 @@ private slots:
     void updateLineNumberAreaWidth(int newBlockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
     void highlightCurrentLine();
+    void onServerReady();
+    void onEditorTextChanged();
 
 private:
     QSyntaxHighlighter *m_highlighter = nullptr;

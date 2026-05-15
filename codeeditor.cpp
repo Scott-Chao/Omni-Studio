@@ -5,6 +5,7 @@
 #include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextDocument>
 #include <QKeyEvent>
 #include <QSyntaxHighlighter>
 
@@ -69,6 +70,8 @@ CodeEditor::CodeEditor(QWidget *parent)
             this, &CodeEditor::updateLineNumberArea);
     connect(this, &QPlainTextEdit::cursorPositionChanged,
             this, &CodeEditor::highlightCurrentLine);
+    connect(m_completionManager, &CompletionManager::serverReady,
+            this, &CodeEditor::onServerReady);
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
@@ -100,6 +103,11 @@ void CodeEditor::reloadColors()
     m_lineNumberArea->update();
 }
 
+static QString editorUri()
+{
+    return QStringLiteral("file:///untitled");
+}
+
 void CodeEditor::setLanguage(const QString &langId)
 {
     if (m_highlighter) {
@@ -109,6 +117,27 @@ void CodeEditor::setLanguage(const QString &langId)
     m_languageId = langId;
     m_highlighter = LanguageUtils::createHighlighter(langId, document());
     m_completionManager->setLanguage(langId);
+
+    // Connect text sync after the provider is set up
+    disconnect(document(), &QTextDocument::contentsChanged,
+               this, &CodeEditor::onEditorTextChanged);
+    connect(document(), &QTextDocument::contentsChanged,
+            this, &CodeEditor::onEditorTextChanged);
+
+    // Open document with current content (triggers didOpen when server is ready)
+    m_completionManager->openDocument(editorUri(), langId, toPlainText());
+}
+
+void CodeEditor::onServerReady()
+{
+    // Server just became ready (initial start or restart).
+    // Open (or re-open) the document so clangd knows about its content.
+    m_completionManager->openDocument(editorUri(), m_languageId, toPlainText());
+}
+
+void CodeEditor::onEditorTextChanged()
+{
+    m_completionManager->updateText(toPlainText());
 }
 
 // ---- Line number area ----

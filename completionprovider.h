@@ -41,6 +41,16 @@ public:
     virtual void requestHover(const QString &text, int cursorPos) = 0;
     virtual void requestSignatureHelp(const QString &text, int cursorPos) = 0;
 
+    // Document sync (default no-op for fallback providers)
+    virtual void openDocument(const QString &uri, const QString &languageId, const QString &text)
+    {
+        Q_UNUSED(uri); Q_UNUSED(languageId); Q_UNUSED(text);
+    }
+    virtual void updateText(const QString &text)
+    {
+        Q_UNUSED(text);
+    }
+
 signals:
     void completionReady(QList<CompletionItem> items);
     void hoverReady(HoverInfo info);

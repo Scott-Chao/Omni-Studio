@@ -30,15 +30,35 @@ void CompletionManager::setLanguage(const QString &langId)
 void CompletionManager::createProvider()
 {
     if (m_languageId == QStringLiteral("cpp")) {
-        m_provider = new CppCompletionProvider(this);
+        auto *cppProvider = new CppCompletionProvider(this);
+        m_provider = cppProvider;
+
         connect(m_provider, &CompletionProvider::completionReady,
                 this, &CompletionManager::completionReady);
         connect(m_provider, &CompletionProvider::hoverReady,
                 this, &CompletionManager::hoverReady);
         connect(m_provider, &CompletionProvider::signatureHelpReady,
                 this, &CompletionManager::signatureHelpReady);
+
+        // Forward provider lifecycle signals
+        connect(cppProvider, &CppCompletionProvider::serverReady,
+                this, &CompletionManager::serverReady);
+        connect(cppProvider, &CppCompletionProvider::serverFailed,
+                this, &CompletionManager::serverFailed);
     }
     // Python support will be added in Step 11
+}
+
+void CompletionManager::openDocument(const QString &uri, const QString &languageId, const QString &text)
+{
+    if (m_provider)
+        m_provider->openDocument(uri, languageId, text);
+}
+
+void CompletionManager::updateText(const QString &text)
+{
+    if (m_provider)
+        m_provider->updateText(text);
 }
 
 void CompletionManager::requestCompletion(const QString &text, int cursorPos)

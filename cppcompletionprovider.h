@@ -20,6 +20,10 @@ public:
     void requestHover(const QString &text, int cursorPos) override;
     void requestSignatureHelp(const QString &text, int cursorPos) override;
 
+    // Document sync (textDocument/didOpen + didChange)
+    void openDocument(const QString &uri, const QString &languageId, const QString &text) override;
+    void updateText(const QString &text) override;
+
     bool isServerReady() const { return m_initialized; }
 
 signals:
@@ -38,9 +42,19 @@ private:
     bool m_initialized = false;
     int m_initRequestId = -1;
 
+    // Document sync state
+    QString m_documentUri;
+    QString m_documentLanguageId;
+    int m_documentVersion = 0;
+    bool m_pendingOpen = false;
+    bool m_documentOpen = false;  // true once didOpen has been sent after init
+    QString m_pendingText;
+
     void startServer();
     void sendInitialize();
     void restartServer();
+    void sendDidOpen(const QString &text);
+    void sendDidChange(const QString &text);
 };
 
 #endif // CPPCOMPLETIONPROVIDER_H
