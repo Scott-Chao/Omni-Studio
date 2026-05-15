@@ -8,6 +8,7 @@
 
 class QSyntaxHighlighter;
 class CompletionManager;
+class CompletionPopup;
 class LineNumberArea;
 
 class CodeEditor : public QPlainTextEdit
@@ -39,6 +40,7 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void updateLineNumberAreaWidth(int newBlockCount);
@@ -51,6 +53,7 @@ private slots:
 private:
     QSyntaxHighlighter *m_highlighter = nullptr;
     CompletionManager *m_completionManager = nullptr;
+    CompletionPopup *m_completionPopup = nullptr;
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
     int m_indentWidth = 4;
@@ -67,6 +70,7 @@ private:
     bool handleClosingBracketSkip(QKeyEvent *event);
     void handleToggleComment();
     void triggerCompletion();
+    void insertCompletion(const CompletionItem &item);
     QString commentPrefix() const;
     bool isCursorInStringOrComment() const;
     QString indentString() const;

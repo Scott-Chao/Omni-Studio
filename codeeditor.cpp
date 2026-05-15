@@ -1,5 +1,6 @@
 ﻿#include "codeeditor.h"
 #include "completionmanager.h"
+#include "completionpopup.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -8,6 +9,8 @@
 #include <QTextDocument>
 #include <QKeyEvent>
 #include <QSyntaxHighlighter>
+#include <QMouseEvent>
+#include <QApplication>
 
 // ============================================================
 // LineNumberArea
@@ -63,6 +66,9 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     m_lineNumberArea = new LineNumberArea(this);
     m_completionManager = new CompletionManager(this);
+    m_completionPopup = new CompletionPopup(this);
+
+    viewport()->installEventFilter(this);
 
     connect(this, &QPlainTextEdit::blockCountChanged,
             this, &CodeEditor::updateLineNumberAreaWidth);
@@ -154,11 +160,17 @@ void CodeEditor::triggerCompletion()
 
 void CodeEditor::onCompletionsReady(QList<CompletionItem> items)
 {
-    Q_UNUSED(items);
-    // Step 5: log only — CompletionPopup (Step 6) will connect here to show the list
     if (items.isEmpty()) {
-        qDebug() << "CodeEditor: no completions returned";
+        m_completionPopup->hide();
+        return;
     }
+
+    // Position popup near the cursor
+    QRect cr = cursorRect();
+    QPoint pos = viewport()->mapToGlobal(cr.bottomLeft());
+    pos.ry() += 2;
+    m_completionPopup->move(pos);
+    m_completionPopup->showItems(items);
 }
 
 // ---- Line number area ----
@@ -259,6 +271,41 @@ void CodeEditor::highlightCurrentLine()
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
+    // ---- Completion popup key routing ----
+    if (m_completionPopup && m_completionPopup->isActive()) {
+        // Accept modifiers + alphanumeric: just let through (don't close popup)
+        if (event->modifiers() & Qt::ControlModifier) {
+            QPlainTextEdit::keyPressEvent(event);
+            return;
+        }
+
+        switch (event->key()) {
+        case Qt::Key_Up:
+            m_completionPopup->selectPrevious();
+            return;
+        case Qt::Key_Down:
+            m_completionPopup->selectNext();
+            return;
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+            QPlainTextEdit::keyPressEvent(event);
+            return;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Tab:
+            insertCompletion(m_completionPopup->selectedItem());
+            m_completionPopup->hide();
+            return;
+        case Qt::Key_Escape:
+            m_completionPopup->hide();
+            return;
+        default:
+            // Any other key: close popup, then let normal handling proceed
+            m_completionPopup->hide();
+            break;
+        }
+    }
+
     // Ctrl+/ — toggle line comment
     if (event->key() == Qt::Key_Slash && (event->modifiers() & Qt::ControlModifier)) {
         handleToggleComment();
@@ -670,6 +717,51 @@ void CodeEditor::handleToggleComment()
     newCursor.setPosition(newStart);
     newCursor.setPosition(newEnd, QTextCursor::KeepAnchor);
     setTextCursor(newCursor);
+}
+
+// ---- Completion popup helpers ----
+
+void CodeEditor::insertCompletion(const CompletionItem &item)
+{
+    QString name = item.name.trimmed();
+    if (name.isEmpty())
+        return;
+
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    QString text = toPlainText();
+
+    // Find the start of the current identifier (word boundary backwards)
+    int start = pos;
+    while (start > 0) {
+        QChar c = text.at(start - 1);
+        if (c != QLatin1Char('_') && !c.isLetterOrNumber())
+            break;
+        --start;
+    }
+
+    // If there's a partial word, replace it
+    if (start < pos) {
+        cursor.setPosition(start);
+        cursor.setPosition(pos, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(name);
+    setTextCursor(cursor);
+}
+
+bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
+{
+    // Close popup on mouse click outside of it
+    if (obj == viewport() && event->type() == QEvent::MouseButtonPress) {
+        if (m_completionPopup && m_completionPopup->isActive()) {
+            auto *me = static_cast<QMouseEvent *>(event);
+            QPoint globalPos = me->globalPosition().toPoint();
+            if (!m_completionPopup->geometry().contains(globalPos)) {
+                m_completionPopup->hide();
+            }
+        }
+    }
+    return QPlainTextEdit::eventFilter(obj, event);
 }
 
 // ---- Helpers ----

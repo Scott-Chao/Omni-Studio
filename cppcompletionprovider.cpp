@@ -292,7 +292,20 @@ QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJson
         QJsonObject item = val.toObject();
 
         CompletionItem ci;
-        ci.name = item.value(QStringLiteral("label")).toString();
+
+        // Prefer insertText over label for the actual insertion text.
+        // textEdit can be { newText, textEdit } or { range, newText }.
+        QString insertText;
+        QJsonValue textEditVal = item.value(QStringLiteral("textEdit"));
+        if (textEditVal.isObject()) {
+            insertText = textEditVal.toObject().value(QStringLiteral("newText")).toString();
+        }
+        if (insertText.isEmpty())
+            insertText = item.value(QStringLiteral("insertText")).toString();
+        if (insertText.isEmpty())
+            insertText = item.value(QStringLiteral("label")).toString();
+
+        ci.name = insertText.trimmed();
         ci.detail = item.value(QStringLiteral("detail")).toString();
 
         // Map LSP CompletionItemKind to our type string
