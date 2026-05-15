@@ -173,6 +173,9 @@ void SmdCell::setupUi(CellType type)
 
     mainLayout->addWidget(m_headerBar);
 
+    // Install event filter on header bar so clicks there also activate the cell
+    m_headerBar->installEventFilter(this);
+
     // Editor/View stack — no stretch, height driven by content
     m_editorStack = new QStackedWidget(this);
     m_editorStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -989,18 +992,6 @@ SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)
 
 bool SmdCell::eventFilter(QObject *obj, QEvent *event)
 {
-    // Log events on the render image for debugging
-    if (m_renderImage && obj == m_renderImage) {
-        if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress
-            || event->type() == QEvent::MouseButtonRelease) {
-            smdDebugLog(QStringLiteral("eventFilter — obj=renderImage, event=%1, m_rendered=%2")
-                .arg(event->type() == QEvent::FocusIn ? QStringLiteral("FocusIn")
-                     : event->type() == QEvent::MouseButtonPress ? QStringLiteral("MousePress")
-                     : QStringLiteral("MouseRelease"))
-                .arg(m_rendered));
-        }
-    }
-
     if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
         if (!m_grabbing)
             emit focusEntered();

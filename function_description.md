@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.4）
+## 功能说明文档（v0.7.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,11 +38,12 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.7.4
-- 修复：SMD 编辑模式下 Ctrl+Shift+Z 无法取消渲染 MD 块的问题 — 在 eventFilter 中补充 Ctrl+Shift+Z 处理逻辑，编辑模式下也可取消渲染
-- 修复：SMD 代码块中 Ctrl+Enter 有时触发自动缩进（输入空格）的问题 — 将 Ctrl+Enter 拦截移出 `m_commandMode` 条件检查，确保编辑模式下始终执行而非落入 CodeEditor 按键处理
-- 修复：SMD 编辑模式下 Esc 有时无法进入命令模式的问题 — 将 Esc 拦截移出 `m_commandMode` 条件检查，同时在 `connectCellSignals` 中将事件过滤器安装到 `renderImageWidget`，确保渲染块和代码块中 Esc 始终可靠响应
-- SMD 事件过滤器增强：为 `renderImageWidget` 安装事件过滤器，修复渲染块中键盘快捷键无法响应的根本原因
+# 新增/修复 v0.7.5
+- 修复：SMD 代码块运行后点击原代码块，有时无法选中（蓝色边框不出现）的问题
+  - 根因：`SmdCell::eventFilter` 在 `performGrab` 渲染抓取期间（`m_grabbing=true`）会抑制 `focusEntered()` 信号发射，导致点击事件无法触发 `setActiveCell`
+  - 修复方案：在 `SmdEditor` 构造函数中安装全局 `QApplication` 事件过滤器，在 `eventFilter` 最前面处理 `FocusIn`/`MouseButtonPress` 事件，沿 widget 树向上查找父 `SmdCell` 并调用 `setActiveCell`。此路径独立于 `SmdCell::eventFilter`，不会受 `m_grabbing` 标志影响
+  - 析构函数中移除 QApplication 事件过滤器，防止悬空指针
+  - `SmdCell::setupUi` 中为 `m_headerBar` 安装事件过滤器，确保点击单元格头部区域也能激活单元格
 
 ### 1. `MainWindow` - 主窗口控制器
 

@@ -176,6 +176,11 @@ SmdEditor::SmdEditor(QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);
     installEventFilter(this);
 
+    // Global event filter: catches FocusIn/MousePress on any widget and
+    // activates the parent SmdCell.  This is a back-up path independent of
+    // SmdCell::eventFilter, which suppresses focusEntered during performGrab.
+    QApplication::instance()->installEventFilter(this);
+
     // Watch top-level window for minimize/restore to preserve scroll position
     QTimer::singleShot(0, this, [this]() {
         if (QWidget *tlw = window())
@@ -191,6 +196,8 @@ SmdEditor::~SmdEditor()
         delete m_autoRenderTimer;
         m_autoRenderTimer = nullptr;
     }
+    // Remove global event filter from QApplication
+    QApplication::instance()->removeEventFilter(this);
     // Remove event filter from top-level window
     if (QWidget *tlw = window())
         tlw->removeEventFilter(this);
@@ -753,12 +760,30 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
 
 bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 {
+    // Activate the parent SmdCell on FocusIn / MouseButtonPress.
+    // This eventFilter is installed on QApplication (global catch-all),
+    // every cell's editor/render widget, SmdEditor itself, and the
+    // top-level MainWindow.  Processing FocusIn/MousePress here provides
+    // a reliable back-up path when SmdCell::eventFilter suppresses
+    // focusEntered (e.g. during m_grabbing in performGrab).
+    if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
+        if (auto *w = qobject_cast<QWidget*>(obj)) {
+            for (QWidget *cur = w; cur; cur = cur->parentWidget()) {
+                if (auto *cell = qobject_cast<SmdCell*>(cur)) {
+                    int idx = m_cells.indexOf(cell);
+                    if (idx >= 0 && idx != m_activeCellIndex)
+                        setActiveCell(idx);
+                    break;
+                }
+            }
+        }
+    }
+
+    // ── Keyboard shortcuts ──
     if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
         // Ctrl+Enter: always execute, regardless of command/edit mode.
-        // Fixes issue where Ctrl+Enter could fall through to CodeEditor's
-        // keyPressEvent (e.g., after mode transition) and trigger auto-indent.
         if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
             && (key->modifiers() & Qt::ControlModifier)) {
             if (event->type() == QEvent::ShortcutOverride)
@@ -769,10 +794,6 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         }
 
         // Esc: always enter command mode, regardless of current mode.
-        // This ensures Esc reliably exits edit mode even if m_commandMode
-        // has been set inconsistently (e.g., after cell type changes or
-        // auto-render transitions).  enterCommandMode() is idempotent so
-        // calling it when already in command mode is harmless.
         if (key->key() == Qt::Key_Escape) {
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
@@ -798,18 +819,15 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         }
     }
 
-    // Preserve scroll position across minimize/restore
+    // ── Preserve scroll position across minimize/restore ──
     if (event->type() == QEvent::WindowStateChange) {
         auto *wsc = static_cast<QWindowStateChangeEvent*>(event);
         bool wasMinimized = (wsc->oldState() & Qt::WindowMinimized);
         bool nowMinimized = window()->isMinimized();
 
         if (!wasMinimized && nowMinimized) {
-            // About to minimize: save scroll position
             m_savedScrollPos = m_scrollArea->verticalScrollBar()->value();
         } else if (wasMinimized && !nowMinimized) {
-            // Just restored: block paints, set scroll position, then re-enable.
-            // This prevents the first frame from showing the wrong scroll position.
             int saved = m_savedScrollPos;
             m_scrollArea->setUpdatesEnabled(false);
             m_scrollArea->verticalScrollBar()->setValue(saved);
