@@ -222,7 +222,6 @@ SignatureHelpManager::SignatureHelpManager(CodeEditor *editor,
     connect(&m_debounceTimer, &QTimer::timeout,
             this, &SignatureHelpManager::requestSignature);
 
-    qDebug() << "SignatureHelpManager: created";
 }
 
 void SignatureHelpManager::setProvider(CompletionProvider *provider)
@@ -320,7 +319,6 @@ void SignatureHelpManager::hide()
 {
     m_debounceTimer.stop();
     if (m_popup && m_popup->isVisible()) {
-        qDebug() << "SignatureHelpManager: hiding popup";
         m_popup->hide();
     }
     m_openParenPos = -1;

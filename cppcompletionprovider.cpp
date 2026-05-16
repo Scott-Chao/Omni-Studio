@@ -32,7 +32,6 @@ void CppCompletionProvider::startServer()
         return;
     }
 
-    qDebug() << "CppCompletionProvider: found clangd at" << clangdPath;
 
     m_client = new LspClient(this);
 
@@ -71,7 +70,6 @@ void CppCompletionProvider::sendInitialize()
     params[QStringLiteral("capabilities")] = QJsonObject();
 
     m_initRequestId = m_client->sendRequest(QStringLiteral("initialize"), params);
-    qDebug() << "CppCompletionProvider: sent initialize request, id =" << m_initRequestId;
 }
 
 void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
@@ -101,9 +99,6 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         m_hoverRequestId = -1;
 
         HoverInfo info = parseHoverResponse(result);
-        qDebug() << "CppCompletionProvider: hover returned"
-                 << "signature=" << info.signature.left(60)
-                 << "doc=" << info.doc.left(60);
         emit hoverReady(info);
 
     } else if (id == m_signatureHelpRequestId) {
@@ -128,9 +123,7 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         if (activeIndex >= 0 && activeIndex < signatures.size())
             signatures[activeIndex].activeParameter = activeParam;
 
-        qDebug() << "CppCompletionProvider: signatureHelp returned"
-                 << signatures.size() << "signatures, activeIndex=" << activeIndex
-                 << "activeParameter=" << activeParam;
+        qDebug() << "CppCompletionProvider: signatureHelp returned" << signatures.size() << "signatures";
 
         emit signatureHelpReady(signatures, activeIndex);
     }
@@ -138,8 +131,8 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 
 void CppCompletionProvider::onNotificationReceived(QString method, QJsonObject params)
 {
+    Q_UNUSED(method);
     Q_UNUSED(params);
-    qDebug() << "CppCompletionProvider: server notification" << method;
 }
 
 void CppCompletionProvider::onRequestFailed(int id, QJsonObject error)
@@ -161,8 +154,6 @@ void CppCompletionProvider::onServerError(QProcess::ProcessError err)
 
 void CppCompletionProvider::onServerStopped(int exitCode, QProcess::ExitStatus status)
 {
-    qDebug() << "CppCompletionProvider: server stopped, exitCode" << exitCode
-             << "status" << status;
     m_initialized = false;
     m_documentOpen = false;
 
@@ -193,14 +184,11 @@ void CppCompletionProvider::openDocument(const QString &uri, const QString &lang
 
     if (!m_initialized) {
         // Server not ready yet — save text so onServerReady can pick it up
-        qDebug() << "CppCompletionProvider: queueing text for pending open on" << uri;
         m_pendingText = text;
         m_pendingOpen = true;
         return;
     }
 
-    qDebug() << "CppCompletionProvider: sending didOpen for" << uri
-             << "(re-open:" << m_documentOpen << ")";
     sendDidOpen(text);
     m_documentOpen = true;
 }
@@ -232,7 +220,6 @@ void CppCompletionProvider::sendDidOpen(const QString &text)
     params[QStringLiteral("textDocument")] = textDocument;
 
     m_client->sendNotification(QStringLiteral("textDocument/didOpen"), params);
-    qDebug() << "CppCompletionProvider: didOpen sent, version" << m_documentVersion;
 }
 
 void CppCompletionProvider::sendDidChange(const QString &text)
@@ -291,8 +278,6 @@ void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos
     params[QStringLiteral("context")] = context;
 
     m_completionRequestId = m_client->sendRequest(QStringLiteral("textDocument/completion"), params);
-    qDebug() << "CppCompletionProvider: sent completion request id=" << m_completionRequestId
-             << "at (" << line << "," << col << ")";
 
     m_pendingRequest = PendingRequest::Completion;
     m_requestTimer.start(500);
@@ -372,9 +357,6 @@ QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJson
             ci.doc = docVal.toObject().value(QStringLiteral("value")).toString();
         }
 
-        qDebug() << "  completion item:" << ci.name << "type=" << ci.type
-                 << "detail=" << ci.detail;
-
         items.append(ci);
     }
 
@@ -411,8 +393,6 @@ void CppCompletionProvider::requestHover(const QString &text, int cursorPos)
     params[QStringLiteral("position")] = position;
 
     m_hoverRequestId = m_client->sendRequest(QStringLiteral("textDocument/hover"), params);
-    qDebug() << "CppCompletionProvider: sent hover request id=" << m_hoverRequestId
-             << "at (" << line << "," << col << ")";
 
     m_pendingRequest = PendingRequest::Hover;
     m_requestTimer.start(500);
@@ -535,8 +515,6 @@ void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursor
 
     m_signatureHelpRequestId = m_client->sendRequest(
         QStringLiteral("textDocument/signatureHelp"), params);
-    qDebug() << "CppCompletionProvider: sent signatureHelp request id="
-             << m_signatureHelpRequestId << "at (" << line << "," << col << ")";
 
     m_pendingRequest = PendingRequest::SignatureHelp;
     m_requestTimer.start(500);

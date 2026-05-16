@@ -26,7 +26,6 @@ HoverManager::HoverManager(CodeEditor *editor, CompletionProvider *provider, QOb
         m_editor->viewport()->installEventFilter(this);
     }
 
-    qDebug() << "HoverManager: created, mouseTracking enabled for viewport";
 }
 
 void HoverManager::setProvider(CompletionProvider *provider)
@@ -43,12 +42,6 @@ void HoverManager::setProvider(CompletionProvider *provider)
 bool HoverManager::eventFilter(QObject *obj, QEvent *event)
 {
     Q_UNUSED(obj);
-
-    static int eventCount = 0;
-    if (event->type() == QEvent::MouseMove) {
-        if (++eventCount % 30 == 1) // log roughly every 30th move to avoid spam
-            qDebug() << "HoverManager: eventFilter got MouseMove, tooltipShowing=" << m_tooltipShowing;
-    }
 
     switch (event->type()) {
     case QEvent::MouseMove: {
@@ -145,13 +138,11 @@ void HoverManager::showHoverToolTip(const HoverInfo &info)
     QToolTip::showText(globalPos, text, m_editor);
     m_tooltipShowing = true;
 
-    qDebug() << "HoverManager: showing tooltip" << text.left(80) << "...";
+    qDebug() << "HoverManager: showing tooltip";
 }
 
 void HoverManager::hideHover()
 {
-    if (m_tooltipShowing)
-        qDebug() << "HoverManager: hiding tooltip";
     QToolTip::hideText();
     m_hoverTimer.stop();
     m_hoverCursorPos = -1;
