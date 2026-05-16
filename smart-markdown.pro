@@ -41,6 +41,7 @@ SOURCES += \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
+    pythoncompletionprovider.cpp \
     rightpanelcontainer.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
@@ -87,6 +88,7 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
+    pythoncompletionprovider.h \
     rightpanelcontainer.h \
     searchpanel.h \
     settingspanel.h \

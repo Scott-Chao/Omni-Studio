@@ -1,5 +1,6 @@
 #include "completionmanager.h"
 #include "cppcompletionprovider.h"
+#include "pythoncompletionprovider.h"
 
 CompletionManager::CompletionManager(QObject *parent)
     : QObject(parent)
@@ -45,8 +46,22 @@ void CompletionManager::createProvider()
                 this, &CompletionManager::serverReady);
         connect(cppProvider, &CppCompletionProvider::serverFailed,
                 this, &CompletionManager::serverFailed);
+    } else if (m_languageId == QStringLiteral("python")) {
+        auto *pyProvider = new PythonCompletionProvider(this);
+        m_provider = pyProvider;
+
+        connect(m_provider, &CompletionProvider::completionReady,
+                this, &CompletionManager::completionReady);
+        connect(m_provider, &CompletionProvider::hoverReady,
+                this, &CompletionManager::hoverReady);
+        connect(m_provider, &CompletionProvider::signatureHelpReady,
+                this, &CompletionManager::signatureHelpReady);
+
+        connect(pyProvider, &PythonCompletionProvider::serverReady,
+                this, &CompletionManager::serverReady);
+        connect(pyProvider, &PythonCompletionProvider::serverFailed,
+                this, &CompletionManager::serverFailed);
     }
-    // Python support will be added in Step 11
 }
 
 void CompletionManager::openDocument(const QString &uri, const QString &languageId, const QString &text)
