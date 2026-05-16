@@ -44,8 +44,14 @@ public:
     QWidget *renderImageWidget() const;
     void setEditorFocus();
 
+    // Cursor position
+    int cursorLine() const;
+    int cursorColumn() const;
+    void setCursorPosition(int line, int column);
+
     void applyZoom(qreal factor, int baseFontSize);
     void checkReRender();
+    void updateEditorHeight();
 
     static CellType typeFromLangId(const QString &langId);
     static QString langIdFromType(CellType type);
@@ -70,7 +76,6 @@ private:
     void updateBorderStyle();
     void ensureRenderView();
     void applyRenderHeight(int contentH);
-    void updateEditorHeight();
     void onRenderLoadFinished(bool ok);
     void startGrabPolling();
     void pollGrabReady();

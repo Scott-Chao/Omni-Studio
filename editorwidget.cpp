@@ -39,6 +39,16 @@
 #include <QPageSize>
 #include <QWebEngineView>
 
+// Normalize trailing newlines for robust modified detection.
+// Trailing blank lines are a file-format artifact, not a meaningful edit.
+static QString normalizeTrailingNewlines(const QString &text)
+{
+    QString result = text;
+    while (result.endsWith(QLatin1Char('\n')) || result.endsWith(QLatin1Char('\r')))
+        result.chop(1);
+    return result;
+}
+
 // 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
 static void previewLog(const QString &msg)
 {
@@ -260,7 +270,7 @@ EditorWidget::EditorWidget(QWidget *parent)
         if (m_editorMode == SmdEdit)
             m_contentCheckTimer.start();
     });
-    m_originalContent = toPlainText(); // 记录当前内容，用于内容比较
+    m_originalContent = normalizeTrailingNewlines(toPlainText()); // 记录当前内容，用于内容比较
 }
 
 void EditorWidget::setPreviewMode(bool preview)
@@ -986,7 +996,11 @@ void EditorWidget::onTextChanged()
 
 void EditorWidget::updateModificationChanged()
 {
-    // 将 QTextEdit 的底层文档修改状态向上层发出信号
+    // Suppress intermediate modification signals during file loading.
+    // QTextEdit::setPlainText() triggers textChanged before we can clear the
+    // modified flag, which would briefly flash the unsaved indicator.
+    if (m_loading)
+        return;
     emit modificationChanged(isModified());
 }
 
@@ -1072,9 +1086,12 @@ bool EditorWidget::loadFile(const QString &filePath)
             m_stackedWidget->setCurrentIndex(0);
     }
 
+    m_loading = true;  // suppress modificationChanged during setPlainText
     setPlainText(content);
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
     setModified(false);
+    m_loading = false;
+
     applyZoom();
 
     emit fileLoaded(filePath);
@@ -1105,7 +1122,7 @@ bool EditorWidget::saveFile()
     QTextStream stream(&file);
     stream << toPlainText();
     file.close();
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
     setModified(false); // 保存后清除修改标志
     emit fileSaved(m_filePath);
 
@@ -1375,6 +1392,73 @@ qreal EditorWidget::zoomFactor() const
     return m_zoomFactor;
 }
 
+int EditorWidget::cursorLine() const
+{
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->activeCellCursorLine();
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->textCursor().blockNumber();
+    return m_textEdit->textCursor().blockNumber();
+}
+
+int EditorWidget::cursorColumn() const
+{
+    if (m_editorMode == SmdEdit)
+        return m_smdEditor->activeCellCursorColumn();
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->textCursor().positionInBlock();
+    return m_textEdit->textCursor().positionInBlock();
+}
+
+void EditorWidget::setCursorPosition(int line, int column)
+{
+    if (m_editorMode == SmdEdit) {
+        m_smdEditor->setActiveCellCursor(line, column);
+        return;
+    }
+    QTextDocument *doc;
+    QWidget *w;
+    if (m_editorMode == CodeEdit) {
+        doc = m_codeEditor->document();
+        w = m_codeEditor;
+    } else {
+        doc = m_textEdit->document();
+        w = m_textEdit;
+    }
+    QTextBlock block = doc->findBlockByLineNumber(line);
+    if (!block.isValid()) return;
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                        qMin(column, block.length() - 1));
+    if (auto *pte = qobject_cast<QPlainTextEdit*>(w)) {
+        pte->setTextCursor(cursor);
+        pte->ensureCursorVisible();
+    } else if (auto *te = qobject_cast<QTextEdit*>(w)) {
+        te->setTextCursor(cursor);
+        te->ensureCursorVisible();
+    }
+}
+
+// Normalize trailing newlines for robust modified detection.
+// Trailing blank lines are a file-format artifact, not a meaningful edit.
+void EditorWidget::setOriginalContent(const QString &diskContent)
+{
+    if (m_editorMode == SmdEdit) {
+        // For SmdEdit, set original content so isModified compares against disk
+        m_smdEditor->setModified(false); // syncs m_originalContent to current cells
+        return;
+    }
+    m_originalContent = normalizeTrailingNewlines(diskContent);
+    // The content check timer will naturally detect differences
+    QTextDocument *doc = (m_editorMode == CodeEdit)
+        ? m_codeEditor->document() : m_textEdit->document();
+    bool nowModified = (normalizeTrailingNewlines(toPlainText()) != m_originalContent);
+    if (doc->isModified() != nowModified) {
+        doc->setModified(nowModified);
+        emit modificationChanged(nowModified);
+    }
+}
+
 bool EditorWidget::eventFilter(QObject *obj, QEvent *event)
 {
     // 预览调试：记录 m_previewView 和 m_previewContainer 的 Show/Hide/Paint 事件
@@ -1422,7 +1506,7 @@ void EditorWidget::onContentCheckTimeout()
         return;
     }
     // 检查文件内容是否被修改
-    bool contentChanged = (toPlainText() != m_originalContent);
+    bool contentChanged = (normalizeTrailingNewlines(toPlainText()) != m_originalContent);
     if (isModified() != contentChanged) {
         setModified(contentChanged);
     }
@@ -1433,7 +1517,7 @@ void EditorWidget::setFilePath(const QString &newPath) {
     if (m_filePath == normalized) return;
     QString oldPath = m_filePath;
     m_filePath = normalized;
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
 
     // Re-evaluate language on path change (handles save-as extension changes)
     QString ext = QFileInfo(newPath).suffix().toLower();
@@ -1662,15 +1746,24 @@ void EditorWidget::setSplitPreviewMode(bool split)
     if (split == m_splitPreview)
         return;
 
-    // 互斥：进入分屏预览时，退出全屏预览
-    if (split && m_previewMode) {
-        setPreviewMode(false);
-    }
-
     m_splitPreview = split;
 
     if (m_splitPreview) {
+        // 禁用绘制，避免切换过程中间状态的闪烁
+        m_stackedWidget->setUpdatesEnabled(false);
+
+        // 互斥：直接清除标志位，不调用 setPreviewMode(false)
+        // 以跳过其内部的 setCurrentIndex(0)，避免中间状态绘制
+        if (m_previewMode) {
+            m_previewMode = false;
+        }
+
         createSplitPreviewWidgets();
+
+        // 先将当前widget切到m_splitSplitter，再转移m_textEdit。
+        // 否则removeWidget(m_textEdit)会触发Qt自动选中m_previewContainer
+        // （全屏预览的原生WebEngine窗口），导致闪烁。
+        m_stackedWidget->setCurrentWidget(m_splitSplitter);
 
         // 将 m_textEdit 从 page 0 转移到 splitter 左侧
         m_stackedWidget->removeWidget(m_textEdit);
@@ -1727,6 +1820,7 @@ void EditorWidget::setSplitPreviewMode(bool split)
         }
 
         m_stackedWidget->setCurrentWidget(m_splitSplitter);
+        m_stackedWidget->setUpdatesEnabled(true);
     } else {
         // 退出分屏：将 m_textEdit 从 splitter 放回 page 0
         m_splitTextWrapper->layout()->removeWidget(m_textEdit);

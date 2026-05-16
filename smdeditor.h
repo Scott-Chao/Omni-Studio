@@ -8,6 +8,7 @@
 #include <QTimer>
 
 #include "smdcell.h"
+#include "smdformat.h"
 
 class ProcessRunner;
 class SmdOutputWidget;
@@ -35,6 +36,16 @@ public:
 
     QString toPlainTextContentOnly() const;
 
+    // Cell access
+    int cellCount() const { return m_cells.size(); }
+    int activeCellIndex() const { return m_activeCellIndex; }
+    void setActiveCell(int index);
+    SmdCell *cellAt(int index) const;
+    int activeCellCursorLine() const;
+    int activeCellCursorColumn() const;
+    void setActiveCellCursor(int line, int column);
+    QList<SmdFormat::Cell> exportCells() const;
+
 signals:
     void modificationChanged(bool modified);
     void fileLoaded(const QString &filePath);
@@ -56,8 +67,6 @@ private:
     void removeCell(int index);
     void insertCellAbove();
     void insertCellBelow();
-    void setActiveCell(int index);
-    int activeCellIndex() const { return m_activeCellIndex; }
 
     // Execution
     void executeCurrentCell();

@@ -19,12 +19,17 @@ SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
+    completionpopup.cpp \
     compilerutils.h \
+    cppcompletionprovider.cpp \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
+    hovermanager.cpp \
+    keywordcompletionprovider.cpp \
     languageutils.cpp \
+    lspclient.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
@@ -36,6 +41,7 @@ SOURCES += \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
+    pythoncompletionprovider.cpp \
     rightpanelcontainer.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
@@ -48,6 +54,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
+    signaturehelpmanager.cpp \
     tabmanager.cpp
 
 HEADERS += \
@@ -56,12 +63,18 @@ HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \
+    completionpopup.h \
+    completionprovider.h \
     compilerutils.h \
+    cppcompletionprovider.h \
     cppsyntaxhighlighter.h \
     crawler.h \
     editorwidget.h \
     flowlayout.h \
+    hovermanager.h \
+    keywordcompletionprovider.h \
     languageutils.h \
+    lspclient.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \
     fileutils.h \
@@ -75,6 +88,7 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
+    pythoncompletionprovider.h \
     rightpanelcontainer.h \
     searchpanel.h \
     settingspanel.h \
@@ -87,6 +101,7 @@ HEADERS += \
     tagpanel.h \
     mainwindow.h \
     settingsmanager.h \
+    signaturehelpmanager.h \
     tabmanager.h
 
 FORMS += \

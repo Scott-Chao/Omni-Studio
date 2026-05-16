@@ -1,11 +1,62 @@
 ﻿#include "codeeditor.h"
+#include "cppcompletionprovider.h"
+#include "pythoncompletionprovider.h"
+#include "keywordcompletionprovider.h"
+#include "completionpopup.h"
+#include "hovermanager.h"
+#include "signaturehelpmanager.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextDocument>
 #include <QKeyEvent>
 #include <QSyntaxHighlighter>
+#include <QMouseEvent>
+#include <QApplication>
+#include <QPointer>
+#include <QAbstractNativeEventFilter>
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
+// ============================================================
+// EscNativeFilter — catches VK_ESCAPE at the Windows message level
+// before Qt gets a chance to route it to the wrong HWND.
+// ============================================================
+
+class EscNativeFilter : public QAbstractNativeEventFilter
+{
+public:
+    QPointer<CompletionPopup> popup;
+    SignatureHelpManager *sigMgr = nullptr;
+
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
+    {
+        Q_UNUSED(result);
+#ifdef Q_OS_WIN
+        if (eventType == "windows_generic_MSG") {
+            MSG *msg = static_cast<MSG *>(message);
+            if (msg->message == WM_KEYDOWN && msg->wParam == VK_ESCAPE) {
+                if (sigMgr && sigMgr->isActive()) {
+                    sigMgr->hide();
+                    return true;
+                }
+                if (popup && popup->isActive()) {
+                    popup->hide();
+                    return true;
+                }
+            }
+        }
+#else
+        Q_UNUSED(eventType);
+        Q_UNUSED(message);
+#endif
+        return false;
+    }
+};
 
 // ============================================================
 // LineNumberArea
@@ -60,6 +111,21 @@ CodeEditor::CodeEditor(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
     m_lineNumberArea = new LineNumberArea(this);
+    m_completionPopup = new CompletionPopup(this);
+    // m_completionProvider is created in setLanguage()
+    m_hoverManager = new HoverManager(this, nullptr, this);
+    m_signatureHelpManager = new SignatureHelpManager(this, nullptr, this);
+
+    // Native Windows event filter — the only way to catch Esc when
+    // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
+    {
+        auto *nativeFilter = new EscNativeFilter();
+        nativeFilter->popup = m_completionPopup;
+        nativeFilter->sigMgr = m_signatureHelpManager;
+        qApp->installNativeEventFilter(nativeFilter);
+    }
+
+    viewport()->installEventFilter(this);
 
     connect(this, &QPlainTextEdit::blockCountChanged,
             this, &CodeEditor::updateLineNumberAreaWidth);
@@ -98,6 +164,11 @@ void CodeEditor::reloadColors()
     m_lineNumberArea->update();
 }
 
+static QString editorUri()
+{
+    return QStringLiteral("file:///untitled");
+}
+
 void CodeEditor::setLanguage(const QString &langId)
 {
     if (m_highlighter) {
@@ -106,6 +177,119 @@ void CodeEditor::setLanguage(const QString &langId)
     }
     m_languageId = langId;
     m_highlighter = LanguageUtils::createHighlighter(langId, document());
+
+    createCompletionProvider(langId);
+
+    // Connect text sync after the provider is set up
+    disconnect(document(), &QTextDocument::contentsChanged,
+               this, &CodeEditor::onEditorTextChanged);
+    connect(document(), &QTextDocument::contentsChanged,
+            this, &CodeEditor::onEditorTextChanged);
+
+    // Open document with current content (triggers didOpen when server is ready)
+    if (m_completionProvider)
+        m_completionProvider->openDocument(editorUri(), langId, toPlainText());
+}
+
+void CodeEditor::onServerReady()
+{
+    // Server just became ready (initial start or restart).
+    // Open (or re-open) the document so clangd knows about its content.
+    if (m_completionProvider)
+        m_completionProvider->openDocument(editorUri(), m_languageId, toPlainText());
+}
+
+void CodeEditor::onEditorTextChanged()
+{
+    if (m_completionProvider)
+        m_completionProvider->updateText(toPlainText());
+}
+
+void CodeEditor::triggerCompletion()
+{
+    if (!m_completionProvider)
+        return;
+
+    QString text = toPlainText();
+    if (text.length() > 1024 * 1024) // >1MB: skip for performance
+        return;
+
+    QTextCursor cursor = textCursor();
+    m_completionProvider->requestCompletion(text, cursor.position());
+}
+
+// ---- Completion provider lifecycle ----
+
+void CodeEditor::createCompletionProvider(const QString &langId)
+{
+    // Delete old provider
+    if (m_completionProvider) {
+        m_completionProvider->deleteLater();
+        m_completionProvider = nullptr;
+    }
+
+    if (langId == QStringLiteral("cpp")) {
+        auto *cpp = new CppCompletionProvider(this);
+        m_completionProvider = cpp;
+
+        connect(cpp, &CppCompletionProvider::serverReady,
+                this, &CodeEditor::onServerReady);
+        connect(cpp, &CppCompletionProvider::serverFailed,
+                this, &CodeEditor::onProviderFailed);
+    } else if (langId == QStringLiteral("python")) {
+        auto *py = new PythonCompletionProvider(this);
+        m_completionProvider = py;
+
+        connect(py, &PythonCompletionProvider::serverReady,
+                this, &CodeEditor::onServerReady);
+        connect(py, &PythonCompletionProvider::serverFailed,
+                this, &CodeEditor::onProviderFailed);
+    } else {
+        return;
+    }
+
+    // Common signal connections
+    connect(m_completionProvider, &CompletionProvider::completionReady,
+            this, &CodeEditor::onCompletionsReady);
+
+    // Notify hover and signature managers of the new provider
+    m_hoverManager->setProvider(m_completionProvider);
+    m_signatureHelpManager->setProvider(m_completionProvider);
+}
+
+void CodeEditor::onProviderFailed(const QString &reason)
+{
+    qWarning() << "CodeEditor: provider failed:" << reason
+               << "— falling back to keyword completion";
+
+    if (m_completionProvider) {
+        m_completionProvider->deleteLater();
+        m_completionProvider = nullptr;
+    }
+
+    auto *kw = new KeywordCompletionProvider(m_languageId, this);
+    m_completionProvider = kw;
+
+    connect(m_completionProvider, &CompletionProvider::completionReady,
+            this, &CodeEditor::onCompletionsReady);
+
+    m_hoverManager->setProvider(m_completionProvider);
+    m_signatureHelpManager->setProvider(m_completionProvider);
+}
+
+void CodeEditor::onCompletionsReady(QList<CompletionItem> items)
+{
+    if (items.isEmpty()) {
+        m_completionPopup->hide();
+        return;
+    }
+
+    // Position popup near the cursor
+    QRect cr = cursorRect();
+    QPoint pos = viewport()->mapToGlobal(cr.bottomLeft());
+    pos.ry() += 2;
+    m_completionPopup->move(pos);
+    m_completionPopup->showItems(items);
 }
 
 // ---- Line number area ----
@@ -206,9 +390,67 @@ void CodeEditor::highlightCurrentLine()
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
+    // ---- Completion popup key routing ----
+    if (m_completionPopup && m_completionPopup->isActive()) {
+        // Accept modifiers + alphanumeric: just let through (don't close popup)
+        if (event->modifiers() & Qt::ControlModifier) {
+            QPlainTextEdit::keyPressEvent(event);
+            return;
+        }
+
+        switch (event->key()) {
+        case Qt::Key_Up:
+            m_completionPopup->selectPrevious();
+            return;
+        case Qt::Key_Down:
+            m_completionPopup->selectNext();
+            return;
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+            QPlainTextEdit::keyPressEvent(event);
+            return;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Tab:
+            insertCompletion(m_completionPopup->selectedItem());
+            m_completionPopup->hide();
+            return;
+        case Qt::Key_Escape:
+            m_completionPopup->hide();
+            return;
+        default:
+            // Any other key: close popup, then let normal handling proceed
+            m_completionPopup->hide();
+            break;
+        }
+    }
+
+    // ---- Signature help popup key routing ----
+    if (m_signatureHelpManager && m_signatureHelpManager->isActive()) {
+        switch (event->key()) {
+        case Qt::Key_Up:
+            m_signatureHelpManager->navigatePrev();
+            return;
+        case Qt::Key_Down:
+            m_signatureHelpManager->navigateNext();
+            return;
+        case Qt::Key_Escape:
+            m_signatureHelpManager->hide();
+            return;
+        default:
+            break;
+        }
+    }
+
     // Ctrl+/ — toggle line comment
     if (event->key() == Qt::Key_Slash && (event->modifiers() & Qt::ControlModifier)) {
         handleToggleComment();
+        return;
+    }
+
+    // Ctrl+I — manual completion trigger (Ctrl+Space is intercepted by Windows IME)
+    if (event->key() == Qt::Key_I && (event->modifiers() & Qt::ControlModifier)) {
+        triggerCompletion();
         return;
     }
 
@@ -255,6 +497,23 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     }
 
     QPlainTextEdit::keyPressEvent(event);
+
+    // After text insertion, check for completion auto-trigger characters
+    if (!text.isEmpty() && !event->matches(QKeySequence::Paste)) {
+        if (text == QStringLiteral(".")) {
+            triggerCompletion();
+        } else if (text == QStringLiteral(">")) {
+            // -> 成员指针访问才触发，> 单独（模板关括号、iostream>）不触发
+            int pos = textCursor().position();
+            if (pos >= 2 && document()->characterAt(pos - 2) == QLatin1Char('-'))
+                triggerCompletion();
+        } else if (text == QStringLiteral(":")) {
+            // :: 作用域解析 — 仅当上一个字符也是 : 时触发
+            int pos = textCursor().position();
+            if (pos >= 2 && document()->characterAt(pos - 2) == QLatin1Char(':'))
+                triggerCompletion();
+        }
+    }
 }
 
 // ---- Auto-indent ----
@@ -594,6 +853,51 @@ void CodeEditor::handleToggleComment()
     newCursor.setPosition(newStart);
     newCursor.setPosition(newEnd, QTextCursor::KeepAnchor);
     setTextCursor(newCursor);
+}
+
+// ---- Completion popup helpers ----
+
+void CodeEditor::insertCompletion(const CompletionItem &item)
+{
+    QString name = item.name.trimmed();
+    if (name.isEmpty())
+        return;
+
+    QTextCursor cursor = textCursor();
+    int pos = cursor.position();
+    QString text = toPlainText();
+
+    // Find the start of the current identifier (word boundary backwards)
+    int start = pos;
+    while (start > 0) {
+        QChar c = text.at(start - 1);
+        if (c != QLatin1Char('_') && !c.isLetterOrNumber())
+            break;
+        --start;
+    }
+
+    // If there's a partial word, replace it
+    if (start < pos) {
+        cursor.setPosition(start);
+        cursor.setPosition(pos, QTextCursor::KeepAnchor);
+    }
+    cursor.insertText(name);
+    setTextCursor(cursor);
+}
+
+bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
+{
+    // Close popup on mouse click outside of it
+    if (obj == viewport() && event->type() == QEvent::MouseButtonPress) {
+        if (m_completionPopup && m_completionPopup->isActive()) {
+            auto *me = static_cast<QMouseEvent *>(event);
+            QPoint globalPos = me->globalPosition().toPoint();
+            if (!m_completionPopup->geometry().contains(globalPos)) {
+                m_completionPopup->hide();
+            }
+        }
+    }
+    return QPlainTextEdit::eventFilter(obj, event);
 }
 
 // ---- Helpers ----

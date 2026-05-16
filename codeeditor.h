@@ -4,7 +4,13 @@
 #include <QPlainTextEdit>
 #include <QTextEdit>
 
+#include "completionprovider.h"
+
 class QSyntaxHighlighter;
+class CompletionProvider;
+class CompletionPopup;
+class HoverManager;
+class SignatureHelpManager;
 class LineNumberArea;
 
 class CodeEditor : public QPlainTextEdit
@@ -16,6 +22,8 @@ public:
 
     void setLanguage(const QString &langId);
     QString languageId() const { return m_languageId; }
+
+    CompletionProvider *completionProvider() const { return m_completionProvider; }
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }
@@ -34,14 +42,25 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void updateLineNumberAreaWidth(int newBlockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
     void highlightCurrentLine();
+    void onServerReady();
+    void onEditorTextChanged();
+    void onCompletionsReady(QList<CompletionItem> items);
+    void onProviderFailed(const QString &reason);
 
 private:
+    void createCompletionProvider(const QString &langId);
+
     QSyntaxHighlighter *m_highlighter = nullptr;
+    CompletionProvider *m_completionProvider = nullptr;
+    CompletionPopup *m_completionPopup = nullptr;
+    HoverManager *m_hoverManager = nullptr;
+    SignatureHelpManager *m_signatureHelpManager = nullptr;
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
     int m_indentWidth = 4;
@@ -57,6 +76,8 @@ private:
     bool handleTabKey(QKeyEvent *event);
     bool handleClosingBracketSkip(QKeyEvent *event);
     void handleToggleComment();
+    void triggerCompletion();
+    void insertCompletion(const CompletionItem &item);
     QString commentPrefix() const;
     bool isCursorInStringOrComment() const;
     QString indentString() const;

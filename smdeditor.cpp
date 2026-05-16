@@ -330,6 +330,13 @@ void SmdEditor::setPlainText(const QString &text)
     }
     m_commandMode = false;
 
+    // Deferred height update: after all cells are created and laid out,
+    // recalculate heights so text-wrapping uses the final widget width.
+    QTimer::singleShot(0, this, [this]() {
+        for (SmdCell *c : m_cells)
+            c->updateEditorHeight();
+    });
+
     // Pre-mark rendered flag so toPlainText() matches the file content.
     // Actual rendering happens async via auto-render — without this the
     // rendered→false→true transition would make isModified() trip falsely.
@@ -465,6 +472,44 @@ void SmdEditor::setActiveCell(int index)
     // Cancel pending post-render jump if user manually switched cells (Req 5)
     if (m_pendingRenderJumpIndex >= 0 && index != m_pendingRenderJumpIndex)
         m_pendingRenderJumpIndex = -1;
+}
+
+SmdCell *SmdEditor::cellAt(int index) const
+{
+    if (index < 0 || index >= m_cells.size()) return nullptr;
+    return m_cells[index];
+}
+
+int SmdEditor::activeCellCursorLine() const
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return 0;
+    return m_cells[m_activeCellIndex]->cursorLine();
+}
+
+int SmdEditor::activeCellCursorColumn() const
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return 0;
+    return m_cells[m_activeCellIndex]->cursorColumn();
+}
+
+void SmdEditor::setActiveCellCursor(int line, int column)
+{
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return;
+    m_cells[m_activeCellIndex]->setCursorPosition(line, column);
+}
+
+QList<SmdFormat::Cell> SmdEditor::exportCells() const
+{
+    QList<SmdFormat::Cell> result;
+    for (const auto *cell : m_cells) {
+        SmdFormat::Cell fc;
+        fc.type = SmdCell::langIdFromType(cell->cellType());
+        fc.content = cell->content();
+        fc.rendered = cell->isRendered();
+        // output intentionally excluded
+        result.append(fc);
+    }
+    return result;
 }
 
 // ---- Mode Management ----
@@ -971,11 +1016,13 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 void SmdEditor::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
-    // Check all rendered cells for needed re-renders after layout settles
+    // Check all cells for needed updates after layout settles
     QTimer::singleShot(0, this, [this]() {
         for (SmdCell *cell : m_cells) {
             if (cell->isRendered())
                 cell->checkReRender();
+            else
+                cell->updateEditorHeight();
         }
     });
 }

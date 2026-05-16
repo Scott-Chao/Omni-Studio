@@ -827,6 +827,34 @@ void SmdCell::setEditorFocus()
     }
 }
 
+int SmdCell::cursorLine() const
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    return pte ? pte->textCursor().blockNumber() : 0;
+}
+
+int SmdCell::cursorColumn() const
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    return pte ? pte->textCursor().positionInBlock() : 0;
+}
+
+void SmdCell::setCursorPosition(int line, int column)
+{
+    QWidget *w = editorWidget();
+    auto *pte = qobject_cast<QPlainTextEdit*>(w);
+    if (!pte) return;
+    QTextBlock block = pte->document()->findBlockByLineNumber(line);
+    if (!block.isValid()) return;
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor,
+                        qMin(column, block.length() - 1));
+    pte->setTextCursor(cursor);
+    pte->ensureCursorVisible();
+}
+
 void SmdCell::applyZoom(qreal factor, int baseFontSize)
 {
     m_zoomFactor = factor;
@@ -897,25 +925,33 @@ void SmdCell::updateEditorHeight()
         return;
 
     // Measure actual content height by summing each block's QTextLayout
-    // bounding rect. QFontMetrics::lineSpacing() is integer-truncated and
-    // differs from QPlainTextEdit's internal layout by ~0.1px/line, which
-    // accumulates to visible scroll overflow on multi-line blocks.
+    // bounding rect. Use QFontMetricsF::lineSpacing() as a minimum per visual
+    // line — QTextLayout::boundingRect().height() can be slightly smaller,
+    // which accumulates to visible scroll overflow on multi-line blocks.
     QFontMetricsF fmf(ed->font());
     qreal fallbackLH = fmf.lineSpacing();
     qreal totalDocH = 0;
     int visualLines = 0;
 
     for (QTextBlock block = ed->document()->begin(); block.isValid(); block = block.next()) {
+        // Include trailing empty block in height when the content has a
+        // trailing newline (user-entered blank line). Only skip Qt's internal
+        // trailing block when there's no corresponding user blank line.
+        if (!block.next().isValid() && block.text().isEmpty()
+            && !ed->toPlainText().endsWith(QLatin1Char('\n')))
+            continue;
         QTextLayout *layout = block.layout();
         int lc = 1;
         if (layout) {
             lc = layout->lineCount();
             if (lc < 1) lc = 1;
             qreal h = layout->boundingRect().height();
+            // Use lineSpacing * lineCount as floor — boundingRect can miss leading
+            qreal minHForBlock = fallbackLH * lc;
             if (h > 0)
-                totalDocH += h;
+                totalDocH += qMax(h, minHForBlock);
             else
-                totalDocH += fallbackLH * lc;
+                totalDocH += minHForBlock;
         } else {
             totalDocH += fallbackLH * lc;
         }
@@ -923,6 +959,11 @@ void SmdCell::updateEditorHeight()
     }
     if (visualLines < 1)
         visualLines = 1;
+
+    // Cross-check with QTextDocument::size() which accounts for full layout
+    QSizeF docSize = ed->document()->size();
+    if (docSize.height() > totalDocH)
+        totalDocH = docSize.height();
 
     QMargins cm = ed->contentsMargins();
     int marginH = cm.top() + cm.bottom();

@@ -107,7 +107,31 @@ Header-only. 40+ text extension list + scan name filters.
 QTextEdit with QCompleter. `[[` triggers filename popup (case-insensitive prefix). `#` triggers tag autocomplete. Tab accepts, first item auto-selected.
 
 ### CodeEditor (`codeeditor.h/cpp`)
-QPlainTextEdit with line numbers, auto-indent, bracket completion, search highlights. Dark theme Consolas 12pt. setLanguage() installs highlighter via LanguageUtils.
+QPlainTextEdit with line numbers, auto-indent, bracket completion, search highlights, code completion. Dark theme Consolas 12pt. setLanguage() installs highlighter via LanguageUtils and creates a CompletionProvider (CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider fallback). Owns CompletionPopup, HoverManager, SignatureHelpManager. EscNativeFilter (Windows native event filter) catches VK_ESCAPE to close tool windows when Qt routing fails.
+
+### CompletionProvider (`completionprovider.h`)
+Abstract QObject interface. Defines CompletionItem/HoverInfo/SignatureInfo structs. Pure virtual: requestCompletion, requestHover, requestSignatureHelp. Virtual no-op openDocument/updateText (overridden by LSP providers for text sync). Signals: completionReady, hoverReady, signatureHelpReady.
+
+### LspClient (`lspclient.h/cpp`)
+QProcess wrapper for LSP JSON-RPC 2.0 over stdin/stdout with Content-Length framing. start() launches server process. sendRequest/sendNotification with auto-incrementing message IDs. Signals: responseReceived(id, result), notificationReceived(method, params), serverError, serverStopped. Internal parseFrames() buffers and splits incoming frames from raw byte stream.
+
+### CppCompletionProvider (`cppcompletionprovider.h/cpp`)
+CompletionProvider for C/C++ via clangd LSP. Starts clangd with --fallback-style=Google (no compile_commands.json required). Sends initialize → initialized → didOpen → didChange → [completion|hover|signatureHelp]. Tracks pending requests with 500ms timeout QTimer. Parses LSP CompletionList/Hover/SignatureHelp responses into provider structs. Auto-restarts on crash.
+
+### PythonCompletionProvider (`pythoncompletionprovider.h/cpp`)
+CompletionProvider for Python via Jedi helper process. Launches `python completion_helper.py` as QProcess, communicates via stdin/stdout JSON (action: "complete"/"hover"/"signature", cursor as [line, col]). Sends full code per request (no incremental sync needed). 500ms timeout fallback. Detects Jedi import failure and signals serverFailed for fallback chain.
+
+### KeywordCompletionProvider (`keywordcompletionprovider.h/cpp`)
+Fallback CompletionProvider used when clangd/Jedi are unavailable. Filters language keywords (C++/Python) and document words from current editor text by prefix match. Hover and signature help return empty results (no-op).
+
+### CompletionPopup (`completionpopup.h/cpp`)
+Floating QWidget (Qt::ToolTip, borderless) overlay for completion item selection. Dark theme (#252526 bg, #094771 selection). Custom CompletionItemDelegate draws icon + name + type tag per row. Bottom hint bar shows keyboard shortcuts. Signals itemSelected on Enter/Tab. Uses QListWidget internally. iconForType maps type strings to QIcon (function → f() icon, class → C:, variable → V:, etc.).
+
+### HoverManager (`hovermanager.h/cpp`)
+QObject event filter installed on CodeEditor viewport. 400ms QTimer debounce on mouse hover; Ctrl modifier bypasses delay. Calls requestHover on the active CompletionProvider. Shows result in a QToolTip popup with signature (bold header) + doc + definition location. Auto-hides on mouse move or key press.
+
+### SignatureHelpManager (`signaturehelpmanager.h/cpp)
+Monitors CodeEditor::cursorPositionChanged. Detects unmatched `(` by scanning backwards with parenthesis counter. 200ms debounce before request. SignatureHelpPopup (inner QWidget subclass) displays: overload navigation (◀ 1/2 ▶), signature with active parameter highlighted in yellow, and doc text. Closes on `)`, Esc, or mouse click outside. Up/Down arrow navigates overloads.
 
 ### LanguageUtils (`languageutils.h/cpp`)
 Singleton language registry. Currently cpp (extensions: cpp/hpp/cxx/cc/c/h/hxx/hh) → CppSyntaxHighlighter and python (py/pyw/pyx) → PythonSyntaxHighlighter. Adding a language = 1 map entry + 1 highlighter file + .pro entries.
