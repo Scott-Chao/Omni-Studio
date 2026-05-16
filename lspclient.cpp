@@ -8,7 +8,16 @@ LspClient::LspClient(QObject *parent)
 
 LspClient::~LspClient()
 {
-    stop();
+    if (m_process) {
+        if (m_process->state() != QProcess::NotRunning) {
+            sendRequest(QStringLiteral("shutdown"), QJsonObject());
+            sendNotification(QStringLiteral("exit"), QJsonObject());
+            m_process->terminate();
+            m_process->kill();
+        }
+        delete m_process;
+        m_process = nullptr;
+    }
 }
 
 bool LspClient::start(const QString &serverPath, const QStringList &args)
@@ -85,10 +94,12 @@ void LspClient::stop()
 {
     if (m_process) {
         if (m_process->state() != QProcess::NotRunning) {
+            sendRequest(QStringLiteral("shutdown"), QJsonObject());
+            sendNotification(QStringLiteral("exit"), QJsonObject());
             m_process->terminate();
-            if (!m_process->waitForFinished(3000)) {
+            if (!m_process->waitForFinished(500)) {
                 m_process->kill();
-                m_process->waitForFinished(1000);
+                m_process->waitForFinished(100);
             }
         }
         delete m_process;

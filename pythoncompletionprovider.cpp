@@ -20,11 +20,9 @@ PythonCompletionProvider::PythonCompletionProvider(QObject *parent)
 PythonCompletionProvider::~PythonCompletionProvider()
 {
     if (m_process) {
-        // Disconnect so stale signals don't fire during destruction
         m_process->disconnect();
         if (m_process->state() != QProcess::NotRunning) {
             m_process->kill();
-            m_process->waitForFinished(1000);
         }
     }
 }
@@ -101,7 +99,7 @@ void PythonCompletionProvider::restartProcess()
         m_process->disconnect();
         if (m_process->state() != QProcess::NotRunning) {
             m_process->kill();
-            m_process->waitForFinished(1000);
+            m_process->waitForFinished(200);
         }
         m_process->deleteLater();
         m_process = nullptr;

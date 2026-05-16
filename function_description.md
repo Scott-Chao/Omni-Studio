@@ -1,4 +1,4 @@
-## 功能说明文档（v0.8.1）
+## 功能说明文档（v0.8.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,10 +38,9 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.8.1
-- **修复：打开 MD/SMD 文件时误报未保存标识**：打开文件（尤其是末尾有空行的文件）时，编辑器不再错误地显示 `*` 未保存标记。原因：`QPlainTextEdit::toPlainText()` 返回的内容可能因尾部换行符的有无而与原始文件不同，且内容比较基线 `m_originalContent` 未被规范化。修复方案：(1) 在所有 `m_originalContent` 赋值处使用 `normalizeTrailingNewlines()` 统一去除尾部换行符；(2) 在 `loadFile` 和转换过程中通过 `m_loading` 标志抑制中间态的 `modificationChanged` 信号。
-- **修复：MD ↔ SMD 往返转换后内容丢失尾部空行**：`SmdFormat::parse()` 中的 `flushCell` 现在接受 `stripTrailingBlank` 参数 — 仅在分隔符终止的单元格（内部）剥离尾部空行（用于去除 `---smd:type` 分隔符产物），末尾单元格（EOF 终止）保留用户输入的尾部空行。转换函数中通过 `setLoading(true/false)` 抑制转换过程中的中间态修改信号。
-- **修复：SMD Markdown 单元格高度略小导致内容溢出/滚动空间**：(1) `updateEditorHeight()` 现在使用 `qMax(boundingRect.height(), lineSpacing * lineCount)` 作为每块的最小高度，避免 `QTextLayout::boundingRect` 因缺少行间距而低估高度；(2) 交叉检查 `QTextDocument::size().height()` 作为上限；(3) 仅当 `toPlainText()` 不包含尾部换行符时才跳过尾部空块（否则用户输入的尾部空行会被错误忽略）；(4) 所有 cell 创建完成后延迟重新计算高度（`QTimer::singleShot`），确保文本换行使用最终控件宽度；(5) 窗口大小调整时也刷新非渲染 cell 的高度。
+# 新增/修复 v0.8.2
+- **修复：打开 C++ 文件或含 C++ 代码块的 .smd 文件后关闭应用时卡顿几秒**：根本原因是 `LspClient::stop()` 在 GUI 主线程上同步调用 `QProcess::waitForFinished(3000)` 等待 clangd 进程退出，阻塞主线程最多 3 秒（`kill()` 后再等 1 秒，合计最多 4 秒）。同样问题存在于 `PythonCompletionProvider` 析构函数（阻塞 1 秒）。
+  修复方案：(1) `LspClient::~LspClient()` 析构函数不再调用 `stop()`，改为直接发送 LSP `shutdown`/`exit` 通知后 `terminate()` + `kill()` + `delete`，全程零 `waitForFinished`，进程资源由 OS 异步回收；(2) `LspClient::stop()` 公共方法（仅用于 `restartServer` 场景）保留 500ms 短暂等待，避免新旧进程端口/资源冲突；(3) `CppCompletionProvider::~CppCompletionProvider()` 不再主动调用 `m_client->stop()`，交由 LspClient 析构链零延迟处理；(4) `PythonCompletionProvider::~PythonCompletionProvider()` 移除 `waitForFinished(1000)`，`restartProcess()` 等待缩短至 200ms。
 
 ### 1. `MainWindow` - 主窗口控制器
 

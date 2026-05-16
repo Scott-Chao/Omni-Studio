@@ -18,9 +18,7 @@ CppCompletionProvider::CppCompletionProvider(QObject *parent)
 
 CppCompletionProvider::~CppCompletionProvider()
 {
-    if (m_client) {
-        m_client->stop();
-    }
+    // LspClient child is destroyed via Qt parent-child chain without blocking
 }
 
 void CppCompletionProvider::startServer()
