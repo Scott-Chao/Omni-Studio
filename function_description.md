@@ -1,4 +1,4 @@
-## 功能说明文档（v0.7.6）
+## 功能说明文档（v0.8.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,15 +38,20 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.7.6
-- 优化：SMD 代码块输出区在运行完毕后自动滚动到顶部（输出开头），便于查看
-- 优化：SMD 输出截断逻辑 — 超过 1000 行上限时保留前 1000 行，截断指示器移至末尾并显示隐藏行数
-- 修复：SMD 代码块运行后输出内容导致自动保存覆盖原始文件的问题
-  - 仅单元格代码内容变更才会触发未保存标识和关闭提示，运行产生的输出变更不触发自动保存
-- 修复：SMD Markdown 块渲染时框会先跳到下一格、渲染完毕后又跳回的视觉闪烁问题
-  - 已渲染的 Markdown 块（再次执行时直接跳转）不受影响
-  - `setActiveCell()` 中检测手动切换单元格时取消待处理的渲染后跳转
-- 新增：SMD 代码块执行期间按 `Ctrl+C` 可终止程序运行
+### 新增 v0.8.0
+- **LSP 协议集成（C++）**：通过 `LspClient`（JSON-RPC 2.0 Content-Length 帧协议）对接 clangd，实现基于 LSP 的智能代码补全
+- **代码补全（C++ / Python）**：编辑器内输入代码时自动弹出补全候选列表
+  - C++ 通过 clangd LSP 完成，支持语义级别的符号识别（函数、类、变量、方法、关键词）
+  - Python 通过 Jedi 库（`completion_helper.py` 辅助脚本）提供补全
+  - 退化方案：当 clangd/Jedi 不可用时自动降级为 `KeywordCompletionProvider`（基于语言关键词和文档内标识符前缀匹配的简单补全）
+  - 触发方式：手动 `Ctrl+I`（IME 兼容替代 Ctrl+Space）、自动 `.` `::` `->` 触发
+- **`CompletionPopup` 补全弹窗**：浮动无边框列表，深色主题（`#252526` 背景），每项显示类型图标 + 名称 + 类型标签，蓝色高亮选中项（`#094771`），底部操作提示条（Enter/Tab 接受，↑↓ 选择，Esc 关闭）
+- **`HoverManager` 悬停提示**：鼠标悬停 400ms 后触发 `CompletionProvider::requestHover`，通过 `QToolTip` 显示符号类型签名和文档说明，`Ctrl` 可绕过延迟立即触发
+- **`SignatureHelpManager` 函数签名提示**：输入 `(` 后自动检测光标前未匹配括号，向 Provider 请求签名列表并弹出浮窗，支持重载导航（↑↓ 切换）、当前参数高亮（黄色）、文档展示。在 `)` / Esc / 点击外部时关闭
+- **`CppCompletionProvider` — clangd 全生命周期管理**：自动启动 clangd 进程、初始化握手（initialize/initialized）、文件打开同步（didOpen）、增量内容同步（didChange）、崩溃自动重启（`QProcess::finished` 信号）
+- **`PythonCompletionProvider` — Jedi 进程管理**：通过 QProcess 启动 `completion_helper.py`，stdin/stdout JSON 通信，每个请求发送完整代码（无需增量同步），500ms 超时保护，Jedi 不可用时自动上报失败
+- **`EscNativeFilter` Windows 消息钩子**：由于 `Qt::Tool` 窗口在 Windows 上的 HWND 路由问题，Esc 键可能被错误分发到工具窗口而非编辑器。通过 `QAbstractNativeEventFilter` 在 WM_KEYDOWN 级别全局捕获 `VK_ESCAPE`，确保正确关闭补弹窗和签名提示
+- **新文件**：`completionprovider.h` `lspclient.h/cpp` `cppcompletionprovider.h/cpp` `pythoncompletionprovider.h/cpp` `keywordcompletionprovider.h/cpp` `completionpopup.h/cpp` `hovermanager.h/cpp` `signaturehelpmanager.h/cpp` `completion_helper.py`
 
 ### 1. `MainWindow` - 主窗口控制器
 

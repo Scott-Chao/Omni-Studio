@@ -29,6 +29,11 @@ MainWindow                   → frameless orchestrator, owns all widgets
   ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left, in splitter)
   ├── TabManager             → QTabWidget, owns EditorWidget tabs (center)
   │   └── EditorWidget       → QStackedWidget, 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
+  │       └── CodeEditor (in CodeEdit mode)
+  │           ├── CompletionProvider (abstract) ← CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider
+  │           ├── CompletionPopup              → floating list QWidget
+  │           ├── HoverManager                 → 400ms delayed tooltip
+  │           └── SignatureHelpManager         → function signature popup
   ├── RightPanelContainer    → unified right dock with tab bar: History / Outline / Tags / Backlinks
   ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
   ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
@@ -56,6 +61,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **OpenJudge**: Crawler-based HTTP (cxsjsx.openjudge.cn) for homework browsing, auto-login, sample extraction, code submission with 30s status polling.
 - **stdin in OutputPanel**: Terminal-mode event filter captures keystrokes, buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
 - **Compile & Run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++ or MSVC for C/C++, python for .py).
+- **Code Completion**: Ctrl+I (IME-safe alternative to Ctrl+Space) triggers completion manually. Auto-trigger on `.`, `::`, `->`. C++ clangd via LspClient (JSON-RPC over QProcess), Python via Jedi helper script. Fallback to keyword + document-words when server unavailable. `EscNativeFilter` catches VK_ESCAPE at Windows message level to close popups when Qt::Tool window HWND routing interferes.
 
 ## Coding Standards
 - **Qt Logic**: Always use the **new signal/slot syntax**: `connect(sender, &Sender::signal, receiver, &Receiver::slot)`.
