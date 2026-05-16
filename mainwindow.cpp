@@ -346,10 +346,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 左侧：[文件 ▼] 下拉菜单
     QToolButton *fileMenuBtn = new QToolButton(toolBar);
-    fileMenuBtn->setText(tr("文件  "));
+    fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    fileMenuBtn->setIconSize(QSize(10, 10));
+    fileMenuBtn->setText(tr("文件"));
+    fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     fileMenuBtn->setToolTip(tr("文件操作"));
     fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
-    fileMenuBtn->setArrowType(Qt::DownArrow);
     fileMenuBtn->setFixedHeight(32);
     fileMenuBtn->setStyleSheet(
         "QToolButton {"
