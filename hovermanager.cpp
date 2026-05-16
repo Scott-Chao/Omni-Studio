@@ -1,23 +1,25 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
-#include "completionmanager.h"
 
 #include <QMouseEvent>
 #include <QToolTip>
 #include <QTextCursor>
 #include <QDebug>
 
-HoverManager::HoverManager(CodeEditor *editor, CompletionManager *completion, QObject *parent)
+HoverManager::HoverManager(CodeEditor *editor, CompletionProvider *provider, QObject *parent)
     : QObject(parent)
     , m_editor(editor)
-    , m_completionManager(completion)
+    , m_provider(provider)
 {
     m_hoverTimer.setSingleShot(true);
     m_hoverTimer.setInterval(400); // 400ms delay before hover fires
 
     connect(&m_hoverTimer, &QTimer::timeout, this, &HoverManager::onHoverTimeout);
-    connect(m_completionManager, &CompletionManager::hoverReady,
-            this, &HoverManager::onHoverReady);
+
+    if (m_provider) {
+        connect(m_provider, &CompletionProvider::hoverReady,
+                this, &HoverManager::onHoverReady);
+    }
 
     if (m_editor && m_editor->viewport()) {
         m_editor->viewport()->setMouseTracking(true);  // required to receive MouseMove events
@@ -25,6 +27,17 @@ HoverManager::HoverManager(CodeEditor *editor, CompletionManager *completion, QO
     }
 
     qDebug() << "HoverManager: created, mouseTracking enabled for viewport";
+}
+
+void HoverManager::setProvider(CompletionProvider *provider)
+{
+    if (m_provider)
+        disconnect(m_provider, nullptr, this, nullptr);
+    m_provider = provider;
+    if (m_provider) {
+        connect(m_provider, &CompletionProvider::hoverReady,
+                this, &HoverManager::onHoverReady);
+    }
 }
 
 bool HoverManager::eventFilter(QObject *obj, QEvent *event)
@@ -90,12 +103,7 @@ void HoverManager::onHoverTimeout()
 
 void HoverManager::requestHoverAt(const QPoint &viewportPos)
 {
-    if (!m_completionManager) {
-        qDebug() << "HoverManager: no completionManager";
-        return;
-    }
-    if (!m_completionManager->isReady()) {
-        qDebug() << "HoverManager: completionManager not ready";
+    if (!m_provider) {
         return;
     }
 
@@ -103,7 +111,7 @@ void HoverManager::requestHoverAt(const QPoint &viewportPos)
     m_hoverCursorPos = cursor.position();
     QString text = m_editor->toPlainText();
 
-    m_completionManager->requestHover(text, m_hoverCursorPos);
+    m_provider->requestHover(text, m_hoverCursorPos);
 }
 
 void HoverManager::onHoverReady(HoverInfo info)

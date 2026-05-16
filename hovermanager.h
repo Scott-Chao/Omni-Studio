@@ -8,20 +8,22 @@
 #include "completionprovider.h"
 
 class CodeEditor;
-class CompletionManager;
+class CompletionProvider;
 
 class HoverManager : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit HoverManager(CodeEditor *editor, CompletionManager *completion, QObject *parent = nullptr);
+    explicit HoverManager(CodeEditor *editor, CompletionProvider *provider = nullptr, QObject *parent = nullptr);
+
+    void setProvider(CompletionProvider *provider);
 
     bool tooltipActive() const { return m_tooltipShowing; }
 
 private:
     CodeEditor *m_editor;
-    CompletionManager *m_completionManager;
+    CompletionProvider *m_provider;
     QTimer m_hoverTimer;
     QPoint m_mousePos;          // viewport-local coordinates
     int m_hoverCursorPos = -1; // text position of current/last hover request

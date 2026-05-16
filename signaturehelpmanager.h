@@ -11,7 +11,7 @@
 #include "completionprovider.h"
 
 class CodeEditor;
-class CompletionManager;
+class CompletionProvider;
 
 // ============================================================
 // SignatureHelpPopup — floating widget showing signature info
@@ -55,8 +55,10 @@ class SignatureHelpManager : public QObject
     Q_OBJECT
 
 public:
-    explicit SignatureHelpManager(CodeEditor *editor, CompletionManager *completion,
+    explicit SignatureHelpManager(CodeEditor *editor, CompletionProvider *provider = nullptr,
                                   QObject *parent = nullptr);
+
+    void setProvider(CompletionProvider *provider);
 
     bool isActive() const { return m_popup && m_popup->isActive(); }
     void navigateNext();
@@ -65,7 +67,7 @@ public:
 
 private:
     CodeEditor *m_editor;
-    CompletionManager *m_completionManager;
+    CompletionProvider *m_provider;
     SignatureHelpPopup *m_popup;
     QTimer m_debounceTimer;
 

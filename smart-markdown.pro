@@ -19,7 +19,6 @@ SOURCES += \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
-    completionmanager.cpp \
     completionpopup.cpp \
     compilerutils.h \
     cppcompletionprovider.cpp \
@@ -64,7 +63,6 @@ HEADERS += \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \
-    completionmanager.h \
     completionpopup.h \
     completionprovider.h \
     compilerutils.h \

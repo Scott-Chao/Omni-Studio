@@ -7,7 +7,7 @@
 #include "completionprovider.h"
 
 class QSyntaxHighlighter;
-class CompletionManager;
+class CompletionProvider;
 class CompletionPopup;
 class HoverManager;
 class SignatureHelpManager;
@@ -23,7 +23,7 @@ public:
     void setLanguage(const QString &langId);
     QString languageId() const { return m_languageId; }
 
-    CompletionManager *completionManager() const { return m_completionManager; }
+    CompletionProvider *completionProvider() const { return m_completionProvider; }
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }
@@ -51,10 +51,13 @@ private slots:
     void onServerReady();
     void onEditorTextChanged();
     void onCompletionsReady(QList<CompletionItem> items);
+    void onProviderFailed(const QString &reason);
 
 private:
+    void createCompletionProvider(const QString &langId);
+
     QSyntaxHighlighter *m_highlighter = nullptr;
-    CompletionManager *m_completionManager = nullptr;
+    CompletionProvider *m_completionProvider = nullptr;
     CompletionPopup *m_completionPopup = nullptr;
     HoverManager *m_hoverManager = nullptr;
     SignatureHelpManager *m_signatureHelpManager = nullptr;

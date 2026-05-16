@@ -1,6 +1,5 @@
 #include "signaturehelpmanager.h"
 #include "codeeditor.h"
-#include "completionmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -202,11 +201,11 @@ void SignatureHelpPopup::keyPressEvent(QKeyEvent *event)
 // ============================================================
 
 SignatureHelpManager::SignatureHelpManager(CodeEditor *editor,
-                                           CompletionManager *completion,
+                                           CompletionProvider *provider,
                                            QObject *parent)
     : QObject(parent)
     , m_editor(editor)
-    , m_completionManager(completion)
+    , m_provider(provider)
 {
     m_popup = new SignatureHelpPopup(m_editor);
     m_debounceTimer.setSingleShot(true);
@@ -214,17 +213,32 @@ SignatureHelpManager::SignatureHelpManager(CodeEditor *editor,
 
     connect(m_editor, &QPlainTextEdit::cursorPositionChanged,
             this, &SignatureHelpManager::onCursorPositionChanged);
-    connect(m_completionManager, &CompletionManager::signatureHelpReady,
-            this, &SignatureHelpManager::onSignatureHelpReady);
+
+    if (m_provider) {
+        connect(m_provider, &CompletionProvider::signatureHelpReady,
+                this, &SignatureHelpManager::onSignatureHelpReady);
+    }
+
     connect(&m_debounceTimer, &QTimer::timeout,
             this, &SignatureHelpManager::requestSignature);
 
     qDebug() << "SignatureHelpManager: created";
 }
 
+void SignatureHelpManager::setProvider(CompletionProvider *provider)
+{
+    if (m_provider)
+        disconnect(m_provider, nullptr, this, nullptr);
+    m_provider = provider;
+    if (m_provider) {
+        connect(m_provider, &CompletionProvider::signatureHelpReady,
+                this, &SignatureHelpManager::onSignatureHelpReady);
+    }
+}
+
 void SignatureHelpManager::requestSignature()
 {
-    if (!m_completionManager || !m_completionManager->isReady())
+    if (!m_provider)
         return;
 
     QTextCursor cursor = m_editor->textCursor();
@@ -240,7 +254,7 @@ void SignatureHelpManager::requestSignature()
         text.remove(cursorPos, 1);
     }
 
-    m_completionManager->requestSignatureHelp(text, cursorPos);
+    m_provider->requestSignatureHelp(text, cursorPos);
 }
 
 void SignatureHelpManager::onCursorPositionChanged()

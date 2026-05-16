@@ -1,5 +1,7 @@
 ﻿#include "codeeditor.h"
-#include "completionmanager.h"
+#include "cppcompletionprovider.h"
+#include "pythoncompletionprovider.h"
+#include "keywordcompletionprovider.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -109,10 +111,10 @@ CodeEditor::CodeEditor(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
     m_lineNumberArea = new LineNumberArea(this);
-    m_completionManager = new CompletionManager(this);
     m_completionPopup = new CompletionPopup(this);
-    m_hoverManager = new HoverManager(this, m_completionManager, this);
-    m_signatureHelpManager = new SignatureHelpManager(this, m_completionManager, this);
+    // m_completionProvider is created in setLanguage()
+    m_hoverManager = new HoverManager(this, nullptr, this);
+    m_signatureHelpManager = new SignatureHelpManager(this, nullptr, this);
 
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
@@ -131,10 +133,6 @@ CodeEditor::CodeEditor(QWidget *parent)
             this, &CodeEditor::updateLineNumberArea);
     connect(this, &QPlainTextEdit::cursorPositionChanged,
             this, &CodeEditor::highlightCurrentLine);
-    connect(m_completionManager, &CompletionManager::serverReady,
-            this, &CodeEditor::onServerReady);
-    connect(m_completionManager, &CompletionManager::completionReady,
-            this, &CodeEditor::onCompletionsReady);
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
@@ -179,7 +177,8 @@ void CodeEditor::setLanguage(const QString &langId)
     }
     m_languageId = langId;
     m_highlighter = LanguageUtils::createHighlighter(langId, document());
-    m_completionManager->setLanguage(langId);
+
+    createCompletionProvider(langId);
 
     // Connect text sync after the provider is set up
     disconnect(document(), &QTextDocument::contentsChanged,
@@ -188,29 +187,94 @@ void CodeEditor::setLanguage(const QString &langId)
             this, &CodeEditor::onEditorTextChanged);
 
     // Open document with current content (triggers didOpen when server is ready)
-    m_completionManager->openDocument(editorUri(), langId, toPlainText());
+    if (m_completionProvider)
+        m_completionProvider->openDocument(editorUri(), langId, toPlainText());
 }
 
 void CodeEditor::onServerReady()
 {
     // Server just became ready (initial start or restart).
     // Open (or re-open) the document so clangd knows about its content.
-    m_completionManager->openDocument(editorUri(), m_languageId, toPlainText());
+    if (m_completionProvider)
+        m_completionProvider->openDocument(editorUri(), m_languageId, toPlainText());
 }
 
 void CodeEditor::onEditorTextChanged()
 {
-    m_completionManager->updateText(toPlainText());
+    if (m_completionProvider)
+        m_completionProvider->updateText(toPlainText());
 }
 
 void CodeEditor::triggerCompletion()
 {
+    if (!m_completionProvider)
+        return;
+
     QString text = toPlainText();
     if (text.length() > 1024 * 1024) // >1MB: skip for performance
         return;
 
     QTextCursor cursor = textCursor();
-    m_completionManager->requestCompletion(text, cursor.position());
+    m_completionProvider->requestCompletion(text, cursor.position());
+}
+
+// ---- Completion provider lifecycle ----
+
+void CodeEditor::createCompletionProvider(const QString &langId)
+{
+    // Delete old provider
+    if (m_completionProvider) {
+        m_completionProvider->deleteLater();
+        m_completionProvider = nullptr;
+    }
+
+    if (langId == QStringLiteral("cpp")) {
+        auto *cpp = new CppCompletionProvider(this);
+        m_completionProvider = cpp;
+
+        connect(cpp, &CppCompletionProvider::serverReady,
+                this, &CodeEditor::onServerReady);
+        connect(cpp, &CppCompletionProvider::serverFailed,
+                this, &CodeEditor::onProviderFailed);
+    } else if (langId == QStringLiteral("python")) {
+        auto *py = new PythonCompletionProvider(this);
+        m_completionProvider = py;
+
+        connect(py, &PythonCompletionProvider::serverReady,
+                this, &CodeEditor::onServerReady);
+        connect(py, &PythonCompletionProvider::serverFailed,
+                this, &CodeEditor::onProviderFailed);
+    } else {
+        return;
+    }
+
+    // Common signal connections
+    connect(m_completionProvider, &CompletionProvider::completionReady,
+            this, &CodeEditor::onCompletionsReady);
+
+    // Notify hover and signature managers of the new provider
+    m_hoverManager->setProvider(m_completionProvider);
+    m_signatureHelpManager->setProvider(m_completionProvider);
+}
+
+void CodeEditor::onProviderFailed(const QString &reason)
+{
+    qWarning() << "CodeEditor: provider failed:" << reason
+               << "— falling back to keyword completion";
+
+    if (m_completionProvider) {
+        m_completionProvider->deleteLater();
+        m_completionProvider = nullptr;
+    }
+
+    auto *kw = new KeywordCompletionProvider(m_languageId, this);
+    m_completionProvider = kw;
+
+    connect(m_completionProvider, &CompletionProvider::completionReady,
+            this, &CodeEditor::onCompletionsReady);
+
+    m_hoverManager->setProvider(m_completionProvider);
+    m_signatureHelpManager->setProvider(m_completionProvider);
 }
 
 void CodeEditor::onCompletionsReady(QList<CompletionItem> items)

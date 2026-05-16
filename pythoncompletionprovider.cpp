@@ -237,7 +237,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
             if (m_process) {
                 m_process->kill();
             }
-            // Signal the CompletionManager to swap to keyword fallback
+            // Signal the CodeEditor to swap to keyword fallback
             emit serverFailed(error);
             return;
         }
