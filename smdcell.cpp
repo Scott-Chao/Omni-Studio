@@ -231,9 +231,9 @@ void SmdCell::setupMarkdownEditor()
     m_markdownEditor->setTabChangesFocus(false);
 
     connect(m_markdownEditor->document(), &QTextDocument::blockCountChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     connect(m_markdownEditor->document(), &QTextDocument::contentsChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     m_markdownEditor->installEventFilter(this);
     m_editorStack->insertWidget(0, m_markdownEditor);
     QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);
@@ -250,9 +250,9 @@ void SmdCell::setupCodeEditor(const QString &langId)
     m_codeEditor->document()->setDocumentMargin(0);
 
     connect(m_codeEditor->document(), &QTextDocument::blockCountChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     connect(m_codeEditor->document(), &QTextDocument::contentsChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     m_codeEditor->installEventFilter(this);
     m_editorStack->insertWidget(0, m_codeEditor);
     QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);
@@ -265,30 +265,37 @@ void SmdCell::setCellType(CellType type)
         return;
 
     QString oldContent = content();
+    CellType oldType = m_type;
     m_type = type;
     m_languageId = langIdFromType(type);
     m_rendered = false;
     m_diagnostics.clear();
     debugLog(QStringLiteral("SmdCell::setCellType — removing old editor"));
 
-    // Remove old editor from stack
     if (m_markdownEditor) {
         m_editorStack->removeWidget(m_markdownEditor);
-        m_markdownEditor->deleteLater();
+        m_markdownEditor->hide();
         m_markdownEditor = nullptr;
+        // Old editor is NOT deleted — it's still a child of m_editorStack.
+        // Qt cleans it up automatically when the SmdCell (parent chain) is
+        // destroyed.  Calling delete/deleteLater during event processing
+        // (MouseButtonRelease) causes crashes.
     }
     if (m_codeEditor) {
         m_editorStack->removeWidget(m_codeEditor);
-        // Shut down LSP provider before deleteLater to prevent
-        // pending async callbacks from firing on freed objects.
+        // Shut down old-style per-cell LSP provider if present.
         if (auto *cp = m_codeEditor->completionProvider()) {
             if (auto *cpp = qobject_cast<CppCompletionProvider*>(cp))
                 cpp->shutdown();
             else if (auto *py = qobject_cast<PythonCompletionProvider*>(cp))
                 py->shutdown();
         }
-        m_codeEditor->deleteLater();
+        // Detach from shared LSP adapter before it may be deleted by
+        // cellRemoved() during the cellTypeChanged signal below.
+        m_codeEditor->setCompletionProvider(nullptr);
+        m_codeEditor->hide();
         m_codeEditor = nullptr;
+        // Not deleted — see m_markdownEditor comment above.
     }
 
     if (type == Markdown) {
@@ -305,7 +312,7 @@ void SmdCell::setCellType(CellType type)
     updateTypeLabel();
     updateBorderStyle();
     debugLog(QStringLiteral("SmdCell::setCellType — emitting cellTypeChanged"));
-    emit cellTypeChanged();
+    emit cellTypeChanged(oldType);
     debugLog(QStringLiteral("SmdCell::setCellType — done"));
 }
 
@@ -924,11 +931,25 @@ void SmdCell::applyZoom(qreal factor, int baseFontSize)
 
 void SmdCell::updateEditorHeight()
 {
+    // Save and reset the pending-changes counter atomically at entry.
+    // This prevents a stale counter when blockCountChanged + contentsChanged
+    // fire in the same event: the first call processes and clears the
+    // counter, the second increments it but is rejected by the guard below,
+    // leaving the counter stuck at 1 for the next timer-driven call.
+    int pendingChanges = m_pendingContentChanges;
+    m_pendingContentChanges = 0;
+
+    // Guard against recursion: setFixedHeight → layout → document signals → updateEditorHeight
+    if (m_updatingHeight)
+        return;
+    m_updatingHeight = true;
+
     QPlainTextEdit *ed = nullptr;
     if (m_rendered) {
         // After grab: QLabel determines height, no dynamic changes needed
         if (m_renderImage && !m_renderImage->pixmap().isNull()) {
             updateGeometry();
+            m_updatingHeight = false;
             return;
         }
         // Before grab: editor height used for the stack, QWebEngineView size updated elsewhere
@@ -936,6 +957,7 @@ void SmdCell::updateEditorHeight()
             m_editorStack->setFixedHeight(m_markdownEditor->height());
         }
         updateGeometry();
+        m_updatingHeight = false;
         return;
     }
     if (m_type == Markdown)
@@ -943,8 +965,10 @@ void SmdCell::updateEditorHeight()
     else if (m_codeEditor)
         ed = m_codeEditor;
 
-    if (!ed)
+    if (!ed) {
+        m_updatingHeight = false;
         return;
+    }
 
     // Measure actual content height by summing each block's QTextLayout
     // bounding rect. Use QFontMetricsF::lineSpacing() as a minimum per visual
@@ -997,7 +1021,10 @@ void SmdCell::updateEditorHeight()
     ed->setFixedHeight(contentH);
     m_editorStack->setFixedHeight(contentH);
     updateGeometry();
-    emit contentChanged();
+    if (pendingChanges > 0) {
+        emit contentChanged();
+    }
+    m_updatingHeight = false;
 }
 
 void SmdCell::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)

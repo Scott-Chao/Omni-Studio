@@ -18,7 +18,9 @@ CppCompletionProvider::CppCompletionProvider(QObject *parent)
 
 CppCompletionProvider::~CppCompletionProvider()
 {
-    shutdown();
+    // LspClient child is destroyed via Qt parent-child chain without blocking.
+    // Do NOT call shutdown() here — its waitForFinished() blocks the main
+    // thread and causes freeze/crash when closing files.
 }
 
 void CppCompletionProvider::shutdown()
@@ -92,7 +94,7 @@ void CppCompletionProvider::sendInitialize()
 
 void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 {
-    if (!m_client || !m_initialized)
+    if (!m_client)
         return;
 
     // Stop timeout on any response
@@ -108,6 +110,10 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 
         // Tell the owner (CodeEditor) that we're ready — it will call openDocument()
         emit serverReady();
+
+    } else if (!m_initialized) {
+        // Ignore responses before initialization completes
+        return;
 
     } else if (id == m_completionRequestId) {
         m_completionRequestId = -1;

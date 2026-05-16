@@ -61,7 +61,7 @@ public:
 
 signals:
     void executeRequested();
-    void cellTypeChanged();
+    void cellTypeChanged(SmdCell::CellType oldType);
     void focusEntered();
     void focusLeft();
     void contentChanged();
@@ -93,6 +93,8 @@ private:
     bool m_active = false;
     bool m_rendered = false;
     bool m_grabbing = false;  // suppress focusEntered during performGrab
+    bool m_updatingHeight = false;  // guard against recursive updateEditorHeight
+    int m_pendingContentChanges = 0;  // >0 when QTextDocument signals a real content edit
 
     QWidget *m_headerBar = nullptr;
     QLabel *m_typeLabel = nullptr;

@@ -562,6 +562,9 @@
 
 **LSP 补全集成**：
 - 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。
+  - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
+  - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
+  - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
 - SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
 - 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
 
@@ -980,12 +983,16 @@
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
+  - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
+  - **内容变更计数器**：`m_pendingContentChanges` 由 document 信号 lambda 递增、`updateEditorHeight` 入口原子性获取并清零。仅当计数器 > 0（真正的用户编辑）时才 `emit contentChanged()`，避免 layout 触发的重算虚假发射 LSP `cellContentChanged` → `syncVirtualDoc` 通知风暴。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
 
 **信号**：同上。
 
 **生命周期安全**：
-- `setCellType()` 切换类型时，先调用旧 `CodeEditor` 的 `CompletionProvider::shutdown()`（断开 LSP 信号、停止进程）再 `deleteLater()`，防止 pending LSP 异步回调访问已释放对象。
+- `setCellType()` 切换类型时，先 `removeWidget()` 将旧编辑器从 `QStackedWidget` 移除，调用 `setCompletionProvider(nullptr)` 断开共享 LSP adapter，再 `hide()` 隐藏。**旧编辑器不显式删除** — 它仍是 `m_editorStack` 的子控件，Qt 父子系统在 `SmdCell` 销毁时自动清理。在事件处理期间（如 `MouseButtonRelease`）调用 `delete`/`deleteLater()` 会破坏 Qt 内部事件状态，导致闪退。
+- 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
+- `m_lspManager` 在 `setPlainText()` 中 **晚于 `addCell()` 创建**。`addCell()` 执行时 `m_lspManager` 为 null，无法注入共享 provider。`setPlainText()` 中 `cellAdded()` 循环后额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 完成初始注入。
 - 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
 - `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
 
@@ -1063,11 +1070,11 @@
 **修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
 
 **LSP 集成（SmdLspManager）**：
-- `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册。
-- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。
+- `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册，**并额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 注入共享 provider**（因 `addCell()` 时 `m_lspManager` 为 null 无法注入）。
+- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。re-index 循环中先 `disconnect` 所有相关信号（`focusEntered`、`contentChanged`、**`cellTypeChanged`**）再 `connect`，防止信号重复连接累积。
 - `cell->contentChanged` 信号连接至 `m_lspManager->cellContentChanged()`，触发虚拟文档重建和 `textDocument/didChange` 通知。
-- `cell->cellTypeChanged` 信号连接至 `m_lspManager->cellTypeChanged()`，通知 LSP 管理单元类型变更（移除旧语言 cell + 添加新语言 cell）。
-- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。
+- `cell->cellTypeChanged(CellType oldType)` 信号携带旧类型参数。lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和内容缓存被正确清理后再为新语言创建 adapter。
+- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。`removeCell()` 在 `cellRemoved()` 删除共享 adapter **之前**先调用 `codeEditor->setCompletionProvider(nullptr)` 断开，防止旧编辑器持有悬空指针。
 - `m_lspManager->diagnosticsUpdated` 信号连接至 cell 的 `SmdCell::setDiagnostics()` 和 `CodeEditor::setDiagnostics()`，更新头部标签计数和编辑器波浪线。
 - 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
 
@@ -1102,8 +1109,9 @@
 - 键盘事件处理：`↑/↓` 导航选项、`Enter` 确认选择、`1/2/3` 快捷键、`Esc` 关闭。
 - 点击 `QLabel` 选项通过 `eventFilter` 检测 `MouseButtonRelease` 并确认选择。
 - 确认时设置 `m_confirmed = true` 再关闭，避免 `hideEvent` 触发取消回调。
-- 重写 `hideEvent`：若未确认且有取消回调则执行取消逻辑（如新建单元格时删除单元格），然后自动 `deleteLater()` 释放内存。
-- 构造函数新增 `onCancelled` 参数，用于取消时的回调（新建单元格流程传入 `removeCell` + 恢复活动单元格 + 清除修改标识；已有单元格流程不传入，取消时无副作用）。
+- 重写 `hideEvent`：若未确认且有取消回调则执行取消逻辑（如新建单元格时删除单元格）。**不在此处调用 `deleteLater()`** — `Qt::Popup` 隐式设置 `WA_DeleteOnClose` 会重复触发，且 `hideEvent` 可能被 Qt 多次投递导致 double-delete。
+- 构造函数中 `setAttribute(Qt::WA_DeleteOnClose, false)` 禁用自动删除，`confirm()` 通过 `QTimer::singleShot(0, this, [this]() { close(); })` 延迟关闭。延迟避免 `QWidget::close()` 在 `m_onSelected`（`setCellType`）修改控件树后立即遍历焦点链导致崩溃。
+- 提供 `setOnSelected()` / `setOnCancelled()` setter，`showLanguageSelector()` 创建 popup 后通过 setter 注入回调（含 popup 指针捕获以支持取消时清理）。
 
 **协作关系**：
 - 由 `EditorWidget` 创建并作为 `QStackedWidget` 的第 5 页（索引 5）。
@@ -1185,7 +1193,7 @@
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
-- `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。
+- `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。`cellAdded()` 在插入 `cellOrder` 前检查 `contains()` 护盾，防止重复信号连接导致同一 cell 重复插入；`cellRemoved()` 删除共享 adapter（`CellCompletionAdapter`）并从 `cellOrder` 中移除。
 - `void requestCompletion/Hover/SignatureHelp(int cellIndex, int cursorLine, int cursorCol)`：公共请求 API，cell 本地位置 → 虚拟位置 → LSP 请求。
 - `CompletionProvider *providerForCell(int cellIndex, const QString &langId)`：返回 cell 对应的 CellCompletionAdapter。
 - `QList<SmdDiagnostic> diagnosticsForCell(int cellIndex) const`：获取 cell 的诊断列表。
@@ -1209,7 +1217,8 @@
 **职责**：
 - header-only 工具，提供 `debugLog(const QString &msg)` 内联函数。
 - 将带时间戳、线程 ID 和消息内容的日志追加写入 `release/smd_debug.log`。
-- 用于诊断 SMD LSP 相关卡顿/闪退问题（`SmdEditor::enterCommandMode/EditMode`、`SmdCell::setCellType/Active`、`SmdLspManager` 生命周期等关键路径已埋点）。
+- `QTextStream` 显式 `flush()` 并在独立作用域中析构后 `file.close()`，确保崩溃时日志不丢失。
+- 用于诊断 SMD LSP 相关卡顿/闪退问题（`SmdEditor::enterCommandMode/EditMode`、`SmdCell::setCellType/Active/updateEditorHeight`、`SmdLspManager` 生命周期、`CodeEditor::setCompletionProvider` 等关键路径已埋点）。
 
 
 ### 配置存储说明

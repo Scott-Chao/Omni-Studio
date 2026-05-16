@@ -34,9 +34,13 @@ public:
                       std::function<void(SmdCell::CellType)> onSelected,
                       std::function<void()> onCancelled = nullptr)
         : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint)
-        , m_onSelected(onSelected)
-        , m_onCancelled(onCancelled)
+        , m_onSelected(std::move(onSelected))
+        , m_onCancelled(std::move(onCancelled))
     {
+        // Qt::Popup implies WA_DeleteOnClose which can fire deleteLater()
+        // twice when combined with explicit close() + window-system hide.
+        // Disable it — we call deleteLater() exactly once in confirm().
+        setAttribute(Qt::WA_DeleteOnClose, false);
         setStyleSheet(QStringLiteral(
             "LangSelectorPopup { background: #2d2d30; border: 1px solid #555555; "
             "border-radius: 4px; }"
@@ -68,6 +72,9 @@ public:
         selectIndex(0);
     }
 
+    void setOnSelected(std::function<void(SmdCell::CellType)> cb) { m_onSelected = std::move(cb); }
+    void setOnCancelled(std::function<void()> cb) { m_onCancelled = std::move(cb); }
+
     void selectIndex(int idx)
     {
         if (idx < 0 || idx >= m_items.size()) return;
@@ -92,7 +99,10 @@ public:
         m_confirmed = true;
         if (m_onSelected)
             m_onSelected(selectedType());
-        close();
+        // Defer close so the widget tree (modified by setCellType during
+        // m_onSelected) stabilises before the focus-chain walk inside
+        // QWidget::close() runs.
+        QTimer::singleShot(0, this, [this]() { close(); });
     }
 
 protected:
@@ -100,7 +110,6 @@ protected:
     {
         if (!m_confirmed && m_onCancelled)
             m_onCancelled();
-        deleteLater();
         QFrame::hideEvent(event);
     }
 
@@ -365,8 +374,17 @@ void SmdEditor::setPlainText(const QString &text)
     for (int i = 0; i < m_cells.size(); ++i) {
         SmdCell *cell = m_cells[i];
         QString langId = SmdCell::langIdFromType(cell->cellType());
-        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python")) {
             m_lspManager->cellAdded(i, langId, cell->content());
+            // Wire the shared LSP provider to code cells.  This normally
+            // happens in connectCellSignals(), but m_lspManager was null
+            // when addCell() ran during setPlainText().
+            if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
+                auto *provider = m_lspManager->providerForCell(i, langId);
+                if (provider)
+                    codeEditor->setCompletionProvider(provider);
+            }
+        }
     }
 
     connect(m_lspManager, &SmdLspManager::diagnosticsUpdated, this,
@@ -436,6 +454,7 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
     for (int i = layoutIdx; i < m_cells.size(); ++i) {
         disconnect(m_cells[i], &SmdCell::focusEntered, nullptr, nullptr);
         disconnect(m_cells[i], &SmdCell::contentChanged, nullptr, nullptr);
+        disconnect(m_cells[i], &SmdCell::cellTypeChanged, nullptr, nullptr);
         connectCellSignals(m_cells[i], i);
     }
 
@@ -466,14 +485,19 @@ void SmdEditor::removeCell(int index)
         return;
     if (m_executingCell) return; // Block during execution
 
+    // Detach CodeEditor from shared adapter BEFORE cellRemoved deletes the adapter
+    SmdCell *cell = m_cells[index];
+    if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
+        codeEditor->setCompletionProvider(nullptr);
+    }
+
     // Notify LSP manager before removal
     if (m_lspManager) {
-        QString langId = SmdCell::langIdFromType(m_cells[index]->cellType());
+        QString langId = SmdCell::langIdFromType(cell->cellType());
         if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
             m_lspManager->cellRemoved(index, langId);
     }
 
-    SmdCell *cell = m_cells[index];
     SmdOutputWidget *output = m_outputWidgets[index];
 
     // Remove output widget first (higher layout index), then cell
@@ -494,6 +518,7 @@ void SmdEditor::removeCell(int index)
     for (int i = 0; i < m_cells.size(); ++i) {
         disconnect(m_cells[i], &SmdCell::focusEntered, nullptr, nullptr);
         disconnect(m_cells[i], &SmdCell::contentChanged, nullptr, nullptr);
+        disconnect(m_cells[i], &SmdCell::cellTypeChanged, nullptr, nullptr);
         connectCellSignals(m_cells[i], i);
     }
 }
@@ -580,6 +605,9 @@ void SmdEditor::enterCommandMode()
         .arg(m_activeCellIndex).arg(m_cells.size()));
     m_commandMode = true;
     for (int i = 0; i < m_cells.size(); ++i) {
+        debugLog(QStringLiteral("enterCommandMode — cell %1/%2 cmd=%3 active=%4")
+            .arg(i).arg(m_cells.size()).arg(m_cells[i] != nullptr)
+            .arg(i == m_activeCellIndex));
         m_cells[i]->setCommandMode(true);
         m_cells[i]->setActive(i == m_activeCellIndex);
     }
@@ -611,32 +639,45 @@ void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int original
     debugLog(QStringLiteral("showLanguageSelector — cell=%1 isNew=%2 orig=%3")
         .arg(cellIndex).arg(isNewCell).arg(originalCellIndex));
 
-    std::function<void()> onCancelled;
-    if (isNewCell) {
-        int capturedIdx = cellIndex;
-        int restoreIdx = originalCellIndex >= 0 ? originalCellIndex : cellIndex;
-        onCancelled = [this, capturedIdx, restoreIdx]() {
-            removeCell(capturedIdx);
-            setActiveCell(qMin(restoreIdx, m_cells.size() - 1));
-            // The add+remove cycle left the visual modified flag set
-            // even though content is unchanged. Reset to clear it.
-            setModified(false);
-        };
-    }
-
-    auto *popup = new LangSelectorPopup(m_cellContainer,
+    // Create popup first so we can capture it in both callbacks for
+    // explicit deleteLater().  The popup's hideEvent no longer calls
+    // deleteLater() itself — we handle deletion in these callbacks to
+    // prevent double-delete from duplicate hideEvent delivery (common
+    // with Qt::Popup widgets).
+    auto *popup = new LangSelectorPopup(nullptr,
         [this, cellIndex](SmdCell::CellType type) {
+            setFocus();
             if (cellIndex >= 0 && cellIndex < m_cells.size()) {
                 m_cells[cellIndex]->setCellType(type);
             }
-            setFocus();
-            QTimer::singleShot(0, this, [this]() {
-                if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size())
-                    enterEditMode();
-            });
         },
-        onCancelled
+        nullptr   // onCancelled set below after we know popup address
     );
+
+    // Wire onCancelled now that popup exists.
+    // Qt::Popup implies WA_DeleteOnClose, so close()/hide() already call
+    // deleteLater() for us.  We must NOT call it again in these callbacks
+    // or we get a double-delete (the DeferredDelete fires twice for the
+    // same object → crash or heap corruption).
+    if (isNewCell) {
+        int capturedIdx = cellIndex;
+        int restoreIdx = originalCellIndex >= 0 ? originalCellIndex : cellIndex;
+        popup->setOnCancelled([this, capturedIdx, restoreIdx]() {
+            removeCell(capturedIdx);
+            setActiveCell(qMin(restoreIdx, m_cells.size() - 1));
+            setModified(false);
+        });
+    }
+
+    // Wire onSelected.
+    popup->setOnSelected([this, cellIndex](SmdCell::CellType type) {
+        setFocus();
+        if (cellIndex >= 0 && cellIndex < m_cells.size()) {
+            m_cells[cellIndex]->setCellType(type);
+        }
+        if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size())
+            enterEditMode();
+    });
 
     QWidget *vp = m_scrollArea->viewport();
     QPoint vpTopLeft = vp->mapToGlobal(QPoint(0, 0));
@@ -664,13 +705,14 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
         ri->installEventFilter(this);
 
     // Re-install event filter when cell type changes (editor is recreated)
-    connect(cell, &SmdCell::cellTypeChanged, this, [this, cell, index]() {
+    connect(cell, &SmdCell::cellTypeChanged, this, [this, cell, index](SmdCell::CellType oldType) {
         if (QWidget *ed = cell->editorWidget())
             ed->installEventFilter(this);
         // Notify LSP manager of type change
         if (m_lspManager) {
+            QString oldLangId = SmdCell::langIdFromType(oldType);
             QString newLangId = SmdCell::langIdFromType(cell->cellType());
-            m_lspManager->cellTypeChanged(index, QString(), newLangId, cell->content());
+            m_lspManager->cellTypeChanged(index, oldLangId, newLangId, cell->content());
             // Wire shared provider to new CodeEditor
             if (newLangId == QStringLiteral("cpp") || newLangId == QStringLiteral("python")) {
                 if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
@@ -1009,11 +1051,6 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
 bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 {
     // Activate the parent SmdCell on FocusIn / MouseButtonPress.
-    // This eventFilter is installed on QApplication (global catch-all),
-    // every cell's editor/render widget, SmdEditor itself, and the
-    // top-level MainWindow.  Processing FocusIn/MousePress here provides
-    // a reliable back-up path when SmdCell::eventFilter suppresses
-    // focusEntered (e.g. during m_grabbing in performGrab).
     if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
         if (auto *w = qobject_cast<QWidget*>(obj)) {
             for (QWidget *cur = w; cur; cur = cur->parentWidget()) {
