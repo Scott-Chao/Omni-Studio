@@ -1746,15 +1746,24 @@ void EditorWidget::setSplitPreviewMode(bool split)
     if (split == m_splitPreview)
         return;
 
-    // 互斥：进入分屏预览时，退出全屏预览
-    if (split && m_previewMode) {
-        setPreviewMode(false);
-    }
-
     m_splitPreview = split;
 
     if (m_splitPreview) {
+        // 禁用绘制，避免切换过程中间状态的闪烁
+        m_stackedWidget->setUpdatesEnabled(false);
+
+        // 互斥：直接清除标志位，不调用 setPreviewMode(false)
+        // 以跳过其内部的 setCurrentIndex(0)，避免中间状态绘制
+        if (m_previewMode) {
+            m_previewMode = false;
+        }
+
         createSplitPreviewWidgets();
+
+        // 先将当前widget切到m_splitSplitter，再转移m_textEdit。
+        // 否则removeWidget(m_textEdit)会触发Qt自动选中m_previewContainer
+        // （全屏预览的原生WebEngine窗口），导致闪烁。
+        m_stackedWidget->setCurrentWidget(m_splitSplitter);
 
         // 将 m_textEdit 从 page 0 转移到 splitter 左侧
         m_stackedWidget->removeWidget(m_textEdit);
@@ -1811,6 +1820,7 @@ void EditorWidget::setSplitPreviewMode(bool split)
         }
 
         m_stackedWidget->setCurrentWidget(m_splitSplitter);
+        m_stackedWidget->setUpdatesEnabled(true);
     } else {
         // 退出分屏：将 m_textEdit 从 splitter 放回 page 0
         m_splitTextWrapper->layout()->removeWidget(m_textEdit);
