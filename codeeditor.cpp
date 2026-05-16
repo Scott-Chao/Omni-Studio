@@ -357,8 +357,8 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         return;
     }
 
-    // Ctrl+Space — manual completion trigger
-    if (event->key() == Qt::Key_Space && (event->modifiers() & Qt::ControlModifier)) {
+    // Ctrl+I — manual completion trigger (Ctrl+Space is intercepted by Windows IME)
+    if (event->key() == Qt::Key_I && (event->modifiers() & Qt::ControlModifier)) {
         triggerCompletion();
         return;
     }
