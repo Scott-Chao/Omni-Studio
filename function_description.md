@@ -1,4 +1,4 @@
-## 功能说明文档（v0.8.3）
+## 功能说明文档（v0.8.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,8 +38,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.8.3
-- **修复：MD 文件从编辑模式切换到分屏预览时闪过全屏预览画面**：切换过程中 `removeWidget(m_textEdit)` 会触发 Qt 的 `QStackedWidget` 自动将当前索引处的下一个 widget（`m_previewContainer`，即全屏预览的 WebEngine 原生窗口）提升为当前 widget，导致全屏预览短暂闪烁。修复方案：(1) 在 `removeWidget` 之前先将 `m_stackedWidget` 的当前 widget 切换为 `m_splitSplitter`，避免 Qt 自动选中 `m_previewContainer`；(2) 用 `setUpdatesEnabled(false/true)` 包裹整个切换过程，阻止中间状态的绘制；(3) 直接清除 `m_previewMode` 标志位，跳过 `setPreviewMode(false)` 中多余的 `setCurrentIndex(0)` 调用。
+# 修复 v0.8.4
+- **修复：MD 文件中仅有 fenced code block 时转换为 SMD 产生多余空 markdown 块**：`SmdFormat::fromMarkdownWithMapping()` 的 `flushCell()` 无条件追加 cell，导致当 MD 内容仅为 ` ```cpp\n``` ` 时，在代码块前后各产生一个空的 markdown cell（共 3 个块）。修复方案：为 `flushCell()` 添加与 `fromMarkdown()` 一致的守卫条件 — 仅当 `cell.content` 非空或 `currentContent` 非空时才追加 cell，避免无内容的空 markdown cell 被创建。
 
 ### 1. `MainWindow` - 主窗口控制器
 

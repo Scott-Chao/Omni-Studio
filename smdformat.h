@@ -305,8 +305,8 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
         convLog(QStringLiteral("flush: type=") + cell.type
                 + QStringLiteral(" len=") + QString::number(cell.content.length())
                 + QStringLiteral(" ncell=") + QString::number(result.cells.size()));
-        // Always append — even empty content matters for blank-line preservation
-        result.cells.append(cell);
+        if (!cell.content.isEmpty() || !currentContent.isEmpty())
+            result.cells.append(cell);
         currentContent.clear();
         currentCellIndex = -1;
         currentCellLine = 0;
