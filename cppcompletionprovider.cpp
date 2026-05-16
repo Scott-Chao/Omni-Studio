@@ -98,6 +98,34 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
                  << "signature=" << info.signature.left(60)
                  << "doc=" << info.doc.left(60);
         emit hoverReady(info);
+
+    } else if (id == m_signatureHelpRequestId) {
+        m_signatureHelpRequestId = -1;
+
+        QList<SignatureInfo> signatures;
+        int activeIndex = 0;
+
+        QJsonValue signaturesVal = result.value(QStringLiteral("signatures"));
+        if (signaturesVal.isArray()) {
+            QJsonArray sigs = signaturesVal.toArray();
+            for (const QJsonValue &sv : sigs) {
+                signatures.append(parseSignatureHelpItem(sv.toObject()));
+            }
+        }
+
+        activeIndex = result.value(QStringLiteral("activeSignature")).toInt(0);
+
+        // activeParameter is at the SignatureHelp top level (LSP spec),
+        // NOT inside each SignatureInformation. Apply it to the active signature.
+        int activeParam = result.value(QStringLiteral("activeParameter")).toInt(0);
+        if (activeIndex >= 0 && activeIndex < signatures.size())
+            signatures[activeIndex].activeParameter = activeParam;
+
+        qDebug() << "CppCompletionProvider: signatureHelp returned"
+                 << signatures.size() << "signatures, activeIndex=" << activeIndex
+                 << "activeParameter=" << activeParam;
+
+        emit signatureHelpReady(signatures, activeIndex);
     }
 }
 
@@ -424,8 +452,74 @@ HoverInfo CppCompletionProvider::parseHoverResponse(const QJsonObject &result)
     return info;
 }
 
+SignatureInfo CppCompletionProvider::parseSignatureHelpItem(const QJsonObject &sig)
+{
+    SignatureInfo info;
+
+    info.label = sig.value(QStringLiteral("label")).toString();
+    info.doc = sig.value(QStringLiteral("documentation")).toString();
+
+    // activeParameter is read from the top-level SignatureHelp result,
+    // not from each SignatureInformation. We set it in onResponseReceived.
+
+    // Parse parameters list
+    QJsonValue paramsVal = sig.value(QStringLiteral("parameters"));
+    if (paramsVal.isArray()) {
+        QJsonArray params = paramsVal.toArray();
+        for (const QJsonValue &pv : params) {
+            QJsonObject pObj = pv.toObject();
+            QJsonValue labelVal = pObj.value(QStringLiteral("label"));
+            if (labelVal.isString()) {
+                info.parameters.append(labelVal.toString());
+            } else if (labelVal.isArray()) {
+                // LSP allows [start, end] offset pair into the signature label
+                QJsonArray offsets = labelVal.toArray();
+                if (offsets.size() >= 2) {
+                    int start = offsets.at(0).toInt();
+                    int end = offsets.at(1).toInt();
+                    if (start >= 0 && end <= info.label.length() && start < end) {
+                        info.parameters.append(
+                            info.label.mid(start, end - start));
+                    }
+                }
+            }
+        }
+    }
+
+    return info;
+}
+
 void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursorPos)
 {
-    Q_UNUSED(text);
-    Q_UNUSED(cursorPos);
+    if (!m_initialized || m_documentUri.isEmpty() || !m_client)
+        return;
+
+    // Convert cursorPos to LSP line (0-based) and character (0-based)
+    int line = 0;
+    int col = 0;
+    int len = qMin(cursorPos, text.length());
+    for (int i = 0; i < len; ++i) {
+        if (text.at(i) == QLatin1Char('\n')) {
+            ++line;
+            col = 0;
+        } else {
+            ++col;
+        }
+    }
+
+    QJsonObject position;
+    position[QStringLiteral("line")] = line;
+    position[QStringLiteral("character")] = col;
+
+    QJsonObject textDocument;
+    textDocument[QStringLiteral("uri")] = m_documentUri;
+
+    QJsonObject params;
+    params[QStringLiteral("textDocument")] = textDocument;
+    params[QStringLiteral("position")] = position;
+
+    m_signatureHelpRequestId = m_client->sendRequest(
+        QStringLiteral("textDocument/signatureHelp"), params);
+    qDebug() << "CppCompletionProvider: sent signatureHelp request id="
+             << m_signatureHelpRequestId << "at (" << line << "," << col << ")";
 }

@@ -2,6 +2,7 @@
 #include "completionmanager.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
+#include "signaturehelpmanager.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -28,6 +29,7 @@ class EscNativeFilter : public QAbstractNativeEventFilter
 {
 public:
     QPointer<CompletionPopup> popup;
+    SignatureHelpManager *sigMgr = nullptr;
 
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
     {
@@ -36,6 +38,10 @@ public:
         if (eventType == "windows_generic_MSG") {
             MSG *msg = static_cast<MSG *>(message);
             if (msg->message == WM_KEYDOWN && msg->wParam == VK_ESCAPE) {
+                if (sigMgr && sigMgr->isActive()) {
+                    sigMgr->hide();
+                    return true;
+                }
                 if (popup && popup->isActive()) {
                     popup->hide();
                     return true;
@@ -106,12 +112,14 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_completionManager = new CompletionManager(this);
     m_completionPopup = new CompletionPopup(this);
     m_hoverManager = new HoverManager(this, m_completionManager, this);
+    m_signatureHelpManager = new SignatureHelpManager(this, m_completionManager, this);
 
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
     {
         auto *nativeFilter = new EscNativeFilter();
         nativeFilter->popup = m_completionPopup;
+        nativeFilter->sigMgr = m_signatureHelpManager;
         qApp->installNativeEventFilter(nativeFilter);
     }
 
@@ -349,6 +357,23 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         default:
             // Any other key: close popup, then let normal handling proceed
             m_completionPopup->hide();
+            break;
+        }
+    }
+
+    // ---- Signature help popup key routing ----
+    if (m_signatureHelpManager && m_signatureHelpManager->isActive()) {
+        switch (event->key()) {
+        case Qt::Key_Up:
+            m_signatureHelpManager->navigatePrev();
+            return;
+        case Qt::Key_Down:
+            m_signatureHelpManager->navigateNext();
+            return;
+        case Qt::Key_Escape:
+            m_signatureHelpManager->hide();
+            return;
+        default:
             break;
         }
     }

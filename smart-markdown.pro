@@ -53,6 +53,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
+    signaturehelpmanager.cpp \
     tabmanager.cpp
 
 HEADERS += \
@@ -98,6 +99,7 @@ HEADERS += \
     tagpanel.h \
     mainwindow.h \
     settingsmanager.h \
+    signaturehelpmanager.h \
     tabmanager.h
 
 FORMS += \

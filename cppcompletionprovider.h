@@ -45,6 +45,7 @@ private:
     // Request tracking
     int m_completionRequestId = -1;
     int m_hoverRequestId = -1;
+    int m_signatureHelpRequestId = -1;
 
     // Document sync state
     QString m_documentUri;
@@ -62,6 +63,7 @@ private:
 
     QList<CompletionItem> parseCompletionResponse(const QJsonObject &result);
     HoverInfo parseHoverResponse(const QJsonObject &result);
+    SignatureInfo parseSignatureHelpItem(const QJsonObject &sig);
     static QString completionKindToString(int kind);
 };
 
