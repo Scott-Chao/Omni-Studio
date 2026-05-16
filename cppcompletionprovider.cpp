@@ -10,6 +10,9 @@
 CppCompletionProvider::CppCompletionProvider(QObject *parent)
     : CompletionProvider(parent)
 {
+    m_requestTimer.setSingleShot(true);
+    connect(&m_requestTimer, &QTimer::timeout, this, &CppCompletionProvider::onRequestTimeout);
+
     startServer();
 }
 
@@ -73,6 +76,10 @@ void CppCompletionProvider::sendInitialize()
 
 void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 {
+    // Stop timeout on any response
+    m_requestTimer.stop();
+    m_pendingRequest = PendingRequest::None;
+
     if (id == m_initRequestId) {
         Q_UNUSED(result);
         qDebug() << "CppCompletionProvider: clangd initialized successfully";
@@ -138,6 +145,8 @@ void CppCompletionProvider::onNotificationReceived(QString method, QJsonObject p
 void CppCompletionProvider::onRequestFailed(int id, QJsonObject error)
 {
     qWarning() << "CppCompletionProvider: request" << id << "failed:" << error;
+    m_requestTimer.stop();
+    m_pendingRequest = PendingRequest::None;
     if (id == m_initRequestId) {
         emit serverFailed(tr("clangd initialization failed."));
     }
@@ -284,6 +293,9 @@ void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos
     m_completionRequestId = m_client->sendRequest(QStringLiteral("textDocument/completion"), params);
     qDebug() << "CppCompletionProvider: sent completion request id=" << m_completionRequestId
              << "at (" << line << "," << col << ")";
+
+    m_pendingRequest = PendingRequest::Completion;
+    m_requestTimer.start(500);
 }
 
 QString CppCompletionProvider::completionKindToString(int kind)
@@ -401,6 +413,9 @@ void CppCompletionProvider::requestHover(const QString &text, int cursorPos)
     m_hoverRequestId = m_client->sendRequest(QStringLiteral("textDocument/hover"), params);
     qDebug() << "CppCompletionProvider: sent hover request id=" << m_hoverRequestId
              << "at (" << line << "," << col << ")";
+
+    m_pendingRequest = PendingRequest::Hover;
+    m_requestTimer.start(500);
 }
 
 HoverInfo CppCompletionProvider::parseHoverResponse(const QJsonObject &result)
@@ -522,4 +537,35 @@ void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursor
         QStringLiteral("textDocument/signatureHelp"), params);
     qDebug() << "CppCompletionProvider: sent signatureHelp request id="
              << m_signatureHelpRequestId << "at (" << line << "," << col << ")";
+
+    m_pendingRequest = PendingRequest::SignatureHelp;
+    m_requestTimer.start(500);
+}
+
+// ---- Request timeout ----
+
+void CppCompletionProvider::onRequestTimeout()
+{
+    qWarning() << "CppCompletionProvider: request timed out after 500ms";
+    m_requestTimer.stop();
+
+    PendingRequest timedOut = m_pendingRequest;
+    m_pendingRequest = PendingRequest::None;
+
+    switch (timedOut) {
+    case PendingRequest::Completion:
+        m_completionRequestId = -1;
+        emit completionReady({});
+        break;
+    case PendingRequest::Hover:
+        m_hoverRequestId = -1;
+        emit hoverReady({});
+        break;
+    case PendingRequest::SignatureHelp:
+        m_signatureHelpRequestId = -1;
+        emit signatureHelpReady({}, 0);
+        break;
+    default:
+        break;
+    }
 }

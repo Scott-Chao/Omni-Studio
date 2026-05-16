@@ -5,6 +5,7 @@
 #include <QString>
 #include <QProcess>
 #include <QJsonObject>
+#include <QTimer>
 
 class LspClient;
 
@@ -36,6 +37,7 @@ private slots:
     void onRequestFailed(int id, QJsonObject error);
     void onServerError(QProcess::ProcessError err);
     void onServerStopped(int exitCode, QProcess::ExitStatus status);
+    void onRequestTimeout();
 
 private:
     LspClient *m_client = nullptr;
@@ -46,6 +48,11 @@ private:
     int m_completionRequestId = -1;
     int m_hoverRequestId = -1;
     int m_signatureHelpRequestId = -1;
+
+    // Request timeout
+    QTimer m_requestTimer;
+    enum class PendingRequest { None, Completion, Hover, SignatureHelp };
+    PendingRequest m_pendingRequest = PendingRequest::None;
 
     // Document sync state
     QString m_documentUri;

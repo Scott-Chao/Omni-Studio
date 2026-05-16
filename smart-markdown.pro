@@ -28,6 +28,7 @@ SOURCES += \
     editorwidget.cpp \
     flowlayout.cpp \
     hovermanager.cpp \
+    keywordcompletionprovider.cpp \
     languageutils.cpp \
     lspclient.cpp \
     wikilinktextedit.cpp \
@@ -73,6 +74,7 @@ HEADERS += \
     editorwidget.h \
     flowlayout.h \
     hovermanager.h \
+    keywordcompletionprovider.h \
     languageutils.h \
     lspclient.h \
     wikilinktextedit.h \

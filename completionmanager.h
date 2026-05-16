@@ -36,6 +36,9 @@ signals:
     void serverReady();
     void serverFailed(const QString &reason);
 
+private slots:
+    void onServerFailed(const QString &reason);
+
 private:
     void createProvider();
 

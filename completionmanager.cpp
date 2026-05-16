@@ -1,6 +1,7 @@
 #include "completionmanager.h"
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
+#include "keywordcompletionprovider.h"
 
 CompletionManager::CompletionManager(QObject *parent)
     : QObject(parent)
@@ -45,7 +46,7 @@ void CompletionManager::createProvider()
         connect(cppProvider, &CppCompletionProvider::serverReady,
                 this, &CompletionManager::serverReady);
         connect(cppProvider, &CppCompletionProvider::serverFailed,
-                this, &CompletionManager::serverFailed);
+                this, &CompletionManager::onServerFailed);
     } else if (m_languageId == QStringLiteral("python")) {
         auto *pyProvider = new PythonCompletionProvider(this);
         m_provider = pyProvider;
@@ -60,7 +61,7 @@ void CompletionManager::createProvider()
         connect(pyProvider, &PythonCompletionProvider::serverReady,
                 this, &CompletionManager::serverReady);
         connect(pyProvider, &PythonCompletionProvider::serverFailed,
-                this, &CompletionManager::serverFailed);
+                this, &CompletionManager::onServerFailed);
     }
 }
 
@@ -92,4 +93,31 @@ void CompletionManager::requestSignatureHelp(const QString &text, int cursorPos)
 {
     if (m_provider)
         m_provider->requestSignatureHelp(text, cursorPos);
+}
+
+void CompletionManager::onServerFailed(const QString &reason)
+{
+    qWarning() << "CompletionManager: server failed:" << reason
+               << "— falling back to keyword completion";
+
+    // Forward to editor so it can show a status bar message or similar
+    emit serverFailed(reason);
+
+    // Swap to keyword fallback provider
+    if (m_provider) {
+        m_provider->deleteLater();
+        m_provider = nullptr;
+    }
+
+    auto *kwProvider = new KeywordCompletionProvider(m_languageId, this);
+    m_provider = kwProvider;
+
+    connect(m_provider, &CompletionProvider::completionReady,
+            this, &CompletionManager::completionReady);
+    connect(m_provider, &CompletionProvider::hoverReady,
+            this, &CompletionManager::hoverReady);
+    connect(m_provider, &CompletionProvider::signatureHelpReady,
+            this, &CompletionManager::signatureHelpReady);
+
+    qDebug() << "CompletionManager: fallback provider installed for" << m_languageId;
 }
