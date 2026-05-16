@@ -3,6 +3,9 @@
 #include "smdformat.h"
 #include "smdoutputwidget.h"
 #include "processrunner.h"
+#include "smdlspmanager.h"
+#include "codeeditor.h"
+#include "debuglog.h"
 #include "compilerutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -293,6 +296,13 @@ void SmdEditor::setPlainText(const QString &text)
     }
     m_autoRenderQueue.clear();
 
+    // Shut down old LSP manager
+    if (m_lspManager) {
+        m_lspManager->shutdown();
+        m_lspManager->deleteLater();
+        m_lspManager = nullptr;
+    }
+
     // Clear existing cells and output widgets
     for (SmdOutputWidget *w : m_outputWidgets) {
         m_cellLayout->removeWidget(w);
@@ -346,6 +356,29 @@ void SmdEditor::setPlainText(const QString &text)
     // Start auto-render if there are cells to render
     if (!m_autoRenderQueue.isEmpty())
         startAutoRender();
+
+    // Initialize LSP manager for code cells
+    m_lspManager = new SmdLspManager(this);
+    if (!m_filePath.isEmpty())
+        m_lspManager->initialize(m_filePath);
+
+    for (int i = 0; i < m_cells.size(); ++i) {
+        SmdCell *cell = m_cells[i];
+        QString langId = SmdCell::langIdFromType(cell->cellType());
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
+            m_lspManager->cellAdded(i, langId, cell->content());
+    }
+
+    connect(m_lspManager, &SmdLspManager::diagnosticsUpdated, this,
+            [this](int cellIndex, QList<SmdDiagnostic> diags) {
+                if (cellIndex >= 0 && cellIndex < m_cells.size()) {
+                    m_cells[cellIndex]->setDiagnostics(diags);
+                    if (auto *codeEditor = qobject_cast<CodeEditor*>(
+                            m_cells[cellIndex]->editorWidget())) {
+                        codeEditor->setDiagnostics(diags);
+                    }
+                }
+            });
 }
 
 bool SmdEditor::isModified() const
@@ -383,6 +416,8 @@ void SmdEditor::reloadColors()
 
 SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &content)
 {
+    debugLog(QStringLiteral("SmdEditor::addCell — idx=%1 type=%2 contentLen=%3")
+        .arg(index).arg(type).arg(content.length()));
     SmdCell *cell = new SmdCell(type, content, m_cellContainer);
     connectCellSignals(cell, index);
 
@@ -407,6 +442,21 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
     if (m_activeCellIndex >= layoutIdx)
         ++m_activeCellIndex;
 
+    // Notify LSP manager
+    if (m_lspManager) {
+        QString langId = SmdCell::langIdFromType(type);
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
+            m_lspManager->cellAdded(layoutIdx, langId, content);
+        // Wire shared provider to code cell
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python")) {
+            if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
+                auto *provider = m_lspManager->providerForCell(layoutIdx, langId);
+                if (provider)
+                    codeEditor->setCompletionProvider(provider);
+            }
+        }
+    }
+
     return cell;
 }
 
@@ -414,6 +464,14 @@ void SmdEditor::removeCell(int index)
 {
     if (index < 0 || index >= m_cells.size() || m_cells.size() <= 1)
         return;
+    if (m_executingCell) return; // Block during execution
+
+    // Notify LSP manager before removal
+    if (m_lspManager) {
+        QString langId = SmdCell::langIdFromType(m_cells[index]->cellType());
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
+            m_lspManager->cellRemoved(index, langId);
+    }
 
     SmdCell *cell = m_cells[index];
     SmdOutputWidget *output = m_outputWidgets[index];
@@ -442,6 +500,7 @@ void SmdEditor::removeCell(int index)
 
 void SmdEditor::insertCellAbove()
 {
+    if (m_executingCell) return; // Block during execution
     int idx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
@@ -451,6 +510,7 @@ void SmdEditor::insertCellAbove()
 
 void SmdEditor::insertCellBelow()
 {
+    if (m_executingCell) return; // Block during execution
     int idx = m_activeCellIndex >= 0 ? m_activeCellIndex + 1 : m_cells.size();
     int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
@@ -516,16 +576,20 @@ QList<SmdFormat::Cell> SmdEditor::exportCells() const
 
 void SmdEditor::enterCommandMode()
 {
+    debugLog(QStringLiteral("enterCommandMode — activeCell=%1, cellCount=%2")
+        .arg(m_activeCellIndex).arg(m_cells.size()));
     m_commandMode = true;
     for (int i = 0; i < m_cells.size(); ++i) {
         m_cells[i]->setCommandMode(true);
         m_cells[i]->setActive(i == m_activeCellIndex);
     }
     setFocus();
+    debugLog(QStringLiteral("enterCommandMode — done"));
 }
 
 void SmdEditor::enterEditMode()
 {
+    debugLog(QStringLiteral("enterEditMode — activeCell=%1").arg(m_activeCellIndex));
     m_commandMode = false;
     if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size())
         return;
@@ -535,6 +599,7 @@ void SmdEditor::enterEditMode()
         c->setActive(false);
     }
     m_cells[m_activeCellIndex]->setEditorFocus();
+    debugLog(QStringLiteral("enterEditMode — done"));
 }
 
 // ---- Language Selector ----
@@ -543,6 +608,8 @@ void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int original
 {
     if (cellIndex < 0 || cellIndex >= m_cells.size())
         return;
+    debugLog(QStringLiteral("showLanguageSelector — cell=%1 isNew=%2 orig=%3")
+        .arg(cellIndex).arg(isNewCell).arg(originalCellIndex));
 
     std::function<void()> onCancelled;
     if (isNewCell) {
@@ -597,10 +664,44 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
         ri->installEventFilter(this);
 
     // Re-install event filter when cell type changes (editor is recreated)
-    connect(cell, &SmdCell::cellTypeChanged, this, [this, cell]() {
+    connect(cell, &SmdCell::cellTypeChanged, this, [this, cell, index]() {
         if (QWidget *ed = cell->editorWidget())
             ed->installEventFilter(this);
+        // Notify LSP manager of type change
+        if (m_lspManager) {
+            QString newLangId = SmdCell::langIdFromType(cell->cellType());
+            m_lspManager->cellTypeChanged(index, QString(), newLangId, cell->content());
+            // Wire shared provider to new CodeEditor
+            if (newLangId == QStringLiteral("cpp") || newLangId == QStringLiteral("python")) {
+                if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
+                    auto *provider = m_lspManager->providerForCell(index, newLangId);
+                    if (provider)
+                        codeEditor->setCompletionProvider(provider);
+                }
+            }
+        }
     });
+
+    // Notify LSP of content changes
+    connect(cell, &SmdCell::contentChanged, this, [this, cell, index]() {
+        if (m_lspManager) {
+            QString langId = SmdCell::langIdFromType(cell->cellType());
+            if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
+                m_lspManager->cellContentChanged(index, langId, cell->content());
+        }
+    });
+
+    // Wire shared LSP provider to code cells
+    if (m_lspManager) {
+        QString langId = SmdCell::langIdFromType(cell->cellType());
+        if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python")) {
+            if (auto *codeEditor = qobject_cast<CodeEditor*>(cell->editorWidget())) {
+                auto *provider = m_lspManager->providerForCell(index, langId);
+                if (provider)
+                    codeEditor->setCompletionProvider(provider);
+            }
+        }
+    }
 
     // Auto-scroll to keep cursor visible when cell height grows (e.g., Enter)
     connect(cell, &SmdCell::contentChanged, this, [this, cell]() {
@@ -710,12 +811,15 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     file.write(code.toUtf8());
     file.close();
 
-    m_executingCellIndex = m_cells.indexOf(cell);
+    m_executingCell = cell;
     m_executingTempFile = tempPath;
 
     // Clear previous output
-    m_outputWidgets[m_executingCellIndex]->clearOutput();
-    m_outputWidgets[m_executingCellIndex]->setVisible(true);
+    int execIdx = m_cells.indexOf(cell);
+    if (execIdx >= 0 && execIdx < m_outputWidgets.size()) {
+        m_outputWidgets[execIdx]->clearOutput();
+        m_outputWidgets[execIdx]->setVisible(true);
+    }
 
     // Connect output
     m_execOutputConn = connect(m_processRunner, &ProcessRunner::outputReceived,
@@ -751,8 +855,10 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 
 void SmdEditor::onProcessOutput(const QString &text, bool isStderr)
 {
-    if (m_executingCellIndex >= 0 && m_executingCellIndex < m_outputWidgets.size()) {
-        m_outputWidgets[m_executingCellIndex]->appendText(text, isStderr);
+    if (!m_executingCell) return;
+    int idx = m_cells.indexOf(m_executingCell);
+    if (idx >= 0 && idx < m_outputWidgets.size()) {
+        m_outputWidgets[idx]->appendText(text, isStderr);
     }
 }
 
@@ -760,7 +866,8 @@ void SmdEditor::onProcessFinished(int exitCode)
 {
     Q_UNUSED(exitCode);
 
-    int finishedIdx = m_executingCellIndex;
+    if (!m_executingCell) return;
+    int finishedIdx = m_cells.indexOf(m_executingCell);
 
     // Clean up temp files
     QFile::remove(m_executingTempFile);
@@ -769,7 +876,7 @@ void SmdEditor::onProcessFinished(int exitCode)
                       + QStringLiteral(".exe");
     QFile::remove(exePath);
     m_executingTempFile.clear();
-    m_executingCellIndex = -1;
+    m_executingCell = nullptr;
 
     // Scroll output to top so user sees the beginning (Req 1)
     if (finishedIdx >= 0 && finishedIdx < m_outputWidgets.size())
@@ -798,7 +905,8 @@ void SmdEditor::jumpToNextCell()
 
 void SmdEditor::handleProcessStop()
 {
-    int stoppedIdx = m_executingCellIndex;
+    if (!m_executingCell) return;
+    int stoppedIdx = m_cells.indexOf(m_executingCell);
 
     // Clean up temp files
     if (!m_executingTempFile.isEmpty()) {
@@ -821,7 +929,7 @@ void SmdEditor::handleProcessStop()
     disconnect(m_execRunConn);
 
     m_executingTempFile.clear();
-    m_executingCellIndex = -1;
+    m_executingCell = nullptr;
     m_userTerminated = false;
 
     emit contentChanged();
@@ -938,8 +1046,11 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         if (key->key() == Qt::Key_Escape && !QApplication::activePopupWidget()) {
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
-            else
+            else {
+                debugLog(QStringLiteral("eventFilter Esc — entering command mode, type=%1")
+                    .arg(event->type()));
                 enterCommandMode();
+            }
             return true;
         }
 
@@ -947,15 +1058,18 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         if (key->key() == Qt::Key_K && (key->modifiers() & Qt::ControlModifier)) {
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
-            else if (m_activeCellIndex >= 0)
+            else if (m_activeCellIndex >= 0) {
+                debugLog(QStringLiteral("eventFilter Ctrl+K — showLanguageSelector cell=%1")
+                    .arg(m_activeCellIndex));
                 showLanguageSelector(m_activeCellIndex);
+            }
             return true;
         }
 
         // Ctrl+C: terminate cell execution (Req 6)
         if ((key->key() == Qt::Key_C)
             && (key->modifiers() & Qt::ControlModifier)
-            && m_executingCellIndex >= 0) {
+            && m_executingCell) {
             if (event->type() == QEvent::ShortcutOverride) {
                 event->accept();
             } else {

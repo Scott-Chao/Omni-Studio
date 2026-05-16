@@ -17,6 +17,8 @@ public:
     void requestHover(const QString &text, int cursorPos) override;
     void requestSignatureHelp(const QString &text, int cursorPos) override;
 
+    void shutdown();
+
     // Jedi reads full code per request — no incremental sync needed
     void openDocument(const QString &uri, const QString &languageId, const QString &text) override;
     void updateText(const QString &text) override;

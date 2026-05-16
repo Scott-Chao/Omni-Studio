@@ -3,8 +3,10 @@
 
 #include <QPlainTextEdit>
 #include <QTextEdit>
+#include <QList>
 
 #include "completionprovider.h"
+#include "smdlspmanager.h"
 
 class QSyntaxHighlighter;
 class CompletionProvider;
@@ -21,9 +23,15 @@ public:
     explicit CodeEditor(QWidget *parent = nullptr);
 
     void setLanguage(const QString &langId);
+    void setLanguageSyntaxOnly(const QString &langId);
     QString languageId() const { return m_languageId; }
 
     CompletionProvider *completionProvider() const { return m_completionProvider; }
+
+    void setCompletionProvider(CompletionProvider *provider);
+
+    void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
+    void clearDiagnostics();
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }
@@ -57,7 +65,10 @@ private:
     void createCompletionProvider(const QString &langId);
 
     QSyntaxHighlighter *m_highlighter = nullptr;
+    void updateExtraSelectionsWithDiagnostics();
+
     CompletionProvider *m_completionProvider = nullptr;
+    bool m_ownsProvider = true;
     CompletionPopup *m_completionPopup = nullptr;
     HoverManager *m_hoverManager = nullptr;
     SignatureHelpManager *m_signatureHelpManager = nullptr;
@@ -68,6 +79,7 @@ private:
     QColor m_cachedLnFg;
     QColor m_cachedCurrentLine;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
+    QList<SmdDiagnostic> m_diagnostics;
 
     void handleAutoIndent();
     bool handleBracketCompletion(QKeyEvent *event);

@@ -2,6 +2,8 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
+#include "smdlspmanager.h"
+#include "debuglog.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -191,6 +193,22 @@ void CodeEditor::setLanguage(const QString &langId)
         m_completionProvider->openDocument(editorUri(), langId, toPlainText());
 }
 
+void CodeEditor::setLanguageSyntaxOnly(const QString &langId)
+{
+    if (m_highlighter) {
+        delete m_highlighter;
+        m_highlighter = nullptr;
+    }
+    m_languageId = langId;
+    m_highlighter = LanguageUtils::createHighlighter(langId, document());
+
+    // Connect text sync for when a shared provider is set later
+    disconnect(document(), &QTextDocument::contentsChanged,
+               this, &CodeEditor::onEditorTextChanged);
+    connect(document(), &QTextDocument::contentsChanged,
+            this, &CodeEditor::onEditorTextChanged);
+}
+
 void CodeEditor::onServerReady()
 {
     // Server just became ready (initial start or restart).
@@ -257,18 +275,54 @@ void CodeEditor::createCompletionProvider(const QString &langId)
     m_signatureHelpManager->setProvider(m_completionProvider);
 }
 
+void CodeEditor::setCompletionProvider(CompletionProvider *provider)
+{
+    debugLog(QStringLiteral("CodeEditor::setCompletionProvider — old=%1 owns=%2 new=%3")
+        .arg(m_completionProvider != nullptr).arg(m_ownsProvider).arg(provider != nullptr));
+    if (m_completionProvider) {
+        disconnect(m_completionProvider, nullptr, this, nullptr);
+        disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);
+        disconnect(m_completionProvider, nullptr, m_signatureHelpManager, nullptr);
+        if (m_ownsProvider) {
+            // Shut down LSP before deleting to prevent use-after-free
+            if (auto *cpp = qobject_cast<CppCompletionProvider*>(m_completionProvider))
+                cpp->shutdown();
+            else if (auto *py = qobject_cast<PythonCompletionProvider*>(m_completionProvider))
+                py->shutdown();
+            m_completionProvider->deleteLater();
+        }
+        m_completionProvider = nullptr;
+    }
+
+    m_completionProvider = provider;
+    m_ownsProvider = false;
+
+    if (provider) {
+        connect(provider, &CompletionProvider::completionReady,
+                this, &CodeEditor::onCompletionsReady);
+        m_hoverManager->setProvider(provider);
+        m_signatureHelpManager->setProvider(provider);
+    }
+}
+
 void CodeEditor::onProviderFailed(const QString &reason)
 {
     qWarning() << "CodeEditor: provider failed:" << reason
                << "— falling back to keyword completion";
 
     if (m_completionProvider) {
-        m_completionProvider->deleteLater();
+        disconnect(m_completionProvider, nullptr, this, nullptr);
+        disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);
+        disconnect(m_completionProvider, nullptr, m_signatureHelpManager, nullptr);
+        if (m_ownsProvider) {
+            m_completionProvider->deleteLater();
+        }
         m_completionProvider = nullptr;
     }
 
     auto *kw = new KeywordCompletionProvider(m_languageId, this);
     m_completionProvider = kw;
+    m_ownsProvider = true;
 
     connect(m_completionProvider, &CompletionProvider::completionReady,
             this, &CodeEditor::onCompletionsReady);
@@ -372,6 +426,11 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 
 void CodeEditor::highlightCurrentLine()
 {
+    updateExtraSelectionsWithDiagnostics();
+}
+
+void CodeEditor::updateExtraSelectionsWithDiagnostics()
+{
     QList<QTextEdit::ExtraSelection> extraSelections = m_searchHighlights;
 
     if (!isReadOnly()) {
@@ -383,7 +442,44 @@ void CodeEditor::highlightCurrentLine()
         extraSelections.append(selection);
     }
 
+    // Add diagnostic squigglies
+    for (const auto &diag : m_diagnostics) {
+        QTextEdit::ExtraSelection sel;
+        QTextCharFormat fmt;
+        fmt.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        fmt.setUnderlineColor(diag.severity == 1 ? QColor(QStringLiteral("#F44747"))
+                                                  : QColor(QStringLiteral("#CCA700")));
+        fmt.setToolTip(diag.message);
+        sel.format = fmt;
+
+        QTextBlock startBlock = document()->findBlockByLineNumber(diag.startLine);
+        QTextBlock endBlock = document()->findBlockByLineNumber(diag.endLine);
+        if (!startBlock.isValid()) continue;
+        int startPos = startBlock.position() + diag.startCol;
+        int endPos;
+        if (endBlock.isValid())
+            endPos = endBlock.position() + diag.endCol;
+        else
+            endPos = startPos;
+        sel.cursor = QTextCursor(document());
+        sel.cursor.setPosition(startPos);
+        sel.cursor.setPosition(endPos, QTextCursor::KeepAnchor);
+        extraSelections.append(sel);
+    }
+
     setExtraSelections(extraSelections);
+}
+
+void CodeEditor::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
+{
+    m_diagnostics = diagnostics;
+    highlightCurrentLine();
+}
+
+void CodeEditor::clearDiagnostics()
+{
+    m_diagnostics.clear();
+    highlightCurrentLine();
 }
 
 // ---- Key handling ----

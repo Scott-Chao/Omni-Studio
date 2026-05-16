@@ -6,12 +6,14 @@
 #include <QVBoxLayout>
 #include <QList>
 #include <QTimer>
+#include <QPointer>
 
 #include "smdcell.h"
 #include "smdformat.h"
 
 class ProcessRunner;
 class SmdOutputWidget;
+class SmdLspManager;
 
 class SmdEditor : public QWidget
 {
@@ -105,7 +107,7 @@ private:
     void onProcessFinished(int exitCode);
 
     ProcessRunner *m_processRunner;
-    int m_executingCellIndex = -1;
+    QPointer<SmdCell> m_executingCell;
     int m_pendingRenderJumpIndex = -1;
     bool m_userTerminated = false;
     QString m_executingTempFile;
@@ -116,6 +118,8 @@ private:
 
     QString m_filePath;
     QString m_originalContent;
+
+    SmdLspManager *m_lspManager = nullptr;
 };
 
 #endif // SMDEDITOR_H

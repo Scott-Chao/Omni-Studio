@@ -17,7 +17,8 @@
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
-- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
+- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示** 和 **函数签名帮助**。
+- **SMD LSP 代码智能**：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
@@ -36,10 +37,7 @@
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
-- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
-
-# 修复 v0.8.4
-- **修复：MD 文件中仅有 fenced code block 时转换为 SMD 产生多余空 markdown 块**：`SmdFormat::fromMarkdownWithMapping()` 的 `flushCell()` 无条件追加 cell，导致当 MD 内容仅为 ` ```cpp\n``` ` 时，在代码块前后各产生一个空的 markdown cell（共 3 个块）。修复方案：为 `flushCell()` 添加与 `fromMarkdown()` 一致的守卫条件 — 仅当 `cell.content` 非空或 `currentContent` 非空时才追加 cell，避免无内容的空 markdown cell 被创建。
+- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -551,12 +549,25 @@
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
 **主要接口**：
-- `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器。
+- `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器，创建独立的 LSP CompletionProvider（仅独立代码文件使用）。
+- `void setLanguageSyntaxOnly(const QString &langId)`：仅安装语法高亮器和文本同步信号，**不创建私有 LSP provider**。供 SMD cell 中的 CodeEditor 使用（LSP 由 SmdLspManager 共享管理）。
 - `QString languageId() const`：返回当前语言 ID。
+- `CompletionProvider *completionProvider() const`：返回当前补全提供者。
+- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
+- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。
 - `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
 - `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
+
+**LSP 补全集成**：
+- 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。
+- SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
+- 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
+
+**诊断波浪线渲染**：
+- `updateExtraSelectionsWithDiagnostics()`：将 `m_diagnostics` 列表转换为 `QTextEdit::ExtraSelection`（错误红色 `#F44747` / 警告黄色 `#CCA700` 波浪下划线，tooltip 显示诊断信息），与当前行高亮、搜索高亮合并后通过 `setExtraSelections()` 统一应用。
+- 由 `highlightCurrentLine()` 和 `setDiagnostics()` 触发刷新。
 
 **内部类 `LineNumberArea`**：
 - 继承 `QWidget`，作为 `CodeEditor` 的子控件。
@@ -969,8 +980,14 @@
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
+- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
 
 **信号**：同上。
+
+**生命周期安全**：
+- `setCellType()` 切换类型时，先调用旧 `CodeEditor` 的 `CompletionProvider::shutdown()`（断开 LSP 信号、停止进程）再 `deleteLater()`，防止 pending LSP 异步回调访问已释放对象。
+- 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
+- `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
 
 **事件处理**：
 - 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` / `MouseButtonPress` 事件发射 `focusEntered()` 信号。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
@@ -1045,6 +1062,19 @@
 
 **修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
 
+**LSP 集成（SmdLspManager）**：
+- `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册。
+- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。
+- `cell->contentChanged` 信号连接至 `m_lspManager->cellContentChanged()`，触发虚拟文档重建和 `textDocument/didChange` 通知。
+- `cell->cellTypeChanged` 信号连接至 `m_lspManager->cellTypeChanged()`，通知 LSP 管理单元类型变更（移除旧语言 cell + 添加新语言 cell）。
+- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。
+- `m_lspManager->diagnosticsUpdated` 信号连接至 cell 的 `SmdCell::setDiagnostics()` 和 `CodeEditor::setDiagnostics()`，更新头部标签计数和编辑器波浪线。
+- 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
+
+**执行安全**：
+- 执行期间（`m_executingCell` 非空），`removeCell()` / `insertCellAbove()` / `insertCellBelow()` 直接返回，阻止 cell 增删操作。
+- `m_executingCell` 使用 `QPointer<SmdCell>`，cell 被删除后自动置 null，`onProcessOutput/Finished/Stop` 中先检查再通过 `m_cells.indexOf()` 定位索引。
+
 **主要接口**：
 - `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：序列化/反序列化所有单元格内容。
@@ -1108,6 +1138,78 @@
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，与 `SmdCell` 通过 `m_outputWidgets` 列表一一对应。
 - 内容通过 `SmdEditor::toPlainText()` 序列化（base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。
+
+
+### 29. `SmdLspManager` — SMD 共享 LSP 管理器
+
+**文件**：`smdlspmanager.h` / `smdlspmanager.cpp`
+
+**职责**：
+- 继承 `QObject`，为 SMD 文件每种编程语言管理一个共享 LSP 后端。每个 SMD 文件仅启动 1 个 clangd（C++）+ 1 个 Jedi（Python），而非每 cell 一个。
+- 通过 **虚拟文档** 技术将同语言所有 cell 拼接为一个有效源文件，实现跨 cell 类型解析。
+- 管理 cell 本地位置 ↔ 虚拟文档位置的 **行号映射**。
+- 处理 `textDocument/publishDiagnostics` 通知，将诊断信息分发到各 cell。
+- 为每个 cell 创建 `CellCompletionAdapter`，实现 `CompletionProvider` 接口，供 CodeEditor 作为共享 Provider 使用。
+
+**虚拟文档策略**：
+- 同语言所有 cell 按 cellOrder 顺序拼接，每个 cell 内容前插入一行注释分隔符（C++ 用 `// --- smd:cell:N ---`，Python 用 `# --- smd:cell:N ---`）。
+- clangd/Jedi 将整个虚拟文档视为一个翻译单元，cell 0 定义的类型在 cell 1 中可解析。
+- clangd 使用全量文本同步（`textDocument/didChange` 始终发送完整虚拟文档）。
+
+**行号映射**：
+- `LanguageServer::cellRanges[cellIndex] = {firstVirtualLine, localLineCount}`：记录每个 cell 在虚拟文档中的起始行和本地行数。
+- 补充请求时：cell 本地 (line, col) → 虚拟 (firstVirtualLine + line, col)。
+- 诊断反向映射：虚拟 line → 二分查找所在 cell → 本地 line = virtualLine - firstVirtualLine。
+
+**核心数据结构**：
+- `SmdDiagnostic`：诊断信息（cellIndex、startLine/Col、endLine/Col、message、severity 1-4）。
+- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、请求 ID 跟踪）。
+
+**内部类 `CellCompletionAdapter`**：
+- 继承 `CompletionProvider`，持有 `SmdLspManager*` + `cellIndex`。
+- `requestCompletion/Hover/SignatureHelp(text, cursorPos)` 将绝对 cursorPos 转换为 cell 本地 (line, col)，委托给 `SmdLspManager::requestCompletion/Hover/SignatureHelp(cellIndex, line, col)`。
+- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
+
+**C++ LSP 后端**（clangd）：
+- `startCppServer()`：查找 clangd → 创建 `LspClient` → 连接信号 → `--fallback-style=Google` 参数启动。
+- `sendInitialize()`：发送 `initialize` 请求（JSON-RPC）。
+- 初始化完成后发送 `textDocument/didOpen` 通知（完整虚拟文档），之后每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`。
+- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp 响应。
+- `onCppNotificationReceived()`：处理 `textDocument/publishDiagnostics` → `processDiagnostics()` 翻译行号 → `diagnosticsUpdated` 信号。
+- 崩溃自动重启（1s 延迟的 `QTimer::singleShot`）。
+
+**Python LSP 后端**（Jedi）：
+- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。
+- 每次请求将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。
+- 响应通过 `onPyReadyRead()` 逐行解析 JSON，分发到 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`。
+
+**主要接口**：
+- `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
+- `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。
+- `void requestCompletion/Hover/SignatureHelp(int cellIndex, int cursorLine, int cursorCol)`：公共请求 API，cell 本地位置 → 虚拟位置 → LSP 请求。
+- `CompletionProvider *providerForCell(int cellIndex, const QString &langId)`：返回 cell 对应的 CellCompletionAdapter。
+- `QList<SmdDiagnostic> diagnosticsForCell(int cellIndex) const`：获取 cell 的诊断列表。
+- `void shutdown()`：安全关闭（设置 `m_shuttingDown` 标志、断开信号、停止 LSP 进程、删除 adapter）。
+
+**信号**：
+- `diagnosticsUpdated(int cellIndex, QList<SmdDiagnostic>)`：诊断更新，由 SmdEditor 连接至 cell 的 CodeEditor 和 SmdCell。
+- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
+- `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
+
+**协作关系**：
+- 由 `SmdEditor` 创建、持有和管理（`m_lspManager`）。
+- `SmdEditor::connectCellSignals()` 调用 `providerForCell()` 获取 adapter 并注入 CodeEditor。
+- 引用 `LspClient`（C++ 端）和 `QProcess`（Python 端）管理 LSP 进程。
+
+
+### 30. `debuglog.h` — 文件调试日志
+
+**文件**：`debuglog.h`
+
+**职责**：
+- header-only 工具，提供 `debugLog(const QString &msg)` 内联函数。
+- 将带时间戳、线程 ID 和消息内容的日志追加写入 `release/smd_debug.log`。
+- 用于诊断 SMD LSP 相关卡顿/闪退问题（`SmdEditor::enterCommandMode/EditMode`、`SmdCell::setCellType/Active`、`SmdLspManager` 生命周期等关键路径已埋点）。
 
 
 ### 配置存储说明

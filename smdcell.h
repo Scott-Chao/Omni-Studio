@@ -10,9 +10,11 @@
 #include <QHBoxLayout>
 #include <QTimer>
 #include <QList>
+#include <QPointer>
 
 class CodeEditor;
 class RenderPixmapWidget;
+#include "smdlspmanager.h"
 
 class SmdCell : public QFrame
 {
@@ -52,6 +54,7 @@ public:
     void applyZoom(qreal factor, int baseFontSize);
     void checkReRender();
     void updateEditorHeight();
+    void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
 
     static CellType typeFromLangId(const QString &langId);
     static QString langIdFromType(CellType type);
@@ -113,6 +116,7 @@ private:
     qreal m_zoomFactor = 1.0;
 
     QString m_languageId;
+    QList<SmdDiagnostic> m_diagnostics;
 };
 
 #endif // SMDCELL_H

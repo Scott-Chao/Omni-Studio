@@ -1,6 +1,9 @@
 #include "smdcell.h"
 #include "codeeditor.h"
+#include "cppcompletionprovider.h"
+#include "pythoncompletionprovider.h"
 #include "languageutils.h"
+#include "debuglog.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include <QTimer>
@@ -239,7 +242,7 @@ void SmdCell::setupMarkdownEditor()
 void SmdCell::setupCodeEditor(const QString &langId)
 {
     m_codeEditor = new CodeEditor(this);
-    m_codeEditor->setLanguage(langId);
+    m_codeEditor->setLanguageSyntaxOnly(langId);
     m_codeEditor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_codeEditor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_codeEditor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -257,6 +260,7 @@ void SmdCell::setupCodeEditor(const QString &langId)
 
 void SmdCell::setCellType(CellType type)
 {
+    debugLog(QStringLiteral("SmdCell::setCellType — from=%1 to=%2").arg(m_type).arg(type));
     if (m_type == type)
         return;
 
@@ -264,6 +268,8 @@ void SmdCell::setCellType(CellType type)
     m_type = type;
     m_languageId = langIdFromType(type);
     m_rendered = false;
+    m_diagnostics.clear();
+    debugLog(QStringLiteral("SmdCell::setCellType — removing old editor"));
 
     // Remove old editor from stack
     if (m_markdownEditor) {
@@ -273,6 +279,14 @@ void SmdCell::setCellType(CellType type)
     }
     if (m_codeEditor) {
         m_editorStack->removeWidget(m_codeEditor);
+        // Shut down LSP provider before deleteLater to prevent
+        // pending async callbacks from firing on freed objects.
+        if (auto *cp = m_codeEditor->completionProvider()) {
+            if (auto *cpp = qobject_cast<CppCompletionProvider*>(cp))
+                cpp->shutdown();
+            else if (auto *py = qobject_cast<PythonCompletionProvider*>(cp))
+                py->shutdown();
+        }
         m_codeEditor->deleteLater();
         m_codeEditor = nullptr;
     }
@@ -290,7 +304,9 @@ void SmdCell::setCellType(CellType type)
 
     updateTypeLabel();
     updateBorderStyle();
+    debugLog(QStringLiteral("SmdCell::setCellType — emitting cellTypeChanged"));
     emit cellTypeChanged();
+    debugLog(QStringLiteral("SmdCell::setCellType — done"));
 }
 
 QString SmdCell::content() const
@@ -339,6 +355,8 @@ void SmdCell::setCommandMode(bool cmd)
 
 void SmdCell::setActive(bool active)
 {
+    debugLog(QStringLiteral("SmdCell::setActive — active=%1, type=%2, codeEditor=%3")
+        .arg(active).arg(m_type).arg(m_codeEditor != nullptr));
     m_active = active;
     updateBorderStyle();
     if (m_codeEditor) {
@@ -347,6 +365,7 @@ void SmdCell::setActive(bool active)
         else
             m_codeEditor->clearCurrentLineHighlight();
     }
+    debugLog(QStringLiteral("SmdCell::setActive — done"));
 }
 
 void SmdCell::ensureRenderView()
@@ -551,8 +570,8 @@ void SmdCell::onRenderLoadFinished(bool ok)
         int lineCount = content().count(QLatin1Char('\n')) + 1;
         applyRenderHeight(qMax(60, lineCount * 22 + 32));
         // Force grab on load failure — show what we have after a short delay
-        QTimer::singleShot(400, this, [this]() {
-            if (m_rendered) performGrab();
+        QTimer::singleShot(400, this, [guard = QPointer<SmdCell>(this)]() {
+            if (guard && guard->m_rendered) guard->performGrab();
         });
         return;
     }
@@ -565,9 +584,10 @@ void SmdCell::onRenderLoadFinished(bool ok)
         "  if(!h){var el=document.getElementById('preview');if(el)h=el.offsetHeight||el.scrollHeight;}"
         "  return h||0;"
         "})()"),
-        [this](const QVariant &v) {
+        [guard = QPointer<SmdCell>(this)](const QVariant &v) {
+            if (!guard) return;
             smdDebugLog(QStringLiteral("runJS immediate — raw=%1").arg(v.toInt()));
-            if (v.isValid()) applyRenderHeight(v.toInt());
+            if (v.isValid()) guard->applyRenderHeight(v.toInt());
         });
 
     // --- Adaptive polling: re-measure until height stable + Mermaid done ---
@@ -606,8 +626,8 @@ void SmdCell::pollGrabReady()
         "  }"
         "  return JSON.stringify({h:h,done:done,c:els.length});"
         "})()"),
-        [this](const QVariant &v) {
-            if (!m_rendered || !m_renderView) return;
+        [guard = QPointer<SmdCell>(this)](const QVariant &v) {
+            if (!guard || !guard->m_rendered || !guard->m_renderView) return;
             QString json = v.toString();
             // Parse simple JSON manually to avoid QStringView issues
             int h = 0;
@@ -636,32 +656,32 @@ void SmdCell::pollGrabReady()
             }
 
             smdDebugLog(QStringLiteral("pollGrabReady #%1 — h=%2, done=%3, mermaid=%4")
-                .arg(m_pollCount).arg(h).arg(done).arg(mermaidCount));
+                .arg(guard->m_pollCount).arg(h).arg(done).arg(mermaidCount));
 
             if (h > 0)
-                applyRenderHeight(h);
+                guard->applyRenderHeight(h);
 
             // Track height history for stability
-            m_polledHeights.append(h);
-            if (m_polledHeights.size() > 3)
-                m_polledHeights.removeFirst();
+            guard->m_polledHeights.append(h);
+            if (guard->m_polledHeights.size() > 3)
+                guard->m_polledHeights.removeFirst();
 
-            bool heightStable = (m_polledHeights.size() >= 3)
-                && (m_polledHeights[0] == m_polledHeights[1])
-                && (m_polledHeights[1] == m_polledHeights[2]);
+            bool heightStable = (guard->m_polledHeights.size() >= 3)
+                && (guard->m_polledHeights[0] == guard->m_polledHeights[1])
+                && (guard->m_polledHeights[1] == guard->m_polledHeights[2]);
 
             // Ready when height is stable AND all Mermaid rendered (or no Mermaid at all)
             bool ready = heightStable && (done || mermaidCount == 0);
 
-            if (m_pollCount >= kMaxPollCount) {
+            if (guard->m_pollCount >= SmdCell::kMaxPollCount) {
                 smdDebugLog(QStringLiteral("pollGrabReady — max polls reached, forcing grab"));
-                if (m_grabTimer) m_grabTimer->stop();
-                performGrab();
+                if (guard->m_grabTimer) guard->m_grabTimer->stop();
+                guard->performGrab();
             } else if (ready) {
                 smdDebugLog(QStringLiteral("pollGrabReady — ready! stable=%1, mermaid=%2 done=%3")
                     .arg(heightStable).arg(mermaidCount).arg(done));
-                if (m_grabTimer) m_grabTimer->stop();
-                performGrab();
+                if (guard->m_grabTimer) guard->m_grabTimer->stop();
+                guard->performGrab();
             }
         });
 
@@ -741,8 +761,10 @@ void SmdCell::cleanupRenderView()
     }
     if (m_renderView) {
         smdDebugLog(QStringLiteral("cleanupRenderView — closing top-level QWebEngineView"));
+        // Disconnect all signals BEFORE stopping to prevent cascading callbacks
+        m_renderView->page()->disconnect();
+        m_renderView->disconnect();
         m_renderView->stop();
-        disconnect(m_renderView->page(), nullptr, this, nullptr);
         m_renderView->hide();
         m_renderView->close();
         delete m_renderView;
@@ -978,6 +1000,12 @@ void SmdCell::updateEditorHeight()
     emit contentChanged();
 }
 
+void SmdCell::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
+{
+    m_diagnostics = diagnostics;
+    updateTypeLabel();
+}
+
 void SmdCell::updateTypeLabel()
 {
     QString text;
@@ -996,6 +1024,22 @@ void SmdCell::updateTypeLabel()
         color = QStringLiteral("#b8952e");
         break;
     }
+
+    // Append diagnostic counts if any
+    int errors = 0, warnings = 0;
+    for (const auto &d : m_diagnostics) {
+        if (d.severity == 1) ++errors;
+        else if (d.severity == 2) ++warnings;
+    }
+    if (errors > 0 || warnings > 0) {
+        QStringList parts;
+        if (errors > 0) parts.append(tr("%1 errors").arg(errors));
+        if (warnings > 0) parts.append(tr("%1 warnings").arg(warnings));
+        text += QStringLiteral(" (") + parts.join(QStringLiteral(", ")) + QStringLiteral(")");
+        if (errors > 0)
+            color = QStringLiteral("#d43838");
+    }
+
     m_typeLabel->setText(text);
     m_typeLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: #e0e0e0; font-size: 10px; padding: 1px 6px; "
