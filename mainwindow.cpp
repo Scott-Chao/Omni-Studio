@@ -2348,6 +2348,7 @@ void MainWindow::convertMdToSmd(EditorWidget *editor, const QFileInfo &fi)
     if (targetEditor) {
         // Already open — update in-memory only, don't touch disk
         m_tabManager->openFile(smdPath);
+        targetEditor->setLoading(true);
         targetEditor->setPlainText(smdContent);
         // Read disk content as baseline for modified-state comparison
         QString diskContent;
@@ -2358,6 +2359,7 @@ void MainWindow::convertMdToSmd(EditorWidget *editor, const QFileInfo &fi)
             diskFile.close();
         }
         targetEditor->setOriginalContent(diskContent);
+        targetEditor->setLoading(false);
         SmdEditor *smdEditor = targetEditor->smdEditor();
         if (smdEditor && mappedCellIndex < smdEditor->cellCount()) {
             smdEditor->setActiveCell(mappedCellIndex);
@@ -2428,6 +2430,7 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
     if (targetEditor) {
         // Already open — update in-memory only, don't touch disk
         m_tabManager->openFile(mdPath);
+        targetEditor->setLoading(true);
         targetEditor->setPlainText(mdContent);
         // Read disk content as baseline for modified-state comparison
         QString diskContent;
@@ -2438,6 +2441,7 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
             diskFile.close();
         }
         targetEditor->setOriginalContent(diskContent);
+        targetEditor->setLoading(false);
     } else {
         // Not open — write to disk then open
         QFile outFile(mdPath);

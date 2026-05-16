@@ -330,6 +330,13 @@ void SmdEditor::setPlainText(const QString &text)
     }
     m_commandMode = false;
 
+    // Deferred height update: after all cells are created and laid out,
+    // recalculate heights so text-wrapping uses the final widget width.
+    QTimer::singleShot(0, this, [this]() {
+        for (SmdCell *c : m_cells)
+            c->updateEditorHeight();
+    });
+
     // Pre-mark rendered flag so toPlainText() matches the file content.
     // Actual rendering happens async via auto-render — without this the
     // rendered→false→true transition would make isModified() trip falsely.
@@ -1009,11 +1016,13 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 void SmdEditor::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
-    // Check all rendered cells for needed re-renders after layout settles
+    // Check all cells for needed updates after layout settles
     QTimer::singleShot(0, this, [this]() {
         for (SmdCell *cell : m_cells) {
             if (cell->isRendered())
                 cell->checkReRender();
+            else
+                cell->updateEditorHeight();
         }
     });
 }

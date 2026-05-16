@@ -39,6 +39,16 @@
 #include <QPageSize>
 #include <QWebEngineView>
 
+// Normalize trailing newlines for robust modified detection.
+// Trailing blank lines are a file-format artifact, not a meaningful edit.
+static QString normalizeTrailingNewlines(const QString &text)
+{
+    QString result = text;
+    while (result.endsWith(QLatin1Char('\n')) || result.endsWith(QLatin1Char('\r')))
+        result.chop(1);
+    return result;
+}
+
 // 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
 static void previewLog(const QString &msg)
 {
@@ -260,7 +270,7 @@ EditorWidget::EditorWidget(QWidget *parent)
         if (m_editorMode == SmdEdit)
             m_contentCheckTimer.start();
     });
-    m_originalContent = toPlainText(); // 记录当前内容，用于内容比较
+    m_originalContent = normalizeTrailingNewlines(toPlainText()); // 记录当前内容，用于内容比较
 }
 
 void EditorWidget::setPreviewMode(bool preview)
@@ -986,7 +996,11 @@ void EditorWidget::onTextChanged()
 
 void EditorWidget::updateModificationChanged()
 {
-    // 将 QTextEdit 的底层文档修改状态向上层发出信号
+    // Suppress intermediate modification signals during file loading.
+    // QTextEdit::setPlainText() triggers textChanged before we can clear the
+    // modified flag, which would briefly flash the unsaved indicator.
+    if (m_loading)
+        return;
     emit modificationChanged(isModified());
 }
 
@@ -1072,9 +1086,12 @@ bool EditorWidget::loadFile(const QString &filePath)
             m_stackedWidget->setCurrentIndex(0);
     }
 
+    m_loading = true;  // suppress modificationChanged during setPlainText
     setPlainText(content);
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
     setModified(false);
+    m_loading = false;
+
     applyZoom();
 
     emit fileLoaded(filePath);
@@ -1105,7 +1122,7 @@ bool EditorWidget::saveFile()
     QTextStream stream(&file);
     stream << toPlainText();
     file.close();
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
     setModified(false); // 保存后清除修改标志
     emit fileSaved(m_filePath);
 
@@ -1422,6 +1439,8 @@ void EditorWidget::setCursorPosition(int line, int column)
     }
 }
 
+// Normalize trailing newlines for robust modified detection.
+// Trailing blank lines are a file-format artifact, not a meaningful edit.
 void EditorWidget::setOriginalContent(const QString &diskContent)
 {
     if (m_editorMode == SmdEdit) {
@@ -1429,11 +1448,11 @@ void EditorWidget::setOriginalContent(const QString &diskContent)
         m_smdEditor->setModified(false); // syncs m_originalContent to current cells
         return;
     }
-    m_originalContent = diskContent;
+    m_originalContent = normalizeTrailingNewlines(diskContent);
     // The content check timer will naturally detect differences
     QTextDocument *doc = (m_editorMode == CodeEdit)
         ? m_codeEditor->document() : m_textEdit->document();
-    bool nowModified = (toPlainText() != m_originalContent);
+    bool nowModified = (normalizeTrailingNewlines(toPlainText()) != m_originalContent);
     if (doc->isModified() != nowModified) {
         doc->setModified(nowModified);
         emit modificationChanged(nowModified);
@@ -1487,7 +1506,7 @@ void EditorWidget::onContentCheckTimeout()
         return;
     }
     // 检查文件内容是否被修改
-    bool contentChanged = (toPlainText() != m_originalContent);
+    bool contentChanged = (normalizeTrailingNewlines(toPlainText()) != m_originalContent);
     if (isModified() != contentChanged) {
         setModified(contentChanged);
     }
@@ -1498,7 +1517,7 @@ void EditorWidget::setFilePath(const QString &newPath) {
     if (m_filePath == normalized) return;
     QString oldPath = m_filePath;
     m_filePath = normalized;
-    m_originalContent = toPlainText();
+    m_originalContent = normalizeTrailingNewlines(toPlainText());
 
     // Re-evaluate language on path change (handles save-as extension changes)
     QString ext = QFileInfo(newPath).suffix().toLower();

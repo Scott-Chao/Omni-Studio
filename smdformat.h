@@ -71,12 +71,15 @@ inline QList<Cell> parse(const QString &text)
     bool currentRendered = false;
     QString currentOutput;
 
-    auto flushCell = [&]() {
+    // stripTrailingBlank: only strip when cell was terminated by a delimiter
+    // (the trailing blank line is the separator between cells, not user content).
+    // For the last cell terminated by EOF, preserve trailing blank lines as-is.
+    auto flushCell = [&](bool stripTrailingBlank = true) {
         if (currentType.isEmpty() && currentContent.isEmpty())
             return;
         if (currentType.isEmpty())
             currentType = QStringLiteral("markdown");
-        if (!currentContent.isEmpty() && currentContent.last().trimmed().isEmpty())
+        if (stripTrailingBlank && !currentContent.isEmpty() && currentContent.last().trimmed().isEmpty())
             currentContent.removeLast();
         Cell cell;
         cell.type = currentType;
@@ -91,7 +94,7 @@ inline QList<Cell> parse(const QString &text)
     for (const QString &line : lines) {
         QRegularExpressionMatch m = DELIM_RE.match(line);
         if (m.hasMatch()) {
-            flushCell();
+            flushCell(true);  // delimiter-terminated: strip separator blank line
             currentType = m.captured(1).toLower();
             currentContent.clear();
             QString metaJson = m.captured(2).trimmed();
@@ -111,7 +114,7 @@ inline QList<Cell> parse(const QString &text)
             currentContent.append(line);
         }
     }
-    flushCell();
+    flushCell(false);  // EOF-terminated: preserve intentional trailing blank lines
     return cells;
 }
 

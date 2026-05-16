@@ -36,6 +36,7 @@ public:
     void setPlainText(const QString &text);
     bool isModified() const;
     void setModified(bool modified);
+    void setLoading(bool loading) { m_loading = loading; }
     QString currentFilePath() const { return m_filePath; }
 
     // 搜索导航
@@ -167,6 +168,7 @@ private:
     // 自动保存
     QTimer m_autoSaveTimer;
     QString m_recoveryTempPath; // 恢复文件路径（仅未命名文件使用）
+    bool m_loading = false;    // 文件加载过程中抑制修改信号
     bool m_autoSaveEnabled = true;
     void autoSaveNow(); // 执行自动保存（不修改 modified 状态）
 

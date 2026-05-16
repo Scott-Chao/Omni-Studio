@@ -1,4 +1,4 @@
-## 功能说明文档（v0.8.0）
+## 功能说明文档（v0.8.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -38,20 +38,10 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 新增/修复 v0.8.0
-- **LSP 协议集成（C++）**：通过 `LspClient`（JSON-RPC 2.0 Content-Length 帧协议）对接 clangd，实现基于 LSP 的智能代码补全
-- **代码补全（C++ / Python）**：编辑器内输入代码时自动弹出补全候选列表
-  - C++ 通过 clangd LSP 完成，支持语义级别的符号识别（函数、类、变量、方法、关键词）
-  - Python 通过 Jedi 库（`completion_helper.py` 辅助脚本）提供补全
-  - 退化方案：当 clangd/Jedi 不可用时自动降级为 `KeywordCompletionProvider`（基于语言关键词和文档内标识符前缀匹配的简单补全）
-  - 触发方式：手动 `Ctrl+I`（IME 兼容替代 Ctrl+Space）、自动 `.` `::` `->` 触发
-- **`CompletionPopup` 补全弹窗**：浮动无边框列表，深色主题（`#252526` 背景），每项显示类型图标 + 名称 + 类型标签，蓝色高亮选中项（`#094771`），底部操作提示条（Enter/Tab 接受，↑↓ 选择，Esc 关闭）
-- **`HoverManager` 悬停提示**：鼠标悬停 400ms 后触发 `CompletionProvider::requestHover`，通过 `QToolTip` 显示符号类型签名和文档说明，`Ctrl` 可绕过延迟立即触发
-- **`SignatureHelpManager` 函数签名提示**：输入 `(` 后自动检测光标前未匹配括号，向 Provider 请求签名列表并弹出浮窗，支持重载导航（↑↓ 切换）、当前参数高亮（黄色）、文档展示。在 `)` / Esc / 点击外部时关闭
-- **`CppCompletionProvider` — clangd 全生命周期管理**：自动启动 clangd 进程、初始化握手（initialize/initialized）、文件打开同步（didOpen）、增量内容同步（didChange）、崩溃自动重启（`QProcess::finished` 信号）
-- **`PythonCompletionProvider` — Jedi 进程管理**：通过 QProcess 启动 `completion_helper.py`，stdin/stdout JSON 通信，每个请求发送完整代码（无需增量同步），500ms 超时保护，Jedi 不可用时自动上报失败
-- **`EscNativeFilter` Windows 消息钩子**：由于 `Qt::Tool` 窗口在 Windows 上的 HWND 路由问题，Esc 键可能被错误分发到工具窗口而非编辑器。通过 `QAbstractNativeEventFilter` 在 WM_KEYDOWN 级别全局捕获 `VK_ESCAPE`，确保正确关闭补弹窗和签名提示
-- **新文件**：`completionprovider.h` `lspclient.h/cpp` `cppcompletionprovider.h/cpp` `pythoncompletionprovider.h/cpp` `keywordcompletionprovider.h/cpp` `completionpopup.h/cpp` `hovermanager.h/cpp` `signaturehelpmanager.h/cpp` `completion_helper.py`
+# 新增/修复 v0.8.1
+- **修复：打开 MD/SMD 文件时误报未保存标识**：打开文件（尤其是末尾有空行的文件）时，编辑器不再错误地显示 `*` 未保存标记。原因：`QPlainTextEdit::toPlainText()` 返回的内容可能因尾部换行符的有无而与原始文件不同，且内容比较基线 `m_originalContent` 未被规范化。修复方案：(1) 在所有 `m_originalContent` 赋值处使用 `normalizeTrailingNewlines()` 统一去除尾部换行符；(2) 在 `loadFile` 和转换过程中通过 `m_loading` 标志抑制中间态的 `modificationChanged` 信号。
+- **修复：MD ↔ SMD 往返转换后内容丢失尾部空行**：`SmdFormat::parse()` 中的 `flushCell` 现在接受 `stripTrailingBlank` 参数 — 仅在分隔符终止的单元格（内部）剥离尾部空行（用于去除 `---smd:type` 分隔符产物），末尾单元格（EOF 终止）保留用户输入的尾部空行。转换函数中通过 `setLoading(true/false)` 抑制转换过程中的中间态修改信号。
+- **修复：SMD Markdown 单元格高度略小导致内容溢出/滚动空间**：(1) `updateEditorHeight()` 现在使用 `qMax(boundingRect.height(), lineSpacing * lineCount)` 作为每块的最小高度，避免 `QTextLayout::boundingRect` 因缺少行间距而低估高度；(2) 交叉检查 `QTextDocument::size().height()` 作为上限；(3) 仅当 `toPlainText()` 不包含尾部换行符时才跳过尾部空块（否则用户输入的尾部空行会被错误忽略）；(4) 所有 cell 创建完成后延迟重新计算高度（`QTimer::singleShot`），确保文本换行使用最终控件宽度；(5) 窗口大小调整时也刷新非渲染 cell 的高度。
 
 ### 1. `MainWindow` - 主窗口控制器
 
