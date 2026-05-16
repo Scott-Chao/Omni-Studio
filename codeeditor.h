@@ -9,6 +9,7 @@
 class QSyntaxHighlighter;
 class CompletionManager;
 class CompletionPopup;
+class HoverManager;
 class LineNumberArea;
 
 class CodeEditor : public QPlainTextEdit
@@ -54,6 +55,7 @@ private:
     QSyntaxHighlighter *m_highlighter = nullptr;
     CompletionManager *m_completionManager = nullptr;
     CompletionPopup *m_completionPopup = nullptr;
+    HoverManager *m_hoverManager = nullptr;
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
     int m_indentWidth = 4;

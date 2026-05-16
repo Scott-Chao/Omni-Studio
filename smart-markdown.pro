@@ -27,6 +27,7 @@ SOURCES += \
     crawler.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
+    hovermanager.cpp \
     languageutils.cpp \
     lspclient.cpp \
     wikilinktextedit.cpp \
@@ -69,6 +70,7 @@ HEADERS += \
     crawler.h \
     editorwidget.h \
     flowlayout.h \
+    hovermanager.h \
     languageutils.h \
     lspclient.h \
     wikilinktextedit.h \

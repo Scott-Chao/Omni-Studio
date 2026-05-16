@@ -89,6 +89,15 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         QList<CompletionItem> items = parseCompletionResponse(result);
         qDebug() << "CppCompletionProvider: completion returned" << items.size() << "items";
         emit completionReady(items);
+
+    } else if (id == m_hoverRequestId) {
+        m_hoverRequestId = -1;
+
+        HoverInfo info = parseHoverResponse(result);
+        qDebug() << "CppCompletionProvider: hover returned"
+                 << "signature=" << info.signature.left(60)
+                 << "doc=" << info.doc.left(60);
+        emit hoverReady(info);
     }
 }
 
@@ -334,8 +343,85 @@ QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJson
 
 void CppCompletionProvider::requestHover(const QString &text, int cursorPos)
 {
-    Q_UNUSED(text);
-    Q_UNUSED(cursorPos);
+    if (!m_initialized || m_documentUri.isEmpty() || !m_client)
+        return;
+
+    // Convert cursorPos to LSP line (0-based) and character (0-based)
+    int line = 0;
+    int col = 0;
+    int len = qMin(cursorPos, text.length());
+    for (int i = 0; i < len; ++i) {
+        if (text.at(i) == QLatin1Char('\n')) {
+            ++line;
+            col = 0;
+        } else {
+            ++col;
+        }
+    }
+
+    QJsonObject position;
+    position[QStringLiteral("line")] = line;
+    position[QStringLiteral("character")] = col;
+
+    QJsonObject textDocument;
+    textDocument[QStringLiteral("uri")] = m_documentUri;
+
+    QJsonObject params;
+    params[QStringLiteral("textDocument")] = textDocument;
+    params[QStringLiteral("position")] = position;
+
+    m_hoverRequestId = m_client->sendRequest(QStringLiteral("textDocument/hover"), params);
+    qDebug() << "CppCompletionProvider: sent hover request id=" << m_hoverRequestId
+             << "at (" << line << "," << col << ")";
+}
+
+HoverInfo CppCompletionProvider::parseHoverResponse(const QJsonObject &result)
+{
+    HoverInfo info;
+
+    QJsonValue contentsVal = result.value(QStringLiteral("contents"));
+    if (contentsVal.isUndefined() || contentsVal.isNull())
+        return info;
+
+    // Array: typically [MarkedString, MarkedString | string, ...]
+    if (contentsVal.isArray()) {
+        QJsonArray arr = contentsVal.toArray();
+        QStringList docParts;
+        for (const QJsonValue &v : arr) {
+            if (v.isObject()) {
+                QJsonObject obj = v.toObject();
+                // MarkedString: { language, value }
+                if (obj.contains(QStringLiteral("language"))) {
+                    info.signature = obj.value(QStringLiteral("value")).toString();
+                } else {
+                    // MarkupContent: { kind, value }
+                    docParts.append(obj.value(QStringLiteral("value")).toString());
+                }
+            } else if (v.isString()) {
+                docParts.append(v.toString());
+            }
+        }
+        info.doc = docParts.join(QStringLiteral("\n"));
+        return info;
+    }
+
+    // String: plain text
+    if (contentsVal.isString()) {
+        info.doc = contentsVal.toString();
+        return info;
+    }
+
+    // Object: MarkupContent { kind, value } or MarkedString { language, value }
+    QJsonObject contents = contentsVal.toObject();
+    if (contents.contains(QStringLiteral("language"))) {
+        // MarkedString
+        info.signature = contents.value(QStringLiteral("value")).toString();
+    } else {
+        // MarkupContent
+        info.doc = contents.value(QStringLiteral("value")).toString();
+    }
+
+    return info;
 }
 
 void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursorPos)

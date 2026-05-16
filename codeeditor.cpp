@@ -1,6 +1,7 @@
 ﻿#include "codeeditor.h"
 #include "completionmanager.h"
 #include "completionpopup.h"
+#include "hovermanager.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -104,6 +105,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_lineNumberArea = new LineNumberArea(this);
     m_completionManager = new CompletionManager(this);
     m_completionPopup = new CompletionPopup(this);
+    m_hoverManager = new HoverManager(this, m_completionManager, this);
 
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
