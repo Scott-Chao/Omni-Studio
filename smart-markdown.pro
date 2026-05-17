@@ -17,6 +17,8 @@ SOURCES += \
     ai/aicontextmanager.cpp \
     ai/aiproviderfactory.cpp \
     ai/anthropicprovider.cpp \
+    ai/chatarea.cpp \
+    ai/chatbubble.cpp \
     ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
@@ -66,6 +68,8 @@ HEADERS += \
     ai/aiprovider.h \
     ai/aiproviderfactory.h \
     ai/anthropicprovider.h \
+    ai/chatarea.h \
+    ai/chatbubble.h \
     ai/openaiprovider.h \
     activitybar.h \
     configmanager.h \
