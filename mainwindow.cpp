@@ -2424,6 +2424,20 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
     if (activeCell >= 0 && activeCell < mdResult.cellContentStartLine.size())
         mdCursorLine = mdResult.cellContentStartLine[activeCell] + cursorLineInCell;
 
+    convLog(QStringLiteral("smd2md: activeCell=%1 cursorLineInCell=%2 cursorCol=%3 cells=%4")
+        .arg(activeCell).arg(cursorLineInCell).arg(cursorColumn).arg(cells.size()));
+    for (int ci = 0; ci < cells.size(); ++ci) {
+        int startLine = ci < mdResult.cellContentStartLine.size() ? mdResult.cellContentStartLine[ci] : -1;
+        convLog(QStringLiteral("smd2md:   cell[%1] type=%2 lines=%3 startLine=%4")
+            .arg(ci).arg(cells[ci].type)
+            .arg(cells[ci].content.count(QLatin1Char('\n')) + 1)
+            .arg(startLine));
+    }
+    convLog(QStringLiteral("smd2md: mdCursorLine=%1 (startLine[%2]=%3 + cellLine=%4)")
+        .arg(mdCursorLine).arg(activeCell)
+        .arg(activeCell < mdResult.cellContentStartLine.size() ? mdResult.cellContentStartLine[activeCell] : -1)
+        .arg(cursorLineInCell));
+
     // 5. Determine target path
     QString mdPath = fi.absolutePath() + QDir::separator() + fi.completeBaseName() + QStringLiteral(".md");
 

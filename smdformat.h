@@ -179,7 +179,7 @@ inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
         if (cell.type == QStringLiteral("markdown")) {
             result.cellContentStartLine.append(currentLine);
             parts.append(cell.content);
-            currentLine += cell.content.count(QLatin1Char('\n')) + (cell.content.isEmpty() ? 0 : 1);
+            currentLine += cell.content.count(QLatin1Char('\n')) + 1;
         } else {
             QString lang = (cell.type == QStringLiteral("cpp"))
                 ? QStringLiteral("cpp") : QStringLiteral("python");
@@ -187,7 +187,7 @@ inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
             currentLine += 1;
             result.cellContentStartLine.append(currentLine);
             parts.append(cell.content);
-            currentLine += cell.content.count(QLatin1Char('\n')) + (cell.content.isEmpty() ? 0 : 1);
+            currentLine += cell.content.count(QLatin1Char('\n')) + 1;
             parts.append(QStringLiteral("```"));
             currentLine += 1;
         }

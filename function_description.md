@@ -39,8 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 新增
-- SMD C++ 程序分组执行：`.smd` 文件中 C++ cell 按 `main()` 函数边界自动分组，每遇到一个含 `main()` 的 cell 即开始新的程序组。同一组内 cell 合并编译执行（支持跨 cell 共享头文件和函数定义），不同组互不干扰。LSP 诊断仅显示当前聚焦 cell 所在程序组的错误/警告，切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
+### 修复
+- 修复 md 文件与 smd 文件相互切换时光标发生偏移的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -954,8 +954,7 @@
 - `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block。
 - `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表。检测 fenced code block 分隔符并拆分单元格，Mermaid 图表保留为独立 Markdown 单元格。
 - `FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)`：增强版，额外返回 `mdLineToCell` / `mdLineToCellLine` 映射，用于 `.md` → `.smd` 光标定位。
-- `ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)`：增强版，额外返回 `cellContentStartLine` 向量，用于 `.smd` → `.md` 光标定位。
-- `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表（桩实现）。检测 fenced code block 分隔符并拆分单元格。
+- `ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)`：增强版，额外返回 `cellContentStartLine` 向量，用于 `.smd` → `.md` 光标定位。行数按 `\n` 计数 + 1 统一计算（空内容计为 1 行），避免空 cell 导致后续 cell 光标映射偏移。
 
 **协作关系**：
 - 被 `SmdEditor` 在 `loadFile()` 和 `saveFile()` 中调用以解析和序列化文件内容。
