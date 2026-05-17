@@ -37,10 +37,10 @@
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
-- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
+- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
 ### 新增
-- 修复 SMD 跨 cell 代码执行问题：此前每个 cell 独立编译为单独的 `.cpp` 文件，前面 cell 定义的 `#include`、类型、函数在后面 cell 执行时不可见。修复方案：(1) 执行时将当前 cell 及以上所有同语言 cell 的内容合并写入临时文件；(2) 对不含 `main()` 的 cell 使用 `-c` 仅编译不链接（`ProcessRunner::startCompileOnly` / `CompilerUtils::getCompileOnlyArgs`），避免 `WinMain` 链接错误。
+- Python cell 改用持久化进程执行（`python_executor.py`），维护共享命名空间并独立捕获每个 cell 的输出，实现 Jupyter-like 效果——每个 cell 仅显示自身输出，但变量/函数/导入在 cell 间保持。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1055,11 +1055,10 @@
 **单元格执行**：
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。
 - **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
-- **C++ 单元格**：将代码保存到临时文件 → `ProcessRunner::startCompileAndRun()` → stdout/stderr 流式输出到独立的 `SmdOutputWidget`（无 "--- Running ---" 头） → 清理临时文件 → 进入命令模式并跳转下一个单元格。
-- **Python 单元格**：将代码保存到临时文件 → `ProcessRunner::startRunPython()` → 输出到 `SmdOutputWidget` → 清理临时文件 → 命令模式 + 跳转。
+- **C++ 单元格**：执行时合并当前 cell 及以上所有同语言 cell 的内容写入临时文件 → `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget` → 清理临时文件 → 进入命令模式并跳转下一个单元格。
+- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。后续执行仅将当前 cell 代码通过 `QProcess::write()` 发送给守护进程，守护进程在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`，前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
 - **空代码单元格**：不启动执行流程，直接进入命令模式并跳转。
-- 执行期间不支持标准输入交互。
-- 临时文件路径：`QDir::tempPath()/smd_cell_<PID>_<counter>.<ext>`。
+- 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
 - 修改跟踪：执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出内容的变化能反映在文件修改状态上（未保存标识）。
 

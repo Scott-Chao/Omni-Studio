@@ -216,6 +216,7 @@ SmdEditor::SmdEditor(QWidget *parent)
 SmdEditor::~SmdEditor()
 {
     m_processRunner->stop();
+    stopPythonExecProcess();
     if (m_autoRenderTimer) {
         m_autoRenderTimer->stop();
         delete m_autoRenderTimer;
@@ -306,12 +307,13 @@ void SmdEditor::setPlainText(const QString &text)
     }
     m_autoRenderQueue.clear();
 
-    // Shut down old LSP manager
+    // Shut down old LSP manager and Python executor
     if (m_lspManager) {
         m_lspManager->shutdown();
         m_lspManager->deleteLater();
         m_lspManager = nullptr;
     }
+    stopPythonExecProcess();
 
     // Clear existing cells and output widgets
     for (SmdOutputWidget *w : m_outputWidgets) {
@@ -824,7 +826,7 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 {
     int execIndex = m_cells.indexOf(cell);
     bool isPython = (cell->cellType() == SmdCell::Python);
-    QString ext = isPython ? QStringLiteral("py") : QStringLiteral("cpp");
+    QString ext = QStringLiteral("cpp");
 
     // Skip if current cell is truly empty (original behavior).
     if (cell->content().trimmed().isEmpty()) {
@@ -834,15 +836,20 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
         return;
     }
 
-    // Combine all same-language cells from index 0 up to the executed cell,
+    // Python cells use a persistent process with shared namespace
+    // (Jupyter-like), so only the current cell's output is captured.
+    if (isPython) {
+        executePythonCell(cell);
+        return;
+    }
+
+    // Combine all C++ cells from index 0 up to the executed cell,
     // so that includes, types, and functions defined in earlier cells are
     // visible when compiling the current cell.
     QString combinedCode;
     for (int i = 0; i <= execIndex; ++i) {
         SmdCell *c = m_cells[i];
-        SmdCell::CellType ct = c->cellType();
-        bool sameLang = isPython ? (ct == SmdCell::Python) : (ct == SmdCell::Cpp);
-        if (!sameLang)
+        if (c->cellType() != SmdCell::Cpp)
             continue;
         QString content = c->content();
         if (!combinedCode.isEmpty() && !content.isEmpty())
@@ -862,10 +869,8 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     // If not, compile-only (no link) to avoid spurious linker errors
     // about undefined reference to `WinMain` / `main`.
     bool hasMain = false;
-    if (!isPython) {
-        QRegularExpression mainRe(QStringLiteral("\\bmain\\s*\\("));
-        hasMain = mainRe.match(combinedCode).hasMatch();
-    }
+    QRegularExpression mainRe(QStringLiteral("\\bmain\\s*\\("));
+    hasMain = mainRe.match(combinedCode).hasMatch();
 
     QString tempPath = QDir::tempPath()
         + QStringLiteral("/smd_cell_")
@@ -899,16 +904,7 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     m_execOutputConn = connect(m_processRunner, &ProcessRunner::outputReceived,
                                this, &SmdEditor::onProcessOutput);
 
-    if (isPython) {
-        m_executingCompileOnly = false;
-        m_execRunConn = connect(m_processRunner, &ProcessRunner::runFinished, this,
-            [this](int exitCode) {
-                disconnect(m_execOutputConn);
-                disconnect(m_execRunConn);
-                onProcessFinished(exitCode);
-            });
-        m_processRunner->startRunPython(tempPath);
-    } else if (!hasMain) {
+    if (!hasMain) {
         // Compile-only — no main(), so linking would fail with
         // undefined reference to `WinMain` / `main`.
         m_executingCompileOnly = true;
@@ -996,18 +992,254 @@ void SmdEditor::jumpToNextCell()
     }
 }
 
+// ---- Persistent Python Execution (Jupyter-like) ----
+
+void SmdEditor::executePythonCell(SmdCell *cell)
+{
+    int execIndex = m_cells.indexOf(cell);
+
+    // Start persistent process on first use
+    if (!m_pyExecProcess || m_pyExecProcess->state() != QProcess::Running) {
+        startPythonExecProcess();
+        if (!m_pyExecProcess || m_pyExecProcess->state() != QProcess::Running) {
+            if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+                m_outputWidgets[execIndex]->clearOutput();
+                m_outputWidgets[execIndex]->appendText(
+                    tr("Error: Python execution backend is not running.\n"), true);
+            }
+            return;
+        }
+    }
+
+    m_executingCell = cell;
+    m_executingTempFile.clear();
+
+    // Clear previous output
+    if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+        m_outputWidgets[execIndex]->clearOutput();
+        m_outputWidgets[execIndex]->setVisible(true);
+    }
+
+    // Send code to persistent Python process
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("exec");
+    req[QStringLiteral("code")] = cell->content();
+
+    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+    m_pyExecProcess->write(payload);
+}
+
+void SmdEditor::startPythonExecProcess()
+{
+    if (m_pyExecProcess) return;
+
+    // Look for python_executor.py next to the app, one dir up, or in CWD
+    QString appDir = QCoreApplication::applicationDirPath();
+    QStringList candidates = {
+        appDir + QStringLiteral("/python_executor.py"),
+        appDir + QStringLiteral("/../python_executor.py"),
+        QStringLiteral("python_executor.py"),
+    };
+    for (const QString &c : candidates) {
+        if (QFileInfo::exists(c)) {
+            m_pyExecScriptPath = QFileInfo(c).absoluteFilePath();
+            break;
+        }
+    }
+    if (m_pyExecScriptPath.isEmpty()) {
+        qWarning() << "SmdEditor: python_executor.py not found";
+        return;
+    }
+
+    QString python = QStandardPaths::findExecutable(QStringLiteral("python"));
+    if (python.isEmpty())
+        python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    if (python.isEmpty()) {
+        qWarning() << "SmdEditor: python not found";
+        return;
+    }
+
+    m_pyExecProcess = new QProcess(this);
+    m_pyExecProcess->setProcessChannelMode(QProcess::MergedChannels);
+    connect(m_pyExecProcess, &QProcess::readyReadStandardOutput,
+            this, &SmdEditor::onPyExecReadyRead);
+    connect(m_pyExecProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &SmdEditor::onPyExecFinished);
+    connect(m_pyExecProcess, &QProcess::errorOccurred,
+            this, &SmdEditor::onPyExecError);
+
+    m_pyExecBuffer.clear();
+    m_pyExecProcess->start(python, {m_pyExecScriptPath});
+
+    if (!m_pyExecProcess->waitForStarted(5000)) {
+        qWarning() << "SmdEditor: failed to start Python executor";
+        m_pyExecProcess->deleteLater();
+        m_pyExecProcess = nullptr;
+    }
+}
+
+void SmdEditor::stopPythonExecProcess()
+{
+    if (!m_pyExecProcess) return;
+
+    // Send exit command
+    if (m_pyExecProcess->state() == QProcess::Running) {
+        QJsonObject req;
+        req[QStringLiteral("action")] = QStringLiteral("exit");
+        QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+        m_pyExecProcess->write(payload);
+        m_pyExecProcess->waitForBytesWritten(500);
+    }
+
+    m_pyExecProcess->disconnect();
+    if (m_pyExecProcess->state() != QProcess::NotRunning) {
+        m_pyExecProcess->kill();
+        m_pyExecProcess->waitForFinished(200);
+    }
+    m_pyExecProcess->deleteLater();
+    m_pyExecProcess = nullptr;
+    m_pyExecBuffer.clear();
+}
+
+void SmdEditor::onPyExecReadyRead()
+{
+    if (!m_pyExecProcess) return;
+
+    m_pyExecBuffer.append(m_pyExecProcess->readAllStandardOutput());
+
+    // Process complete lines
+    while (true) {
+        int newlineIdx = m_pyExecBuffer.indexOf('\n');
+        if (newlineIdx < 0) break;
+
+        QByteArray line = m_pyExecBuffer.left(newlineIdx).trimmed();
+        m_pyExecBuffer.remove(0, newlineIdx + 1);
+
+        if (line.isEmpty()) continue;
+
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning() << "SmdEditor: invalid JSON from Python executor:" << line;
+            continue;
+        }
+
+        QJsonObject reply = doc.object();
+        bool ok = reply.value(QStringLiteral("ok")).toBool();
+        QString stdout_ = reply.value(QStringLiteral("stdout")).toString();
+        QString stderr_ = reply.value(QStringLiteral("stderr")).toString();
+        QString error = reply.value(QStringLiteral("error")).toString();
+
+        // Route output to the executing cell
+        if (m_executingCell) {
+            int idx = m_cells.indexOf(m_executingCell);
+            if (idx >= 0 && idx < m_outputWidgets.size()) {
+                if (!stdout_.isEmpty())
+                    m_outputWidgets[idx]->appendText(stdout_, false);
+                if (!stderr_.isEmpty())
+                    m_outputWidgets[idx]->appendText(stderr_, true);
+                if (!ok && !error.isEmpty())
+                    m_outputWidgets[idx]->appendText(error, true);
+                m_outputWidgets[idx]->scrollToTop();
+            }
+        }
+
+        // Finish execution
+        int finishedIdx = m_executingCell ? m_cells.indexOf(m_executingCell) : -1;
+        m_executingCell = nullptr;
+
+        emit contentChanged();
+
+        // Jump to next cell
+        if (finishedIdx == m_activeCellIndex) {
+            if (!m_commandMode)
+                enterCommandMode();
+            if (!m_userTerminated)
+                jumpToNextCell();
+            m_userTerminated = false;
+        }
+    }
+}
+
+void SmdEditor::onPyExecFinished(int exitCode, QProcess::ExitStatus status)
+{
+    Q_UNUSED(exitCode);
+    if (!m_pyExecProcess) return;
+
+    // If there's a pending cell, show error
+    if (m_executingCell) {
+        int idx = m_cells.indexOf(m_executingCell);
+        if (idx >= 0 && idx < m_outputWidgets.size()) {
+            if (status == QProcess::CrashExit)
+                m_outputWidgets[idx]->appendText(
+                    tr("Python execution backend crashed.\n"), true);
+            else
+                m_outputWidgets[idx]->appendText(
+                    tr("Python execution backend exited unexpectedly.\n"), true);
+        }
+        m_executingCell = nullptr;
+        emit contentChanged();
+    }
+
+    // Auto-restart after crash
+    if (status == QProcess::CrashExit) {
+        m_pyExecProcess->deleteLater();
+        m_pyExecProcess = nullptr;
+        m_pyExecBuffer.clear();
+        QTimer::singleShot(1000, this, [this]() {
+            if (m_lspManager)  // SmdEditor is still alive
+                startPythonExecProcess();
+        });
+    }
+}
+
+void SmdEditor::onPyExecError(QProcess::ProcessError error)
+{
+    Q_UNUSED(error);
+    if (!m_pyExecProcess) return;
+
+    if (m_executingCell) {
+        int idx = m_cells.indexOf(m_executingCell);
+        if (idx >= 0 && idx < m_outputWidgets.size()) {
+            m_outputWidgets[idx]->appendText(
+                tr("Error communicating with Python execution backend.\n"), true);
+        }
+        m_executingCell = nullptr;
+        emit contentChanged();
+    }
+}
+
+// ---- Process Stop (Ctrl+C) ----
+
 void SmdEditor::handleProcessStop()
 {
     if (!m_executingCell) return;
     int stoppedIdx = m_cells.indexOf(m_executingCell);
 
-    // Clean up temp files
-    if (!m_executingTempFile.isEmpty()) {
-        QFile::remove(m_executingTempFile);
-        QFileInfo fi(m_executingTempFile);
-        QString exePath = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
-                          + QStringLiteral(".exe");
-        QFile::remove(exePath);
+    bool isPython = (m_executingCell->cellType() == SmdCell::Python);
+
+    if (isPython) {
+        // Kill and restart the persistent Python process
+        if (m_pyExecProcess) {
+            m_pyExecProcess->kill();
+            m_pyExecProcess->waitForFinished(200);
+            m_pyExecProcess->deleteLater();
+            m_pyExecProcess = nullptr;
+            m_pyExecBuffer.clear();
+        }
+    } else {
+        // Clean up temp files for C++
+        if (!m_executingTempFile.isEmpty()) {
+            QFile::remove(m_executingTempFile);
+            QFileInfo fi(m_executingTempFile);
+            QString exePath = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
+                              + QStringLiteral(".exe");
+            QFile::remove(exePath);
+        }
+        // Disconnect execution signal connections
+        disconnect(m_execOutputConn);
+        disconnect(m_execCompileConn);
+        disconnect(m_execRunConn);
     }
 
     // Append termination message
@@ -1016,16 +1248,19 @@ void SmdEditor::handleProcessStop()
             QStringLiteral("\n--- ") + tr("Terminated by user") + QStringLiteral(" ---\n"), true);
     }
 
-    // Disconnect execution signal connections
-    disconnect(m_execOutputConn);
-    disconnect(m_execCompileConn);
-    disconnect(m_execRunConn);
-
     m_executingTempFile.clear();
     m_executingCell = nullptr;
     m_userTerminated = false;
 
     emit contentChanged();
+
+    // Auto-restart Python process
+    if (isPython) {
+        QTimer::singleShot(500, this, [this]() {
+            if (m_lspManager)
+                startPythonExecProcess();
+        });
+    }
 }
 
 void SmdEditor::onCellRenderFinished()

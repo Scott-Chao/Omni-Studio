@@ -7,6 +7,9 @@
 #include <QList>
 #include <QTimer>
 #include <QPointer>
+#include <QProcess>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "smdcell.h"
 #include "smdformat.h"
@@ -74,9 +77,17 @@ private:
     void executeCurrentCell();
     void executeMarkdownCell(SmdCell *cell);
     void executeCodeCell(SmdCell *cell);
+    void executePythonCell(SmdCell *cell);
     void jumpToNextCell();
     void onCellRenderFinished();
     void handleProcessStop();
+
+    // Persistent Python execution (Jupyter-like)
+    void startPythonExecProcess();
+    void stopPythonExecProcess();
+    void onPyExecReadyRead();
+    void onPyExecFinished(int exitCode, QProcess::ExitStatus status);
+    void onPyExecError(QProcess::ProcessError error);
 
     // Language selector
     void showLanguageSelector(int cellIndex, bool isNewCell = false, int originalCellIndex = -1);
@@ -121,6 +132,11 @@ private:
     QString m_originalContent;
 
     SmdLspManager *m_lspManager = nullptr;
+
+    // Persistent Python execution process (Jupyter-like)
+    QProcess *m_pyExecProcess = nullptr;
+    QByteArray m_pyExecBuffer;
+    QString m_pyExecScriptPath;
 };
 
 #endif // SMDEDITOR_H
