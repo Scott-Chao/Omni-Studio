@@ -828,6 +828,10 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     bool isPython = (cell->cellType() == SmdCell::Python);
     QString ext = QStringLiteral("cpp");
 
+    // Hide signature help popup before execution
+    if (CodeEditor *ce = qobject_cast<CodeEditor *>(cell->editorWidget()))
+        ce->hideSignatureHelp();
+
     // Skip if current cell is truly empty (original behavior).
     if (cell->content().trimmed().isEmpty()) {
         if (!m_commandMode)

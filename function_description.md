@@ -18,7 +18,7 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示** 和 **函数签名帮助**。
-- **SMD LSP 代码智能**：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。
+- SMD LSP 代码智能：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
@@ -39,8 +39,9 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 新增
-- Python cell 改用持久化进程执行（`python_executor.py`），维护共享命名空间并独立捕获每个 cell 的输出，实现 Jupyter-like 效果——每个 cell 仅显示自身输出，但变量/函数/导入在 cell 间保持。
+### 修复
+- 定位遮挡：SignatureHelpPopup::updatePosition() 原先基于鼠标位置定位，上方空间不足时会落到下方，可能跨 cell                                                              边界被遮挡。现在改为基于文本光标位置定位，始终在光标上方显示，空间不足时 clamp 到屏幕顶部，不再落到下方。                                                                      
+- Ctrl+Enter执行代码块后，函数窗口残留
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -539,6 +540,9 @@
 **职责**：
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
+- **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。鼠标移动/离开/点击/滚轮时关闭。
+- **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
 - 闭合括号跳过（`handleClosingBracketSkip`）：输入右括号时若光标后紧跟相同字符，则跳过而非重复插入。
@@ -557,6 +561,7 @@
 - `QString languageId() const`：返回当前语言 ID。
 - `CompletionProvider *completionProvider() const`：返回当前补全提供者。
 - `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
+- `void hideSignatureHelp()`：隐藏签名帮助弹出窗口。由 `focusOutEvent` 失焦时调用，也由 `SmdEditor` 在执行 cell 前调用以确保弹出窗口不残留。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。
 - `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
@@ -1053,7 +1058,7 @@
 - **取消行为**：如果在新建单元格流程中弹出（按 `A`/`B`），取消时自动删除该单元格、恢复原始活动单元格、清除修改状态标识。
 
 **单元格执行**：
-- `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。
+- `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
 - **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
 - **C++ 单元格**：执行时合并当前 cell 及以上所有同语言 cell 的内容写入临时文件 → `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget` → 清理临时文件 → 进入命令模式并跳转下一个单元格。
 - **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。后续执行仅将当前 cell 代码通过 `QProcess::write()` 发送给守护进程，守护进程在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`，前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。

@@ -987,15 +987,30 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
 {
     // Close popup on mouse click outside of it
     if (obj == viewport() && event->type() == QEvent::MouseButtonPress) {
+        auto *me = static_cast<QMouseEvent *>(event);
+        QPoint globalPos = me->globalPosition().toPoint();
         if (m_completionPopup && m_completionPopup->isActive()) {
-            auto *me = static_cast<QMouseEvent *>(event);
-            QPoint globalPos = me->globalPosition().toPoint();
             if (!m_completionPopup->geometry().contains(globalPos)) {
                 m_completionPopup->hide();
             }
         }
+        if (m_signatureHelpManager && m_signatureHelpManager->isActive()) {
+            hideSignatureHelp();
+        }
     }
     return QPlainTextEdit::eventFilter(obj, event);
+}
+
+void CodeEditor::hideSignatureHelp()
+{
+    if (m_signatureHelpManager)
+        m_signatureHelpManager->hide();
+}
+
+void CodeEditor::focusOutEvent(QFocusEvent *event)
+{
+    hideSignatureHelp();
+    QPlainTextEdit::focusOutEvent(event);
 }
 
 // ---- Helpers ----

@@ -38,6 +38,7 @@ public:
 
     void reloadColors();
 
+    void hideSignatureHelp();
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
     void clearCurrentLineHighlight();
@@ -50,6 +51,7 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
