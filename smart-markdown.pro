@@ -71,6 +71,7 @@ HEADERS += \
     ai/chatarea.h \
     ai/chatbubble.h \
     ai/openaiprovider.h \
+    ai/prompttemplates.h \
     activitybar.h \
     configmanager.h \
     backlinkindex.h \
