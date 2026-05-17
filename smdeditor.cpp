@@ -21,6 +21,7 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QLabel>
+#include <QRegularExpression>
 
 // ============================================================
 // LangSelectorPopup — language selection popup for cell type
@@ -821,17 +822,50 @@ void SmdEditor::executeMarkdownCell(SmdCell *cell)
 
 void SmdEditor::executeCodeCell(SmdCell *cell)
 {
-    QString code = cell->content();
-    if (code.trimmed().isEmpty()) {
-        // Empty cell — just jump to next without execution
+    int execIndex = m_cells.indexOf(cell);
+    bool isPython = (cell->cellType() == SmdCell::Python);
+    QString ext = isPython ? QStringLiteral("py") : QStringLiteral("cpp");
+
+    // Skip if current cell is truly empty (original behavior).
+    if (cell->content().trimmed().isEmpty()) {
         if (!m_commandMode)
             enterCommandMode();
         jumpToNextCell();
         return;
     }
 
-    bool isPython = (cell->cellType() == SmdCell::Python);
-    QString ext = isPython ? QStringLiteral("py") : QStringLiteral("cpp");
+    // Combine all same-language cells from index 0 up to the executed cell,
+    // so that includes, types, and functions defined in earlier cells are
+    // visible when compiling the current cell.
+    QString combinedCode;
+    for (int i = 0; i <= execIndex; ++i) {
+        SmdCell *c = m_cells[i];
+        SmdCell::CellType ct = c->cellType();
+        bool sameLang = isPython ? (ct == SmdCell::Python) : (ct == SmdCell::Cpp);
+        if (!sameLang)
+            continue;
+        QString content = c->content();
+        if (!combinedCode.isEmpty() && !content.isEmpty())
+            combinedCode += QLatin1Char('\n');
+        if (!content.isEmpty())
+            combinedCode += content;
+    }
+
+    if (combinedCode.trimmed().isEmpty()) {
+        if (!m_commandMode)
+            enterCommandMode();
+        jumpToNextCell();
+        return;
+    }
+
+    // Detect whether the combined code has a main() function.
+    // If not, compile-only (no link) to avoid spurious linker errors
+    // about undefined reference to `WinMain` / `main`.
+    bool hasMain = false;
+    if (!isPython) {
+        QRegularExpression mainRe(QStringLiteral("\\bmain\\s*\\("));
+        hasMain = mainRe.match(combinedCode).hasMatch();
+    }
 
     QString tempPath = QDir::tempPath()
         + QStringLiteral("/smd_cell_")
@@ -843,24 +877,22 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 
     QFile file(tempPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        int idx = m_cells.indexOf(cell);
-        if (idx >= 0 && idx < m_outputWidgets.size()) {
-            m_outputWidgets[idx]->clearOutput();
-            m_outputWidgets[idx]->appendText(tr("Error: Cannot create temp file.\n"), true);
+        if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+            m_outputWidgets[execIndex]->clearOutput();
+            m_outputWidgets[execIndex]->appendText(tr("Error: Cannot create temp file.\n"), true);
         }
         return;
     }
-    file.write(code.toUtf8());
+    file.write(combinedCode.toUtf8());
     file.close();
 
     m_executingCell = cell;
     m_executingTempFile = tempPath;
 
     // Clear previous output
-    int execIdx = m_cells.indexOf(cell);
-    if (execIdx >= 0 && execIdx < m_outputWidgets.size()) {
-        m_outputWidgets[execIdx]->clearOutput();
-        m_outputWidgets[execIdx]->setVisible(true);
+    if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+        m_outputWidgets[execIndex]->clearOutput();
+        m_outputWidgets[execIndex]->setVisible(true);
     }
 
     // Connect output
@@ -868,6 +900,7 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
                                this, &SmdEditor::onProcessOutput);
 
     if (isPython) {
+        m_executingCompileOnly = false;
         m_execRunConn = connect(m_processRunner, &ProcessRunner::runFinished, this,
             [this](int exitCode) {
                 disconnect(m_execOutputConn);
@@ -875,7 +908,19 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
                 onProcessFinished(exitCode);
             });
         m_processRunner->startRunPython(tempPath);
+    } else if (!hasMain) {
+        // Compile-only — no main(), so linking would fail with
+        // undefined reference to `WinMain` / `main`.
+        m_executingCompileOnly = true;
+        m_execCompileConn = connect(m_processRunner, &ProcessRunner::compileFinished, this,
+            [this](bool success) {
+                disconnect(m_execOutputConn);
+                disconnect(m_execCompileConn);
+                onProcessFinished(success ? 0 : -1);
+            });
+        m_processRunner->startCompileOnly(tempPath);
     } else {
+        m_executingCompileOnly = false;
         m_execCompileConn = connect(m_processRunner, &ProcessRunner::compileFinished, this,
             [this](bool success) {
                 if (!success) {
@@ -917,8 +962,14 @@ void SmdEditor::onProcessFinished(int exitCode)
     QString exePath = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
                       + QStringLiteral(".exe");
     QFile::remove(exePath);
+    if (m_executingCompileOnly) {
+        QString objPath = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
+                          + QStringLiteral(".o");
+        QFile::remove(objPath);
+    }
     m_executingTempFile.clear();
     m_executingCell = nullptr;
+    m_executingCompileOnly = false;
 
     // Scroll output to top so user sees the beginning (Req 1)
     if (finishedIdx >= 0 && finishedIdx < m_outputWidgets.size())

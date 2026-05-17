@@ -16,6 +16,7 @@ public:
     ~ProcessRunner();
 
     void startCompile(const QString &sourceFile);
+    void startCompileOnly(const QString &sourceFile);
     void startRun(const QString &executable);
     void startCompileAndRun(const QString &sourceFile);
     void startRunPython(const QString &sourceFile);

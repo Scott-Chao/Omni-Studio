@@ -87,6 +87,26 @@ inline QStringList getCompileArgs(const QString &compilerId,
     return args;
 }
 
+inline QStringList getCompileOnlyArgs(const QString &compilerId,
+                                       const QString &sourceFile,
+                                       const QString &outputFile)
+{
+    const auto &cfg = ConfigManager::instance();
+    QStringList args;
+    if (compilerId == QStringLiteral("gcc")) {
+        args << QStringLiteral("-c")
+             << cfg.compilerGxxFlags()
+             << sourceFile
+             << QStringLiteral("-o") << outputFile;
+    } else if (compilerId == QStringLiteral("msvc")) {
+        args << QStringLiteral("/c")
+             << cfg.compilerMsvcFlags()
+             << sourceFile
+             << QStringLiteral("/Fo") + outputFile;
+    }
+    return args;
+}
+
 inline QString getOutputPath(const QString &sourceFile)
 {
     QFileInfo fi(sourceFile);

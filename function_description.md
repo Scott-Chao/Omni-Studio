@@ -39,8 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 修复
-- 修复 SMD LSP 补全返回无关内容：`syncVirtualDoc()` 虽然已实现但从未被调用，导致 clangd 仅在初始 `didOpen` 时获知虚拟文档内容，之后所有编辑（包括输入字符、增删 cell）均未通过 `textDocument/didChange` 同步，clangd 始终基于过期内容返回补全结果。修复方案：在 `rebuildVirtualDoc()` 末尾添加 `syncVirtualDoc(langId)` 调用，确保每次虚拟文档变更后同步至 clangd。
+### 新增
+- 修复 SMD 跨 cell 代码执行问题：此前每个 cell 独立编译为单独的 `.cpp` 文件，前面 cell 定义的 `#include`、类型、函数在后面 cell 执行时不可见。修复方案：(1) 执行时将当前 cell 及以上所有同语言 cell 的内容合并写入临时文件；(2) 对不含 `main()` 的 cell 使用 `-c` 仅编译不链接（`ProcessRunner::startCompileOnly` / `CompilerUtils::getCompileOnlyArgs`），避免 `WinMain` 链接错误。
 
 ### 1. `MainWindow` - 主窗口控制器
 

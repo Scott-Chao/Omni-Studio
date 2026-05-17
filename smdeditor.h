@@ -111,6 +111,7 @@ private:
     int m_pendingRenderJumpIndex = -1;
     bool m_userTerminated = false;
     QString m_executingTempFile;
+    bool m_executingCompileOnly = false;
     int m_executeCounter = 0;
     QMetaObject::Connection m_execOutputConn;
     QMetaObject::Connection m_execCompileConn;
