@@ -29,11 +29,13 @@
 // before Qt gets a chance to route it to the wrong HWND.
 // ============================================================
 
-class EscNativeFilter : public QAbstractNativeEventFilter
+class EscNativeFilter : public QObject, public QAbstractNativeEventFilter
 {
+    Q_OBJECT
 public:
+    explicit EscNativeFilter(QObject *parent = nullptr) : QObject(parent) {}
     QPointer<CompletionPopup> popup;
-    SignatureHelpManager *sigMgr = nullptr;
+    QPointer<SignatureHelpManager> sigMgr;
 
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
     {
@@ -121,7 +123,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
     {
-        auto *nativeFilter = new EscNativeFilter();
+        auto *nativeFilter = new EscNativeFilter(this);
         nativeFilter->popup = m_completionPopup;
         nativeFilter->sigMgr = m_signatureHelpManager;
         qApp->installNativeEventFilter(nativeFilter);
@@ -1076,3 +1078,5 @@ void CodeEditor::refreshCurrentLineHighlight()
 {
     highlightCurrentLine();
 }
+
+#include "codeeditor.moc"
