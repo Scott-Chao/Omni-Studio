@@ -14,6 +14,9 @@ win32: LIBS += -luser32
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    ai/aiproviderfactory.cpp \
+    ai/anthropicprovider.cpp \
+    ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
     backlinkindex.cpp \
@@ -58,6 +61,10 @@ SOURCES += \
     tabmanager.cpp
 
 HEADERS += \
+    ai/aiprovider.h \
+    ai/aiproviderfactory.h \
+    ai/anthropicprovider.h \
+    ai/openaiprovider.h \
     activitybar.h \
     configmanager.h \
     backlinkindex.h \
