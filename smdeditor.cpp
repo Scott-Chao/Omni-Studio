@@ -898,11 +898,9 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     m_executingCell = cell;
     m_executingTempFile = tempPath;
 
-    // Clear previous output
-    if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+    // Clear previous output (visibility is handled by appendText when output arrives)
+    if (execIndex >= 0 && execIndex < m_outputWidgets.size())
         m_outputWidgets[execIndex]->clearOutput();
-        m_outputWidgets[execIndex]->setVisible(true);
-    }
 
     // Connect output
     m_execOutputConn = connect(m_processRunner, &ProcessRunner::outputReceived,
@@ -1018,11 +1016,9 @@ void SmdEditor::executePythonCell(SmdCell *cell)
     m_executingCell = cell;
     m_executingTempFile.clear();
 
-    // Clear previous output
-    if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+    // Clear previous output (visibility is handled by appendText when output arrives)
+    if (execIndex >= 0 && execIndex < m_outputWidgets.size())
         m_outputWidgets[execIndex]->clearOutput();
-        m_outputWidgets[execIndex]->setVisible(true);
-    }
 
     // Send code to persistent Python process
     QJsonObject req;

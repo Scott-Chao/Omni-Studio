@@ -3,6 +3,7 @@
 #include <QTextCursor>
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QTimer>
 
 SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     : QWidget(parent)
@@ -47,8 +48,16 @@ void SmdOutputWidget::setOutput(const QString &text)
         lines = lines.mid(0, kMaxOutputLines);
         lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
     }
+
+    // Block signals during bulk text set to avoid premature updateHeight()
+    // before the widget is visible and properly laid out.
+    m_outputEdit->document()->blockSignals(true);
     m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
+    m_outputEdit->document()->blockSignals(false);
+
     setVisible(true);
+    // Defer height update to ensure font metrics and layout are valid
+    QTimer::singleShot(0, this, &SmdOutputWidget::updateHeight);
 }
 
 void SmdOutputWidget::appendText(const QString &text, bool isStderr)

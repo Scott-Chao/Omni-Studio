@@ -18,7 +18,7 @@
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示** 和 **函数签名帮助**。
-- SMD LSP 代码智能：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。
+- SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
@@ -40,8 +40,8 @@
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
 ### 修复
-- 定位遮挡：SignatureHelpPopup::updatePosition() 原先基于鼠标位置定位，上方空间不足时会落到下方，可能跨 cell                                                              边界被遮挡。现在改为基于文本光标位置定位，始终在光标上方显示，空间不足时 clamp 到屏幕顶部，不再落到下方。                                                                      
-- Ctrl+Enter执行代码块后，函数窗口残留
+- 代码块没有输出时，将不会创建输出显示
+- 加载 smd 文件时，输出区域的高度加载异常的问题已修复
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1060,8 +1060,8 @@
 **单元格执行**：
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
 - **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
-- **C++ 单元格**：执行时合并当前 cell 及以上所有同语言 cell 的内容写入临时文件 → `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget` → 清理临时文件 → 进入命令模式并跳转下一个单元格。
-- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。后续执行仅将当前 cell 代码通过 `QProcess::write()` 发送给守护进程，守护进程在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`，前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
+- **C++ 单元格**：执行时合并当前 cell 及以上所有同语言 cell 的内容写入临时文件 → `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → 进入命令模式并跳转下一个单元格。
+- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。后续执行仅将当前 cell 代码通过 `QProcess::write()` 发送给守护进程，守护进程在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
 - **空代码单元格**：不启动执行流程，直接进入命令模式并跳转。
 - 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
@@ -1141,12 +1141,12 @@
 **自适应高度**：
 - `kMaxVisibleLines = 15`：高度随内容行数增长，最多显示 15 行。未达上限时滚动条强制关闭（`ScrollBarAlwaysOff`），超出时启用滚动条（`ScrollBarAsNeeded`）。
 - `kMaxOutputLines = 1000`：内容行数上限。超出的行从开头删除，替换为灰色 `[... more lines]` 提示。
-- `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，自动调整固定高度。
+- `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，在 `appendText()` 追加文本时自动触发调整固定高度；`setOutput()` 中通过 `QTimer::singleShot(0, ...)` 延迟调用，避免加载时控件尚未完成布局导致高度计算异常。
 
 **主要接口**：
-- `void setOutput(const QString &text)`：清除后设置输出文本，超行截断，自动显示控件。
-- `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
-- `void clearOutput()`：清空内容并隐藏控件。
+- `void setOutput(const QString &text)`：加载文件时恢复已保存的输出文本。先阻断文档信号防止 `setPlainText()` 过程中提前触发 `updateHeight()`，设置文本后再解除信号阻塞，显示控件，最后通过 `QTimer::singleShot(0, ...)` 延迟计算高度确保布局就绪。超行自动截断。
+- `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，首次追加时自动显示控件。stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
+- `void clearOutput()`：清空内容并隐藏控件。执行前调用以重置输出区域，控件保持隐藏直至 `appendText()` 收到实际输出。
 - `QString outputText() const`：返回原始输出文本（用于序列化）。
 - `bool hasOutput() const`：是否有输出内容。
 
