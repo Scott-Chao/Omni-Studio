@@ -1212,6 +1212,24 @@ QString EditorWidget::toPlainText() const
     return m_textEdit->toPlainText();
 }
 
+QString EditorWidget::selectedText() const
+{
+    if (m_editorMode == CodeEdit)
+        return m_codeEditor->textCursor().selectedText();
+    if (m_editorMode == PdfView)
+        return {};
+    if (m_editorMode == SmdEdit) {
+        int idx = m_smdEditor->activeCellIndex();
+        if (idx >= 0) {
+            SmdCell *cell = m_smdEditor->cellAt(idx);
+            if (auto *edit = qobject_cast<QPlainTextEdit*>(cell->editorWidget()))
+                return edit->textCursor().selectedText();
+        }
+        return {};
+    }
+    return m_textEdit->textCursor().selectedText();
+}
+
 void EditorWidget::setPlainText(const QString &text)
 {
     if (m_editorMode == PdfView)

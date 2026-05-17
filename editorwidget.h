@@ -88,6 +88,9 @@ public:
     // Sync original content baseline to given disk content
     void setOriginalContent(const QString &diskContent);
 
+    // Selected text from the active sub-editor
+    QString selectedText() const;
+
     // 自动保存
     void startAutoSave();
     void stopAutoSave();
