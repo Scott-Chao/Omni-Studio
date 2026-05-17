@@ -196,6 +196,13 @@ public:
     // ---- Shortcuts ----
     QString shortcut(const QString &actionName, const QString &defaultValue) const;
 
+    // ---- AI ----
+    QString aiProviderType() const;
+    QString aiEndpoint() const;
+    QString aiModel() const;
+    int aiMaxTokens() const;
+    QString aiSystemPrompt() const;
+
     // ---- Settings Panel ----
     int settingsPanelWidth() const;
     int settingsPanelHeight() const;

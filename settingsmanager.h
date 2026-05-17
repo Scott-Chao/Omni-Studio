@@ -63,6 +63,11 @@ public:
     QPair<QString, QString> openJudgeCredentials() const; // <username, password>
     void clearOpenJudgeCredentials();
 
+    // AI
+    void setAiApiKey(const QString &key);
+    QString aiApiKey() const;
+    void clearAiApiKey();
+
     // 崩溃恢复 - 恢复文件元数据
     // 每个条目存储为 "recoveryPath|originalPath"，originalPath 为空表示未命名文件
     void setRecoveryFiles(const QList<QPair<QString, QString>> &files);

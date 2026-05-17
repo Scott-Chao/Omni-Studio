@@ -17,6 +17,7 @@ class QStackedWidget;
 class QLineEdit;
 class QVBoxLayout;
 class QSizeGrip;
+class QTextEdit;
 
 // 自定义开关控件，类似 Windows 系统设置的 Toggle Switch
 class ToggleSwitch : public QWidget
@@ -74,6 +75,7 @@ signals:
     void outputPanelSettingChanged(const QString &key, const QVariant &value);
     void previewSettingChanged(const QString &key, const QVariant &value);
     void searchSettingChanged(const QString &key, const QVariant &value);
+    void aiSettingChanged(const QString &key, const QVariant &value);
     void resetToDefaultsRequested();
 
 protected:
@@ -103,6 +105,7 @@ private:
     QWidget *createPreviewPage();
     QWidget *createSearchPage();
     QWidget *createShortcutsPage();
+    QWidget *createAiServicePage();
 
     // Shared helper for consistent section label styling
     QLabel *createSectionLabel(const QString &text);
@@ -132,6 +135,14 @@ private:
     QSpinBox *m_searchPerFileSpin = nullptr;
     QSpinBox *m_searchTotalSpin = nullptr;
     QSpinBox *m_searchSnippetSpin = nullptr;
+
+    // AI service controls
+    QComboBox *m_aiProviderCombo = nullptr;
+    QLineEdit *m_aiEndpointEdit = nullptr;
+    QLineEdit *m_aiApiKeyEdit = nullptr;
+    QLineEdit *m_aiModelEdit = nullptr;
+    QSpinBox *m_aiMaxTokensSpin = nullptr;
+    QTextEdit *m_aiSystemPromptEdit = nullptr;
 
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;

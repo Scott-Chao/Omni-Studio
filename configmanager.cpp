@@ -481,6 +481,15 @@ QJsonObject ConfigManager::buildDefaultConfig()
     appearance["colors"] = colors;
     root["appearance"] = appearance;
 
+    // ---- ai ----
+    QJsonObject ai;
+    ai["provider_type"] = QStringLiteral("Anthropic");
+    ai["endpoint"] = QStringLiteral("https://api.deepseek.com/v1");
+    ai["model"] = QStringLiteral("deepseek-v4-flash");
+    ai["max_tokens"] = 4096;
+    ai["system_prompt"] = QString();
+    root["ai"] = ai;
+
     // ---- shortcuts ----
     QJsonObject shortcuts;
     shortcuts["new_file"] = "Ctrl+N";
@@ -707,6 +716,13 @@ QString ConfigManager::shortcut(const QString &actionName, const QString &defaul
 {
     return stringValue("shortcuts." + actionName, defaultValue);
 }
+
+// ---- AI ----
+QString ConfigManager::aiProviderType() const { return stringValue("ai.provider_type", "Anthropic"); }
+QString ConfigManager::aiEndpoint() const { return stringValue("ai.endpoint", "https://api.deepseek.com/v1"); }
+QString ConfigManager::aiModel() const { return stringValue("ai.model", "deepseek-v4-flash"); }
+int ConfigManager::aiMaxTokens() const { return intValue("ai.max_tokens", 4096); }
+QString ConfigManager::aiSystemPrompt() const { return stringValue("ai.system_prompt", ""); }
 
 // ---- Settings Panel ----
 int ConfigManager::settingsPanelWidth() const { return intValue("settings_panel.width", 500); }

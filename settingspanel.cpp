@@ -18,6 +18,7 @@
 #include <QSizeGrip>
 #include <QIntValidator>
 #include <QTableWidget>
+#include <QTextEdit>
 #include <QHeaderView>
 #include <QColorDialog>
 #include <QFontDatabase>
@@ -210,6 +211,7 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_categoryList->addItem(tr("预览"));
     m_categoryList->addItem(tr("搜索"));
     m_categoryList->addItem(tr("快捷键"));
+    m_categoryList->addItem(tr("AI 服务"));
 
     leftLayout->addWidget(m_categoryList, 1);
 
@@ -253,6 +255,7 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_stackedWidget->addWidget(createPreviewPage());       // index 3
     m_stackedWidget->addWidget(createSearchPage());        // index 4
     m_stackedWidget->addWidget(createShortcutsPage());     // index 5
+    m_stackedWidget->addWidget(createAiServicePage());     // index 6
 
     connect(m_categoryList, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
     m_categoryList->setCurrentRow(0);
@@ -922,6 +925,151 @@ QWidget *SettingsPanel::createShortcutsPage()
 }
 
 // ============================================================
+// Page: AI 服务 (AI Service)
+// ============================================================
+QWidget *SettingsPanel::createAiServicePage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(
+        "QScrollArea { background: #2b2b2b; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+    );
+
+    auto *content = new QWidget;
+    content->setStyleSheet("background: #2b2b2b;");
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("AI 服务")));
+
+    // ---- API 类型 ----
+    auto *providerRow = new QHBoxLayout;
+    auto *providerLabel = new QLabel(tr("API 类型"));
+    providerLabel->setStyleSheet(kLabelStyle);
+    m_aiProviderCombo = new QComboBox;
+    m_aiProviderCombo->addItems({QStringLiteral("Anthropic"), QStringLiteral("OpenAI")});
+    m_aiProviderCombo->setFixedWidth(180);
+    m_aiProviderCombo->setStyleSheet(kInputStyle);
+    providerRow->addWidget(providerLabel);
+    providerRow->addStretch();
+    providerRow->addWidget(m_aiProviderCombo);
+    layout->addLayout(providerRow);
+
+    connect(m_aiProviderCombo, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+        emit aiSettingChanged("ai.provider_type", text);
+    });
+
+    // ---- API 端点 ----
+    auto *endpointRow = new QHBoxLayout;
+    auto *endpointLabel = new QLabel(tr("API 端点"));
+    endpointLabel->setStyleSheet(kLabelStyle);
+    m_aiEndpointEdit = new QLineEdit;
+    m_aiEndpointEdit->setPlaceholderText(QStringLiteral("https://api.deepseek.com/v1"));
+    m_aiEndpointEdit->setStyleSheet(kInputStyle);
+    endpointRow->addWidget(endpointLabel);
+    endpointRow->addStretch();
+    endpointRow->addWidget(m_aiEndpointEdit, 1);
+    layout->addLayout(endpointRow);
+
+    connect(m_aiEndpointEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit aiSettingChanged("ai.endpoint", text);
+    });
+
+    // ---- API Key ----
+    auto *keyRow = new QHBoxLayout;
+    auto *keyLabel = new QLabel(tr("API Key"));
+    keyLabel->setStyleSheet(kLabelStyle);
+    m_aiApiKeyEdit = new QLineEdit;
+    m_aiApiKeyEdit->setEchoMode(QLineEdit::Password);
+    m_aiApiKeyEdit->setPlaceholderText(tr("输入 API Key"));
+    m_aiApiKeyEdit->setStyleSheet(kInputStyle);
+    keyRow->addWidget(keyLabel);
+    keyRow->addStretch();
+    keyRow->addWidget(m_aiApiKeyEdit, 1);
+    layout->addLayout(keyRow);
+
+    connect(m_aiApiKeyEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit aiSettingChanged("ai.api_key", text);
+    });
+
+    // ---- 模型 ----
+    auto *modelRow = new QHBoxLayout;
+    auto *modelLabel = new QLabel(tr("模型"));
+    modelLabel->setStyleSheet(kLabelStyle);
+    m_aiModelEdit = new QLineEdit;
+    m_aiModelEdit->setPlaceholderText(QStringLiteral("deepseek-v4-flash"));
+    m_aiModelEdit->setStyleSheet(kInputStyle);
+    modelRow->addWidget(modelLabel);
+    modelRow->addStretch();
+    modelRow->addWidget(m_aiModelEdit, 1);
+    layout->addLayout(modelRow);
+
+    connect(m_aiModelEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit aiSettingChanged("ai.model", text);
+    });
+
+    // ---- Max Tokens ----
+    auto *tokensRow = new QHBoxLayout;
+    auto *tokensLabel = new QLabel(tr("Max Tokens"));
+    tokensLabel->setStyleSheet(kLabelStyle);
+    m_aiMaxTokensSpin = new QSpinBox;
+    m_aiMaxTokensSpin->setRange(256, 16384);
+    m_aiMaxTokensSpin->setSingleStep(256);
+    m_aiMaxTokensSpin->setValue(cfg.aiMaxTokens());
+    m_aiMaxTokensSpin->setFixedWidth(120);
+    m_aiMaxTokensSpin->setStyleSheet(kInputStyle);
+    tokensRow->addWidget(tokensLabel);
+    tokensRow->addStretch();
+    tokensRow->addWidget(m_aiMaxTokensSpin);
+    layout->addLayout(tokensRow);
+
+    connect(m_aiMaxTokensSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit aiSettingChanged("ai.max_tokens", val);
+    });
+
+    // ---- 系统提示词 ----
+    layout->addSpacing(8);
+    auto *promptLabel = new QLabel(tr("系统提示词"));
+    promptLabel->setStyleSheet(kLabelStyle);
+    layout->addWidget(promptLabel);
+
+    m_aiSystemPromptEdit = new QTextEdit;
+    m_aiSystemPromptEdit->setPlaceholderText(tr("可选的系统提示词，设定 AI 助手的角色和行为..."));
+    m_aiSystemPromptEdit->setFixedHeight(120);
+    m_aiSystemPromptEdit->setStyleSheet(
+        "QTextEdit {"
+        "  background-color: #3c3c3c;"
+        "  color: #cccccc;"
+        "  border: 1px solid #555555;"
+        "  border-radius: 3px;"
+        "  padding: 4px;"
+        "  font-size: 12px;"
+        "}"
+        "QTextEdit:focus {"
+        "  border-color: #0078d4;"
+        "}"
+    );
+    layout->addWidget(m_aiSystemPromptEdit);
+
+    connect(m_aiSystemPromptEdit, &QTextEdit::textChanged, this, [this]() {
+        emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
+    });
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
 // Drag & Resize (unchanged)
 // ============================================================
 
@@ -970,6 +1118,23 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     if (m_searchSnippetSpin) {
         m_searchSnippetSpin->setValue(sm.value("search_panel.snippet_max_length", cfg.searchSnippetMaxLength()).toInt());
     }
+
+    // AI service page
+    if (m_aiProviderCombo) {
+        QString provider = sm.value("ai.provider_type", cfg.aiProviderType()).toString();
+        int idx = m_aiProviderCombo->findText(provider);
+        if (idx >= 0) m_aiProviderCombo->setCurrentIndex(idx);
+    }
+    if (m_aiEndpointEdit)
+        m_aiEndpointEdit->setText(sm.value("ai.endpoint", cfg.aiEndpoint()).toString());
+    if (m_aiApiKeyEdit)
+        m_aiApiKeyEdit->setText(sm.aiApiKey());
+    if (m_aiModelEdit)
+        m_aiModelEdit->setText(sm.value("ai.model", cfg.aiModel()).toString());
+    if (m_aiMaxTokensSpin)
+        m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
+    if (m_aiSystemPromptEdit)
+        m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
 }
 
 void SettingsPanel::setDefaultZoom(qreal zoom)

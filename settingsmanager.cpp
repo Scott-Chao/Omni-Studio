@@ -193,6 +193,8 @@ static const QString KEY_OJ_AUTO_LOGIN  = "OpenJudge/autoLogin";
 static const QString KEY_OJ_USERNAME    = "OpenJudge/username";
 static const QString KEY_OJ_PASSWORD    = "OpenJudge/password";
 
+static const QString KEY_AI_API_KEY     = "AI/apiKey";
+
 static QString obfuscate(const QString &text)
 {
     return QString::fromLatin1(text.toUtf8().toBase64());
@@ -230,6 +232,21 @@ void SettingsManager::clearOpenJudgeCredentials()
 {
     m_settings->remove(KEY_OJ_USERNAME);
     m_settings->remove(KEY_OJ_PASSWORD);
+}
+
+void SettingsManager::setAiApiKey(const QString &key)
+{
+    m_settings->setValue(KEY_AI_API_KEY, obfuscate(key));
+}
+
+QString SettingsManager::aiApiKey() const
+{
+    return deobfuscate(m_settings->value(KEY_AI_API_KEY).toString());
+}
+
+void SettingsManager::clearAiApiKey()
+{
+    m_settings->remove(KEY_AI_API_KEY);
 }
 
 // ---- Auto-Save / Crash Recovery ----

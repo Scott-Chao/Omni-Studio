@@ -583,6 +583,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
 
     // ----- 界面布局 -----
@@ -1062,6 +1063,15 @@ void MainWindow::onSearchSettingChanged(const QString &key, const QVariant &valu
 {
     m_settings->setSettingOverride(key, value);
     // Search settings take effect on next search operation
+}
+
+void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
+{
+    if (key == QStringLiteral("ai.api_key")) {
+        m_settings->setAiApiKey(value.toString());
+    } else {
+        m_settings->setSettingOverride(key, value);
+    }
 }
 
 void MainWindow::onResetToDefaults()

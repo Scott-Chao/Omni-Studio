@@ -195,6 +195,7 @@ private:
     void onOutputPanelSettingChanged(const QString &key, const QVariant &value);
     void onPreviewSettingChanged(const QString &key, const QVariant &value);
     void onSearchSettingChanged(const QString &key, const QVariant &value);
+    void onAiSettingChanged(const QString &key, const QVariant &value);
     void onResetToDefaults();
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
