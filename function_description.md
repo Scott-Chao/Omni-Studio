@@ -40,8 +40,7 @@
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
 ### 修复
-
-- 修复 SMD 文件反复打开关闭后按 Esc 卡死闪退：`EscNativeFilter` 原先未设置父对象，导致 CodeEditor 销毁后 native event filter 泄漏并累积在 QApplication 上，其内部的 `sigMgr` 裸指针在 SignatureHelpManager 销毁后变为悬空指针，再次按 Esc 时触发 use-after-free 崩溃。修复方案：令 `EscNativeFilter` 同时继承 `QObject`，以 CodeEditor 为父对象，利用 Qt 父子销毁链自动清理；同时将 `sigMgr` 改为 `QPointer<SignatureHelpManager>` 防御性空悬。
+- 修复 SMD LSP 补全返回无关内容：`syncVirtualDoc()` 虽然已实现但从未被调用，导致 clangd 仅在初始 `didOpen` 时获知虚拟文档内容，之后所有编辑（包括输入字符、增删 cell）均未通过 `textDocument/didChange` 同步，clangd 始终基于过期内容返回补全结果。修复方案：在 `rebuildVirtualDoc()` 末尾添加 `syncVirtualDoc(langId)` 调用，确保每次虚拟文档变更后同步至 clangd。
 
 ### 1. `MainWindow` - 主窗口控制器
 

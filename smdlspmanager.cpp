@@ -330,6 +330,7 @@ void SmdLspManager::rebuildVirtualDoc(const QString &langId)
         virtualLine = virtualLine + 1 + localLines;
     }
 
+    syncVirtualDoc(langId);
 }
 
 void SmdLspManager::syncVirtualDoc(const QString &langId)
