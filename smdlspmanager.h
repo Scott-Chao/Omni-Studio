@@ -50,6 +50,8 @@ public:
 
     QList<SmdDiagnostic> diagnosticsForCell(int cellIndex) const;
 
+    void focusCell(int cellIndex);
+
     void shutdown();
 
 signals:
@@ -93,6 +95,9 @@ private:
     void startCppServer();
     void startPyServer();
     void sendInitialize(const QString &langId);
+
+    // Group computation
+    int computeCppGroup(int cellIndex) const;
 
     // Virtual document
     void rebuildVirtualDoc(const QString &langId);
@@ -143,6 +148,10 @@ private:
 
     // Per-cell diagnostics
     QMap<int, QList<SmdDiagnostic>> m_diagnostics;
+
+    // Program group support
+    int m_activeCppGroup = 0;
+    QMap<int, QMap<int, QList<SmdDiagnostic>>> m_groupDiagnostics;
 
     // Cell adapter providers
     class CellCompletionAdapter;

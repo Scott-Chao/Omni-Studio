@@ -79,6 +79,7 @@ private:
     void executeCodeCell(SmdCell *cell);
     void executePythonCell(SmdCell *cell);
     void jumpToNextCell();
+    int cppGroupForCell(int cellIndex) const;
     void onCellRenderFinished();
     void handleProcessStop();
 

@@ -158,6 +158,8 @@ void SmdLspManager::shutdown()
 
     qDeleteAll(m_adapters);
     m_adapters.clear();
+    m_activeCppGroup = 0;
+    m_groupDiagnostics.clear();
     debugLog(QStringLiteral("SmdLspManager::shutdown — done"));
 }
 
@@ -305,6 +307,10 @@ QString SmdLspManager::buildVirtualDocContent(const QString &langId) const
 
     QStringList lines;
     for (int ci : srv->cellOrder) {
+        // Filter: only include cells from the active C++ group
+        if (langId == QStringLiteral("cpp") && m_activeCppGroup >= 0
+            && computeCppGroup(ci) != m_activeCppGroup)
+            continue;
         lines.append(QStringLiteral("%1 --- smd:cell:%2 ---").arg(comment).arg(ci));
         QString content = contents.value(ci);
         if (!content.isEmpty())
@@ -324,6 +330,10 @@ void SmdLspManager::rebuildVirtualDoc(const QString &langId)
     srv->cellRanges.clear();
     int virtualLine = 0;
     for (int ci : srv->cellOrder) {
+        // Filter: only include cells from the active C++ group
+        if (langId == QStringLiteral("cpp") && m_activeCppGroup >= 0
+            && computeCppGroup(ci) != m_activeCppGroup)
+            continue;
         QString content = contents.value(ci);
         int localLines = content.isEmpty() ? 1 : content.count(QLatin1Char('\n')) + 1;
         srv->cellRanges[ci] = {virtualLine + 1, localLines}; // +1 for separator line
@@ -664,9 +674,11 @@ void SmdLspManager::processDiagnostics(const QString &langId,
         emit diagnosticsUpdated(it.key(), it.value());
     }
 
-    // Clear diagnostics for cells that no longer have any
-    for (int ci : srv->cellOrder) {
-        if (!newDiags.contains(ci) && m_diagnostics.contains(ci)) {
+    // Clear diagnostics for cells that no longer have any.
+    // Iterate a copy of the keys because we may modify m_diagnostics.
+    const QList<int> diagKeys = m_diagnostics.keys();
+    for (int ci : diagKeys) {
+        if (!newDiags.contains(ci)) {
             m_diagnostics.remove(ci);
             emit diagnosticsUpdated(ci, {});
         }
@@ -804,6 +816,54 @@ CompletionProvider *SmdLspManager::providerForCell(int cellIndex, const QString 
 QList<SmdDiagnostic> SmdLspManager::diagnosticsForCell(int cellIndex) const
 {
     return m_diagnostics.value(cellIndex);
+}
+
+// ─── Program group support ───────────────────────────────────────────
+
+int SmdLspManager::computeCppGroup(int cellIndex) const
+{
+    static const QRegularExpression mainRe(QStringLiteral("\\bmain\\s*\\("));
+    int group = 0;
+    for (int ci : m_cppServer.cellOrder) {
+        if (ci >= cellIndex)
+            break;
+        const QString &content = m_cppCellContents.value(ci);
+        if (mainRe.match(content).hasMatch())
+            ++group;
+    }
+    return group;
+}
+
+void SmdLspManager::focusCell(int cellIndex)
+{
+    if (!m_cppCellContents.contains(cellIndex))
+        return;
+
+    int newGroup = computeCppGroup(cellIndex);
+    if (newGroup == m_activeCppGroup)
+        return;
+
+    // Save current diagnostics to cache
+    if (m_activeCppGroup >= 0 && !m_diagnostics.isEmpty())
+        m_groupDiagnostics[m_activeCppGroup] = m_diagnostics;
+
+    // Clear squiggles for old group
+    for (auto it = m_diagnostics.begin(); it != m_diagnostics.end(); ++it)
+        emit diagnosticsUpdated(it.key(), {});
+
+    m_diagnostics.clear();
+    m_activeCppGroup = newGroup;
+
+    // Restore cached diagnostics for new group
+    if (m_groupDiagnostics.contains(newGroup)) {
+        const auto &cached = m_groupDiagnostics[newGroup];
+        for (auto it = cached.begin(); it != cached.end(); ++it) {
+            m_diagnostics[it.key()] = it.value();
+            emit diagnosticsUpdated(it.key(), it.value());
+        }
+    }
+
+    rebuildVirtualDoc(QStringLiteral("cpp"));
 }
 
 // ─── Python process ──────────────────────────────────────────────────

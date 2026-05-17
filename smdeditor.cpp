@@ -400,6 +400,11 @@ void SmdEditor::setPlainText(const QString &text)
                     }
                 }
             });
+
+    // Set initial program group if the active cell is C++
+    if (m_activeCellIndex >= 0
+        && m_cells[m_activeCellIndex]->cellType() == SmdCell::Cpp)
+        m_lspManager->focusCell(m_activeCellIndex);
 }
 
 bool SmdEditor::isModified() const
@@ -478,6 +483,11 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
             }
         }
     }
+
+    // Re-check active group after cell insertion
+    if (m_lspManager && m_activeCellIndex >= 0
+        && m_cells[m_activeCellIndex]->cellType() == SmdCell::Cpp)
+        m_lspManager->focusCell(m_activeCellIndex);
 
     return cell;
 }
@@ -560,6 +570,9 @@ void SmdEditor::setActiveCell(int index)
     // Cancel pending post-render jump if user manually switched cells (Req 5)
     if (m_pendingRenderJumpIndex >= 0 && index != m_pendingRenderJumpIndex)
         m_pendingRenderJumpIndex = -1;
+
+    if (m_lspManager && m_cells[index]->cellType() == SmdCell::Cpp)
+        m_lspManager->focusCell(index);
 }
 
 SmdCell *SmdEditor::cellAt(int index) const
@@ -733,6 +746,8 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
             QString langId = SmdCell::langIdFromType(cell->cellType());
             if (langId == QStringLiteral("cpp") || langId == QStringLiteral("python"))
                 m_lspManager->cellContentChanged(index, langId, cell->content());
+            if (langId == QStringLiteral("cpp") && m_activeCellIndex >= 0)
+                m_lspManager->focusCell(m_activeCellIndex);
         }
     });
 
@@ -822,6 +837,20 @@ void SmdEditor::executeMarkdownCell(SmdCell *cell)
     }
 }
 
+int SmdEditor::cppGroupForCell(int cellIndex) const
+{
+    static const QRegularExpression mainRe(QStringLiteral("\\bmain\\s*\\("));
+    int group = 0;
+    for (int i = 0; i < cellIndex; ++i) {
+        SmdCell *c = m_cells[i];
+        if (c->cellType() != SmdCell::Cpp)
+            continue;
+        if (mainRe.match(c->content()).hasMatch())
+            ++group;
+    }
+    return group;
+}
+
 void SmdEditor::executeCodeCell(SmdCell *cell)
 {
     int execIndex = m_cells.indexOf(cell);
@@ -847,13 +876,17 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
         return;
     }
 
-    // Combine all C++ cells from index 0 up to the executed cell,
-    // so that includes, types, and functions defined in earlier cells are
-    // visible when compiling the current cell.
+    // Combine C++ cells from the same program group up to the executed
+    // cell.  Program groups are split on cells that contain a main()
+    // function, so that independent programs in the same .smd file do
+    // not interfere with each other.
     QString combinedCode;
+    int execGroup = cppGroupForCell(execIndex);
     for (int i = 0; i <= execIndex; ++i) {
         SmdCell *c = m_cells[i];
         if (c->cellType() != SmdCell::Cpp)
+            continue;
+        if (cppGroupForCell(i) != execGroup)
             continue;
         QString content = c->content();
         if (!combinedCode.isEmpty() && !content.isEmpty())
