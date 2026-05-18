@@ -13,7 +13,9 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │       ├── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
   │       ├── CodeEditor  → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent
   │       ├── SmdEditor   → QScrollArea-based cell editor for `.smd` files, Jupyter-like command/edit dual mode
-  │       │   └── SmdCell → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack + output area
+  │       │   ├── SmdCell → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack
+  │       │   ├── SmdOutputWidget → per-cell output display (stdout/stderr), 1000-line cap, auto-height
+  │       │   └── SmdLspManager   → shared LSP backend for SMD code cells, virtual-document stitching per group
   │       └── SmdFormat   → header-only namespace, parse/serialize `---smd:<type>` delimiter format
   ├── RightPanelContainer → Unified right QDockWidget with tab bar (History/Outline/Tags/Backlinks) + QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E.
   ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
@@ -37,7 +39,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 ## Key Data Flow
 
 - **File opening**: FileExplorerWidget click → TabManager::openFile → EditorWidget::loadFile auto-detects mode by extension (.pdf→PdfView, .smd→SmdEdit, registered code ext→CodeEditor, else→MarkdownEdit).
-- **SMD editing**: Cell widgets with header badge + editor/render stack + output area. Default edit mode; Esc→command mode (A/B insert cell, ↑/↓ navigate, Ctrl+K change cell language, Ctrl+Enter execute, Ctrl+Shift+Z un-render MD, Delete remove, Ctrl+D duplicate). Markdown cells toggle rendered view via Ctrl+Enter; code cells (C++/Python) execute via temp file → ProcessRunner → output below cell. Auto-height based on block count (max ~40 lines).
+- **SMD editing**: Cell widgets with header badge + editor/render stack + output area. Default edit mode (blue active border); Esc→command mode (purple active border, A/B insert cell, ↑/↓ navigate, Ctrl+K change cell language, Ctrl+Enter execute, Ctrl+Shift+Z un-render MD, Delete remove, Ctrl+D duplicate). C++ cells auto-group by main() boundaries for per-group compilation; Python cells use a persistent process with shared namespace across cells. Markdown cells toggle rendered view via Ctrl+Enter; code cells (C++/Python) execute via temp file → ProcessRunner → output below cell. Auto-height based on block count (max ~40 lines).
 - **Code editing**: Enter auto-indents (copies leading ws, adds level on `{`, splits `{|}`). Tab inserts 4 spaces. Bracket auto-pair for `{}()[]""''` (skips in string/comment). Backspace removes empty pair or deletes to tab-stop.
 - **WikiLinks**: `[[filename]]` → regex-converted to `<a href="wikilink:...">` in preview. Click → `acceptNavigationRequest` intercepts `wikilink:` scheme → multi-level filename search → opens existing or prompts create.
 - **Preview code block run**: marked renderer adds ▶ button on code blocks. Click stores code in JS → navigates `runblock:execute` → C++ intercepts → saves temp file → ProcessRunner compiles/runs.
@@ -59,10 +61,16 @@ Six-mode QStackedWidget. Page 0 `WikiLinkTextEdit`, page 1 full preview WebEngin
 Temporary hidden QWebEngineView loads light-themed preview, waits for Mermaid async rendering via JS Promise polling, then calls `printToPdf()`.
 
 ### SmdEditor (`smdeditor.h/cpp`)
-QScrollArea of SmdCell widgets in QVBoxLayout. Dual mode: edit (default) and command (Esc). Owns separate ProcessRunner for cell execution. Temp files: `smd_cell_<PID>_<counter>.ext`. Modification tracking compares serialized content with original. Forwards `modificationChanged`/`fileLoaded`/`fileSaved` to EditorWidget.
+QScrollArea of SmdCell widgets in QVBoxLayout. Dual mode: edit (default, blue active border) and command (Esc, purple active border). Owns separate ProcessRunner for cell execution. C++ cells auto-group by `main()` boundaries — only cells in the same group are compiled together for each execution. Python cells use a persistent process (`python_executor.py`) that maintains a shared namespace across the same `.smd` file, enabling cross-cell variable reuse. Temp files: `smd_cell_<PID>_<counter>.ext`. Modification tracking compares serialized content with original. Forwards `modificationChanged`/`fileLoaded`/`fileSaved` to EditorWidget.
 
 ### SmdCell (`smdcell.h/cpp`)
-QFrame: header badge (MD blue/C++ green/Python yellow) + QStackedWidget(editor↔render) + hidden output area. Markdown uses QPlainTextEdit, code uses CodeEditor with highlighter. Auto-height via blockCount (min 1 line, max ~40, no internal scrollbar). Active cell blue border; inactive command-mode gray; edit mode transparent.
+QFrame: header badge (MD blue/C++ green/Python yellow) + QStackedWidget(editor↔render) + hidden output area. Markdown uses QPlainTextEdit, code uses CodeEditor with highlighter. Auto-height via blockCount (min 1 line, max ~40, no internal scrollbar). Active cell borders: 2px blue (`#0078d4`) in edit mode, 2px purple (`#C586C0`) in command mode; inactive command-mode gray (`#3c3c3c`); edit mode transparent.
+
+### SmdOutputWidget (`smdoutputwidget.h/cpp`)
+Per-cell output display for SMD code cell execution. Dark terminal style (#1E1E1E bg), monospace font. 1000-line hard cap; auto-height limited to ~15 visible lines with internal scrollbar beyond that. stdout white, stderr red. Each SmdOutputWidget corresponds one-to-one with a SmdCell, managed by SmdEditor.
+
+### SmdLspManager (`smdlspmanager.h/cpp`)
+Shared LSP backend for SMD code cells. Manages per-language LSP client adapters (clangd for C++, Jedi for Python) with virtual-document stitching — groups related cells into a single virtual translation unit for clangd, or presents individual cells to Python LSP. Tracks cell order and content changes, translates `contentChanged` signals into `textDocument/didChange` notifications. Aggregates diagnostics (red/yellow squiggles) from all cells and forwards to SmdCell::setDiagnostics() and CodeEditor::setDiagnostics(). Created and destroyed on each file load; coordinates with SmdEditor for C++ program group detection.
 
 ### SmdFormat (`smdformat.h`)
 Header-only. `---smd:<type>` delimiters. Parse splits on regex, trims leading/trailing blank lines. Serialize writes delimiter + content.
@@ -81,6 +89,9 @@ Full-text via QDirIterator + scanning. 20 matches/file, 500 total. Gold (#FFD700
 
 ### RightPanelContainer (`rightpanelcontainer.h/cpp`)
 Unified right QDockWidget. Top 32px tab bar with 4 icon+text tabs (History/Outline/Tags/Backlinks), bottom QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E. Click-outside auto-hides via MainWindow::eventFilter. Sub-panels: HistoryPanel (tab 0), OutlinePanel (tab 1), TagPanel (tab 2), BacklinksPanel (tab 3).
+
+### OutlinePanel (`outlinepanel.h/cpp`)
+Title outline panel hosted in RightPanelContainer (tab 1). Parses current document headings (`#` to `######`, skipping fenced code blocks) and displays them in an indented tree with hierarchical brightness (h1 brightest, h6 dimmest, h1/h2 bold). Clicking a heading jumps to the corresponding line in the editor. Auto-refreshes on tab switch and file save; clears for non-Markdown files.
 
 ### BacklinkIndex
 Reverse index (target→sources) + forward index (source→targets) for `[[wikilinks]]`. Async full build via static `buildFromPath()`. Target resolution: exact path → global index by baseName → shortest-path tiebreaker. Unlike `findWikiTarget` (which disambiguates via current editor context), `resolveTarget` is purely deterministic with no editor bias. Incremental ops synchronous.

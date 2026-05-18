@@ -29,6 +29,10 @@ MainWindow                   → frameless orchestrator, owns all widgets
   ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left, in splitter)
   ├── TabManager             → QTabWidget, owns EditorWidget tabs (center)
   │   └── EditorWidget       → QStackedWidget, 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
+  │       ├── SmdEditor (in SmdEdit mode)
+  │       │   ├── SmdCell             → QFrame, one cell (Markdown/C++/Python) with editor/view stack
+  │       │   ├── SmdOutputWidget     → per-cell output display (stdout/stderr), auto-height max 15 lines
+  │       │   └── SmdLspManager       → shared LSP backend for code cells, virtual-document stitching
   │       └── CodeEditor (in CodeEdit mode)
   │           ├── CompletionProvider (abstract) ← CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider
   │           ├── CompletionPopup              → floating list QWidget
@@ -51,7 +55,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.
 
 - **File → mode mapping**: `.pdf` → PdfView, `.smd` → SmdEditor (cell-based), code extensions (`.cpp`/`.py` etc.) → CodeEditor with syntax highlighting, everything else → MarkdownEdit (WikiLinkTextEdit with `[[wikilink]]` autocomplete).
-- **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files.
+- **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files. Active cell border: blue (`#0078d4`) in edit mode, purple (`#C586C0`) in command mode. C++ cells auto-group by `main()` boundaries for per-group compilation; Python cells use a persistent process with shared namespace across the same file.
 - **WikiLinks**: `[[filename]]` → bidirectional links indexed by BacklinkIndex. Preview converts to `<a href="wikilink:...">`; click resolves via multi-level filename matching.
 - **Tags**: `#tag` → TagIndex (bidirectional). Preview converts to `<a href="tag:...">`.
 - **Async indexing**: File index/backlinks/tags rebuilt on worker thread with cancellation token + generation counter to reject stale results.

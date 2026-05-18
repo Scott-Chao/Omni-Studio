@@ -1076,7 +1076,12 @@ void SmdCell::updateTypeLabel()
 
 void SmdCell::updateBorderStyle()
 {
-    if (m_active) {
+    if (m_active && m_commandMode) {
+        setStyleSheet(QStringLiteral(
+            "SmdCell { border: 2px solid #C586C0; "
+            "background-color: #252526; }"
+        ));
+    } else if (m_active) {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid #0078d4; "
             "background-color: #252526; }"

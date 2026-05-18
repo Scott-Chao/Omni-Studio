@@ -345,12 +345,12 @@ void SmdEditor::setPlainText(const QString &text)
         }
     }
 
+    m_commandMode = false;
     if (!m_cells.isEmpty()) {
         for (SmdCell *c : m_cells)
             c->setActive(false);
         setActiveCell(0);
     }
-    m_commandMode = false;
 
     // Deferred height update: after all cells are created and laid out,
     // recalculate heights so text-wrapping uses the final widget width.
