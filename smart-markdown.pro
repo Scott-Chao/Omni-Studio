@@ -46,6 +46,7 @@ SOURCES += \
     searchpanel.cpp \
     settingspanel.cpp \
     smdcell.cpp \
+    smddiagnosticspanel.cpp \
     smdeditor.cpp \
     smdlspmanager.cpp \
     smdoutputwidget.cpp \
@@ -94,6 +95,7 @@ HEADERS += \
     searchpanel.h \
     settingspanel.h \
     smdcell.h \
+    smddiagnosticspanel.h \
     smdeditor.h \
     smdlspmanager.h \
     smdformat.h \

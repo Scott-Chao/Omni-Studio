@@ -1,5 +1,6 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
+#include "smdlspmanager.h"
 
 #include <QMouseEvent>
 #include <QToolTip>
@@ -94,16 +95,51 @@ void HoverManager::onHoverTimeout()
     requestHoverAt(m_mousePos);
 }
 
+bool HoverManager::tryShowDiagnosticToolTip(const QPoint &viewportPos)
+{
+    QTextCursor cursor = m_editor->cursorForPosition(viewportPos);
+    int line = cursor.blockNumber();
+    int col = cursor.positionInBlock();
+
+    const SmdDiagnostic *diag = m_editor->diagnosticAt(line, col);
+    if (!diag)
+        return false;
+
+    bool isError = (diag->severity == 1);
+    QString severityLabel = isError ? QStringLiteral("ERROR") : QStringLiteral("WARNING");
+    QString bgColor   = isError ? QStringLiteral("#5a1d1d") : QStringLiteral("#5a4d00");
+    QString borderColor = isError ? QStringLiteral("#F44747") : QStringLiteral("#CCA700");
+    QString textColor = isError ? QStringLiteral("#f8d7da") : QStringLiteral("#fff3cd");
+
+    QString html = QStringLiteral(
+        "<div style=\"background:%1;color:%4;border:1px solid %2;"
+        "padding:6px 10px;border-radius:3px;max-width:500px;"
+        "font-family:Consolas,Microsoft YaHei,sans-serif;font-size:12px;\">"
+        "<b>%3:</b> %5</div>")
+        .arg(bgColor, borderColor, severityLabel, textColor,
+             diag->message.toHtmlEscaped());
+
+    QPoint globalPos = m_editor->viewport()->mapToGlobal(viewportPos);
+    globalPos += QPoint(15, 20);
+    QToolTip::showText(globalPos, html, m_editor);
+    m_tooltipShowing = true;
+    m_diagnosticTooltipActive = true;
+    return true;
+}
+
 void HoverManager::requestHoverAt(const QPoint &viewportPos)
 {
-    if (!m_provider) {
-        return;
-    }
-
     QTextCursor cursor = m_editor->cursorForPosition(viewportPos);
     m_hoverCursorPos = cursor.position();
-    QString text = m_editor->toPlainText();
 
+    // Phase 1: Check for diagnostics at cursor position (local data, no round-trip).
+    if (tryShowDiagnosticToolTip(viewportPos))
+        return;
+
+    // Phase 2: Fall through to LSP hover
+    if (!m_provider)
+        return;
+    QString text = m_editor->toPlainText();
     m_provider->requestHover(text, m_hoverCursorPos);
 }
 
@@ -147,4 +183,5 @@ void HoverManager::hideHover()
     m_hoverTimer.stop();
     m_hoverCursorPos = -1;
     m_tooltipShowing = false;
+    m_diagnosticTooltipActive = false;
 }

@@ -484,6 +484,20 @@ void CodeEditor::clearDiagnostics()
     highlightCurrentLine();
 }
 
+const SmdDiagnostic* CodeEditor::diagnosticAt(int line, int col) const
+{
+    for (const auto &d : m_diagnostics) {
+        if (line < d.startLine || line > d.endLine)
+            continue;
+        if (line == d.startLine && col < d.startCol)
+            continue;
+        if (line == d.endLine && col > d.endCol)
+            continue;
+        return &d;
+    }
+    return nullptr;
+}
+
 // ---- Key handling ----
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)

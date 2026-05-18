@@ -4,6 +4,7 @@
 #include "smdoutputwidget.h"
 #include "processrunner.h"
 #include "smdlspmanager.h"
+#include "smddiagnosticspanel.h"
 #include "codeeditor.h"
 #include "debuglog.h"
 #include "compilerutils.h"
@@ -196,6 +197,10 @@ SmdEditor::SmdEditor(QWidget *parent)
     m_scrollArea->setWidget(m_cellContainer);
     mainLayout->addWidget(m_scrollArea);
 
+    m_diagnosticsPanel = new SmdDiagnosticsPanel(this, this);
+    m_diagnosticsPanel->setVisible(false);
+    mainLayout->addWidget(m_diagnosticsPanel);
+
     m_processRunner = new ProcessRunner(this);
 
     setFocusPolicy(Qt::StrongFocus);
@@ -305,6 +310,9 @@ void SmdEditor::setPlainText(const QString &text)
         m_autoRenderTimer = nullptr;
     }
     m_autoRenderQueue.clear();
+
+    if (m_diagnosticsPanel)
+        m_diagnosticsPanel->clear();
 
     // Shut down old LSP manager and Python executor
     if (m_lspManager) {
@@ -575,6 +583,9 @@ void SmdEditor::setActiveCell(int index)
 
     if (m_lspManager && m_cells[index]->cellType() == SmdCell::Cpp)
         m_lspManager->focusCell(index);
+
+    if (m_diagnosticsPanel && m_diagnosticsPanel->isVisible())
+        m_diagnosticsPanel->scheduleRefresh();
 }
 
 SmdCell *SmdEditor::cellAt(int index) const
@@ -622,6 +633,8 @@ void SmdEditor::enterCommandMode()
     debugLog(QStringLiteral("enterCommandMode — activeCell=%1, cellCount=%2")
         .arg(m_activeCellIndex).arg(m_cells.size()));
     m_commandMode = true;
+    if (m_diagnosticsPanel)
+        m_diagnosticsPanel->setVisible(false);
     for (int i = 0; i < m_cells.size(); ++i) {
         debugLog(QStringLiteral("enterCommandMode — cell %1/%2 cmd=%3 active=%4")
             .arg(i).arg(m_cells.size()).arg(m_cells[i] != nullptr)
@@ -753,6 +766,8 @@ void SmdEditor::connectCellSignals(SmdCell *cell, int index)
             if (langId == QStringLiteral("cpp") && m_activeCellIndex >= 0)
                 m_lspManager->focusCell(m_activeCellIndex);
         }
+        if (m_diagnosticsPanel && m_diagnosticsPanel->isVisible())
+            m_diagnosticsPanel->scheduleRefresh();
     });
 
     // Wire shared LSP provider to code cells
@@ -1538,6 +1553,20 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             }
         }
 
+        // Ctrl+E: toggle diagnostics panel (edit mode only).
+        if (!m_commandMode
+            && key->key() == Qt::Key_E
+            && (key->modifiers() & Qt::ControlModifier)) {
+            if (event->type() == QEvent::ShortcutOverride) {
+                event->accept();
+                return true;
+            }
+            if (event->type() == QEvent::KeyPress) {
+                toggleDiagnosticsPanel();
+                return true;
+            }
+        }
+
     }
 
     // ── Preserve scroll position across minimize/restore ──
@@ -1574,6 +1603,16 @@ void SmdEditor::resizeEvent(QResizeEvent *event)
                 cell->updateEditorHeight();
         }
     });
+}
+
+void SmdEditor::toggleDiagnosticsPanel()
+{
+    if (!m_diagnosticsPanel)
+        return;
+    bool currentlyVisible = m_diagnosticsPanel->isVisible();
+    m_diagnosticsPanel->setVisible(!currentlyVisible);
+    if (!currentlyVisible)
+        m_diagnosticsPanel->refresh();
 }
 
 #include "smdeditor.moc"

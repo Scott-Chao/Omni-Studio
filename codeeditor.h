@@ -32,6 +32,7 @@ public:
 
     void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
     void clearDiagnostics();
+    const SmdDiagnostic* diagnosticAt(int line, int col) const;
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }

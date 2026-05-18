@@ -17,6 +17,7 @@
 class ProcessRunner;
 class SmdOutputWidget;
 class SmdLspManager;
+class SmdDiagnosticsPanel;
 
 class SmdEditor : public QWidget
 {
@@ -46,6 +47,7 @@ public:
     int activeCellIndex() const { return m_activeCellIndex; }
     void setActiveCell(int index);
     SmdCell *cellAt(int index) const;
+    SmdLspManager *lspManager() const { return m_lspManager; }
     int activeCellCursorLine() const;
     int activeCellCursorColumn() const;
     void setActiveCellCursor(int line, int column);
@@ -91,6 +93,9 @@ private:
     void onPyExecFinished(int exitCode, QProcess::ExitStatus status);
     void onPyExecError(QProcess::ProcessError error);
 
+    // Diagnostics panel
+    void toggleDiagnosticsPanel();
+
     // Language selector
     void showLanguageSelector(int cellIndex, bool isNewCell = false, int originalCellIndex = -1);
 
@@ -135,6 +140,7 @@ private:
     QString m_originalContent;
 
     SmdLspManager *m_lspManager = nullptr;
+    SmdDiagnosticsPanel *m_diagnosticsPanel = nullptr;
 
     // Persistent Python execution process (Jupyter-like)
     QProcess *m_pyExecProcess = nullptr;
