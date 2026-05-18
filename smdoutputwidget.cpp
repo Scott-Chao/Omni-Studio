@@ -126,6 +126,15 @@ void SmdOutputWidget::clearOutput()
     setVisible(false);
 }
 
+void SmdOutputWidget::clearSelection()
+{
+    QTextCursor c = m_outputEdit->textCursor();
+    if (c.hasSelection()) {
+        c.clearSelection();
+        m_outputEdit->setTextCursor(c);
+    }
+}
+
 void SmdOutputWidget::scrollToTop()
 {
     QTextCursor cursor = m_outputEdit->textCursor();

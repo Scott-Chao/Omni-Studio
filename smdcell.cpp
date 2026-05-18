@@ -349,6 +349,11 @@ void SmdCell::setCommandMode(bool cmd)
         // Disable editing and cursor in command mode
         QPlainTextEdit *ed = qobject_cast<QPlainTextEdit *>(editorWidget());
         if (ed) {
+            QTextCursor c = ed->textCursor();
+            if (c.hasSelection()) {
+                c.clearSelection();
+                ed->setTextCursor(c);
+            }
             ed->setReadOnly(true);
             ed->setTextInteractionFlags(Qt::NoTextInteraction);
             ed->setFocusPolicy(Qt::NoFocus);
@@ -386,6 +391,15 @@ void SmdCell::setActive(bool active)
             m_codeEditor->refreshCurrentLineHighlight();
         else
             m_codeEditor->clearCurrentLineHighlight();
+    }
+    if (!active) {
+        if (auto *ed = qobject_cast<QPlainTextEdit*>(editorWidget())) {
+            QTextCursor c = ed->textCursor();
+            if (c.hasSelection()) {
+                c.clearSelection();
+                ed->setTextCursor(c);
+            }
+        }
     }
     debugLog(QStringLiteral("SmdCell::setActive — done"));
 }

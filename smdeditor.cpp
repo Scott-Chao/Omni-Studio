@@ -559,8 +559,11 @@ void SmdEditor::setActiveCell(int index)
 {
     if (index < 0 || index >= m_cells.size())
         return;
-    if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size())
+    if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
         m_cells[m_activeCellIndex]->setActive(false);
+        if (m_activeCellIndex < m_outputWidgets.size())
+            m_outputWidgets[m_activeCellIndex]->clearSelection();
+    }
     m_activeCellIndex = index;
     m_cells[index]->setActive(true);
     m_cells[index]->setCommandMode(m_commandMode);
@@ -626,6 +629,8 @@ void SmdEditor::enterCommandMode()
         m_cells[i]->setCommandMode(true);
         m_cells[i]->setActive(i == m_activeCellIndex);
     }
+    for (SmdOutputWidget *w : m_outputWidgets)
+        w->clearSelection();
     setFocus();
     debugLog(QStringLiteral("enterCommandMode — done"));
 }
