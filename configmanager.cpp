@@ -719,7 +719,7 @@ QString ConfigManager::shortcut(const QString &actionName, const QString &defaul
 }
 
 // ---- AI ----
-QString ConfigManager::aiProviderType() const { return stringValue("ai.provider_type", "Anthropic"); }
+QString ConfigManager::aiProviderType() const { return stringValue("ai.provider_type", "OpenAI"); }
 QString ConfigManager::aiEndpoint() const { return stringValue("ai.endpoint", "https://api.deepseek.com/v1"); }
 QString ConfigManager::aiModel() const { return stringValue("ai.model", "deepseek-v4-flash"); }
 int ConfigManager::aiMaxTokens() const { return intValue("ai.max_tokens", 4096); }

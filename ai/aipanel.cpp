@@ -157,3 +157,10 @@ void AiPanel::clearChat()
 {
     m_chatArea->clear();
 }
+
+void AiPanel::setInputEnabled(bool enabled)
+{
+    m_inputEdit->setEnabled(enabled);
+    m_sendBtn->setEnabled(enabled && !m_inputEdit->text().trimmed().isEmpty());
+    m_clearBtn->setEnabled(enabled);
+}

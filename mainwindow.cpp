@@ -28,6 +28,12 @@
 #include "ai/actionbar.h"
 #include "ai/aicontextmanager.h"
 #include "ai/prompttemplates.h"
+#include "ai/aiprovider.h"
+#include "ai/aiproviderfactory.h"
+#include "ai/anthropicprovider.h"
+#include "ai/openaiprovider.h"
+#include "ai/chatbubble.h"
+#include "ai/chatarea.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include <QDateTime>
@@ -634,6 +640,18 @@ MainWindow::MainWindow(QWidget *parent)
     });
     addAction(m_toggleAiAction);
 
+    // AI 端到端信号连接
+    connect(m_aiPanel, &AiPanel::sendMessage, this, [this](const QString &text) {
+        startAiRequest(AiAction::FreeChat, text);
+    });
+    connect(m_aiPanel, &AiPanel::actionTriggered, this, [this](int actionIndex) {
+        startAiRequest(static_cast<AiAction>(actionIndex));
+    });
+    connect(m_aiPanel, &AiPanel::clearRequested, this, [this]() {
+        abortAiRequest();
+        m_aiHistory.clear();
+    });
+
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
     {
@@ -1152,6 +1170,174 @@ void MainWindow::updateAiActionBar()
         actionList.append(*actions);
 
     m_aiPanel->actionBar()->setActions(actionList);
+}
+
+void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
+{
+    // 1. Abort any ongoing request
+    if (m_aiStreaming) {
+        abortAiRequest();
+    }
+
+    m_aiStreaming = true;
+
+    // 2. Actions clear history + chat for a fresh conversation
+    if (action != AiAction::FreeChat) {
+        m_aiPanel->clearChat();
+        m_aiHistory.clear();
+    }
+
+    // 3. Collect context from current editor
+    EditorWidget *editor = m_tabManager->currentEditor();
+    ContextBundle ctx;
+    if (editor)
+        ctx = AiContextManager::collectContext(editor);
+
+    // 4. Build prompt
+    PromptBundle prompt = buildPrompt(action, ctx, freeQuery);
+
+    // 5. Read AI settings
+    const QString apiKey = m_settings->aiApiKey();
+    if (apiKey.isEmpty()) {
+        m_aiPanel->addAssistantMessage(tr("请先在设置 → AI 服务中配置 API Key"));
+        m_aiStreaming = false;
+        return;
+    }
+
+    const QString providerType = m_settings->value("ai.provider_type",
+        ConfigManager::instance().aiProviderType()).toString();
+    const QString model = m_settings->value("ai.model",
+        ConfigManager::instance().aiModel()).toString();
+    const QString endpoint = m_settings->value("ai.endpoint",
+        ConfigManager::instance().aiEndpoint()).toString();
+    const int maxTokens = m_settings->value("ai.max_tokens",
+        ConfigManager::instance().aiMaxTokens()).toInt();
+
+    // 6. Create provider (always recreate to pick up settings changes)
+    if (m_aiProvider) {
+        m_aiProvider->disconnect();
+        m_aiProvider->deleteLater();
+        m_aiProvider = nullptr;
+    }
+
+    AiProviderFactory::ProviderType type = AiProviderFactory::typeFromString(providerType);
+    m_aiProvider = AiProviderFactory::createProvider(type, this);
+
+    // 7. Configure provider
+    m_aiProvider->setApiKey(apiKey);
+    m_aiProvider->setModel(model);
+    m_aiProvider->setMaxTokens(maxTokens);
+    m_aiProvider->setSystemPrompt(prompt.systemPrompt);
+
+    if (auto *anthropic = qobject_cast<AnthropicProvider*>(m_aiProvider)) {
+        anthropic->setEndpoint(endpoint);
+    } else if (auto *openai = qobject_cast<OpenAiProvider*>(m_aiProvider)) {
+        openai->setEndpoint(endpoint);
+    }
+
+    // 8. Connect provider signals
+    connect(m_aiProvider, &AiProvider::partialResponse,
+            this, &MainWindow::onAiPartialResponse);
+    connect(m_aiProvider, &AiProvider::finished,
+            this, &MainWindow::onAiFinished);
+    connect(m_aiProvider, &AiProvider::error,
+            this, &MainWindow::onAiError);
+
+    // 9. Display user message in chat
+    if (action == AiAction::FreeChat) {
+        m_aiPanel->addUserMessage(freeQuery);
+    } else {
+        const ActionInfo *info = findActionInfo(action);
+        QString displayText = info ? tr(info->label) : tr("AI 操作");
+        if (ctx.hasSelection) {
+            displayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
+        }
+        m_aiPanel->addUserMessage(displayText);
+    }
+
+    // 10. Add empty assistant bubble as streaming target
+    m_aiPanel->addAssistantMessage(QString());
+
+    // 11. Build message list for the API call
+    QList<Message> messages;
+    if (action == AiAction::FreeChat) {
+        messages = m_aiHistory;
+        Message userMsg;
+        userMsg.role = QStringLiteral("user");
+        userMsg.content = freeQuery;
+        messages.append(userMsg);
+        m_aiHistory.append(userMsg);
+    } else {
+        Message userMsg;
+        userMsg.role = QStringLiteral("user");
+        userMsg.content = prompt.userPrompt;
+        messages.append(userMsg);
+    }
+
+    // 12. Prune free-chat history to stay within context window
+    if (action == AiAction::FreeChat && m_aiHistory.size() >= 4) {
+        const int maxChars = maxTokens * 4; // rough 4 chars/token
+        int total = 0;
+        for (const auto &msg : m_aiHistory)
+            total += msg.content.length();
+        while (total > maxChars && m_aiHistory.size() >= 4) {
+            total -= m_aiHistory[0].content.length();
+            m_aiHistory.removeFirst();
+            total -= m_aiHistory[0].content.length();
+            m_aiHistory.removeFirst();
+        }
+    }
+
+    // 13. Disable input and start streaming
+    m_aiPanel->setInputEnabled(false);
+    m_aiProvider->chatStream(messages);
+}
+
+void MainWindow::abortAiRequest()
+{
+    if (m_aiProvider) {
+        m_aiProvider->cancel();
+        m_aiProvider->disconnect();
+    }
+    m_aiStreaming = false;
+    m_aiPanel->setInputEnabled(true);
+}
+
+void MainWindow::onAiPartialResponse(const QString &text)
+{
+    m_aiPanel->appendToLastAssistant(text);
+}
+
+void MainWindow::onAiFinished()
+{
+    // Save assistant response to history (only for FreeChat, where history is non-empty)
+    if (!m_aiHistory.isEmpty()) {
+        ChatBubble *last = m_aiPanel->chatArea()->lastBubble();
+        if (last && last->role() == ChatBubble::Assistant && !last->text().isEmpty()) {
+            Message assistantMsg;
+            assistantMsg.role = QStringLiteral("assistant");
+            assistantMsg.content = last->text();
+            m_aiHistory.append(assistantMsg);
+        }
+    }
+
+    m_aiStreaming = false;
+    m_aiPanel->setInputEnabled(true);
+}
+
+void MainWindow::onAiError(const QString &message)
+{
+    // Append error to existing assistant bubble, or create a new one
+    ChatBubble *last = m_aiPanel->chatArea()->lastBubble();
+    if (last && last->role() == ChatBubble::Assistant && last->text().isEmpty()) {
+        m_aiPanel->appendToLastAssistant(
+            QStringLiteral("**") + tr("错误") + QStringLiteral("：**") + message);
+    } else {
+        m_aiPanel->addAssistantMessage(tr("错误：") + message);
+    }
+
+    m_aiStreaming = false;
+    m_aiPanel->setInputEnabled(true);
 }
 
 void MainWindow::onResetToDefaults()

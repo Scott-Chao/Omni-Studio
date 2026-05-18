@@ -23,6 +23,7 @@ public:
     void addAssistantMessage(const QString &text);
     void appendToLastAssistant(const QString &text);
     void clearChat();
+    void setInputEnabled(bool enabled);
 
 signals:
     void sendMessage(const QString &text);

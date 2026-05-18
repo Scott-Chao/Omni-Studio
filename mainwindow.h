@@ -2,6 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QList>
+#include "ai/aiprovider.h"
+#include "ai/prompttemplates.h"
 #include <QTabWidget>
 #include <QSplitter>
 #include <QFileInfo>
@@ -169,6 +172,12 @@ private:
     AiPanel *m_aiPanel = nullptr;
     QDockWidget *m_dockAi = nullptr;
     QAction *m_toggleAiAction = nullptr;
+    AiProvider *m_aiProvider = nullptr;
+    QList<Message> m_aiHistory;
+    bool m_aiStreaming = false;
+
+    void startAiRequest(AiAction action, const QString &freeQuery = QString());
+    void abortAiRequest();
 
     // .md ↔ .smd 转换
     QAction *m_convertMdSmdAction = nullptr;
@@ -203,6 +212,9 @@ private:
     void onSearchSettingChanged(const QString &key, const QVariant &value);
     void onAiSettingChanged(const QString &key, const QVariant &value);
     void updateAiActionBar();
+    void onAiPartialResponse(const QString &text);
+    void onAiFinished();
+    void onAiError(const QString &message);
     void onResetToDefaults();
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
