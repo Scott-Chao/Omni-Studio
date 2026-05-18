@@ -16,7 +16,7 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
 
     m_outputEdit = new QPlainTextEdit(this);
     m_outputEdit->setReadOnly(true);
-    m_outputEdit->setFocusPolicy(Qt::NoFocus);
+    m_outputEdit->setFocusPolicy(Qt::StrongFocus);
     m_outputEdit->setMaximumBlockCount(0);
     m_outputEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_outputEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
