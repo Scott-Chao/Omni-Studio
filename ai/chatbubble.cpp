@@ -233,14 +233,10 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     m_browser->setStyleSheet(messageStyleSheet());
     m_browser->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
-    // Make QTextBrowser auto-resize height to fit content
+    // Make QTextBrowser auto-resize height to fit content.
+    // We update height synchronously after setHtml(), NOT via contentsChanged,
+    // because contentsChanged fires mid-setHtml when document layout is incomplete.
     m_browser->setDocument(m_browser->document());
-    connect(m_browser->document(), &QTextDocument::contentsChanged,
-            this, [this]() {
-        QTextDocument *doc = m_browser->document();
-        int docHeight = qCeil(doc->size().height());
-        m_browser->setFixedHeight(docHeight + 4);
-    });
 
     // Layout: role label then bubble
     auto *bubbleRow = new QHBoxLayout;
@@ -321,6 +317,16 @@ void ChatBubble::updateContent()
             ).arg(escaped)
         );
     }
+
+    // Force height update after setHtml() completes, so the layout is final.
+    // Do NOT rely on contentsChanged — it fires during setHtml() processing
+    // when document layout may be incomplete or transient.
+    QTextDocument *doc = m_browser->document();
+    doc->adjustSize();
+    // Ensure layout is up-to-date at the current viewport width
+    doc->setTextWidth(m_browser->viewport()->width());
+    int docHeight = qCeil(doc->size().height());
+    m_browser->setFixedHeight(docHeight + 4);
 }
 
 QString ChatBubble::messageStyleSheet() const

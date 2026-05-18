@@ -81,5 +81,9 @@ ChatBubble *ChatArea::lastBubble() const
 void ChatArea::scrollToBottom()
 {
     QScrollBar *sb = verticalScrollBar();
+    // Don't interrupt user scrolling — only auto-scroll if the user is
+    // already at or near the bottom (within 20px tolerance).
+    if (sb->value() < sb->maximum() - 20)
+        return;
     sb->setValue(sb->maximum());
 }
