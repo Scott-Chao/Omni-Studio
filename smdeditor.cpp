@@ -243,7 +243,7 @@ bool SmdEditor::loadFile(const QString &filePath)
 
     m_filePath = QFileInfo(filePath).absoluteFilePath();
     setPlainText(text);
-    m_originalContent = toPlainTextContentOnly();
+    m_originalContent = toPlainText();
     emit fileLoaded(m_filePath);
     return true;
 }
@@ -264,7 +264,6 @@ bool SmdEditor::saveFile()
     stream << text;
     file.close();
 
-    m_originalContent = toPlainTextContentOnly();
     setModified(false);
     emit fileSaved(m_filePath);
     return true;
@@ -409,13 +408,13 @@ void SmdEditor::setPlainText(const QString &text)
 
 bool SmdEditor::isModified() const
 {
-    return toPlainTextContentOnly() != m_originalContent;
+    return toPlainText() != m_originalContent;
 }
 
 void SmdEditor::setModified(bool modified)
 {
     if (!modified)
-        m_originalContent = toPlainTextContentOnly();
+        m_originalContent = toPlainText();
     emit modificationChanged(modified);
 }
 
@@ -1390,6 +1389,7 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
                     SmdCell *cell = m_cells[m_activeCellIndex];
                     if (cell->cellType() != SmdCell::Markdown) {
                         m_outputWidgets[m_activeCellIndex]->clearOutput();
+                        emit contentChanged();
                     } else if (cell->isRendered()) {
                         cell->setRendered(false);
                     }
@@ -1500,6 +1500,7 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
                         SmdCell *cell = m_cells[m_activeCellIndex];
                         if (cell->cellType() != SmdCell::Markdown) {
                             m_outputWidgets[m_activeCellIndex]->clearOutput();
+                            emit contentChanged();
                         } else if (cell->isRendered()) {
                             cell->setRendered(false);
                         }

@@ -39,8 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 新增
-- SMD 代码块输出支持保存文字颜色
+### 修复
+- 修复代码块输出变更后不显示未保存的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1068,7 +1068,7 @@
 - **空代码单元格**：不启动执行流程，`m_jumpAfterExecute` 为 true 时跳转。
 - 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
-- 修改跟踪：执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出内容的变化能反映在文件修改状态上（未保存标识）。
+- 修改跟踪：`isModified()` 使用 `toPlainText()`（含 output 字段）与 `m_originalContent` 比较，输出内容变化（执行产生新输出、`Ctrl+Shift+Z` 清除输出）均会触发修改标记。执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出变化反映在文件修改状态上。
 
 **文件 I/O**：
 - `loadFile()`：读取文件 → `SmdFormat::parse()` 解析（含元数据） → `addCell()` 创建单元格和输出控件。恢复输出到 `m_outputWidgets[i]`，若有已渲染的 MD 单元格则加入 `m_autoRenderQueue`。
@@ -1077,7 +1077,7 @@
 - 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`，不改变活动单元格和焦点，隐式完成渲染。
 - 修改状态同步：文件加载时先通过 `setRenderedState(true)` 预置已渲染单元格的标志位，然后采集 `m_originalContent`，使序列化结果与文件内容一致，避免自动渲染完成后误判为已修改。
 
-**修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
+**修改状态**：通过比较当前序列化内容（含 output 字段）与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。修改单元格内容或输出区内容均可触发修改标记（输出变化、`Ctrl+Shift+Z` 清除输出）。
 
 **LSP 集成（SmdLspManager）**：
 - `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册，**并额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 注入共享 provider**（因 `addCell()` 时 `m_lspManager` 为 null 无法注入）。加载完成后调用 `focusCell()` 初始化活动程序组。
