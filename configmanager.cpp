@@ -483,7 +483,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
 
     // ---- ai ----
     QJsonObject ai;
-    ai["provider_type"] = QStringLiteral("Anthropic");
+    ai["provider_type"] = QStringLiteral("OpenAI");
     ai["endpoint"] = QStringLiteral("https://api.deepseek.com/v1");
     ai["model"] = QStringLiteral("deepseek-v4-flash");
     ai["max_tokens"] = 4096;

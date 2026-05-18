@@ -2,6 +2,8 @@
 #define AIPANEL_H
 
 #include <QWidget>
+#include <QVector>
+#include "prompttemplates.h"
 
 class ChatArea;
 class ActionBar;
@@ -17,13 +19,20 @@ public:
 
     enum { DefaultWidth = 340 };
 
-    ChatArea *chatArea() const { return m_chatArea; }
-    ActionBar *actionBar() const { return m_actionBar; }
     void addUserMessage(const QString &text);
     void addAssistantMessage(const QString &text);
     void appendToLastAssistant(const QString &text);
     void clearChat();
     void setInputEnabled(bool enabled);
+
+    // High-level action bar operations (replaces leaked getter chains)
+    void setActionList(const QVector<AiAction> &actions);
+    void clearActionList();
+
+    // Returns content of the last assistant bubble, or empty string
+    QString lastAssistantContent() const;
+    // True if the last message is an empty assistant bubble (streaming target)
+    bool hasStreamingTarget() const;
 
 signals:
     void sendMessage(const QString &text);

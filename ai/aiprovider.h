@@ -6,9 +6,20 @@
 #include <QList>
 #include <QJsonObject>
 
+enum class MessageRole { User, Assistant, System };
+
 struct Message {
-    QString role;    // "user", "assistant", "system"
+    MessageRole role = MessageRole::User;
     QString content;
+
+    QString roleToJson() const {
+        switch (role) {
+        case MessageRole::User:      return QStringLiteral("user");
+        case MessageRole::Assistant: return QStringLiteral("assistant");
+        case MessageRole::System:    return QStringLiteral("system");
+        }
+        return QStringLiteral("user");
+    }
 };
 
 class AiProvider : public QObject

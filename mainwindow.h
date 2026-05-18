@@ -178,6 +178,7 @@ private:
 
     void startAiRequest(AiAction action, const QString &freeQuery = QString());
     void abortAiRequest();
+    void showRightPanel(int panelIndex);
 
     // .md ↔ .smd 转换
     QAction *m_convertMdSmdAction = nullptr;

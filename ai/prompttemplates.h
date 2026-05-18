@@ -2,6 +2,7 @@
 #define PROMPTTEMPLATES_H
 
 #include <QString>
+#include <QVector>
 #include "aicontextmanager.h"
 
 // ── Prompt template types ───────────────────────────────────────
@@ -34,7 +35,7 @@ inline PromptBundle buildPrompt(AiAction action, const ContextBundle &ctx,
                                  const QString &freeQuery = QString())
 {
     PromptBundle result;
-    const bool hasSelection = ctx.hasSelection && !ctx.selectedText.isEmpty();
+    const bool hasSelection = !ctx.selectedText.isEmpty();
     const QString sel = hasSelection ? ctx.selectedText : QString();
     const QString lang = ctx.language;
     const QString ext = ctx.filePath.section('.', -1);
@@ -174,9 +175,9 @@ struct ActionInfo {
     const char *tooltip;     // Hover tooltip
 };
 
-inline const ActionInfo *actionInfos()
+inline const QVector<ActionInfo> &actionInfos()
 {
-    static const ActionInfo infos[] = {
+    static const QVector<ActionInfo> infos = {
         // Markdown
         { AiAction::ImproveWriting,  "改进写作",  "改进文本表达和语法" },
         { AiAction::SummarizeNote,   "总结笔记",  "总结核心要点" },
@@ -188,17 +189,15 @@ inline const ActionInfo *actionInfos()
         { AiAction::FindBugs,        "寻找 Bug",  "检查潜在问题" },
         { AiAction::AddComments,     "添加注释",  "为代码添加中文注释" },
         { AiAction::OptimizeCode,    "优化建议",  "性能优化建议" },
-        // terminator
-        { AiAction::FreeChat,        nullptr,     nullptr },
     };
     return infos;
 }
 
 inline const ActionInfo *findActionInfo(AiAction action)
 {
-    for (const ActionInfo *p = actionInfos(); p->label; ++p) {
-        if (p->action == action)
-            return p;
+    for (const auto &info : actionInfos()) {
+        if (info.action == action)
+            return &info;
     }
     return nullptr;
 }
@@ -206,31 +205,26 @@ inline const ActionInfo *findActionInfo(AiAction action)
 // ── Actions available for each editor mode ──────────────────────
 // Returns a null-terminated list (terminated by AiAction::FreeChat)
 
-inline const AiAction *actionsForMode(AiEditorMode mode)
+inline QVector<AiAction> actionsForMode(AiEditorMode mode)
 {
-    static const AiAction markdownActions[] = {
-        AiAction::ImproveWriting,
-        AiAction::SummarizeNote,
-        AiAction::ExtractTags,
-        AiAction::SelfTest,
-        AiAction::Translate,
-        AiAction::FreeChat, // terminator
-    };
-    static const AiAction codeActions[] = {
-        AiAction::ExplainCode,
-        AiAction::FindBugs,
-        AiAction::AddComments,
-        AiAction::OptimizeCode,
-        AiAction::FreeChat, // terminator
-    };
-    static const AiAction generalActions[] = {
-        AiAction::FreeChat, // terminator (only free chat)
-    };
-
     switch (mode) {
-    case AiEditorMode::Markdown: return markdownActions;
-    case AiEditorMode::Code:     return codeActions;
-    default:                     return generalActions;
+    case AiEditorMode::Markdown:
+        return {
+            AiAction::ImproveWriting,
+            AiAction::SummarizeNote,
+            AiAction::ExtractTags,
+            AiAction::SelfTest,
+            AiAction::Translate,
+        };
+    case AiEditorMode::Code:
+        return {
+            AiAction::ExplainCode,
+            AiAction::FindBugs,
+            AiAction::AddComments,
+            AiAction::OptimizeCode,
+        };
+    default:
+        return {}; // no predefined actions for unknown mode
     }
 }
 

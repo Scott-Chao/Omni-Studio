@@ -162,3 +162,31 @@ void AiPanel::setInputEnabled(bool enabled)
     m_sendBtn->setEnabled(enabled && !m_inputEdit->text().trimmed().isEmpty());
     m_clearBtn->setEnabled(enabled);
 }
+
+void AiPanel::setActionList(const QVector<AiAction> &actions)
+{
+    m_actionBar->setActions(actions);
+}
+
+void AiPanel::clearActionList()
+{
+    m_actionBar->clearActions();
+}
+
+QString AiPanel::lastAssistantContent() const
+{
+    if (m_chatArea->messageCount() == 0)
+        return {};
+    ChatBubble *last = m_chatArea->lastBubble();
+    if (!last || last->role() != ChatBubble::Assistant)
+        return {};
+    return last->text();
+}
+
+bool AiPanel::hasStreamingTarget() const
+{
+    if (m_chatArea->messageCount() == 0)
+        return false;
+    ChatBubble *last = m_chatArea->lastBubble();
+    return last && last->role() == ChatBubble::Assistant && last->text().isEmpty();
+}

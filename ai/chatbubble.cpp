@@ -8,15 +8,6 @@
 
 // ── Markdown → HTML converter (lightweight) ──────────────────────────
 
-static QString escapeHtml(const QString &text)
-{
-    QString result = text;
-    result.replace(QStringLiteral("&"),  QStringLiteral("&amp;"));
-    result.replace(QStringLiteral("<"),  QStringLiteral("&lt;"));
-    result.replace(QStringLiteral(">"),  QStringLiteral("&gt;"));
-    return result;
-}
-
 // Process inline formatting: `code`, **bold**, *italic*
 static QString processInline(const QString &text)
 {
@@ -32,13 +23,13 @@ static QString processInline(const QString &text)
         QRegularExpressionMatchIterator it = codeRe.globalMatch(text);
         while (it.hasNext()) {
             QRegularExpressionMatch m = it.next();
-            result += escapeHtml(text.mid(last, m.capturedStart() - last));
+            result += text.mid(last, m.capturedStart() - last).toHtmlEscaped();
             QString placeholder = QStringLiteral("\x01CODE%1\x01").arg(codeIdx++);
-            codePlaceholders.append(escapeHtml(m.captured(1)));
+            codePlaceholders.append(m.captured(1).toHtmlEscaped());
             result += placeholder;
             last = m.capturedEnd();
         }
-        result += escapeHtml(text.mid(last));
+        result += text.mid(last).toHtmlEscaped();
     }
 
     // 2. Bold **text**
@@ -82,9 +73,9 @@ static QString processInline(const QString &text)
         while (it.hasNext()) {
             QRegularExpressionMatch m = it.next();
             tmp += result.mid(last, m.capturedStart() - last);
-            tmp += QStringLiteral("<a href=\"") + escapeHtml(m.captured(2))
+            tmp += QStringLiteral("<a href=\"") + m.captured(2).toHtmlEscaped()
                  + QStringLiteral("\" style=\"color:#4da3ff;\">")
-                 + escapeHtml(m.captured(1)) + QStringLiteral("</a>");
+                 + m.captured(1).toHtmlEscaped() + QStringLiteral("</a>");
             last = m.capturedEnd();
         }
         tmp += result.mid(last);
@@ -116,15 +107,14 @@ QString ChatBubble::markdownToHtml(const QString &md)
     QString codeBlockLang;
 
     for (const QString &rawLine : lines) {
-        QString line = rawLine; // keep original for code block detection
+        QString line = rawLine;
 
         if (line.startsWith(QStringLiteral("```"))) {
             if (inCodeBlock) {
-                // Close code block
                 html += QStringLiteral("<pre style=\"background-color:#1e1e1e; color:#d4d4d4; "
                                        "padding:8px; border-radius:4px; font-size:12px; "
                                        "overflow-x:auto;\"><code>")
-                      + escapeHtml(codeBlockContent)
+                      + codeBlockContent.toHtmlEscaped()
                       + QStringLiteral("</code></pre>\n");
                 codeBlockContent.clear();
                 inCodeBlock = false;
@@ -143,11 +133,7 @@ QString ChatBubble::markdownToHtml(const QString &md)
             continue;
         }
 
-        // Skip empty lines in paragraph context — they just add newlines
-        // We treat them as paragraph breaks
         if (line.trimmed().isEmpty()) {
-            // End current paragraph — we'll handle this implicitly
-            // by adding a line break in the paragraph flow
             continue;
         }
 
@@ -187,7 +173,7 @@ QString ChatBubble::markdownToHtml(const QString &md)
             continue;
         }
 
-        // Regular paragraph line — wrap in <p> if not continuation
+        // Regular paragraph line
         html += QStringLiteral("<p style=\"color:#d4d4d4; margin:4px 0;\">%1</p>\n")
                     .arg(processInline(line));
     }
@@ -197,7 +183,7 @@ QString ChatBubble::markdownToHtml(const QString &md)
         html += QStringLiteral("<pre style=\"background-color:#1e1e1e; color:#d4d4d4; "
                                "padding:8px; border-radius:4px; font-size:12px; "
                                "overflow-x:auto;\"><code>")
-              + escapeHtml(codeBlockContent)
+              + codeBlockContent.toHtmlEscaped()
               + QStringLiteral("</code></pre>\n");
     }
 
@@ -233,7 +219,6 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     m_browser->setStyleSheet(messageStyleSheet());
     m_browser->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
-    // Make QTextBrowser auto-resize height to fit content.
     // We update height synchronously after setHtml(), NOT via contentsChanged,
     // because contentsChanged fires mid-setHtml when document layout is incomplete.
     m_browser->setDocument(m_browser->document());
@@ -299,17 +284,12 @@ void ChatBubble::updateContent()
 {
     if (m_role == Assistant) {
         QString html = markdownToHtml(m_text);
-        // Wrap in a div with dark theme base
         html = QStringLiteral(
             "<div style=\"color:#d4d4d4; font-size:13px; line-height:1.5;\">%1</div>"
         ).arg(html);
         m_browser->setHtml(html);
     } else {
-        // User: plain text in a label-like format
-        QString escaped = m_text;
-        escaped.replace(QStringLiteral("&"), QStringLiteral("&amp;"));
-        escaped.replace(QStringLiteral("<"), QStringLiteral("&lt;"));
-        escaped.replace(QStringLiteral(">"), QStringLiteral("&gt;"));
+        QString escaped = m_text.toHtmlEscaped();
         escaped.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
         m_browser->setHtml(
             QStringLiteral(
@@ -318,12 +298,9 @@ void ChatBubble::updateContent()
         );
     }
 
-    // Force height update after setHtml() completes, so the layout is final.
-    // Do NOT rely on contentsChanged — it fires during setHtml() processing
-    // when document layout may be incomplete or transient.
+    // Force height update after setHtml() completes.
     QTextDocument *doc = m_browser->document();
     doc->adjustSize();
-    // Ensure layout is up-to-date at the current viewport width
     doc->setTextWidth(m_browser->viewport()->width());
     int docHeight = qCeil(doc->size().height());
     m_browser->setFixedHeight(docHeight + 4);

@@ -25,15 +25,12 @@
 #include "outlineutils.h"
 #include "settingspanel.h"
 #include "ai/aipanel.h"
-#include "ai/actionbar.h"
 #include "ai/aicontextmanager.h"
 #include "ai/prompttemplates.h"
 #include "ai/aiprovider.h"
 #include "ai/aiproviderfactory.h"
 #include "ai/anthropicprovider.h"
 #include "ai/openaiprovider.h"
-#include "ai/chatbubble.h"
-#include "ai/chatarea.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include <QDateTime>
@@ -188,9 +185,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_dockRightPanel->isVisible()) {
             m_dockRightPanel->hide();
         } else {
-            m_dockAi->hide();
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
+            showRightPanel(m_rightPanel->currentPanel());
         }
     });
 
@@ -204,12 +199,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_toggleHistoryAction, &QAction::triggered, this, [this]() {
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 0)
             m_dockRightPanel->hide();
-        else {
-            m_dockAi->hide();
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-            m_rightPanel->setActivePanel(0);
-        }
+        else
+            showRightPanel(0);
     });
 
     m_toggleOutlineAction = new QAction(tr("大纲"), this);
@@ -219,12 +210,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_toggleOutlineAction, &QAction::triggered, this, [this]() {
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 1)
             m_dockRightPanel->hide();
-        else {
-            m_dockAi->hide();
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-            m_rightPanel->setActivePanel(1);
-        }
+        else
+            showRightPanel(1);
     });
 
     m_toggleTagsAction = new QAction(tr("标签"), this);
@@ -234,12 +221,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_toggleTagsAction, &QAction::triggered, this, [this]() {
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 2)
             m_dockRightPanel->hide();
-        else {
-            m_dockAi->hide();
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-            m_rightPanel->setActivePanel(2);
-        }
+        else
+            showRightPanel(2);
     });
 
     m_toggleBacklinksAction = new QAction(tr("反向链接"), this);
@@ -249,12 +232,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_toggleBacklinksAction, &QAction::triggered, this, [this]() {
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 3)
             m_dockRightPanel->hide();
-        else {
-            m_dockAi->hide();
-            m_dockRightPanel->show();
-            m_dockRightPanel->raise();
-            m_rightPanel->setActivePanel(3);
-        }
+        else
+            showRightPanel(3);
     });
 
     // 创建搜索面板
@@ -1155,21 +1134,24 @@ void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
     }
 }
 
+void MainWindow::showRightPanel(int panelIndex)
+{
+    m_dockAi->hide();
+    m_dockRightPanel->show();
+    m_dockRightPanel->raise();
+    m_rightPanel->setActivePanel(panelIndex);
+}
+
 void MainWindow::updateAiActionBar()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor) {
-        m_aiPanel->actionBar()->clearActions();
+        m_aiPanel->clearActionList();
         return;
     }
 
     const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
-    const AiAction *actions = actionsForMode(mode);
-    QVector<AiAction> actionList;
-    for (; *actions != AiAction::FreeChat; ++actions)
-        actionList.append(*actions);
-
-    m_aiPanel->actionBar()->setActions(actionList);
+    m_aiPanel->setActionList(actionsForMode(mode));
 }
 
 void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
@@ -1249,7 +1231,7 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
     } else {
         const ActionInfo *info = findActionInfo(action);
         QString displayText = info ? tr(info->label) : tr("AI 操作");
-        if (ctx.hasSelection) {
+        if (!ctx.selectedText.isEmpty()) {
             displayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
         }
         m_aiPanel->addUserMessage(displayText);
@@ -1263,13 +1245,13 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
     if (action == AiAction::FreeChat) {
         messages = m_aiHistory;
         Message userMsg;
-        userMsg.role = QStringLiteral("user");
+        userMsg.role = MessageRole::User;
         userMsg.content = freeQuery;
         messages.append(userMsg);
         m_aiHistory.append(userMsg);
     } else {
         Message userMsg;
-        userMsg.role = QStringLiteral("user");
+        userMsg.role = MessageRole::User;
         userMsg.content = prompt.userPrompt;
         messages.append(userMsg);
     }
@@ -1305,6 +1287,8 @@ void MainWindow::abortAiRequest()
 
 void MainWindow::onAiPartialResponse(const QString &text)
 {
+    if (text.isEmpty())
+        return;
     m_aiPanel->appendToLastAssistant(text);
 }
 
@@ -1312,11 +1296,11 @@ void MainWindow::onAiFinished()
 {
     // Save assistant response to history (only for FreeChat, where history is non-empty)
     if (!m_aiHistory.isEmpty()) {
-        ChatBubble *last = m_aiPanel->chatArea()->lastBubble();
-        if (last && last->role() == ChatBubble::Assistant && !last->text().isEmpty()) {
+        QString content = m_aiPanel->lastAssistantContent();
+        if (!content.isEmpty()) {
             Message assistantMsg;
-            assistantMsg.role = QStringLiteral("assistant");
-            assistantMsg.content = last->text();
+            assistantMsg.role = MessageRole::Assistant;
+            assistantMsg.content = content;
             m_aiHistory.append(assistantMsg);
         }
     }
@@ -1327,9 +1311,8 @@ void MainWindow::onAiFinished()
 
 void MainWindow::onAiError(const QString &message)
 {
-    // Append error to existing assistant bubble, or create a new one
-    ChatBubble *last = m_aiPanel->chatArea()->lastBubble();
-    if (last && last->role() == ChatBubble::Assistant && last->text().isEmpty()) {
+    // Append error to existing streaming bubble, or create a new one
+    if (m_aiPanel->hasStreamingTarget()) {
         m_aiPanel->appendToLastAssistant(
             QStringLiteral("**") + tr("错误") + QStringLiteral("：**") + message);
     } else {

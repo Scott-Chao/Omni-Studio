@@ -19,7 +19,6 @@ struct ContextBundle {
     QString language;        // e.g., "cpp", "python", "markdown"
     int cursorLine = 0;
     int cursorColumn = 0;
-    bool hasSelection = false;
 };
 
 class AiContextManager {

@@ -12,24 +12,18 @@ ContextBundle AiContextManager::collectContext(EditorWidget *editor)
     if (!editor)
         return bundle;
 
-    // File path and content
     bundle.filePath = editor->currentFilePath();
-    bundle.fileContent = editor->toPlainText();
-
-    // Selected text
     bundle.selectedText = editor->selectedText();
-    bundle.hasSelection = !bundle.selectedText.isEmpty();
 
-    // Cursor position
+    // Only read full content when there's no selection (avoids unnecessary allocation)
+    if (bundle.selectedText.isEmpty())
+        bundle.fileContent = editor->toPlainText();
+
     bundle.cursorLine = editor->cursorLine();
     bundle.cursorColumn = editor->cursorColumn();
-
-    // Mode and language detection
     bundle.mode = currentEditorMode(editor);
 
     if (editor->isCodeEdit()) {
-        // For pure code editors, language comes from the code editor widget
-        // Use file extension as fallback
         QString lang = languageForFile(bundle.filePath);
         if (lang.isEmpty())
             lang = QStringLiteral("cpp");   // default for code mode
@@ -53,7 +47,6 @@ ContextBundle AiContextManager::collectContext(EditorWidget *editor)
     } else if (editor->isPdfView()) {
         bundle.language = QStringLiteral("pdf");
     } else {
-        // Markdown / preview mode
         bundle.language = QStringLiteral("markdown");
     }
 
@@ -66,7 +59,6 @@ AiEditorMode AiContextManager::currentEditorMode(EditorWidget *editor)
         return AiEditorMode::Unknown;
 
     if (editor->isSmdEdit()) {
-        // SMD: detect from active cell
         SmdEditor *smd = editor->smdEditor();
         if (smd) {
             int idx = smd->activeCellIndex();
@@ -95,7 +87,6 @@ QString AiContextManager::languageForFile(const QString &filePath)
     QFileInfo fi(filePath);
     QString ext = fi.suffix().toLower();
 
-    // Common markdown/text extensions
     static const QStringList markdownExts = {
         QStringLiteral("md"), QStringLiteral("markdown"), QStringLiteral("txt"),
         QStringLiteral("rst"), QStringLiteral("tex")
@@ -103,12 +94,10 @@ QString AiContextManager::languageForFile(const QString &filePath)
     if (markdownExts.contains(ext))
         return QStringLiteral("markdown");
 
-    // Code extensions via LanguageUtils
     QString lang = LanguageUtils::languageForExtension(ext);
     if (!lang.isEmpty())
         return lang;
 
-    // Additional common web/data formats
     static const QMap<QString, QString> extraLangs = {
         {QStringLiteral("html"),  QStringLiteral("html")},
         {QStringLiteral("htm"),   QStringLiteral("html")},

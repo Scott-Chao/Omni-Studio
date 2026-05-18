@@ -73,8 +73,7 @@ void AnthropicProvider::chatStream(const QList<Message> &messages)
     QJsonArray msgArray;
     for (const auto &msg : messages) {
         QJsonObject m;
-        m["role"] = msg.role;
-        // Anthropic content is an array of content blocks
+        m["role"] = msg.roleToJson();
         QJsonArray content;
         QJsonObject textBlock;
         textBlock["type"] = "text";

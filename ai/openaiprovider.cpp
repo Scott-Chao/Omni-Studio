@@ -69,13 +69,13 @@ void OpenAiProvider::chatStream(const QList<Message> &messages)
     QJsonArray msgArray;
     if (!m_systemPrompt.isEmpty()) {
         QJsonObject sysMsg;
-        sysMsg["role"] = "system";
+        sysMsg["role"] = QStringLiteral("system");
         sysMsg["content"] = m_systemPrompt;
         msgArray.append(sysMsg);
     }
     for (const auto &msg : messages) {
         QJsonObject m;
-        m["role"] = msg.role;
+        m["role"] = msg.roleToJson();
         m["content"] = msg.content;
         msgArray.append(m);
     }
