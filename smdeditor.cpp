@@ -822,6 +822,12 @@ void SmdEditor::executeCurrentCell()
 
 void SmdEditor::executeMarkdownCell(SmdCell *cell)
 {
+    if (cell->content().trimmed().isEmpty()) {
+        if (m_jumpAfterExecute)
+            jumpToNextCell();
+        return;
+    }
+
     if (!cell->isRendered()) {
         m_pendingRenderJumpIndex = m_cells.indexOf(cell);
         connect(cell, &SmdCell::renderFinished, this, [this, cell]() {
