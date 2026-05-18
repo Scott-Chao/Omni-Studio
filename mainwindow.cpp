@@ -24,6 +24,7 @@
 #include "outlinepanel.h"
 #include "outlineutils.h"
 #include "settingspanel.h"
+#include "ai/aipanel.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include <QDateTime>
@@ -167,12 +168,22 @@ MainWindow::MainWindow(QWidget *parent)
     m_dockRightPanel->hide();
 
     connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
+        toggleRightPanelAction->setChecked(visible);
     });
 
-    toggleRightPanelAction = m_dockRightPanel->toggleViewAction();
+    toggleRightPanelAction = new QAction(tr("面板"), this);
+    toggleRightPanelAction->setCheckable(true);
     toggleRightPanelAction->setToolTip(tr("显示/隐藏右侧面板 (历史/大纲/标签/反链)"));
     toggleRightPanelAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_right_panel", "Ctrl+Shift+E")));
+    connect(toggleRightPanelAction, &QAction::triggered, this, [this]() {
+        if (m_dockRightPanel->isVisible()) {
+            m_dockRightPanel->hide();
+        } else {
+            m_dockAi->hide();
+            m_dockRightPanel->show();
+            m_dockRightPanel->raise();
+        }
+    });
 
     m_rightPanel->historyPanel()->loadHistory();
 
@@ -185,6 +196,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 0)
             m_dockRightPanel->hide();
         else {
+            m_dockAi->hide();
             m_dockRightPanel->show();
             m_dockRightPanel->raise();
             m_rightPanel->setActivePanel(0);
@@ -199,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 1)
             m_dockRightPanel->hide();
         else {
+            m_dockAi->hide();
             m_dockRightPanel->show();
             m_dockRightPanel->raise();
             m_rightPanel->setActivePanel(1);
@@ -213,6 +226,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 2)
             m_dockRightPanel->hide();
         else {
+            m_dockAi->hide();
             m_dockRightPanel->show();
             m_dockRightPanel->raise();
             m_rightPanel->setActivePanel(2);
@@ -227,6 +241,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_dockRightPanel->isVisible() && m_rightPanel->currentPanel() == 3)
             m_dockRightPanel->hide();
         else {
+            m_dockAi->hide();
             m_dockRightPanel->show();
             m_dockRightPanel->raise();
             m_rightPanel->setActivePanel(3);
@@ -586,6 +601,31 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
 
+    // ----- AI 助手面板 -----
+    m_aiPanel = new AiPanel(this);
+    m_dockAi = new QDockWidget(tr("AI 助手"), this);
+    m_dockAi->setWidget(m_aiPanel);
+    m_dockAi->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    addDockWidget(Qt::RightDockWidgetArea, m_dockAi);
+    tabifyDockWidget(m_dockRightPanel, m_dockAi);
+    m_dockAi->hide();
+
+    m_toggleAiAction = new QAction(tr("AI 助手"), this);
+    m_toggleAiAction->setCheckable(true);
+    m_toggleAiAction->setToolTip(tr("显示/隐藏 AI 助手"));
+    m_toggleAiAction->setShortcut(
+        QKeySequence(ConfigManager::instance().shortcut("toggle_ai", "Ctrl+Shift+A")));
+    connect(m_toggleAiAction, &QAction::triggered, this, [this]() {
+        if (m_dockAi->isVisible()) {
+            m_dockAi->hide();
+        } else {
+            m_dockRightPanel->hide();
+            m_dockAi->show();
+            m_dockAi->raise();
+        }
+    });
+    addAction(m_toggleAiAction);
+
     // ----- 界面布局 -----
     // 设置 TabManager 的样式（原有样式保留，可进一步调整）
     {
@@ -685,6 +725,16 @@ MainWindow::MainWindow(QWidget *parent)
             m_dockJudge->raise();
         }
     });
+    connect(m_activityBar, &ActivityBar::aiClicked, this, [this]() {
+        if (m_dockAi->isVisible()) {
+            m_dockAi->hide();
+        } else {
+            m_dockRightPanel->hide();
+            m_dockAi->show();
+            m_dockAi->raise();
+            m_activityBar->setAiActive(true);
+        }
+    });
 
     // 同步 ActivityBar 激活状态与面板可见性
     connect(m_dockSearch, &QDockWidget::visibilityChanged, this, [this](bool visible) {
@@ -692,6 +742,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         m_activityBar->setJudgeActive(visible);
+    });
+    connect(m_dockAi, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        m_activityBar->setAiActive(visible);
+        m_toggleAiAction->setChecked(visible);
     });
 
     // 初始连接

@@ -503,6 +503,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["toggle_outline"] = "Ctrl+Shift+O";
     shortcuts["toggle_search"] = "Ctrl+Shift+F";
     shortcuts["toggle_judge"] = "Ctrl+Shift+J";
+    shortcuts["toggle_ai"] = "Ctrl+Shift+A";
     shortcuts["toggle_settings"] = "Ctrl+,";
     shortcuts["compile_and_run"] = "F5";
     shortcuts["compile_only"] = "F6";

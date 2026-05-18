@@ -37,6 +37,7 @@
     <file alias="split">icons/icon-split.svg</file>
     <file alias="run">icons/icon-run.svg</file>
     <file alias="search">icons/icon-search.svg</file>
+    <file alias="ai">icons/icon-ai.svg</file>
     <file alias="settings">icons/icon-settings.svg</file>
     <file alias="judge">icons/icon-judge.svg</file>
     <file alias="new">icons/icon-new.svg</file>

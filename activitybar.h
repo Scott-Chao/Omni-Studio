@@ -14,6 +14,7 @@ public:
 
     void setSearchActive(bool active);
     void setJudgeActive(bool active);
+    void setAiActive(bool active);
     void setExportPdfVisible(bool visible);
 
 signals:
@@ -21,6 +22,7 @@ signals:
     void settingsClicked();
     void exportPdfClicked();
     void judgeClicked();
+    void aiClicked();
 
 private:
     QPushButton *createButton(const QIcon &icon, const QString &tooltip);
@@ -28,6 +30,7 @@ private:
     QString buttonStyleSheet(bool active) const;
 
     QPushButton *m_searchBtn;
+    QPushButton *m_aiBtn;
     QPushButton *m_settingsBtn;
     QPushButton *m_exportPdfBtn;
     QPushButton *m_judgeBtn;

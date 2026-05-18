@@ -31,6 +31,7 @@ class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
 class SettingsPanel;
+class AiPanel;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -163,6 +164,11 @@ private:
     SettingsPanel *m_settingsPanel = nullptr;
     QWidget *m_settingsOverlay = nullptr;
     QAction *m_settingsAction = nullptr;
+
+    // AI 助手
+    AiPanel *m_aiPanel = nullptr;
+    QDockWidget *m_dockAi = nullptr;
+    QAction *m_toggleAiAction = nullptr;
 
     // .md ↔ .smd 转换
     QAction *m_convertMdSmdAction = nullptr;

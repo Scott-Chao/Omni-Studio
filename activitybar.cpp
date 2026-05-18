@@ -13,17 +13,20 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->setSpacing(0);
 
     m_searchBtn    = createButton(QIcon(":/icons/search"),    tr("搜索 (Ctrl+Shift+F)"));
+    m_aiBtn        = createButton(QIcon(":/icons/ai"),        tr("AI 助手 (Ctrl+Shift+A)"));
     m_settingsBtn  = createButton(QIcon(":/icons/settings"),  tr("设置 (Ctrl+,)"));
     m_exportPdfBtn = createButton(QIcon(":/icons/pdf"),       tr("导出 PDF (Ctrl+E)"));
     m_judgeBtn     = createButton(QIcon(":/icons/judge"),     tr("评测 (Ctrl+Shift+J)"));
 
     layout->addWidget(m_searchBtn);
+    layout->addWidget(m_aiBtn);
     layout->addStretch(1);
     layout->addWidget(m_settingsBtn);
     layout->addWidget(m_exportPdfBtn);
     layout->addWidget(m_judgeBtn);
 
     connect(m_searchBtn,    &QPushButton::clicked, this, &ActivityBar::searchClicked);
+    connect(m_aiBtn,        &QPushButton::clicked, this, &ActivityBar::aiClicked);
     connect(m_settingsBtn,  &QPushButton::clicked, this, &ActivityBar::settingsClicked);
     connect(m_exportPdfBtn, &QPushButton::clicked, this, &ActivityBar::exportPdfClicked);
     connect(m_judgeBtn,     &QPushButton::clicked, this, &ActivityBar::judgeClicked);
@@ -71,6 +74,7 @@ void ActivityBar::updateButtonStyle(QPushButton *btn, bool active)
 }
 
 void ActivityBar::setSearchActive(bool active) { updateButtonStyle(m_searchBtn, active); }
+void ActivityBar::setAiActive(bool active)    { updateButtonStyle(m_aiBtn, active); }
 void ActivityBar::setJudgeActive(bool active)  { updateButtonStyle(m_judgeBtn, active); }
 
 void ActivityBar::setExportPdfVisible(bool visible)

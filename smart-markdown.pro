@@ -15,6 +15,7 @@ win32: LIBS += -luser32
 
 SOURCES += \
     ai/aicontextmanager.cpp \
+    ai/aipanel.cpp \
     ai/aiproviderfactory.cpp \
     ai/anthropicprovider.cpp \
     ai/chatarea.cpp \
@@ -65,6 +66,7 @@ SOURCES += \
 
 HEADERS += \
     ai/aicontextmanager.h \
+    ai/aipanel.h \
     ai/aiprovider.h \
     ai/aiproviderfactory.h \
     ai/anthropicprovider.h \
