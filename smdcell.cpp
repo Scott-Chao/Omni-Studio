@@ -346,16 +346,31 @@ void SmdCell::setCommandMode(bool cmd)
     m_commandMode = cmd;
     updateBorderStyle();
     if (cmd) {
+        // Disable editing and cursor in command mode
+        QPlainTextEdit *ed = qobject_cast<QPlainTextEdit *>(editorWidget());
+        if (ed) {
+            ed->setReadOnly(true);
+            ed->setTextInteractionFlags(Qt::NoTextInteraction);
+            ed->setFocusPolicy(Qt::NoFocus);
+        }
         if (m_rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
             m_executeHint->setVisible(true);
         } else if (m_type == Markdown) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
             m_executeHint->setVisible(true);
         } else {
-            m_executeHint->setVisible(false);
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 运行 | Shift+Enter: 运行并跳转"));
+            m_executeHint->setVisible(true);
         }
     } else {
+        // Restore editing and cursor in edit mode
+        QPlainTextEdit *ed = qobject_cast<QPlainTextEdit *>(editorWidget());
+        if (ed) {
+            ed->setReadOnly(false);
+            ed->setTextInteractionFlags(Qt::TextEditorInteraction);
+            ed->setFocusPolicy(Qt::StrongFocus);
+        }
         m_executeHint->setVisible(false);
     }
 }
@@ -523,7 +538,7 @@ void SmdCell::setRendered(bool rendered)
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
         }
         m_executeHint->setVisible(true);
     }
@@ -538,7 +553,7 @@ void SmdCell::setRenderedState(bool rendered)
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
         }
         m_executeHint->setVisible(true);
     }

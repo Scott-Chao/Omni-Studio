@@ -831,9 +831,8 @@ void SmdEditor::executeMarkdownCell(SmdCell *cell)
         });
         cell->setRendered(true);
     } else {
-        if (!m_commandMode)
-            enterCommandMode();
-        jumpToNextCell();
+        if (m_jumpAfterExecute)
+            jumpToNextCell();
     }
 }
 
@@ -863,9 +862,8 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
 
     // Skip if current cell is truly empty (original behavior).
     if (cell->content().trimmed().isEmpty()) {
-        if (!m_commandMode)
-            enterCommandMode();
-        jumpToNextCell();
+        if (m_jumpAfterExecute)
+            jumpToNextCell();
         return;
     }
 
@@ -896,9 +894,8 @@ void SmdEditor::executeCodeCell(SmdCell *cell)
     }
 
     if (combinedCode.trimmed().isEmpty()) {
-        if (!m_commandMode)
-            enterCommandMode();
-        jumpToNextCell();
+        if (m_jumpAfterExecute)
+            jumpToNextCell();
         return;
     }
 
@@ -1008,11 +1005,8 @@ void SmdEditor::onProcessFinished(int exitCode)
 
     emit contentChanged();
 
-    // Jump to next cell after execution completes (unless user terminated)
     if (finishedIdx == m_activeCellIndex) {
-        if (!m_commandMode)
-            enterCommandMode();
-        if (!m_userTerminated)
+        if (m_jumpAfterExecute && !m_userTerminated)
             jumpToNextCell();
         m_userTerminated = false;
     }
@@ -1020,11 +1014,54 @@ void SmdEditor::onProcessFinished(int exitCode)
 
 void SmdEditor::jumpToNextCell()
 {
-    if (m_commandMode) {
-        if (m_activeCellIndex + 1 < m_cells.size()) {
-            setActiveCell(m_activeCellIndex + 1);
-        }
+    if (m_activeCellIndex + 1 < m_cells.size()) {
+        setActiveCell(m_activeCellIndex + 1);
     }
+}
+
+void SmdEditor::splitCellAtCursor()
+{
+    if (m_commandMode || m_executingCell)
+        return;
+    if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size())
+        return;
+
+    SmdCell *cell = m_cells[m_activeCellIndex];
+    SmdCell::CellType type = cell->cellType();
+    QString fullContent = cell->content();
+
+    QPlainTextEdit *editor = qobject_cast<QPlainTextEdit *>(cell->editorWidget());
+    if (!editor)
+        return;
+
+    int pos = editor->textCursor().position();
+    QString beforeText = fullContent.left(pos);
+    QString afterText = fullContent.mid(pos);
+
+    cell->setContent(beforeText);
+    addCell(m_activeCellIndex + 1, type, afterText);
+    setActiveCell(m_activeCellIndex + 1);
+
+    // Focus the lower cell's editor with cursor at start
+    SmdCell *newCell = m_cells[m_activeCellIndex];
+    if (QWidget *ed = newCell->editorWidget()) {
+        ed->setFocus();
+        if (auto *pte = qobject_cast<QPlainTextEdit *>(ed))
+            pte->moveCursor(QTextCursor::Start);
+    }
+
+    // Two-phase deferred height update: the outer layout assigns cell
+    // widths in the first event-cycle, but the inner cascade (cell →
+    // QStackedWidget → QPlainTextEdit → QTextDocument) needs a second
+    // cycle to propagate the width and re-layout the document.
+    QTimer::singleShot(0, this, [this, cell, newCell]() {
+        cell->updateEditorHeight();
+        newCell->updateEditorHeight();
+        QTimer::singleShot(0, this, [cell, newCell]() {
+            cell->updateEditorHeight();
+            newCell->updateEditorHeight();
+        });
+    });
 }
 
 // ---- Persistent Python Execution (Jupyter-like) ----
@@ -1185,9 +1222,7 @@ void SmdEditor::onPyExecReadyRead()
 
         // Jump to next cell
         if (finishedIdx == m_activeCellIndex) {
-            if (!m_commandMode)
-                enterCommandMode();
-            if (!m_userTerminated)
+            if (m_jumpAfterExecute && !m_userTerminated)
                 jumpToNextCell();
             m_userTerminated = false;
         }
@@ -1301,10 +1336,7 @@ void SmdEditor::onCellRenderFinished()
     int jumpedIndex = m_pendingRenderJumpIndex;
     m_pendingRenderJumpIndex = -1;
 
-    if (!m_commandMode)
-        enterCommandMode();
-
-    if (jumpedIndex == m_activeCellIndex)
+    if (jumpedIndex == m_activeCellIndex && m_jumpAfterExecute)
         jumpToNextCell();
 }
 
@@ -1316,11 +1348,9 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
         switch (event->key()) {
         case Qt::Key_Return:
         case Qt::Key_Enter:
-            if (event->modifiers() & Qt::ControlModifier) {
-                executeCurrentCell();
-            } else {
-                enterEditMode();
-            }
+            // Plain Enter: enter edit mode. Ctrl/Shift+Enter are handled
+            // by eventFilter in edit mode only.
+            enterEditMode();
             return;
 
         case Qt::Key_Escape:
@@ -1348,8 +1378,11 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
             if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
                 if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
                     SmdCell *cell = m_cells[m_activeCellIndex];
-                    if (cell->isRendered())
+                    if (cell->cellType() != SmdCell::Markdown) {
+                        m_outputWidgets[m_activeCellIndex]->clearOutput();
+                    } else if (cell->isRendered()) {
                         cell->setRendered(false);
+                    }
                 }
                 return;
             }
@@ -1387,14 +1420,21 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
-        // Ctrl+Enter: always execute, regardless of command/edit mode.
-        if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)
-            && (key->modifiers() & Qt::ControlModifier)) {
-            if (event->type() == QEvent::ShortcutOverride)
-                event->accept();
-            else
-                executeCurrentCell();
-            return true;
+        // Ctrl+Enter: execute without jumping (edit mode only).
+        // Shift+Enter: execute and jump to next cell (edit mode only).
+        if (!m_commandMode
+            && (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)) {
+            bool ctrl = (key->modifiers() & Qt::ControlModifier);
+            bool shift = (key->modifiers() & Qt::ShiftModifier);
+            if (ctrl || shift) {
+                if (event->type() == QEvent::ShortcutOverride) {
+                    event->accept();
+                } else {
+                    m_jumpAfterExecute = shift;
+                    executeCurrentCell();
+                }
+                return true;
+            }
         }
 
         // Esc: always enter command mode, regardless of current mode.
@@ -1436,9 +1476,7 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             return true;
         }
 
-        // Ctrl+Shift+Z: always accept ShortcutOverride so Qt doesn't
-        // convert it to Redo. The actual un-render is handled in
-        // keyPressEvent (command mode) or below (edit mode).
+        // Ctrl+Shift+Z: un-render MD cells, or clear output for code cells.
         if (key->key() == Qt::Key_Z
             && (key->modifiers() & Qt::ControlModifier)
             && (key->modifiers() & Qt::ShiftModifier)) {
@@ -1450,13 +1488,32 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
                 if (event->type() == QEvent::KeyPress) {
                     if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
                         SmdCell *cell = m_cells[m_activeCellIndex];
-                        if (cell->isRendered())
+                        if (cell->cellType() != SmdCell::Markdown) {
+                            m_outputWidgets[m_activeCellIndex]->clearOutput();
+                        } else if (cell->isRendered()) {
                             cell->setRendered(false);
+                        }
                     }
                     return true;
                 }
             }
             // In command mode, KeyPress falls through to keyPressEvent
+        }
+
+        // Ctrl+Shift+-: split cell at cursor (edit mode only).
+        // Match both Key_Minus and Key_Underscore (Windows may report either).
+        if (!m_commandMode
+            && (key->key() == Qt::Key_Minus || key->key() == Qt::Key_Underscore)
+            && (key->modifiers() & Qt::ControlModifier)
+            && (key->modifiers() & Qt::ShiftModifier)) {
+            if (event->type() == QEvent::ShortcutOverride) {
+                event->accept();
+                return true;
+            }
+            if (event->type() == QEvent::KeyPress) {
+                splitCellAtCursor();
+                return true;
+            }
         }
 
     }

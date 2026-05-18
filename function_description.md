@@ -39,9 +39,12 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 新增/修复
-- 命令模式下，选中的块的边框为紫色，以与编辑模式更好地区分
-- 更新 `CLAUDE.md` ，补充缺失的内容
+### 新增
+SMD快捷键升级与操作体验优化
+- 快捷键拆分： `Ctrl+Enter` 执行单元格，不跳转，`Shift+Enter` 执行单元格并跳转。二者均只在编辑模式下有效。
+- 编辑模式下代码块执行 `Ctrl+Shift+Z` 可清除输出区内容。
+- 编辑模式下执行 `Ctrl+Shift+-` 分割单元格，从光标的位置一分为二，并自动选中下方的单元格。
+- 命令模式下完全禁用编辑操作。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1034,19 +1037,24 @@
 | `A` | 当前单元格上方插入新单元格（Markdown），弹出语言选择菜单 |
 | `B` | 当前单元格下方插入新单元格（Markdown），弹出语言选择菜单 |
 | `↑` / `↓` | 上下导航单元格 |
-| `Enter`（无 Ctrl） | 进入编辑模式 |
-| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
-| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
+| `Enter`（无修饰键） | 进入编辑模式 |
+| `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
 | `Delete` | 删除当前单元格（至少保留一个） |
 | `Ctrl+D` | 复制当前单元格到下方 |
+
+**编辑模式快捷键**：
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+Enter` | 执行当前单元格（不跳转，保持编辑模式） |
+| `Shift+Enter` | 执行当前单元格并跳转到下一个 |
+| `Ctrl+Shift+-` | 在光标处将当前单元格一分为二（类型不变），选中下方单元格 |
+| `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
 
 **通用快捷键（命令模式与编辑模式均有效）**：
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
 | `Esc` | 进入命令模式（语言选择菜单弹出时：关闭菜单） |
-| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
-| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
 
 **语言选择器（`LangSelectorPopup`）**：
 - 继承 `QFrame`（`Qt::Popup`），深色主题无边框下拉菜单，出现于编辑区域顶部居中位置。
@@ -1057,11 +1065,11 @@
 - **取消行为**：如果在新建单元格流程中弹出（按 `A`/`B`），取消时自动删除该单元格、恢复原始活动单元格、清除修改状态标识。
 
 **单元格执行**：
-- `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
-- **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
-- **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → 进入命令模式并跳转下一个单元格。
+- `executeCurrentCell()`：根据当前活动单元格类型分发执行。**仅编辑模式**下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转）触发，通过 `eventFilter` 处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截。`m_jumpAfterExecute` 标志控制执行后是否跳转到下一个单元格。执行前后不改变编辑/命令模式状态。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
+- **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
+- **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → `m_jumpAfterExecute` 为 true 时跳转下一个单元格。
 - **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。后续执行仅将当前 cell 代码通过 `QProcess::write()` 发送给守护进程，守护进程在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
-- **空代码单元格**：不启动执行流程，直接进入命令模式并跳转。
+- **空代码单元格**：不启动执行流程，`m_jumpAfterExecute` 为 true 时跳转。
 - 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
 - 修改跟踪：执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出内容的变化能反映在文件修改状态上（未保存标识）。
@@ -1086,8 +1094,18 @@
 - 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
 
 **执行安全**：
-- 执行期间（`m_executingCell` 非空），`removeCell()` / `insertCellAbove()` / `insertCellBelow()` 直接返回，阻止 cell 增删操作。
+- 执行期间（`m_executingCell` 非空），`removeCell()` / `insertCellAbove()` / `insertCellBelow()` / `splitCellAtCursor()` 直接返回，阻止 cell 增删操作。
 - `m_executingCell` 使用 `QPointer<SmdCell>`，cell 被删除后自动置 null，`onProcessOutput/Finished/Stop` 中先检查再通过 `m_cells.indexOf()` 定位索引。
+
+**单元格分割**（`splitCellAtCursor()`）：
+- 编辑模式下 `Ctrl+Shift+-` 触发，在光标位置将当前单元格内容一分为二，两个单元格保持相同类型。
+- 使用 `QPlainTextEdit::textCursor().position()` 定位分割点，前段保留在原单元格，后段创建新单元格插入下方。
+- 分割后自动选中下方单元格，光标置于其开头（`QTextCursor::Start`）。
+- 高度更新采用两阶段延迟策略：两个 `QTimer::singleShot(0, ...)` 确保外层布局（cell 宽度分配）和内层布局（QStackedWidget → QPlainTextEdit → QTextDocument 重排）均完成后再调用 `updateEditorHeight()`，避免因 QPlainTextEdit 宽度未更新导致的文档高度计算偏差。
+
+**命令模式编辑禁用**：
+- 进入命令模式时 `SmdCell::setCommandMode(true)` 将编辑器设为 `readOnly`、`Qt::NoTextInteraction`、`Qt::NoFocus`，彻底禁用光标和编辑操作。
+- 退出命令模式时 `setCommandMode(false)` 恢复 `readOnly=false`、`Qt::TextEditorInteraction`、`Qt::StrongFocus`。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
@@ -1100,14 +1118,14 @@
 
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
-- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。
-  `Ctrl+K` 不再在此处理（提升到全局 `eventFilter`，编辑模式下也可用）。
+- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
 - 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
-  - `Ctrl+Enter`：`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段执行单元格。
+  - `Ctrl+Enter` / `Shift+Enter`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段设置 `m_jumpAfterExecute`（Shift 为 true）并调用 `executeCurrentCell()`。
   - `Esc`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段进入命令模式。当 `Qt::Popup` 窗口（如语言选择菜单）激活时跳过拦截，使菜单能正常响应 `Esc`。
   - `Ctrl+K`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段弹出语言选择菜单（命令模式与编辑模式均生效）。
   - `Ctrl+C`：执行期间终止进程（`ShortcutOverride` + `KeyPress`）。
-  - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段在编辑模式下直接取消渲染，命令模式放行给 `keyPressEvent`。
+  - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段对 MD 单元格取消渲染，对代码单元格清除输出。命令模式放行给 `keyPressEvent`。
+  - `Ctrl+Shift+-`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 缩放快捷键拦截；`KeyPress` 阶段调用 `splitCellAtCursor()` 将当前单元格在光标处一分为二（类型保持不变），选中下方单元格并将光标置于其开头。
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。

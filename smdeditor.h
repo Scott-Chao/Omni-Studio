@@ -82,6 +82,7 @@ private:
     int cppGroupForCell(int cellIndex) const;
     void onCellRenderFinished();
     void handleProcessStop();
+    void splitCellAtCursor();
 
     // Persistent Python execution (Jupyter-like)
     void startPythonExecProcess();
@@ -122,6 +123,7 @@ private:
     QPointer<SmdCell> m_executingCell;
     int m_pendingRenderJumpIndex = -1;
     bool m_userTerminated = false;
+    bool m_jumpAfterExecute = false;
     QString m_executingTempFile;
     bool m_executingCompileOnly = false;
     int m_executeCounter = 0;
