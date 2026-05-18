@@ -16,6 +16,7 @@ public:
     void setModel(const QString &model) override;
     void setSystemPrompt(const QString &prompt) override;
     void setMaxTokens(int maxTokens) override;
+    void setEndpoint(const QString &endpoint);
     void chatStream(const QList<Message> &messages) override;
     void cancel() override;
 
@@ -26,7 +27,6 @@ private slots:
 
 private:
     void parseSseFrame(const QString &frame);
-    void setEndpoint(const QString &endpoint);
 
     QNetworkAccessManager *m_net;
     QNetworkReply *m_reply = nullptr;

@@ -25,6 +25,9 @@
 #include "outlineutils.h"
 #include "settingspanel.h"
 #include "ai/aipanel.h"
+#include "ai/actionbar.h"
+#include "ai/aicontextmanager.h"
+#include "ai/prompttemplates.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include <QDateTime>
@@ -582,6 +585,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updatePreviewActionState);
     connect(m_tabManager, &QTabWidget::currentChanged, this, &MainWindow::updateSplitPreviewActionState);
 
+    // 当切换标签页时，更新 AI 动作按钮列表
+    connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
+        updateAiActionBar();
+    });
+
     // ----- 设置面板（悬浮遮罩 + 面板）-----
     m_settingsOverlay = new QWidget(this);
     m_settingsOverlay->setObjectName("settingsOverlay");
@@ -773,6 +781,7 @@ MainWindow::MainWindow(QWidget *parent)
     startAsyncIndexBuild();
     updatePreviewActionState();
     updateSplitPreviewActionState();
+    updateAiActionBar();
 }
 
 MainWindow::~MainWindow()
@@ -1126,6 +1135,23 @@ void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
     } else {
         m_settings->setSettingOverride(key, value);
     }
+}
+
+void MainWindow::updateAiActionBar()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) {
+        m_aiPanel->actionBar()->clearActions();
+        return;
+    }
+
+    const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
+    const AiAction *actions = actionsForMode(mode);
+    QVector<AiAction> actionList;
+    for (; *actions != AiAction::FreeChat; ++actions)
+        actionList.append(*actions);
+
+    m_aiPanel->actionBar()->setActions(actionList);
 }
 
 void MainWindow::onResetToDefaults()

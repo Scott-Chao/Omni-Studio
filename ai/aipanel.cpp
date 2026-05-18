@@ -1,5 +1,6 @@
 #include "aipanel.h"
 #include "chatarea.h"
+#include "actionbar.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -48,6 +49,9 @@ AiPanel::AiPanel(QWidget *parent)
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();
     titleLayout->addWidget(m_clearBtn);
+
+    // ── Action bar ──
+    m_actionBar = new ActionBar(this);
 
     // ── Chat area ──
     m_chatArea = new ChatArea(this);
@@ -100,10 +104,15 @@ AiPanel::AiPanel(QWidget *parent)
     inputLayout->addWidget(m_sendBtn);
 
     mainLayout->addWidget(titleBar);
+    mainLayout->addWidget(m_actionBar);
     mainLayout->addWidget(m_chatArea, 1);
     mainLayout->addWidget(inputBar);
 
     // ── Connections ──
+    connect(m_actionBar, &ActionBar::actionTriggered, this, [this](AiAction action) {
+        emit actionTriggered(static_cast<int>(action));
+    });
+
     connect(m_inputEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
         m_sendBtn->setEnabled(!text.trimmed().isEmpty());
     });
