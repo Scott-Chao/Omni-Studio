@@ -40,19 +40,27 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
 void SmdOutputWidget::setOutput(const QString &text)
 {
     m_hiddenLineCount = 0;
-    QStringList lines = text.split(QLatin1Char('\n'));
-    if (!lines.isEmpty() && lines.constLast().isEmpty())
-        lines.removeLast();
-    if (lines.size() > kMaxOutputLines) {
-        m_hiddenLineCount = lines.size() - kMaxOutputLines;
-        lines = lines.mid(0, kMaxOutputLines);
-        lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
-    }
 
     // Block signals during bulk text set to avoid premature updateHeight()
     // before the widget is visible and properly laid out.
     m_outputEdit->document()->blockSignals(true);
-    m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
+
+    if (text.startsWith(QStringLiteral("<!DOCTYPE HTML"), Qt::CaseInsensitive)) {
+        // HTML format (saved by current code) — restore with colors
+        m_outputEdit->document()->setHtml(text);
+    } else {
+        // Plain text format (legacy files or direct calls)
+        QStringList lines = text.split(QLatin1Char('\n'));
+        if (!lines.isEmpty() && lines.constLast().isEmpty())
+            lines.removeLast();
+        if (lines.size() > kMaxOutputLines) {
+            m_hiddenLineCount = lines.size() - kMaxOutputLines;
+            lines = lines.mid(0, kMaxOutputLines);
+            lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
+        }
+        m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
+    }
+
     m_outputEdit->document()->blockSignals(false);
 
     setVisible(true);
@@ -127,7 +135,9 @@ void SmdOutputWidget::scrollToTop()
 
 QString SmdOutputWidget::outputText() const
 {
-    return m_outputEdit->toPlainText();
+    if (m_outputEdit->toPlainText().isEmpty())
+        return {};
+    return m_outputEdit->document()->toHtml();
 }
 
 bool SmdOutputWidget::hasOutput() const

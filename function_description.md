@@ -39,8 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 修复
-- 修复代码块输出内容选中后无法按 `Ctrl+C` 复制的问题。
+### 新增
+- SMD 代码块输出支持保存文字颜色
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1159,15 +1159,15 @@
 - `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，在 `appendText()` 追加文本时自动触发调整固定高度；`setOutput()` 中通过 `QTimer::singleShot(0, ...)` 延迟调用，避免加载时控件尚未完成布局导致高度计算异常。
 
 **主要接口**：
-- `void setOutput(const QString &text)`：加载文件时恢复已保存的输出文本。先阻断文档信号防止 `setPlainText()` 过程中提前触发 `updateHeight()`，设置文本后再解除信号阻塞，显示控件，最后通过 `QTimer::singleShot(0, ...)` 延迟计算高度确保布局就绪。超行自动截断。
+- `void setOutput(const QString &text)`：加载文件时恢复已保存的输出文本。自动检测文本格式：若以 `<!DOCTYPE HTML` 开头则通过 `QTextDocument::setHtml()` 恢复带颜色的格式化输出；否则视为纯文本（兼容旧文件），按行分割、超行截断后通过 `setPlainText()` 设置。先阻断文档信号防止设置过程中提前触发 `updateHeight()`，设置文本后再解除信号阻塞，显示控件，最后通过 `QTimer::singleShot(0, ...)` 延迟计算高度确保布局就绪。
 - `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，首次追加时自动显示控件。stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
 - `void clearOutput()`：清空内容并隐藏控件。执行前调用以重置输出区域，控件保持隐藏直至 `appendText()` 收到实际输出。
-- `QString outputText() const`：返回原始输出文本（用于序列化）。
+- `QString outputText() const`：返回输出文本的 HTML 格式（保留颜色等字符格式），供序列化保存。输出为空时返回空字符串，避免空输出被持久化到文件。
 - `bool hasOutput() const`：是否有输出内容。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，与 `SmdCell` 通过 `m_outputWidgets` 列表一一对应。
-- 内容通过 `SmdEditor::toPlainText()` 序列化（base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。
+- 内容通过 `SmdEditor::toPlainText()` 序列化（HTML 格式的 base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。HTML 格式保留了 stderr 红色、截断提示灰色等字符格式信息，使保存后重新打开仍能显示彩色输出。
 
 
 ### 29. `SmdLspManager` — SMD 共享 LSP 管理器
