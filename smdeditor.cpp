@@ -1038,9 +1038,19 @@ void SmdEditor::splitCellAtCursor()
     QString beforeText = fullContent.left(pos);
     QString afterText = fullContent.mid(pos);
 
+    int oldIdx = m_activeCellIndex;
     cell->setContent(beforeText);
-    addCell(m_activeCellIndex + 1, type, afterText);
-    setActiveCell(m_activeCellIndex + 1);
+    addCell(oldIdx + 1, type, afterText);
+    setActiveCell(oldIdx + 1);
+
+    // Transfer output to the bottom cell after split
+    if (oldIdx + 1 < m_outputWidgets.size()) {
+        QString existingOutput = m_outputWidgets[oldIdx]->outputText();
+        if (!existingOutput.isEmpty()) {
+            m_outputWidgets[oldIdx + 1]->setOutput(existingOutput);
+            m_outputWidgets[oldIdx]->clearOutput();
+        }
+    }
 
     // Focus the lower cell's editor with cursor at start
     SmdCell *newCell = m_cells[m_activeCellIndex];
