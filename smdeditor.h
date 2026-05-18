@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QScrollArea>
+#include <QSplitter>
 #include <QVBoxLayout>
 #include <QList>
 #include <QTimer>
@@ -102,6 +103,7 @@ private:
     // Connections
     void connectCellSignals(SmdCell *cell, int index);
 
+    QSplitter *m_splitter;
     QScrollArea *m_scrollArea;
     QWidget *m_cellContainer;
     QVBoxLayout *m_cellLayout;

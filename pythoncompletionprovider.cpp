@@ -83,6 +83,10 @@ void PythonCompletionProvider::startProcess()
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
 
+    connect(m_process, &QProcess::started, this, [this]() {
+        qDebug() << "PythonCompletionProvider: helper process started, pid" << m_process->processId();
+        emit serverReady();
+    });
     connect(m_process, &QProcess::readyReadStandardOutput,
             this, &PythonCompletionProvider::onReadyRead);
     connect(m_process, &QProcess::errorOccurred,
@@ -92,18 +96,7 @@ void PythonCompletionProvider::startProcess()
 
     qDebug() << "PythonCompletionProvider: starting" << python << scriptPath;
     m_process->start(python, {scriptPath});
-
-    if (!m_process->waitForStarted(5000)) {
-        qWarning() << "PythonCompletionProvider: failed to start process:" << m_process->errorString();
-        delete m_process;
-        m_process = nullptr;
-        m_jediAvailable = false;
-        emit serverFailed(tr("Failed to start Python helper process."));
-        return;
-    }
-
-    qDebug() << "PythonCompletionProvider: helper process started, pid" << m_process->processId();
-    emit serverReady();
+    // startup is async — started / errorOccurred signals handle result
 }
 
 void PythonCompletionProvider::restartProcess()
@@ -357,6 +350,13 @@ void PythonCompletionProvider::onProcessError(QProcess::ProcessError err)
         return;
     qWarning() << "PythonCompletionProvider: process error" << err;
     emitEmptyResults();
+    if (err == QProcess::FailedToStart) {
+        qWarning() << "PythonCompletionProvider: Python helper failed to start";
+        m_jediAvailable = false;
+        m_process->deleteLater();
+        m_process = nullptr;
+        emit serverFailed(tr("Failed to start Python helper process."));
+    }
 }
 
 void PythonCompletionProvider::onProcessFinished(int exitCode, QProcess::ExitStatus status)

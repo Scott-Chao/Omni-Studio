@@ -20,12 +20,11 @@ DiagnosticSection::DiagnosticSection(const QString &title, const QString &border
 
     m_headerLabel = new QLabel(this);
     m_headerLabel->setCursor(Qt::PointingHandCursor);
+    m_headerLabel->setTextFormat(Qt::RichText);
     m_headerLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: #e0e0e0; font-size: 11px; font-weight: bold; "
         "padding: 4px 8px; border-bottom: 1px solid #3c3c3c; }"
     ));
-    update();  // trigger initial header text update
-    setExpanded(true);
 
     m_contentWidget = new QWidget(this);
     m_contentLayout = new QVBoxLayout(m_contentWidget);
@@ -38,6 +37,8 @@ DiagnosticSection::DiagnosticSection(const QString &title, const QString &border
     connect(m_headerLabel, &QLabel::linkActivated, this, [this](const QString &) {
         setExpanded(!m_expanded);
     });
+
+    setExpanded(true);
 }
 
 void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic> &diags)
@@ -66,7 +67,7 @@ void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic>
               });
 
     for (const auto &d : filtered) {
-        QString entryText = QStringLiteral("<span style=\"color:#858585;\">Line %1:</span> "
+        QString entryText = QStringLiteral("<span style=\"color:#858585;\">行 %1:</span> "
                                            "<span style=\"color:#D4D4D4;\">%2</span>")
                                 .arg(d.startLine + 1)
                                 .arg(d.message.toHtmlEscaped());
@@ -109,11 +110,15 @@ void DiagnosticSection::setExpanded(bool expanded)
     m_expanded = expanded;
     m_contentWidget->setVisible(expanded);
 
-    QString indicator = expanded ? QStringLiteral("▼")   // ▼
-                                 : QStringLiteral("▶");  // ▶
-    m_headerLabel->setText(QStringLiteral("%1 %2 (%3)")
-                               .arg(indicator, m_title)
-                               .arg(m_count));
+    // ▾ / ▸ are a matched pair from Unicode Geometric Shapes — same visual
+    // weight in most monospace fonts, unlike the mismatched ▼/▶ pair.
+    QString indicator = expanded ? QStringLiteral("▾")
+                                 : QStringLiteral("▸");
+    m_headerLabel->setText(QStringLiteral(
+        "<a href=\"toggle\" style=\"color:#e0e0e0;text-decoration:none;"
+        "font-weight:bold;\">%1 %2 (%3)</a>")
+        .arg(indicator, m_title)
+        .arg(m_count));
 }
 
 // ============================================================
@@ -129,7 +134,7 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     setStyleSheet(QStringLiteral(
         "#smdDiagnosticsPanel { background-color: #1E1E1E; }"
     ));
-    setMaximumHeight(200);
+    // Height is controlled by the QSplitter in SmdEditor.
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     auto *mainLayout = new QVBoxLayout(this);
@@ -146,7 +151,7 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     headerLayout->setContentsMargins(8, 0, 4, 0);
     headerLayout->setSpacing(0);
 
-    auto *titleLabel = new QLabel(QStringLiteral("Diagnostics"), headerBar);
+    auto *titleLabel = new QLabel(QStringLiteral("诊断"), headerBar);
     titleLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: #e0e0e0; font-size: 11px; font-weight: bold; "
         "background: transparent; border: none; }"
@@ -182,12 +187,12 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(0);
 
-    m_errorSection = new DiagnosticSection(QStringLiteral("Errors"),
+    m_errorSection = new DiagnosticSection(QStringLiteral("错误"),
                                            QStringLiteral("#F44747"), 1, contentWidget);
-    m_warningSection = new DiagnosticSection(QStringLiteral("Warnings"),
+    m_warningSection = new DiagnosticSection(QStringLiteral("警告"),
                                              QStringLiteral("#CCA700"), 2, contentWidget);
 
-    m_emptyLabel = new QLabel(QStringLiteral("No diagnostics"), contentWidget);
+    m_emptyLabel = new QLabel(QStringLiteral("无诊断信息"), contentWidget);
     m_emptyLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: #858585; font-size: 11px; padding: 8px; }"
     ));
@@ -230,15 +235,15 @@ void SmdDiagnosticsPanel::refresh()
 
     QList<SmdDiagnostic> diags = lsp->diagnosticsForCell(cellIndex);
 
-    if (diags.isEmpty()) {
-        m_emptyLabel->setVisible(true);
-        m_errorSection->clear();
-        m_warningSection->clear();
-    } else {
-        m_emptyLabel->setVisible(false);
-        m_errorSection->setDiagnostics(cellIndex, diags);
-        m_warningSection->setDiagnostics(cellIndex, diags);
-    }
+    m_errorSection->setDiagnostics(cellIndex, diags);
+    m_warningSection->setDiagnostics(cellIndex, diags);
+
+    // Hide sections that have no diagnostics of that type.
+    m_errorSection->setVisible(m_errorSection->count() > 0);
+    m_warningSection->setVisible(m_warningSection->count() > 0);
+
+    bool any = (m_errorSection->count() > 0 || m_warningSection->count() > 0);
+    m_emptyLabel->setVisible(!any);
 }
 
 void SmdDiagnosticsPanel::scheduleRefresh()
@@ -251,6 +256,8 @@ void SmdDiagnosticsPanel::clear()
     m_refreshTimer->stop();
     m_errorSection->clear();
     m_warningSection->clear();
+    m_errorSection->setVisible(false);
+    m_warningSection->setVisible(false);
     m_emptyLabel->setVisible(true);
 }
 

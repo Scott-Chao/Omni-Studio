@@ -180,7 +180,15 @@ SmdEditor::SmdEditor(QWidget *parent)
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_scrollArea = new QScrollArea(this);
+    // Splitter so the user can drag the diagnostics panel top edge to resize.
+    m_splitter = new QSplitter(Qt::Vertical, this);
+    m_splitter->setChildrenCollapsible(false);
+    m_splitter->setHandleWidth(4);
+    m_splitter->setStyleSheet(QStringLiteral(
+        "QSplitter::handle { background: #3c3c3c; }"
+    ));
+
+    m_scrollArea = new QScrollArea(m_splitter);
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setStyleSheet(QStringLiteral(
@@ -195,11 +203,14 @@ SmdEditor::SmdEditor(QWidget *parent)
     m_cellLayout->addStretch();
 
     m_scrollArea->setWidget(m_cellContainer);
-    mainLayout->addWidget(m_scrollArea);
+    m_splitter->addWidget(m_scrollArea);
 
-    m_diagnosticsPanel = new SmdDiagnosticsPanel(this, this);
+    m_diagnosticsPanel = new SmdDiagnosticsPanel(this, m_splitter);
     m_diagnosticsPanel->setVisible(false);
-    mainLayout->addWidget(m_diagnosticsPanel);
+    m_splitter->addWidget(m_diagnosticsPanel);
+    m_splitter->setStretchFactor(0, 1);  // scroll area stretches
+    m_splitter->setStretchFactor(1, 0);  // panel is fixed-size
+    mainLayout->addWidget(m_splitter);
 
     m_processRunner = new ProcessRunner(this);
 
@@ -303,6 +314,7 @@ QString SmdEditor::toPlainTextContentOnly() const
 
 void SmdEditor::setPlainText(const QString &text)
 {
+
     // Stop any in-progress auto-render
     if (m_autoRenderTimer) {
         m_autoRenderTimer->stop();
@@ -449,8 +461,6 @@ void SmdEditor::reloadColors()
 
 SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &content)
 {
-    debugLog(QStringLiteral("SmdEditor::addCell — idx=%1 type=%2 contentLen=%3")
-        .arg(index).arg(type).arg(content.length()));
     SmdCell *cell = new SmdCell(type, content, m_cellContainer);
     connectCellSignals(cell, index);
 
@@ -1610,6 +1620,12 @@ void SmdEditor::toggleDiagnosticsPanel()
     if (!m_diagnosticsPanel)
         return;
     bool currentlyVisible = m_diagnosticsPanel->isVisible();
+    if (!currentlyVisible) {
+        // Default panel height = ~1/3 of the total view.
+        int total = m_splitter->height();
+        int panelHeight = qMax(100, total / 3);
+        m_splitter->setSizes({total - panelHeight, panelHeight});
+    }
     m_diagnosticsPanel->setVisible(!currentlyVisible);
     if (!currentlyVisible)
         m_diagnosticsPanel->refresh();

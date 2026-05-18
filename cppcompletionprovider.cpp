@@ -55,6 +55,18 @@ void CppCompletionProvider::startServer()
 
     m_client = new LspClient(this);
 
+    connect(m_client, &LspClient::serverStarted, this, [this]() {
+        sendInitialize();
+    });
+    connect(m_client, &LspClient::serverError, this, [this](QProcess::ProcessError err) {
+        // Only handle startup failures; runtime errors are handled by serverStopped
+        if (err != QProcess::FailedToStart) return;
+        if (!m_client) return;
+        qWarning() << "CppCompletionProvider: clangd failed to start";
+        emit serverFailed(tr("Failed to start clangd process."));
+        m_client->deleteLater();
+        m_client = nullptr;
+    });
     connect(m_client, &LspClient::responseReceived,
             this, &CppCompletionProvider::onResponseReceived);
     connect(m_client, &LspClient::notificationReceived,
@@ -70,16 +82,8 @@ void CppCompletionProvider::startServer()
         QStringLiteral("--fallback-style=Google")
     };
 
-    if (!m_client->start(clangdPath, args)) {
-        qWarning() << "CppCompletionProvider: failed to start clangd";
-        emit serverFailed(tr("Failed to start clangd process."));
-
-        delete m_client;
-        m_client = nullptr;
-        return;
-    }
-
-    sendInitialize();
+    m_client->start(clangdPath, args);
+    // startup is async — serverStarted / serverError signals handle result
 }
 
 void CppCompletionProvider::sendInitialize()

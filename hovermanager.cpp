@@ -106,18 +106,25 @@ bool HoverManager::tryShowDiagnosticToolTip(const QPoint &viewportPos)
         return false;
 
     bool isError = (diag->severity == 1);
-    QString severityLabel = isError ? QStringLiteral("ERROR") : QStringLiteral("WARNING");
+    QString severityLabel = isError ? QStringLiteral("错误") : QStringLiteral("警告");
     QString bgColor   = isError ? QStringLiteral("#5a1d1d") : QStringLiteral("#5a4d00");
     QString borderColor = isError ? QStringLiteral("#F44747") : QStringLiteral("#CCA700");
     QString textColor = isError ? QStringLiteral("#f8d7da") : QStringLiteral("#fff3cd");
 
+    // Save & apply tooltip styling so the coloured background fills the
+    // entire tooltip window (no black edges).
+    m_savedTooltipStyle = m_editor->styleSheet();
+    m_editor->setStyleSheet(m_savedTooltipStyle + QStringLiteral(
+        " QToolTip { background-color: %1; color: %2; "
+        "border: 1px solid %3; border-radius: 3px; "
+        "padding: 5px 8px; "
+        "font-family: Consolas, Microsoft YaHei, sans-serif; "
+        "font-size: 12px; }")
+        .arg(bgColor, textColor, borderColor));
+
     QString html = QStringLiteral(
-        "<div style=\"background:%1;color:%4;border:1px solid %2;"
-        "padding:6px 10px;border-radius:3px;max-width:500px;"
-        "font-family:Consolas,Microsoft YaHei,sans-serif;font-size:12px;\">"
-        "<b>%3:</b> %5</div>")
-        .arg(bgColor, borderColor, severityLabel, textColor,
-             diag->message.toHtmlEscaped());
+        "<b>%1:</b> %2")
+        .arg(severityLabel, diag->message.toHtmlEscaped());
 
     QPoint globalPos = m_editor->viewport()->mapToGlobal(viewportPos);
     globalPos += QPoint(15, 20);
@@ -183,5 +190,9 @@ void HoverManager::hideHover()
     m_hoverTimer.stop();
     m_hoverCursorPos = -1;
     m_tooltipShowing = false;
+    if (m_diagnosticTooltipActive) {
+        m_editor->setStyleSheet(m_savedTooltipStyle);
+        m_savedTooltipStyle.clear();
+    }
     m_diagnosticTooltipActive = false;
 }

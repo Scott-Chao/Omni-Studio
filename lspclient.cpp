@@ -20,7 +20,7 @@ LspClient::~LspClient()
     }
 }
 
-bool LspClient::start(const QString &serverPath, const QStringList &args)
+void LspClient::start(const QString &serverPath, const QStringList &args)
 {
     if (m_process && m_process->state() != QProcess::NotRunning) {
         qWarning() << "LspClient: already running, stopping first";
@@ -30,6 +30,8 @@ bool LspClient::start(const QString &serverPath, const QStringList &args)
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
 
+    connect(m_process, &QProcess::started,
+            this, &LspClient::onProcessStarted);
     connect(m_process, &QProcess::readyReadStandardOutput,
             this, &LspClient::onReadyRead);
     connect(m_process, &QProcess::errorOccurred,
@@ -39,13 +41,13 @@ bool LspClient::start(const QString &serverPath, const QStringList &args)
 
     qDebug() << "LspClient: starting" << serverPath << args;
     m_process->start(serverPath, args);
+    // startup is now async — serverStarted / serverError signals indicate result
+}
 
-    if (!m_process->waitForStarted(5000)) {
-        qWarning() << "LspClient: failed to start process:" << m_process->errorString();
-        return false;
-    }
-
-    return true;
+void LspClient::onProcessStarted()
+{
+    qDebug() << "LspClient: process started";
+    emit serverStarted();
 }
 
 int LspClient::sendRequest(const QString &method, const QJsonObject &params)

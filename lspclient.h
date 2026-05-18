@@ -17,7 +17,7 @@ public:
     explicit LspClient(QObject *parent = nullptr);
     ~LspClient() override;
 
-    bool start(const QString &serverPath, const QStringList &args = {});
+    void start(const QString &serverPath, const QStringList &args = {});
     int sendRequest(const QString &method, const QJsonObject &params);
     void sendNotification(const QString &method, const QJsonObject &params);
     bool isRunning() const;
@@ -27,10 +27,12 @@ signals:
     void responseReceived(int id, QJsonObject result);
     void requestFailed(int id, QJsonObject error);
     void notificationReceived(QString method, QJsonObject params);
+    void serverStarted();
     void serverError(QProcess::ProcessError err);
     void serverStopped(int exitCode, QProcess::ExitStatus status);
 
 private slots:
+    void onProcessStarted();
     void onReadyRead();
     void onProcessError(QProcess::ProcessError error);
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);

@@ -241,7 +241,9 @@ void SmdLspManager::cellAdded(int cellIndex, const QString &langId,
         m_adapters[cellIndex] = adapter;
     }
 
-    // Lazy-start server on first cell
+    // Lazy-start server on first cell.
+    // start() is now non-blocking (no waitForStarted), so it is safe to
+    // call synchronously from setPlainText via cellAdded.
     if (!srv->client && langId == QStringLiteral("cpp"))
         startCppServer();
     if (!m_pyProcess && langId == QStringLiteral("python"))
@@ -406,6 +408,19 @@ void SmdLspManager::startCppServer()
 
     m_cppServer.client = new LspClient(this);
 
+    connect(m_cppServer.client, &LspClient::serverStarted, this, [this]() {
+        debugLog(QStringLiteral("SmdLspManager — clangd process started, sending initialize"));
+        sendInitialize(QStringLiteral("cpp"));
+    });
+    connect(m_cppServer.client, &LspClient::serverError, this, [this](QProcess::ProcessError err) {
+        // Only handle startup failures; runtime errors are handled by serverStopped
+        if (err != QProcess::FailedToStart) return;
+        if (m_shuttingDown || !m_cppServer.client) return;
+        qWarning() << "SmdLspManager: clangd failed to start";
+        emit serverFailed(QStringLiteral("cpp"), tr("Failed to start clangd process."));
+        m_cppServer.client->deleteLater();
+        m_cppServer.client = nullptr;
+    });
     connect(m_cppServer.client, &LspClient::responseReceived,
             this, &SmdLspManager::onCppResponseReceived);
     connect(m_cppServer.client, &LspClient::notificationReceived,
@@ -417,15 +432,8 @@ void SmdLspManager::startCppServer()
 
     QStringList args = { QStringLiteral("--fallback-style=Google") };
 
-    if (!m_cppServer.client->start(clangdPath, args)) {
-        qWarning() << "SmdLspManager: failed to start clangd";
-        emit serverFailed(QStringLiteral("cpp"), tr("Failed to start clangd process."));
-        delete m_cppServer.client;
-        m_cppServer.client = nullptr;
-        return;
-    }
-
-    sendInitialize(QStringLiteral("cpp"));
+    m_cppServer.client->start(clangdPath, args);
+    // startup is async — serverStarted / serverError signals handle result
 }
 
 void SmdLspManager::sendInitialize(const QString &langId)
@@ -902,6 +910,11 @@ void SmdLspManager::startPythonProcess()
 
     m_pyProcess = new QProcess(this);
     m_pyProcess->setProcessChannelMode(QProcess::MergedChannels);
+    connect(m_pyProcess, &QProcess::started, this, [this]() {
+        debugLog(QStringLiteral("SmdLspManager — Python process started"));
+        m_pyServer.initialized = true;
+        emit serverReady(QStringLiteral("python"));
+    });
     connect(m_pyProcess, &QProcess::readyReadStandardOutput,
             this, &SmdLspManager::onPyReadyRead);
     connect(m_pyProcess, &QProcess::errorOccurred,
@@ -910,15 +923,7 @@ void SmdLspManager::startPythonProcess()
             this, &SmdLspManager::onPyProcessFinished);
 
     m_pyProcess->start(python, {scriptPath});
-    if (!m_pyProcess->waitForStarted(5000)) {
-        qWarning() << "SmdLspManager: failed to start Python process";
-        delete m_pyProcess;
-        m_pyProcess = nullptr;
-        emit serverFailed(QStringLiteral("python"), tr("Failed to start Python helper."));
-        return;
-    }
-    m_pyServer.initialized = true;
-    emit serverReady(QStringLiteral("python"));
+    // startup is async — started / errorOccurred signals handle result
 }
 
 QString SmdLspManager::pythonVirtualDoc() const
@@ -1084,9 +1089,15 @@ void SmdLspManager::onPyTimeout()
 void SmdLspManager::onPyProcessError(QProcess::ProcessError err)
 {
     debugLog(QStringLiteral("SmdLspManager::onPyProcessError — err=%1").arg(err));
-    Q_UNUSED(err);
     if (m_shuttingDown || !m_pyProcess) return;
     emitPythonEmptyResults();
+    if (err == QProcess::FailedToStart) {
+        qWarning() << "SmdLspManager: Python process failed to start";
+        m_pyServer.initialized = false;
+        m_pyProcess->deleteLater();
+        m_pyProcess = nullptr;
+        emit serverFailed(QStringLiteral("python"), tr("Failed to start Python helper."));
+    }
 }
 
 void SmdLspManager::onPyProcessFinished(int exitCode, QProcess::ExitStatus status)
