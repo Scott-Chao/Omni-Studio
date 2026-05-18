@@ -119,7 +119,6 @@ AiPanel::AiPanel(QWidget *parent)
     connect(m_inputEdit, &QLineEdit::returnPressed, this, [this]() {
         QString text = m_inputEdit->text().trimmed();
         if (!text.isEmpty()) {
-            addUserMessage(text);
             emit sendMessage(text);
             m_inputEdit->clear();
         }
@@ -127,7 +126,6 @@ AiPanel::AiPanel(QWidget *parent)
     connect(m_sendBtn, &QPushButton::clicked, this, [this]() {
         QString text = m_inputEdit->text().trimmed();
         if (!text.isEmpty()) {
-            addUserMessage(text);
             emit sendMessage(text);
             m_inputEdit->clear();
         }
