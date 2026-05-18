@@ -90,6 +90,8 @@ private:
     bool handleTabKey(QKeyEvent *event);
     bool handleClosingBracketSkip(QKeyEvent *event);
     void handleToggleComment();
+    void handleIndentLeft();
+    void handleIndentRight();
     void triggerCompletion();
     void insertCompletion(const CompletionItem &item);
     QString commentPrefix() const;

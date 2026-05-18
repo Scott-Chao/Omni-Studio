@@ -552,6 +552,17 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    // Ctrl+] — indent right
+    if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
+        handleIndentRight();
+        return;
+    }
+    // Ctrl+[ — indent left
+    if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
+        handleIndentLeft();
+        return;
+    }
+
     switch (event->key()) {
     case Qt::Key_Return:
     case Qt::Key_Enter:
@@ -951,6 +962,95 @@ void CodeEditor::handleToggleComment()
     newCursor.setPosition(newStart);
     newCursor.setPosition(newEnd, QTextCursor::KeepAnchor);
     setTextCursor(newCursor);
+}
+
+// ---- Indent left/right ----
+
+void CodeEditor::handleIndentRight()
+{
+    QTextCursor cursor = textCursor();
+    QTextDocument *doc = document();
+    QString indent = indentString();
+
+    if (cursor.hasSelection()) {
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+        // If the selection ends exactly at column 0 of a subsequent block,
+        // exclude that trailing unselected line.
+        if (cursor.selectionEnd() > cursor.selectionStart()
+            && doc->findBlock(cursor.selectionEnd()).position() == cursor.selectionEnd()
+            && startBlock != endBlock) {
+            --endBlock;
+        }
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            if (block.text().trimmed().isEmpty())
+                continue; // skip empty lines in selection
+            QTextCursor lineCursor(block);
+            lineCursor.movePosition(QTextCursor::StartOfBlock);
+            lineCursor.insertText(indent);
+        }
+        cursor.endEditBlock();
+    } else {
+        // No selection: indent current line only
+        QTextBlock block = textCursor().block();
+        QTextCursor lineCursor(block);
+        lineCursor.movePosition(QTextCursor::StartOfBlock);
+        lineCursor.insertText(indent);
+    }
+}
+
+void CodeEditor::handleIndentLeft()
+{
+    QTextCursor cursor = textCursor();
+    QTextDocument *doc = document();
+
+    auto removeLeadingIndent = [this](const QTextBlock &block) -> int {
+        QString text = block.text();
+        int removeCount = 0;
+        for (int j = 0; j < m_indentWidth && j < text.length(); ++j) {
+            if (text.at(j) == QLatin1Char(' '))
+                ++removeCount;
+            else if (text.at(j) == QLatin1Char('\t')) {
+                removeCount = j + 1;
+                break;
+            } else
+                break;
+        }
+        return removeCount;
+    };
+
+    if (cursor.hasSelection()) {
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+        if (cursor.selectionEnd() > cursor.selectionStart()
+            && doc->findBlock(cursor.selectionEnd()).position() == cursor.selectionEnd()
+            && startBlock != endBlock) {
+            --endBlock;
+        }
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            if (block.text().trimmed().isEmpty())
+                continue; // skip empty lines in selection
+            int remove = removeLeadingIndent(block);
+            if (remove > 0) {
+                QTextCursor lineCursor(block);
+                lineCursor.setPosition(block.position() + remove, QTextCursor::KeepAnchor);
+                lineCursor.removeSelectedText();
+            }
+        }
+        cursor.endEditBlock();
+    } else {
+        QTextBlock block = textCursor().block();
+        int remove = removeLeadingIndent(block);
+        if (remove > 0) {
+            QTextCursor lineCursor(block);
+            lineCursor.setPosition(block.position() + remove, QTextCursor::KeepAnchor);
+            lineCursor.removeSelectedText();
+        }
+    }
 }
 
 // ---- Completion popup helpers ----
