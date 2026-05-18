@@ -25,7 +25,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full component map, data flows, and c
 ```
 main.cpp                     → QApplication + MainWindow bootstrap
 MainWindow                   → frameless orchestrator, owns all widgets
-  ├── ActivityBar            → 48px left vertical bar with SVG icon buttons: Search, Settings, Export PDF, Judge
+  ├── ActivityBar            → 48px left vertical bar with SVG icon buttons: Search, AI, Settings, Export PDF, Judge
   ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left, in splitter)
   ├── TabManager             → QTabWidget, owns EditorWidget tabs (center)
   │   └── EditorWidget       → QStackedWidget, 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
@@ -35,18 +35,29 @@ MainWindow                   → frameless orchestrator, owns all widgets
   │           ├── HoverManager                 → 400ms delayed tooltip
   │           └── SignatureHelpManager         → function signature popup
   ├── RightPanelContainer    → unified right dock with tab bar: History / Outline / Tags / Backlinks
+  ├── AiPanel                → AI assistant tab (right dock, tabbed with RightPanelContainer)
+  │   ├── ActionBar          → dynamic context-sensitive action buttons (改进/总结/解释/…)
+  │   ├── ChatArea           → scrollable message thread with ChatBubble items
+  │   │   └── ChatBubble     → single user/assistant message with Markdown→HTML rendering
+  │   └── InputBar           → free-text QLineEdit + send button
+  ├── AiContextManager       → collects editor context (mode, file, selection, language)
+  ├── AiProvider (abstract)  → LLM provider interface
+  │   ├── AnthropicProvider  → Anthropic Messages API via SSE (content_block_delta)
+  │   └── OpenAiProvider     → OpenAI-compatible API via SSE (data: [DONE])
+  ├── AiProviderFactory      → factory: createProvider(type), typeFromString(name)
+  ├── PromptTemplates        → header-only prompt builder per AiAction, actionsForMode()
   ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
   ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
   ├── OpenJudgeWindow        → separate QMainWindow for OpenJudge browsing + submission
   ├── OutputPanel            → bottom dock, terminal-style stdout/stderr
-  ├── SettingsPanel          → floating overlay settings panel
+  ├── SettingsPanel          → floating overlay settings panel (includes AI Service page)
   └── ProcessRunner          → compile→run QProcess pipeline
 ```
 
 ### Key Conventions (not obvious from source)
 
 - **Toolbar = title bar**: Single QToolBar serves as frameless title bar. Layout: [文件▼] | drag area | [面板][预览][分屏][运行▼] | [min][max][close]
-- **ActivityBar**: Always-visible 48px left bar. Search/Settings/Export PDF top group, Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files.
+- **ActivityBar**: Always-visible 48px left bar. Search/AI top group, Settings/Export PDF/Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files.
 - **Right panel tabs**: History/Outline/Tags/Backlinks in a single QDockWidget with QStackedWidget. Toggled via toolbar [面板] button. Click-outside auto-hides.
 - **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.
 

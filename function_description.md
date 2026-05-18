@@ -1,4 +1,4 @@
-## 功能说明文档（v0.8.4）
+## 功能说明文档（v0.9.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -30,16 +30,31 @@
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（CaptionBtn 自绘悬停背景）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
-- ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。4 个 SVG 图标按钮（搜索/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
+- ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索/AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
 - 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
+- AI 助手面板：右侧 QDockWidget 集成，与历史/大纲等面板 tabify。支持上下文相关的动作按钮（Markdown：改进写作/总结笔记/提取标签/出题自测/翻译；代码：解释代码/寻找 Bug/添加注释/优化建议）。自由对话通过底部 InputBar 输入，保留多轮对话历史（超过 token 限制自动裁剪）。流式输出实时渲染到 ChatArea 气泡中，支持 Markdown 格式（粗体/斜体/代码块/标题/列表/链接等）。
+- AI 服务设置：设置面板新增"AI 服务"分类页面（索引 6），可配置 API 类型（Anthropic/OpenAI）、API 端点、API Key（密码模式 + base64 混淆存储）、模型名称、Max Tokens（256-16384）、系统提示词。API Key 通过 SettingsManager 的 `setAiApiKey/aiApiKey` 方法管理，存储方式与 OJ 密码一致。
+- AI Provider 层：支持 Anthropic Messages API（`content_block_delta` SSE 流）和 OpenAI 兼容 API（`data: [DONE]` SSE 流，兼容 DeepSeek/OpenAI 等）。抽象基类 `AiProvider` 定义 `chatStream/cancel` 接口和 `partialResponse/finished/error` 信号，通过 `AiProviderFactory` 工厂模式创建。30 秒连接超时，支持网络故障/API Key 无效/频率限制/超时等场景的中文错误提示。
+- AiContextManager：编辑器上下文收集器，自动检测当前编辑模式（Markdown/Code/SMD 单元格），收集文件路径、内容、选中文本、语言类型和光标位置。PromptTemplates header-only 模板系统，为 9 种动作（改进写作/总结笔记/提取标签/出题自测/翻译/解释代码/寻找 Bug/添加注释/优化建议）+ 自由对话生成中英双语 system prompt 和 user prompt。
+- ActivityBar AI 按钮：48x48 图标按钮，位于搜索按钮下方。点击显示/隐藏 AI 面板（快捷键 Ctrl+Shift+A），激活时左边框 #0078D4 高亮。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-# 修复 v0.8.4
-- **修复：MD 文件中仅有 fenced code block 时转换为 SMD 产生多余空 markdown 块**：`SmdFormat::fromMarkdownWithMapping()` 的 `flushCell()` 无条件追加 cell，导致当 MD 内容仅为 ` ```cpp\n``` ` 时，在代码块前后各产生一个空的 markdown cell（共 3 个块）。修复方案：为 `flushCell()` 添加与 `fromMarkdown()` 一致的守卫条件 — 仅当 `cell.content` 非空或 `currentContent` 非空时才追加 cell，避免无内容的空 markdown cell 被创建。
+### 新增 v0.9.0
+- **AI 助手面板（AiPanel）**：右侧 QDockWidget，与历史/大纲/标签/反链面板 tabify 共享 dock 区域。面板从上到下依次为标题栏（含"清空对话"按钮）、ActionBar（动态动作按钮）、ChatArea（可滚动消息列表）、InputBar（文本输入 + 发送按钮）。ActivityBar AI 按钮或 Ctrl+Shift+A 切换显示/隐藏，显示 AI 时自动隐藏右面板，反之亦然。
+- **上下文动作按钮（ActionBar）**：根据当前编辑器模式动态显示。Markdown 模式：改进写作、总结笔记、提取标签、出题自测、翻译；Code 模式：解释代码、寻找 Bug、添加注释、优化建议。按钮列表在标签切换时自动刷新。
+- **消息列表（ChatArea + ChatBubble）**：用户气泡蓝色右对齐，助手气泡灰色左对齐。助手消息支持 Markdown 渲染（粗体/斜体/行内代码/链接/标题/列表/围栏代码块/分割线），通过轻量级 `markdownToHtml()` 转换器实现。流式输出实时追加到最后一个助手气泡。
+- **自由对话**：底部 InputBar 输入任意文本，按回车或点击"发送"按钮提交。自由对话保留多轮历史（`QList<Message> m_aiHistory`），接近 token 上限时自动裁剪最早对话对。动作模式（按钮触发）每次清空历史开始新对话。
+- **AI Provider 层**：`AiProvider` 抽象基类定义 `chatStream/cancel` 接口和 `partialResponse/finished/error` 信号。`AnthropicProvider` 实现 Anthropic Messages API（SSE `content_block_delta` 事件），`OpenAiProvider` 实现 OpenAI 兼容 API（SSE `data:` 帧，兼容 DeepSeek/OpenAI 等）。`AiProviderFactory` 工厂根据设置创建对应实例。30 秒连接超时，`/cancel` 支持中断。
+- **PromptTemplates（header-only）**：9 种动作 + 自由对话的中文 prompt 模板。`buildPrompt(action, ctx, freeQuery)` 生成 system + user prompt。`actionsForMode(mode)` 映射模式到动作列表。`actionInfos()` 提供按钮显示名称和悬停提示。
+- **AiContextManager**：静态工具类，从 EditorWidget 收集上下文（模式、文件路径、内容/选中文本、语言、光标位置）。`currentEditorMode()` 支持 SMD 单元格级模式检测。`languageForFile()` 扩展 20+ 种语言映射。
+- **AI 服务设置页**：设置面板新增第 7 页"AI 服务"，包含 API 类型 ComboBox（Anthropic/OpenAI）、端点 LineEdit、API Key 密码输入框、模型 LineEdit、Max Tokens SpinBox（256-16384）、系统提示词 TextEdit。API Key 通过 SettingsManager base64 混淆存储，与 OJ 密码机制相同。
+- **ConfigManager AI 配置**：新增 `aiProviderType/aiEndpoint/aiModel/aiMaxTokens/aiSystemPrompt` 接口，内置默认值（DeepSeek v4 flash / 4096 tokens）。
+- **ActivityBar AI 按钮**：新增 `m_aiBtn`，位于搜索按钮下方。`setAiActive(bool)` 控制激活状态高亮。布局变为 5 个按钮：搜索/AI/stretch/设置/PDF/评测。
+- **智能错误处理**：401/403 → "API Key 无效"，429 → "请求过于频繁，请稍后再试"，网络故障 → "网络连接失败"，超时 → "响应超时"，空响应 → "AI 未返回有效结果"。所有错误信息在 ChatArea 中直观展示。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -76,6 +91,7 @@
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
+- 管理 AI 助手面板（`QDockWidget` + `AiPanel`），在 ActivityBar 提供 AI 图标按钮（快捷键 `Ctrl+Shift+A`）。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板（`showRightPanel()` 时反之亦然）。AI 面板内含 ActionBar（上下文相关动作按钮，通过 `updateAiActionBar()` 在标签切换时刷新）、ChatArea（消息列表）、InputBar（自由输入）。面板顶部"清空对话"按钮清除聊天历史。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -98,6 +114,14 @@
   同时，在 `connectCurrentEditorZoomSignal()` 中连接当前编辑器的 `filePathChanged` 信号到 `updatePreviewActionState`，以便文件路径（如通过外部重命名或另存为）变化时刷新按钮状态。
 - `void syncFileTreeSelection()`：在标签页切换时将文件树的选中项同步到当前编辑器正在编辑的文件，内部获取当前文件路径并转发给 `FileExplorerWidget::selectFile()`。
 - `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
+- `void onAiSettingChanged(const QString &key, const QVariant &value)`：处理 AI 设置变更。`ai.api_key` 键时调用 `m_settings->setAiApiKey()` 存储到 config.ini（base64 混淆），其余键调用 `setSettingOverride` 持久化。
+- `void updateAiActionBar()`：在标签页切换、文件保存时调用。通过 `AiContextManager::currentEditorMode(editor)` 获取当前编辑器模式，调用 `actionsForMode(mode)` 获取对应动作列表，更新到 `m_aiPanel->setActionList()`。
+- `void startAiRequest(AiAction action, const QString &freeQuery = QString())`：启动 AI 请求。中止已有请求 → 动作模式清空历史 → 收集上下文 → 构建 Prompt → 读取 API 设置 → 创建 Provider → 配置端点/Key/模型 → 连接信号 → 在 ChatArea 添加用户消息 → 添加空助手气泡作为流式目标 → 调用 `chatStream()` 发送。自由对话保留历史消息（超 maxTokens*4 字符时裁剪最早对话对），动作模式发送单条消息。开始前禁用输入控件。
+- `void abortAiRequest()`：取消进行中的 AI 请求。调用 `m_aiProvider->cancel()`，断开信号连接，恢复输入控件。
+- `void onAiPartialResponse(const QString &text)`：收到流式响应片段，追加到最后一个助手气泡：`m_aiPanel->appendToLastAssistant(text)`。
+- `void onAiFinished()`：流式完成。若为自由对话则将助手回复追加到 `m_aiHistory` 保留上下文。恢复输入控件。
+- `void onAiError(const QString &message)`：流式错误。将错误文本（"**错误：**..."）追加到当前流式目标气泡或新建气泡。恢复输入控件。
+- `void showRightPanel(int panelIndex)`：显示右侧面板（历史/大纲/标签/反链），同时隐藏 AI 面板。用于工具栏按钮切换右面板时确保 AI 面板不遮挡。
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置全屏预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
 - `void updateSplitPreviewActionState()`：与 `updatePreviewActionState()` 对称，管理分屏预览按钮的可见性、启用状态和勾选状态。确保两个预览按钮互斥（开启一个自动关闭另一个）。
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
@@ -133,6 +157,11 @@
   - 工具栏显示/隐藏按钮通过 `m_dockBacklinks->toggleViewAction()` 实现，行为与历史面板一致。
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
 - 安装全局事件过滤器，当历史面板或反链面板可见时，若鼠标点击发生在面板外部，则自动隐藏对应面板。工具栏按钮点击不触发隐藏，由 toggle 动作自行处理。
+- 持有 AI 助手相关组件：`AiPanel*`（面板内容）、`QDockWidget*`（dock 容器）、`QAction*`（toggle 快捷键）、`AiProvider*`（当前 Provider 实例）、`QList<Message>`（自由对话历史记录）、`bool m_aiStreaming`（流式状态标志）。
+  - AI 面板 dock 通过 `tabifyDockWidget` 与右侧面板共享 dock 区域，二者互斥显示。
+  - 监听 `ActivityBar::aiClicked` 信号，切换 AI 面板显示/隐藏；监听 `QDockWidget::visibilityChanged` 同步更新 ActivityBar 激活状态和 toggle 动作选中状态。
+  - 标签页切换时自动调用 `updateAiActionBar()` 刷新 ActionBar 按钮。
+  - 动作执行与自由提问统一走 `startAiRequest()` 管道，保证创建 Provider、配置参数、处理流式响应的一致性。
 
 ---
 
@@ -890,24 +919,23 @@
   - **预览**：分屏防抖延迟微调框（100-2000ms，百分号移出框外使用独立 `%` 标签）、分屏比例微调框（30-70）。
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
   - **快捷键**：只读 `QTableWidget`，两列（动作名 + 按键序列），从 ConfigManager 读取。
-- **信号**：`editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
+
+**信号**：
+- `editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
 - `syncFromSettings(SettingsManager &sm)`：面板打开时由 `MainWindow` 调用，从 `SettingsManager::value()` 读取已持久化的覆盖值回填所有控件（使用 ConfigManager 默认值作为 fallback）。恢复默认设置后同样调用此方法重置控件。
 - 支持标题栏拖拽移动：在标题栏区域按住鼠标左键拖动可移动面板位置，移动范围限制在遮罩层内。
 - 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 400×300 像素。
 - `QSizeGrip` 放置在右下角，提供可视化的调整大小手柄。
 - 尺寸从 `ConfigManager` 读取（`settings_panel.width` / `settings_panel.height`，默认 680×480）。
 - 点击遮罩层背景区域自动关闭面板（通过 `MainWindow::eventFilter` 处理）。
-
-**信号**：
-- `void closeRequested()`：用户点击关闭按钮时发出，由 `MainWindow::toggleSettings()` 响应。
-- `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应。
-- `void resetToDefaultsRequested()`：点击"恢复默认设置"并确认后发出，由 `MainWindow::onResetToDefaults()` 响应。
+- `void aiSettingChanged(const QString &key, const QVariant &value)`：AI 服务设置变更时发出。`MainWindow::onAiSettingChanged()` 响应：`ai.api_key` 键调用 `SettingsManager::setAiApiKey()`（base64 混淆存储），其他键调用 `setSettingOverride()` 持久化。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
 - 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。
 - `MainWindow::resizeEvent()` 中处理遮罩层尺寸同步和面板位置约束。
-- `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
+- `MainWindow` 连接所有 6 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
+- AI 服务页（索引 6）：包含 API 类型 ComboBox、端点 LineEdit、API Key Password LineEdit、模型 LineEdit、Max Tokens SpinBox、系统提示词 TextEdit。`syncFromSettings()` 中新增从 SettingsManager 同步 AI 设置的逻辑。
 
 ---
 
@@ -1108,6 +1136,239 @@
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，与 `SmdCell` 通过 `m_outputWidgets` 列表一一对应。
 - 内容通过 `SmdEditor::toPlainText()` 序列化（base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。
+
+
+---
+
+### 29. `AiPanel` — AI 助手面板
+
+**文件**：`ai/aipanel.h` / `ai/aipanel.cpp`
+
+**职责**：
+- 右侧 QDockWidget 的内容组件，最小宽度 340px。布局从上到下依次为：标题栏、ActionBar、ChatArea（可伸缩）、InputBar。
+- 标题栏：左侧"AI 助手"标签，右侧"清空对话"按钮（触发 `clearRequested` 信号）。
+- 提供 **addUserMessage(text)** / **addAssistantMessage(text)**：在 ChatArea 中添加用户/助手消息气泡。
+- 提供 **appendToLastAssistant(text)**：追加文本到最后一个助手气泡（流式输出用）。
+- 提供 **setActionList(actions)** / **clearActionList()**：委托给 ActionBar 设置动态按钮。
+- 提供 **lastAssistantContent()**：获取最后一个助手气泡的完整文本（用于保存历史）。
+- 提供 **hasStreamingTarget()**：最后一个消息是否为空的助手气泡（标识流式目标存在）。
+- 提供 **setInputEnabled(bool)**：启用/禁用输入编辑框和发送/清空按钮（流式传输期间禁用）。
+- **clearChat()**：清空所有消息气泡（同时发射 clearRequested 信号）。
+
+**信号**：
+- `void sendMessage(const QString &text)`：用户点击发送或按回车时发出（自由提问）。
+- `void clearRequested()`：用户点击"清空对话"按钮时发出。
+- `void actionTriggered(int actionIndex)`：ActionBar 按钮被点击时转发过来。
+
+**协作关系**：
+- 由 `MainWindow` 创建并设置为主窗口 `m_dockAi` 的内容组件。
+- 内部聚合 `ActionBar`、`ChatArea`、`QLineEdit` 和 `QPushButton`。
+- 不直接与 AI Provider 交互 —— 所有 AI 请求由 `MainWindow::startAiRequest()` 协调。
+- 与右侧面板（RightPanelContainer）通过 tabify 共享 dock 区域，通过 `showRightPanel()` / `m_toggleAiAction` 实现互斥切换。
+- `m_inputEdit` 的 `textChanged` 信号控制发送按钮启用状态，`returnPressed` 发射 `sendMessage`。
+
+---
+
+### 30. `ActionBar` — AI 上下文动作按钮栏
+
+**文件**：`ai/actionbar.h` / `ai/actionbar.cpp`
+
+**职责**：
+- 动态按钮栏，基于当前编辑器上下文显示对应的动作按钮。
+- **setActions(QVector<AiAction>)**：清除所有旧按钮，根据 `ActionInfo`（来自 `prompttemplates.h`）创建新按钮。Markdown 模式创建 5 个按钮（改进写作/总结笔记/提取标签/出题自测/翻译），Code 模式创建 4 个（解释代码/寻找 Bug/添加注释/优化建议）。
+- **clearActions()**：移除所有按钮。
+- 按钮样式：`#3c3c3c` 背景、`#cccccc` 文字、`#555` 边框、`#0078d4` 悬停边框。
+
+**信号**：
+- `void actionTriggered(AiAction action)`：任意按钮点击时发出，携带对应的动作枚举值。
+
+**协作关系**：
+- 由 `AiPanel` 聚合，按钮列表由 `MainWindow::updateAiActionBar()` 在标签页切换时更新。
+- 动作枚举和元数据由 `PromptTemplates`（`prompttemplates.h`）定义。
+
+---
+
+### 31. `ChatArea` — AI 消息列表
+
+**文件**：`ai/chatarea.h` / `ai/chatarea.cpp`
+
+**职责**：
+- 可滚动的消息列表，使用 `QScrollArea` + 内部垂直布局。
+- **addMessage(ChatBubble::Role, text)**：创建并添加一条新消息气泡。
+- **appendToLastMessage(text)**：追加文本到最后一条消息气泡（流式传输使用）。
+- **clear()**：移除所有气泡。
+- **messageCount()**：返回当前气泡数量。
+- **lastBubble()**：返回最后一条气泡的指针。
+- 新消息添加后自动滚动到底部。
+
+**协作关系**：
+- 由 `AiPanel` 聚合，所有消息操作委托给该类。
+- 每个消息使用 `ChatBubble` 控件展示。
+
+---
+
+### 32. `ChatBubble` — AI 消息气泡
+
+**文件**：`ai/chatbubble.h` / `ai/chatbubble.cpp`
+
+**职责**：
+- 单条消息的显示控件，使用 QTextBrowser 渲染 HTML 内容。
+- 两种角色：**User**（右侧对齐，蓝色背景 #1a3a5c）和 **Assistant**（左侧对齐，灰色背景 #2d2d2d）。
+- 角色标签位于气泡上方：User 显示"你"（蓝色 #4da3ff），Assistant 显示"AI 助手"（绿色 #6a9955）。
+- **setText(text)** / **appendText(text)**：设置或追加消息文本，自动更新 HTML 渲染并自适应高度。
+- **role()** / **text()**：获取角色和完整文本。
+
+**轻量级 Markdown → HTML 转换器（`markdownToHtml`）**：
+- 支持：`# ##` 标题、`**粗体**`、`*斜体*`、`` `行内代码` ``（橙色 #ce9178）、`[链接](url)`（蓝色 #4da3ff）、`-`/`*` 无序列表、`1.` 有序列表、```` ```code ``` ```` 围栏代码块（深色背景 #1e1e1e）、`---` 水平分割线。
+- 行内转换顺序：先 HTML 转义 → 保护行内代码 → **粗体** → *斜体* → 链接 → 还原代码。
+- 高度自适应：通过 `QTextDocument::size()` 计算内容高度并设置 `m_browser->setFixedHeight()`。
+
+**协作关系**：
+- 由 `ChatArea` 创建和管理。
+- 用户消息纯文本（HTML 转义后渲染），助手消息先经过 `markdownToHtml` 转换再渲染。
+
+---
+
+### 33. `AiContextManager` — 编辑器上下文收集器
+
+**文件**：`ai/aicontextmanager.h` / `ai/aicontextmanager.cpp`
+
+**职责**：
+- 纯静态工具类，从当前编辑器中收集 AI 需要的上下文信息。
+- **collectContext(EditorWidget\*)**：返回 `ContextBundle` 结构体，包含以下字段：
+  - `mode`：`AiEditorMode` 枚举（Markdown / Code / Unknown）。
+  - `filePath`：当前文件路径。
+  - `fileContent`：当前文件完整内容（无选中文本时）。
+  - `selectedText`：当前选中的文本（非空时 `fileContent` 为空）。
+  - `language`：语言标识字符串（markdown / cpp / python / html / javascript 等）。
+  - `cursorLine` / `cursorColumn`：光标行列位置。
+- **currentEditorMode(EditorWidget\*)**：快速模式检测。SMD 编辑器根据活跃单元格类型返回 Markdown/Code；CodeEditor 返回 Code；其余（MarkdownEdit/Preview/PdfView）返回 Markdown。
+- **languageForFile(filePath)**：根据文件扩展名推断语言。优先使用 `LanguageUtils::languageForExtension()`，不足时补充内置映射（html/css/javascript/typescript/json/xml/yaml/java/go/rust/ruby/php/sql/bash/powershell 等）。
+
+**协作关系**：
+- 被 `MainWindow::startAiRequest()` 调用来收集上下文。
+- 被 `MainWindow::updateAiActionBar()` 通过 `currentEditorMode()` 确定动作按钮列表。
+
+---
+
+### 34. `AiProvider` — AI Provider 抽象基类
+
+**文件**：`ai/aiprovider.h`
+
+**职责**：
+- 所有 AI 提供商（LLM）的抽象基类，继承自 `QObject`。
+- `Message` 结构体：包含 `role`（User/Assistant/System 枚举）和 `content`（QString 文本），提供 `roleToJson()` 转换为 API 使用的角色字符串（"user"/"assistant"/"system"）。
+
+**纯虚接口**：
+- `void setApiKey(const QString &key)`：设置 API Key。
+- `void setModel(const QString &model)`：设置模型名称。
+- `void setSystemPrompt(const QString &prompt)`：设置系统提示词。
+- `void setMaxTokens(int maxTokens)`：设置最大输出 token 数。
+- `void chatStream(const QList<Message> &messages)`：发起流式聊天请求，实现类负责 SSE 连接与解析。
+- `void cancel()`：取消当前请求。
+
+**信号**：
+- `void partialResponse(const QString &text)`：收到流式响应片段。
+- `void finished()`：流式响应完成。
+- `void error(const QString &message)`：发生错误。
+
+---
+
+### 35. `AnthropicProvider` — Anthropic Messages API 实现
+
+**文件**：`ai/anthropicprovider.h` / `ai/anthropicprovider.cpp`
+
+**职责**：
+- 通过 Anthropic Messages API 实现 `AiProvider` 接口。
+- 默认端点：`https://api.anthropic.com/v1`，可通过 `setEndpoint()` 修改。
+
+**请求格式**：
+- POST 到 `{endpoint}/messages`
+- 请求头：`x-api-key`（API Key）、`anthropic-version: 2023-06-01`、`Content-Type: application/json`
+- 请求体：`{ model, max_tokens, stream: true, system (可选), messages: [{ role, content: [{ type: "text", text }] }] }`
+
+**SSE 解析**：
+- 帧格式：`event: <type>\ndata: <json>\n\n`
+- `content_block_delta` → 提取 `delta.text` → 发射 `partialResponse`
+- `message_stop` → 发射 `finished`
+- `error` → 提取 `error.message` → 发射 `error`
+- 忽略 `message_start`、`ping`、`content_block_start` 等其他事件类型
+
+**错误处理**：
+- HTTP 401/403 → "API Key 无效，请在设置中检查"
+- HTTP 429 → "请求过于频繁，请稍后再试"
+- 其他网络错误 → "网络连接失败: {errorString}"
+- 30 秒超时 → "响应超时"
+
+---
+
+### 36. `OpenAiProvider` — OpenAI 兼容 API 实现
+
+**文件**：`ai/openaiprovider.h` / `ai/openaiprovider.cpp`
+
+**职责**：
+- 通过 OpenAI 兼容 API（Chat Completions）实现 `AiProvider` 接口。
+- 默认端点：`https://api.deepseek.com/v1`，可通过 `setEndpoint()` 修改（兼容 DeepSeek、OpenAI 等）。
+
+**请求格式**：
+- POST 到 `{endpoint}/chat/completions`
+- 请求头：`Authorization: Bearer {apiKey}`、`Content-Type: application/json`
+- 请求体：`{ model, max_tokens, stream: true, messages: [{ role: "system", content }, { role: "user"/"assistant", content }] }`
+- system prompt 作为一条 role="system" 的消息插入消息数组首位。
+
+**SSE 解析**：
+- 帧格式：`data: <json>\n\n`
+- 提取 `choices[0].delta.content` → 发射 `partialResponse`
+- `data: [DONE]` 或 `choices[0].finish_reason` 非空 → 发射 `finished`
+- `error` 字段存在 → 提取 `error.message` → 发射 `error`
+
+**错误处理**：与 AnthropicProvider 相同（401/403、429、30s 超时）。
+
+---
+
+### 37. `AiProviderFactory` — AI Provider 工厂
+
+**文件**：`ai/aiproviderfactory.h` / `ai/aiproviderfactory.cpp`
+
+**职责**：
+- 静态工厂，根据配置字符串创建对应的 Provider 实例。
+- **ProviderType 枚举**：`Anthropic`、`OpenAiCompatible`。
+- **createProvider(type, parent)**：返回 `AiProvider*` 新实例（AnthropicProvider 或 OpenAiProvider）。
+- **typeFromString(name)**：从设置面板保存的字符串映射到枚举：
+  - `"Anthropic"` → `Anthropic`
+  - `"OpenAI"` → `OpenAiCompatible`
+  - 其余 → `OpenAiCompatible`（默认）
+- **availableProviders()**：返回 `{"Anthropic", "OpenAI"}`，用于填充设置面板 ComboBox。
+
+**协作关系**：
+- 设置面板 "API 类型" 下拉框通过 `availableProviders()` 填充。
+- `MainWindow::startAiRequest()` 通过 `typeFromString` + `createProvider` 每次重建 Provider 实例（确保设置变更即时生效）。
+- 新创建的 Provider 通过 `qobject_cast<AnthropicProvider*>` 或 `OpenAiProvider*` 向下转换以调用 `setEndpoint()`。
+
+---
+
+### 38. `PromptTemplates` — AI 提示词模板系统
+
+**文件**：`ai/prompttemplates.h`（header-only）
+
+**职责**：
+- 为每种 AI 动作预设中文 system prompt 和 user prompt 模板。
+- `AiAction` 枚举：定义 9 种动作 + FreeChat：
+  - **Markdown 类**：`ImproveWriting`、`SummarizeNote`、`ExtractTags`、`SelfTest`、`Translate`
+  - **Code 类**：`ExplainCode`、`FindBugs`、`AddComments`、`OptimizeCode`
+  - **通用**：`FreeChat`
+- **buildPrompt(action, ctx, freeQuery)**：根据动作类型和 `ContextBundle` 构建 `PromptBundle{systemPrompt, userPrompt}`。自动处理选中文本优先（有 selection 时只用选中内容，否则用全文）。
+- **actionInfos()**：返回 `QVector<ActionInfo>`，每个包含 `AiAction` 枚举值、中文显示名称（"改进写作"、"解释代码"等）和悬停提示。
+- **findActionInfo(action)**：根据枚举值查找对应的 `ActionInfo`。
+- **actionsForMode(mode)**：根据 `AiEditorMode` 返回适用的动作列表：
+  - `Markdown` → 5 个 Markdown 动作
+  - `Code` → 4 个 Code 动作
+  - `Unknown` → 空列表（仅有自由提问）
+
+**协作关系**：
+- 被 `MainWindow::startAiRequest()` 调用生成发送给 AI 的提示词。
+- ActionInfo 元数据被 `ActionBar` 用于创建按钮。
+- `actionsForMode()` 被 `MainWindow::updateAiActionBar()` 用于更新按钮列表。
 
 
 ### 配置存储说明

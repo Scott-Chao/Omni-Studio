@@ -5,7 +5,7 @@
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
 MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event()
-  ├── ActivityBar         → 48px fixed left bar, 4 SVG icon buttons (Search/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
+  ├── ActivityBar         → 48px fixed left bar, 5 SVG icon buttons (Search/AI/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
   ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
   ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree (in splitter, left of editor)
   ├── TabManager          → QTabWidget, owns EditorWidget tabs (center, right splitter top)
@@ -16,6 +16,17 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │       │   └── SmdCell → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack + output area
   │       └── SmdFormat   → header-only namespace, parse/serialize `---smd:<type>` delimiter format
   ├── RightPanelContainer → Unified right QDockWidget with tab bar (History/Outline/Tags/Backlinks) + QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E.
+  ├── AiPanel             → AI assistant panel (right QDockWidget, tabbed with RightPanelContainer). Toggled via ActivityBar AI button or Ctrl+Shift+A.
+  │   ├── ActionBar       → dynamic QHBoxLayout of action buttons, context-sensitive: Markdown actions (改进写作/总结笔记/提取标签/出题自测/翻译) or Code actions (解释代码/寻找Bug/添加注释/优化建议) based on AiContextManager::currentEditorMode()
+  │   ├── ChatArea        → QScrollArea with vertical layout of ChatBubble items, auto-scrolls to bottom, supports streaming append
+  │   │   └── ChatBubble  → QWidget with role label + QTextBrowser. User bubbles right-aligned blue, Assistant left-aligned gray. Lightweight Markdown→HTML converter for bold/italic/code/link/headings/lists/code blocks.
+  │   └── InputBar        → QHBoxLayout: QLineEdit (text input) + QPushButton (发送). ReturnPressed / button click emit sendMessage.
+  ├── AiContextManager    → Static utility class. collectContext(EditorWidget*) returns ContextBundle{mode, filePath, fileContent, selectedText, language, cursorLine/Column}. currentEditorMode() returns AiEditorMode::Markdown|Code|Unknown. Handles SMD cells, PDF view, code files.
+  ├── PromptTemplates     → Header-only (prompttemplates.h). buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. AiAction enum covers 9 actions + FreeChat. actionsForMode(mode) maps editor mode to available action list. Metadata in actionInfos() provides display labels/tooltips.
+  ├── AiProvider (abs)    → QObject abstract class. Signals: partialResponse(text), finished(), error(msg). Virtual: setApiKey, setModel, setSystemPrompt, setMaxTokens, chatStream(messages), cancel.
+  │   ├── AnthropicProvider → POST {endpoint}/messages, x-api-key auth, SSE parse: event/`data:` dual lines → content_block_delta→`delta.text`. 30s timeout. Error codes: 401→invalid key, 429→rate limit.
+  │   └── OpenAiProvider  → POST {endpoint}/chat/completions, Bearer auth, SSE parse: `data:` lines → choices[0].delta.content → partialResponse. `data: [DONE]` / finish_reason→finished. 30s timeout. Compatible with DeepSeek, OpenAI, etc.
+  ├── AiProviderFactory   → Static factory: createProvider(Anthropic|OpenAiCompatible, parent), typeFromString("Anthropic"|"OpenAI"), availableProviders(). Used in settings page ComboBox + MainWindow::startAiRequest().
   ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
   ├── JudgePanel          → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
   │   └── JudgeEngine     → QObject managing compile→test QProcess pipeline, OJ-style results (AC/WA/RE/TLE/MLE)
@@ -46,6 +57,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Tags**: Extracted from `.md` files via Unicode-aware regex (skips headings and code blocks). Bidirectional index built async as Phase 3 of startup scan.
 - **Rename**: FileExplorerWidget rename → update backlink index → rewrite `[[oldName]]→[[newName]]` in all linking files (reads from open editors if unsaved).
 - **Split preview**: Ctrl+P toggles QSplitter with edit left + WebEngine right. 500ms debounce, content-diff guard. Mutually exclusive with full preview.
+- **AI assistant (Phase 1)**: ActivityBar AI click or Ctrl+Shift+A → m_dockAi toggle. ActionBar button click → MainWindow::startAiRequest(action) → AiContextManager::collectContext(editor) → buildPrompt(action, ctx) → AiProviderFactory::createProvider(type) → provider.chatStream(messages) → SSE stream → partialResponse→appendToLastAssistant → finished→enable input. FreeChat via InputBar sends AiAction::FreeChat with text, historical messages preserved in m_aiHistory for multi-turn context (pruned at ~maxTokens*4 chars). Actions clear history for fresh context. Settings: API type/endpoint/key/model/max_tokens/system_prompt configurable via SettingsPanel AI Service page (index 6), persisted to config.ini via SettingsManager.
 - **Compile & run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++/MSVC for C/C++, python for .py). stdin via OutputPanel event filter (echoes keystrokes, Enter sends line, paste splits multi-line with 20ms timer). Compilation blocks input; 50ms delay before enabling input on run start.
 - **Local Judge**: Compile → warmup → per-test execution (1s timeout, 64MB memory limit). Triple-capture memory monitoring. Line-by-line trimmed output comparison. AC/WA/TLE/MLE/RE color-coded table.
 - **OpenJudge integration**: Crawler-based HTTP (cxsjsx.openjudge.cn). Homework browsing → problem detail → sample extraction (paired `<pre>` blocks) → cache to temp → inject into JudgePanel. Submission: POST raw source (percent-encoded, no base64) → poll 30s for result → show SubmitResultPanel.
@@ -165,6 +177,39 @@ HTTP crawler for cxsjsx.openjudge.cn. QNetworkAccessManager + cookie jar. Login 
 
 ### SubmitResultPanel (`submissionpanel.h/cpp`)
 Dark-themed result display. Color-coded status (AC green, WA/RE red, etc.) + time/memory + collapsible CE error log.
+
+### AiPanel (`ai/aipanel.h/cpp`)
+QDockWidget content widget for AI assistant. 340px default width. Title bar with "AI 助手" label + "清空对话" button. Contains ActionBar (dynamic buttons), ChatArea (scrollable messages), InputBar (QLineEdit + send button). Signals: sendMessage(text), actionTriggered(index), clearRequested(). Public API: addUserMessage, addAssistantMessage, appendToLastAssistant (streaming), clearChat, setInputEnabled. Provides lastAssistantContent() and hasStreamingTarget() for response state tracking.
+
+### ActionBar (`ai/actionbar.h/cpp`)
+Dynamic QHBoxLayout of QPushButtons. setActions(QVector<AiAction>) clears old buttons and creates new ones with labels/tooltips from ActionInfo. Emits actionTriggered(AiAction). Context-dependent: Markdown mode shows 5 buttons (改进写作/总结笔记/提取标签/出题自测/翻译), Code mode shows 4 (解释代码/寻找Bug/添加注释/优化建议). Dark theme buttons (#3c3c3c bg, #ccc text, #0078d4 hover border).
+
+### ChatArea (`ai/chatarea.h/cpp`)
+QScrollArea with vertical QVBoxLayout of ChatBubble widgets. addMessage(role, text) creates new bubble. appendToLastMessage(text) appends to last assistant bubble for streaming. messageCount() and lastBubble() for state queries. Auto-scrolls to bottom on new content. clear() removes all bubbles.
+
+### ChatBubble (`ai/chatbubble.h/cpp`)
+QWidget per message. Two roles: User (right-aligned, blue bg #1a3a5c) and Assistant (left-aligned, gray bg #2d2d2d). Role label above bubble ("你" blue / "AI 助手" green). Uses QTextBrowser for HTML rendering. Lightweight Markdown→HTML converter (markdownToHtml): supports **bold**, *italic*, `inline code`, [links](url), `#`/`##` headings, `-`/`*` lists, numbered lists, fenced ```code blocks```, `---` horizontal rules. Code blocks styled with #1e1e1e bg. setText()/appendText() update and auto-size height via QTextDocument::size().
+
+### AiContextManager (`ai/aicontextmanager.h/cpp`)
+Static utility class. collectContext(EditorWidget*) returns ContextBundle: mode (Markdown/Code/Unknown), filePath, fileContent (full when no selection), selectedText, language (via LanguageUtils + extra map for html/css/js/go/rust etc.), cursorLine/Column. currentEditorMode(editor) detects mode: SMD cells check active cell type, code files → Code, everything else → Markdown. languageForFile(ext) maps extensions to language strings (markdown, cpp, python, html, javascript, etc.).
+
+### AiProvider (`ai/aiprovider.h`)
+Abstract QObject base class. Message struct with User/Assistant/System roles and roleToJson() conversion. Interface: setApiKey, setModel, setSystemPrompt, setMaxTokens, chatStream(messages), cancel(). Signals: partialResponse(text), finished(), error(message).
+
+### AnthropicProvider (`ai/anthropicprovider.h/cpp`)
+POST to `{endpoint}/messages`. Headers: x-api-key, anthropic-version: 2023-06-01, application/json. Body: {model, max_tokens, stream:true, system, messages[{role, content:[{type:"text", text}]}]}. SSE parsing: event/data dual-line frames → content_block_delta→delta.text→partialResponse, message_stop→finished, error→error(). 30s timeout via QTimer. Error HTTP 401/403→invalid key, 429→rate limit.
+
+### OpenAiProvider (`ai/openaiprovider.h/cpp`)
+POST to `{endpoint}/chat/completions`. Headers: Bearer auth, application/json. Body: {model, max_tokens, stream:true, messages[{system, user, assistant}]} (OpenAI format). SSE parsing: data: lines → choices[0].delta.content→partialResponse, finish_reason or data: [DONE]→finished, error→error(). Default endpoint https://api.deepseek.com/v1. 30s timeout. Compatible with DeepSeek, OpenAI, etc.
+
+### AiProviderFactory (`ai/aiproviderfactory.h/cpp`)
+Static factory. enum ProviderType { Anthropic, OpenAiCompatible }. createProvider(type, parent) returns new AnthropicProvider or OpenAiProvider. typeFromString("Anthropic"/"OpenAI") maps settings panel strings. availableProviders() returns {"Anthropic", "OpenAI"}.
+
+### PromptTemplates (`ai/prompttemplates.h`)
+Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. 9 predefined AiActions: ImproveWriting, SummarizeNote, ExtractTags, SelfTest, Translate (Markdown); ExplainCode, FindBugs, AddComments, OptimizeCode (Code); FreeChat (general). Each has tailored Chinese system prompt and user prompt template. actionsForMode(mode) returns appropriate action list per editor context. ActionInfo struct and actionInfos() supply display labels and tooltips for UI buttons.
+
+### SettingsPanel AI Service page (`settingspanel.cpp`)
+Category "AI 服务" (index 6) in settings panel sidebar. Controls: API type ComboBox (Anthropic/OpenAI), endpoint LineEdit, API Key LineEdit (password echo), model LineEdit, max_tokens SpinBox (256-16384), system prompt TextEdit. Signals aiSettingChanged(key, value). API Key stored via SettingsManager::setAiApiKey() (base64 obfuscation, same as OJ password).
 
 ### LoginDialog (`logindialog.h/cpp`)
 QDialog: username, password, auto-login checkbox, Login/Skip buttons.
