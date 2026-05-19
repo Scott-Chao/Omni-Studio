@@ -1,6 +1,7 @@
 #include "judgepanel.h"
 #include "judgeengine.h"
 #include "configmanager.h"
+#include "ai/errorjournal.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -307,6 +308,12 @@ void JudgePanel::onTestFinished(int index, const JudgeEngine::TestResult &result
     m_table->setItem(index, 4, memItem);
 
     updateSummaryLabel();
+
+    // Record non-AC results to ErrorJournal
+    if (result.statusCode != QStringLiteral("AC")) {
+        ErrorJournal::instance().recordFailure(
+            result, m_engine->sourceFile(), testFolder());
+    }
 }
 
 void JudgePanel::onAllTestsFinished(int passed, int total)
