@@ -9,6 +9,8 @@
 
 #include "judgeengine.h"
 
+class AiProvider;
+
 // ── Data structures ────────────────────────────────────────────────
 
 struct ErrorRecord {
@@ -64,10 +66,8 @@ public:
     void setRecordReviewed(const QString &id, bool reviewed);
 
 signals:
-    void recordAdded(const ErrorRecord &record);
-    void recordDeleted(const QString &recordId);
     void analysisReady(const QString &recordId);
-    void recordsCleared();
+    void recordsChanged();
 
 private:
     ErrorJournal(QObject *parent = nullptr);
@@ -76,6 +76,7 @@ private:
     ErrorJournal &operator=(const ErrorJournal &) = delete;
 
     QString storagePath() const;
+    AiProvider *createConfiguredProvider(const QString &systemPrompt);
 
     QString m_storagePath;
     QVector<ErrorRecord> m_records;

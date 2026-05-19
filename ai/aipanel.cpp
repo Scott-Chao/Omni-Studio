@@ -211,11 +211,7 @@ AiPanel::AiPanel(QWidget *parent)
     });
 
     // ── Error journal badge tracking ──
-    connect(&ErrorJournal::instance(), &ErrorJournal::recordAdded,
-            this, &AiPanel::updateErrorBadge);
-    connect(&ErrorJournal::instance(), &ErrorJournal::recordDeleted,
-            this, &AiPanel::updateErrorBadge);
-    connect(&ErrorJournal::instance(), &ErrorJournal::recordsCleared,
+    connect(&ErrorJournal::instance(), &ErrorJournal::recordsChanged,
             this, &AiPanel::updateErrorBadge);
 
     // Show initial badge count

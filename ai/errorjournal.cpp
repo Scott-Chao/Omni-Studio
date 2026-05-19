@@ -17,6 +17,7 @@
 #include <QJsonObject>
 #include <QUuid>
 #include <algorithm>
+#include <memory>
 
 // ── Singleton ─────────────────────────────────────────────────────
 
@@ -46,6 +47,42 @@ QString ErrorJournal::storagePath() const
     return m_storagePath;
 }
 
+// ── Create configured AI provider ──────────────────────────────────
+
+AiProvider *ErrorJournal::createConfiguredProvider(const QString &systemPrompt)
+{
+    SettingsManager settings;
+    const QString apiKey = settings.aiApiKey();
+    if (apiKey.isEmpty())
+        return nullptr;
+
+    const QString providerType = settings.value(QStringLiteral("ai.provider_type"),
+        ConfigManager::instance().aiProviderType()).toString();
+    const QString model = settings.value(QStringLiteral("ai.model"),
+        ConfigManager::instance().aiModel()).toString();
+    const QString endpoint = settings.value(QStringLiteral("ai.endpoint"),
+        ConfigManager::instance().aiEndpoint()).toString();
+    const int maxTokens = settings.value(QStringLiteral("ai.max_tokens"),
+        ConfigManager::instance().aiMaxTokens()).toInt();
+
+    AiProviderFactory::ProviderType type = AiProviderFactory::typeFromString(providerType);
+    AiProvider *provider = AiProviderFactory::createProvider(type, this);
+    if (!provider)
+        return nullptr;
+
+    provider->setApiKey(apiKey);
+    provider->setModel(model);
+    provider->setMaxTokens(maxTokens);
+    provider->setSystemPrompt(systemPrompt);
+
+    if (auto *anthropic = qobject_cast<AnthropicProvider *>(provider))
+        anthropic->setEndpoint(endpoint);
+    else if (auto *openai = qobject_cast<OpenAiProvider *>(provider))
+        openai->setEndpoint(endpoint);
+
+    return provider;
+}
+
 // ── Record failure ────────────────────────────────────────────────
 
 void ErrorJournal::recordFailure(const JudgeEngine::TestResult &result,
@@ -64,28 +101,13 @@ void ErrorJournal::recordFailure(const JudgeEngine::TestResult &result,
     rec.actualOutput = result.actualOutput;
     rec.expectedOutput = result.expectedOutput;
     rec.detail = result.detail;
+    rec.inputData = result.inputData;
     rec.timestamp = QDateTime::currentDateTime();
-
-    // Read input data from the test folder
-    if (!testFolder.isEmpty() && !result.name.isEmpty()) {
-        QDir dir(testFolder);
-        const QString pattern = ConfigManager::instance().judgeInputFilePattern();
-        QStringList candidates = dir.entryList({pattern}, QDir::Files, QDir::Name);
-        for (const QString &fileName : candidates) {
-            QFileInfo fi(dir.absoluteFilePath(fileName));
-            if (fi.completeBaseName() == result.name) {
-                QFile inFile(fi.absoluteFilePath());
-                if (inFile.open(QIODevice::ReadOnly))
-                    rec.inputData = QString::fromUtf8(inFile.readAll());
-                break;
-            }
-        }
-    }
 
     m_records.append(rec);
     save();
 
-    emit recordAdded(rec);
+    emit recordsChanged();
 }
 
 // ── AI analysis ────────────────────────────────────────────────────
@@ -99,7 +121,7 @@ void ErrorJournal::requestAnalysis(const QString &recordId)
         return;
 
     const ErrorRecord &rec = *it;
-    QString recId = rec.id; // copy for captures
+    QString recId = rec.id;
 
     // 2. Read source code from disk
     QString sourceCode;
@@ -123,93 +145,45 @@ void ErrorJournal::requestAnalysis(const QString &recordId)
     // 4. Build prompt
     PromptBundle prompt = buildPrompt(AiAction::ErrorAnalysis, ctx);
 
-    // 5. Read AI settings
-    SettingsManager settings;
-    const QString apiKey = settings.aiApiKey();
-    if (apiKey.isEmpty()) {
-        // No API key configured — set placeholder and report
+    // 5. Helper: finalize analysis result (set text, save, emit)
+    auto finalizeAnalysis = [this](const QString &id, const QString &text) {
         for (auto &r : m_records) {
-            if (r.id == recId) {
-                r.aiAnalysis = QStringLiteral(
-                    "⚠ 请先在设置 → AI 服务中配置 API Key 后再进行错题分析。");
+            if (r.id == id) {
+                r.aiAnalysis = text;
                 r.reviewed = true;
                 save();
                 break;
             }
         }
-        emit analysisReady(recId);
-        return;
-    }
-
-    const QString providerType = settings.value(QStringLiteral("ai.provider_type"),
-        ConfigManager::instance().aiProviderType()).toString();
-    const QString model = settings.value(QStringLiteral("ai.model"),
-        ConfigManager::instance().aiModel()).toString();
-    const QString endpoint = settings.value(QStringLiteral("ai.endpoint"),
-        ConfigManager::instance().aiEndpoint()).toString();
-    const int maxTokens = settings.value(QStringLiteral("ai.max_tokens"),
-        ConfigManager::instance().aiMaxTokens()).toInt();
+        emit analysisReady(id);
+    };
 
     // 6. Create and configure provider
-    AiProviderFactory::ProviderType type = AiProviderFactory::typeFromString(providerType);
-    AiProvider *provider = AiProviderFactory::createProvider(type, /*parent=*/this);
+    AiProvider *provider = createConfiguredProvider(prompt.systemPrompt);
     if (!provider) {
-        for (auto &r : m_records) {
-            if (r.id == recId) {
-                r.aiAnalysis = QStringLiteral("分析失败：无法创建 AI Provider。");
-                r.reviewed = true;
-                save();
-                break;
-            }
-        }
-        emit analysisReady(recId);
+        SettingsManager settings;
+        finalizeAnalysis(recId, settings.aiApiKey().isEmpty()
+            ? QStringLiteral("⚠ 请先在设置 → AI 服务中配置 API Key 后再进行错题分析。")
+            : QStringLiteral("分析失败：无法创建 AI Provider。"));
         return;
     }
 
-    provider->setApiKey(apiKey);
-    provider->setModel(model);
-    provider->setMaxTokens(maxTokens);
-    provider->setSystemPrompt(prompt.systemPrompt);
-
-    if (auto *anthropic = qobject_cast<AnthropicProvider *>(provider))
-        anthropic->setEndpoint(endpoint);
-    else if (auto *openai = qobject_cast<OpenAiProvider *>(provider))
-        openai->setEndpoint(endpoint);
-
-    // 7. Collect streaming response into a heap-managed QString
-    auto *analysis = new QString;
+    // 7. Collect streaming response into a shared string
+    auto analysis = std::make_shared<QString>();
 
     connect(provider, &AiProvider::partialResponse, provider,
             [analysis](const QString &text) { *analysis += text; });
 
     connect(provider, &AiProvider::finished, this,
-            [this, recId, analysis, provider]() {
-        for (auto &r : m_records) {
-            if (r.id == recId) {
-                r.aiAnalysis = *analysis;
-                r.reviewed = true;
-                save();
-                break;
-            }
-        }
-        delete analysis;
+            [recId, analysis, provider, finalizeAnalysis]() {
+        finalizeAnalysis(recId, *analysis);
         provider->deleteLater();
-        emit analysisReady(recId);
     });
 
     connect(provider, &AiProvider::error, this,
-            [this, recId, analysis, provider](const QString &errorMsg) {
-        for (auto &r : m_records) {
-            if (r.id == recId) {
-                r.aiAnalysis = QStringLiteral("分析失败：%1").arg(errorMsg);
-                r.reviewed = true;
-                save();
-                break;
-            }
-        }
-        delete analysis;
+            [recId, provider, finalizeAnalysis](const QString &errorMsg) {
+        finalizeAnalysis(recId, QStringLiteral("分析失败：%1").arg(errorMsg));
         provider->deleteLater();
-        emit analysisReady(recId);
     });
 
     // 8. Build message list and start streaming
@@ -365,7 +339,7 @@ void ErrorJournal::deleteRecord(const QString &id)
     if (it != m_records.end()) {
         m_records.erase(it, m_records.end());
         save();
-        emit recordDeleted(id);
+        emit recordsChanged();
     }
 }
 
@@ -373,7 +347,7 @@ void ErrorJournal::clearAll()
 {
     m_records.clear();
     save();
-    emit recordsCleared();
+    emit recordsChanged();
 }
 
 void ErrorJournal::setRecordReviewed(const QString &id, bool reviewed)

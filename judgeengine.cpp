@@ -431,6 +431,7 @@ void JudgeEngine::finishCurrentTest(bool passed, const QString &statusCode, cons
     if (!passed)
         result.actualOutput = m_actualOutput.trimmed();
     result.expectedOutput = readFile(tc.expectedOutputFile);
+    result.inputData = readFile(tc.inputFile);
     result.detail = detail;
 
     m_results.append(result);

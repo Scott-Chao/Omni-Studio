@@ -29,6 +29,7 @@ public:
         quint64 memoryKb = 0;
         QString actualOutput;
         QString expectedOutput;
+        QString inputData;
         QString detail;
     };
 
