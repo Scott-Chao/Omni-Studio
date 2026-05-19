@@ -10,9 +10,11 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QVBoxLayout>
+#include <QTextBrowser>
+#include <QRegularExpression>
 
 // ═══════════════════════════════════════════════════════════════════
-// ErrorListItem — single clickable error record card
+// Helpers
 // ═══════════════════════════════════════════════════════════════════
 
 static QString statusColor(const QString &code)
@@ -23,6 +25,66 @@ static QString statusColor(const QString &code)
     if (code == "MLE") return "#9b59b6";
     return "#888888";
 }
+
+static QString statusLabel(const QString &code)
+{
+    if (code == "WA")  return QStringLiteral("答案错误");
+    if (code == "RE")  return QStringLiteral("运行时错误");
+    if (code == "TLE") return QStringLiteral("超时");
+    if (code == "MLE") return QStringLiteral("超内存");
+    return code;
+}
+
+// ── Section header helper ────────────────────────────────────────
+
+static QWidget *createSectionHeader(const QString &title)
+{
+    auto *w = new QWidget;
+    w->setStyleSheet("background-color: #2a2a2a;");
+    auto *lay = new QHBoxLayout(w);
+    lay->setContentsMargins(10, 4, 10, 4);
+
+    auto *label = new QLabel(title);
+    label->setStyleSheet("color: #999; font-size: 10px; font-weight: bold;");
+    lay->addWidget(label);
+    return w;
+}
+
+// ── Collapsible output view ──────────────────────────────────────
+
+static QWidget *createOutputBlock(const QString &title, const QString &content)
+{
+    auto *w = new QWidget;
+    auto *lay = new QVBoxLayout(w);
+    lay->setContentsMargins(10, 2, 10, 2);
+    lay->setSpacing(2);
+
+    auto *titleLbl = new QLabel(title);
+    titleLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+
+    auto *tb = new QTextBrowser;
+    tb->setPlainText(content);
+    tb->setMaximumHeight(120);
+    tb->setStyleSheet(
+        "QTextBrowser {"
+        "  background-color: #1a1a1a;"
+        "  color: #cccccc;"
+        "  border: 1px solid #3c3c3c;"
+        "  border-radius: 3px;"
+        "  font-family: 'Consolas', 'Courier New', monospace;"
+        "  font-size: 11px;"
+        "  padding: 4px;"
+        "}"
+    );
+
+    lay->addWidget(titleLbl);
+    lay->addWidget(tb);
+    return w;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ErrorListItem — single clickable error record card
+// ═══════════════════════════════════════════════════════════════════
 
 ErrorListItem::ErrorListItem(const ErrorRecord &record, QWidget *parent)
     : QWidget(parent), m_record(record)
@@ -49,7 +111,6 @@ ErrorListItem::ErrorListItem(const ErrorRecord &record, QWidget *parent)
     auto *nameLabel = new QLabel(m_record.problemName);
     nameLabel->setStyleSheet("color: #D4D4D4; font-size: 12px; font-weight: bold;");
     nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    // Allow text to ellipsis
     nameLabel->setTextFormat(Qt::PlainText);
 
     auto *arrow = new QLabel(">");
@@ -118,13 +179,198 @@ void ErrorListItem::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    if (m_hovered) {
+    if (m_hovered)
         painter.fillRect(rect(), QColor("#2d2d2d"));
-    }
 
     // Bottom border line
     painter.setPen(QPen(QColor("#3c3c3c"), 1));
     painter.drawLine(0, height() - 1, width(), height() - 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ErrorDetailWidget — expanded detail view for a single error record
+// ═══════════════════════════════════════════════════════════════════
+
+ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
+    : QWidget(parent), m_record(record)
+{
+    setStyleSheet("background-color: #252525;");
+
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // ── Header: metadata row ──
+    auto *header = new QWidget;
+    header->setStyleSheet("background-color: #2a2a2a;");
+    auto *headerLayout = new QHBoxLayout(header);
+    headerLayout->setContentsMargins(12, 8, 12, 8);
+    headerLayout->setSpacing(16);
+
+    auto *statusLbl = new QLabel(
+        QStringLiteral("<b style='color:%1'>%2</b>  %3")
+            .arg(statusColor(m_record.statusCode),
+                 m_record.statusCode,
+                 statusLabel(m_record.statusCode)));
+    statusLbl->setStyleSheet("color: #ccc; font-size: 12px;");
+
+    auto *timeLbl = new QLabel(
+        QStringLiteral("⏱ %1 ms").arg(m_record.elapsedMs));
+    timeLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+
+    auto *memLbl = new QLabel(
+        QStringLiteral("💾 %1 KB").arg(m_record.memoryKb));
+    memLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+
+    auto *fileLbl = new QLabel(m_record.sourceFile);
+    fileLbl->setStyleSheet("color: #888; font-size: 11px;");
+    fileLbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    headerLayout->addWidget(statusLbl);
+    headerLayout->addWidget(timeLbl);
+    headerLayout->addWidget(memLbl);
+    headerLayout->addWidget(fileLbl, 1);
+
+    layout->addWidget(header);
+
+    // ── Input / Expected / Actual output section ──
+    layout->addWidget(createSectionHeader(tr("输入输出对比")));
+
+    if (!m_record.inputData.isEmpty())
+        layout->addWidget(createOutputBlock(tr("输入:"), m_record.inputData));
+    layout->addWidget(createOutputBlock(tr("期望输出:"), m_record.expectedOutput));
+    layout->addWidget(createOutputBlock(tr("实际输出:"), m_record.actualOutput));
+
+    // ── AI Analysis section ──
+    layout->addWidget(createSectionHeader(tr("AI 分析")));
+
+    m_aiAnalysisLabel = new QLabel;
+    m_aiAnalysisLabel->setTextFormat(Qt::RichText);
+    m_aiAnalysisLabel->setWordWrap(true);
+    m_aiAnalysisLabel->setOpenExternalLinks(true);
+    m_aiAnalysisLabel->setStyleSheet(
+        "color: #cccccc; font-size: 12px; padding: 8px 12px;"
+        "background-color: #1e1e1e;");
+    m_aiAnalysisLabel->setMinimumHeight(40);
+
+    if (!m_record.aiAnalysis.isEmpty()) {
+        // Convert Markdown-ish text to HTML for display
+        QString html = m_record.aiAnalysis;
+        // Simple Markdown→HTML conversion for common patterns
+        html.replace(QRegularExpression(QStringLiteral("^## (.+)$")),
+                     QStringLiteral("<h3 style='color:#0078d4;margin:8px 0 4px'>\\1</h3>"));
+        html.replace(QRegularExpression(QStringLiteral("^### (.+)$")),
+                     QStringLiteral("<h4 style='color:#aaa;margin:6px 0 3px'>\\1</h4>"));
+        html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
+                     QStringLiteral("<pre style='background:#1a1a1a;padding:6px;border-radius:3px;overflow-x:auto'>"));
+        html.replace(QStringLiteral("```"),
+                     QStringLiteral("</pre>"));
+        html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
+        // Bold
+        html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
+                     QStringLiteral("<b>\\1</b>"));
+
+        m_aiAnalysisLabel->setText(html);
+    } else {
+        m_aiAnalysisLabel->setText(QStringLiteral(
+            "<span style='color:#666;'>"
+            "尚未进行 AI 分析，点击下方「重新分析」按钮开始分析。</span>"));
+    }
+
+    layout->addWidget(m_aiAnalysisLabel);
+
+    // ── Action buttons ──
+    auto *btnBar = new QWidget;
+    btnBar->setStyleSheet("background-color: #2a2a2a;");
+    auto *btnLayout = new QHBoxLayout(btnBar);
+    btnLayout->setContentsMargins(12, 6, 12, 6);
+    btnLayout->setSpacing(8);
+
+    m_reanalyzeBtn = new QPushButton(tr("🔄 分析"));
+    m_reanalyzeBtn->setFixedHeight(26);
+    m_reanalyzeBtn->setCursor(Qt::PointingHandCursor);
+    m_reanalyzeBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #0078d4; color: #fff; border: none;"
+        "  border-radius: 4px; font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover { background-color: #1a8ad4; }");
+
+    m_deleteBtn = new QPushButton(tr("🗑 删除"));
+    m_deleteBtn->setFixedHeight(26);
+    m_deleteBtn->setCursor(Qt::PointingHandCursor);
+    m_deleteBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: transparent; color: #e74c3c;"
+        "  border: 1px solid #555; border-radius: 4px;"
+        "  font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #3c1e1e; border-color: #e74c3c;"
+        "}");
+
+    m_reviewBtn = new QPushButton(m_record.reviewed ? tr("✅ 已阅") : tr("标记已阅"));
+    m_reviewBtn->setFixedHeight(26);
+    m_reviewBtn->setCursor(Qt::PointingHandCursor);
+    m_reviewBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: transparent; color: #4ec9b0;"
+        "  border: 1px solid #555; border-radius: 4px;"
+        "  font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #1e3c3c; border-color: #4ec9b0;"
+        "}");
+
+    btnLayout->addWidget(m_reanalyzeBtn);
+    btnLayout->addWidget(m_deleteBtn);
+    btnLayout->addWidget(m_reviewBtn);
+    btnLayout->addStretch();
+
+    layout->addWidget(btnBar);
+
+    // ── Connections ──
+    connect(m_reanalyzeBtn, &QPushButton::clicked, this, [this]() {
+        emit reanalyzeClicked(m_record.id);
+    });
+    connect(m_deleteBtn, &QPushButton::clicked, this, [this]() {
+        emit deleteClicked(m_record.id);
+    });
+    connect(m_reviewBtn, &QPushButton::clicked, this, [this]() {
+        m_record.reviewed = !m_record.reviewed;
+        m_reviewBtn->setText(m_record.reviewed ? tr("✅ 已阅") : tr("标记已阅"));
+        emit markReviewed(m_record.id);
+    });
+}
+
+void ErrorDetailWidget::setAnalysis(const QString &analysis)
+{
+    m_record.aiAnalysis = analysis;
+    if (analysis.isEmpty()) {
+        m_aiAnalysisLabel->setText(QStringLiteral(
+            "<span style='color:#666;'>正在分析中...</span>"));
+        return;
+    }
+
+    QString html = analysis;
+    html.replace(QRegularExpression(QStringLiteral("^## (.+)$")),
+                 QStringLiteral("<h3 style='color:#0078d4;margin:8px 0 4px'>\\1</h3>"));
+    html.replace(QRegularExpression(QStringLiteral("^### (.+)$")),
+                 QStringLiteral("<h4 style='color:#aaa;margin:6px 0 3px'>\\1</h4>"));
+    html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
+                 QStringLiteral("<pre style='background:#1a1a1a;padding:6px;border-radius:3px;overflow-x:auto'>"));
+    html.replace(QStringLiteral("```"), QStringLiteral("</pre>"));
+    html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
+    html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
+                 QStringLiteral("<b>\\1</b>"));
+
+    m_aiAnalysisLabel->setText(html);
+}
+
+void ErrorDetailWidget::setReviewed(bool reviewed)
+{
+    m_record.reviewed = reviewed;
+    m_reviewBtn->setText(reviewed ? tr("✅ 已阅") : tr("标记已阅"));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -288,10 +534,9 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
             this, &ErrorListPanel::onSearchTextChanged);
     connect(m_deleteAllBtn, &QPushButton::clicked,
             this, &ErrorListPanel::deleteAllRequested);
-
-    // Initial empty state
-    update(); // Will be painted empty
 }
+
+// ── Data loading ─────────────────────────────────────────────────
 
 void ErrorListPanel::loadRecords()
 {
@@ -301,6 +546,7 @@ void ErrorListPanel::loadRecords()
 void ErrorListPanel::setRecords(const QVector<ErrorRecord> &records)
 {
     m_allRecords = records;
+    m_expandedId.clear();
     // Sort by timestamp descending
     std::sort(m_allRecords.begin(), m_allRecords.end(),
               [](const ErrorRecord &a, const ErrorRecord &b) {
@@ -309,34 +555,53 @@ void ErrorListPanel::setRecords(const QVector<ErrorRecord> &records)
     rebuildList();
 }
 
+// ── Filtering ────────────────────────────────────────────────────
+
 void ErrorListPanel::onFilterChanged()
 {
+    m_expandedId.clear();
     rebuildList();
 }
 
 void ErrorListPanel::onSearchTextChanged(const QString &text)
 {
     Q_UNUSED(text);
+    m_expandedId.clear();
     rebuildList();
 }
 
 void ErrorListPanel::rebuildList()
 {
-    // Remove all existing item widgets
-    for (auto *item : findChildren<ErrorListItem*>()) {
-        m_listLayout->removeWidget(item);
+    // Remove all existing item widgets (including detail widgets)
+    for (auto *item : findChildren<ErrorListItem*>())
         item->deleteLater();
-    }
+    for (auto *detail : findChildren<ErrorDetailWidget*>())
+        detail->deleteLater();
 
     QVector<ErrorRecord> filtered = filteredRecords();
-    // Update count
     m_countLabel->setText(tr("共 %1 条记录").arg(filtered.size()));
 
     for (const auto &record : filtered) {
         auto *item = new ErrorListItem(record, m_listContainer);
-        connect(item, &ErrorListItem::clicked, this, &ErrorListPanel::errorClicked);
+        connect(item, &ErrorListItem::clicked, this, &ErrorListPanel::onItemClicked);
         // Insert before the trailing stretch
         m_listLayout->insertWidget(m_listLayout->count() - 1, item);
+
+        // If this record was expanded, insert the detail widget right after it
+        if (m_expandedId == record.id) {
+            auto *detail = new ErrorDetailWidget(record, m_listContainer);
+            connect(detail, &ErrorDetailWidget::reanalyzeClicked,
+                    this, &ErrorListPanel::onReanalyzeClicked);
+            connect(detail, &ErrorDetailWidget::deleteClicked,
+                    this, &ErrorListPanel::deleteRecordRequested);
+            connect(detail, &ErrorDetailWidget::markReviewed,
+                    this, [this](const QString &recId) {
+                ErrorRecord rec = ErrorJournal::instance().recordById(recId);
+                ErrorJournal::instance().setRecordReviewed(recId, !rec.reviewed);
+                loadRecords();
+            });
+            m_listLayout->insertWidget(m_listLayout->count() - 1, detail);
+        }
     }
 
     // Scroll to top after rebuild
@@ -350,11 +615,9 @@ QVector<ErrorRecord> ErrorListPanel::filteredRecords() const
 
     QVector<ErrorRecord> result;
     for (const auto &rec : m_allRecords) {
-        // Status filter
         if (!statusFilter.isEmpty() && rec.statusCode != statusFilter)
             continue;
 
-        // Keyword search — match problem name, source file, tags
         if (!keyword.isEmpty()) {
             bool match = rec.problemName.toLower().contains(keyword)
                       || rec.sourceFile.toLower().contains(keyword)
@@ -375,4 +638,59 @@ QVector<ErrorRecord> ErrorListPanel::filteredRecords() const
     }
 
     return result;
+}
+
+// ── Item expand / collapse ───────────────────────────────────────
+
+void ErrorListPanel::onItemClicked(const QString &recordId)
+{
+    if (m_expandedId == recordId) {
+        collapseItem(recordId);
+    } else {
+        expandItem(recordId);
+    }
+}
+
+void ErrorListPanel::expandItem(const QString &recordId)
+{
+    m_expandedId = recordId;
+    rebuildList();
+}
+
+void ErrorListPanel::collapseItem(const QString &recordId)
+{
+    Q_UNUSED(recordId);
+    m_expandedId.clear();
+    rebuildList();
+}
+
+ErrorDetailWidget *ErrorListPanel::findDetail(const QString &recordId) const
+{
+    const auto details = findChildren<ErrorDetailWidget*>();
+    for (auto *d : details) {
+        if (d->recordId() == recordId)
+            return d;
+    }
+    return nullptr;
+}
+
+void ErrorListPanel::onReanalyzeClicked(const QString &recordId)
+{
+    // Update detail widget to show "analyzing..."
+    ErrorDetailWidget *detail = findDetail(recordId);
+    if (detail)
+        detail->setAnalysis(QString());
+
+    emit reanalyzeRequested(recordId);
+    ErrorJournal::instance().requestAnalysis(recordId);
+}
+
+void ErrorListPanel::updateAnalysis(const QString &recordId)
+{
+    ErrorDetailWidget *detail = findDetail(recordId);
+    if (!detail)
+        return;
+
+    ErrorRecord rec = ErrorJournal::instance().recordById(recordId);
+    detail->setAnalysis(rec.aiAnalysis);
 }

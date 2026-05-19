@@ -2,6 +2,7 @@
 #include "chatarea.h"
 #include "actionbar.h"
 #include "errorlistpanel.h"
+#include "errorjournal.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -192,6 +193,22 @@ AiPanel::AiPanel(QWidget *parent)
     // Forward error list item click
     connect(m_errorListPanel, &ErrorListPanel::errorClicked,
             this, &AiPanel::errorSelected);
+
+    // Connect ErrorJournal analysis ready to error list panel update
+    connect(&ErrorJournal::instance(), &ErrorJournal::analysisReady,
+            m_errorListPanel, &ErrorListPanel::updateAnalysis);
+
+    // Delete actions
+    connect(m_errorListPanel, &ErrorListPanel::deleteAllRequested, this, [this]() {
+        ErrorJournal::instance().clearAll();
+        if (m_currentTab == ErrorTab)
+            m_errorListPanel->loadRecords();
+    });
+    connect(m_errorListPanel, &ErrorListPanel::deleteRecordRequested, this, [this](const QString &recordId) {
+        ErrorJournal::instance().deleteRecord(recordId);
+        if (m_currentTab == ErrorTab)
+            m_errorListPanel->loadRecords();
+    });
 }
 
 void AiPanel::onTabSwitch(int index)

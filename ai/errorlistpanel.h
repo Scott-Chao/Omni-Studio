@@ -11,6 +11,7 @@ class QVBoxLayout;
 class QLabel;
 class QPushButton;
 class QScrollArea;
+class ErrorDetailWidget;
 
 class ErrorListItem : public QWidget
 {
@@ -37,6 +38,33 @@ private:
     bool m_hovered = false;
 };
 
+// ── Detail expansion widget ──────────────────────────────────────
+
+class ErrorDetailWidget : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit ErrorDetailWidget(const ErrorRecord &record, QWidget *parent = nullptr);
+
+    void setAnalysis(const QString &analysis);
+    QString recordId() const { return m_record.id; }
+    void setReviewed(bool reviewed);
+
+signals:
+    void reanalyzeClicked(const QString &recordId);
+    void deleteClicked(const QString &recordId);
+    void markReviewed(const QString &recordId);
+
+private:
+    ErrorRecord m_record;
+    QLabel *m_aiAnalysisLabel;
+    QPushButton *m_reanalyzeBtn;
+    QPushButton *m_deleteBtn;
+    QPushButton *m_reviewBtn;
+};
+
+// ── ErrorListPanel ───────────────────────────────────────────────
+
 class ErrorListPanel : public QWidget
 {
     Q_OBJECT
@@ -46,18 +74,27 @@ public:
     void loadRecords();
     void setRecords(const QVector<ErrorRecord> &records);
 
+    // Update a specific record's detail display (called when AI analysis arrives)
+    void updateAnalysis(const QString &recordId);
+
 signals:
     void errorClicked(const QString &recordId);
     void deleteAllRequested();
     void deleteRecordRequested(const QString &recordId);
+    void reanalyzeRequested(const QString &recordId);
 
 private slots:
     void onFilterChanged();
     void onSearchTextChanged(const QString &text);
+    void onItemClicked(const QString &recordId);
+    void onReanalyzeClicked(const QString &recordId);
 
 private:
     void rebuildList();
     QVector<ErrorRecord> filteredRecords() const;
+    ErrorDetailWidget *findDetail(const QString &recordId) const;
+    void expandItem(const QString &recordId);
+    void collapseItem(const QString &recordId);
 
     QComboBox *m_statusFilter;
     QLineEdit *m_searchEdit;
@@ -68,6 +105,7 @@ private:
     QPushButton *m_deleteAllBtn;
 
     QVector<ErrorRecord> m_allRecords;
+    QString m_expandedId;  // currently expanded detail record ID, empty if none
 };
 
 #endif // ERRORLISTPANEL_H

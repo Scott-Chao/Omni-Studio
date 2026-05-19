@@ -16,9 +16,11 @@ struct ErrorRecord {
     QString problemName;       // 题目名（从 test folder 推断）
     QString sourceFile;        // 被评测的源文件路径
     QString testFolder;        // 测试用例文件夹路径
+    QString testCaseName;      // 测试用例名（如 "1", "test1"）
     QString statusCode;        // WA / RE / TLE / MLE
     qint64 elapsedMs = 0;
     quint64 memoryKb = 0;
+    QString inputData;         // 测试用例输入
     QString actualOutput;
     QString expectedOutput;
     QString detail;            // 错误详情
@@ -59,6 +61,7 @@ public:
     void deleteRecord(const QString &id);
     void clearAll();
     int recordCount() const { return m_records.size(); }
+    void setRecordReviewed(const QString &id, bool reviewed);
 
 signals:
     void recordAdded(const ErrorRecord &record);
