@@ -25,6 +25,8 @@ enum class AiAction {
     FindBugs,
     AddComments,
     OptimizeCode,
+    // Judge Error Analysis
+    ErrorAnalysis,
     // General
     FreeChat,
 };
@@ -152,6 +154,39 @@ inline PromptBundle buildPrompt(AiAction action, const ContextBundle &ctx,
         break;
     }
 
+    // ═══════════════ Judge error analysis ═══════════════
+
+    case AiAction::ErrorAnalysis: {
+        result.systemPrompt = QStringLiteral(
+            "你是一位 C/C++ 编程助教。分析以下代码在评测中的错误原因，"
+            "指出问题所在和修复方法。使用以下 Markdown 格式输出：\n\n"
+            "## 错误原因\n"
+            "[简要分析出错的原因]\n\n"
+            "## 具体问题\n"
+            "[指出代码中的错误位置和原因]\n\n"
+            "## 修复建议\n"
+            "[给出修复后的代码片段]\n\n"
+            "## 相关知识点\n"
+            "[逗号分隔的 1-4 个知识点标签]"
+        );
+        result.userPrompt = QStringLiteral(
+            "代码（文件：%1）：\n```%2\n%3\n```\n\n"
+            "评测状态：%4\n"
+            "执行时间：%5ms\n"
+            "输入：\n%6\n"
+            "期望输出：\n%7\n"
+            "实际输出：\n%8\n"
+            "错误详情：%9"
+        ).arg(ctx.filePath, ctx.language, ctx.fileContent,
+              ctx.errorStatusCode,
+              QString::number(ctx.elapsedMs),
+              ctx.inputData,
+              ctx.expectedOutput,
+              ctx.actualOutput,
+              ctx.errorDetail);
+        break;
+    }
+
     // ═══════════════ General ═══════════════
 
     case AiAction::FreeChat: {
@@ -189,6 +224,8 @@ inline const QVector<ActionInfo> &actionInfos()
         { AiAction::FindBugs,        "寻找 Bug",  "检查潜在问题" },
         { AiAction::AddComments,     "添加注释",  "为代码添加中文注释" },
         { AiAction::OptimizeCode,    "优化建议",  "性能优化建议" },
+        // Judge error analysis (no button — triggered by JudgePanel)
+        { AiAction::ErrorAnalysis,   "错题分析",  "分析评测错误原因" },
     };
     return infos;
 }
