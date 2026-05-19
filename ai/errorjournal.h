@@ -77,6 +77,7 @@ private:
 
     QString storagePath() const;
 
+    QString m_storagePath;
     QVector<ErrorRecord> m_records;
 };
 

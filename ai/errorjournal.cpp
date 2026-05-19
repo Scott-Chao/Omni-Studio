@@ -28,6 +28,8 @@ ErrorJournal &ErrorJournal::instance()
 
 ErrorJournal::ErrorJournal(QObject *parent)
     : QObject(parent)
+    , m_storagePath(QCoreApplication::applicationDirPath()
+                    + QStringLiteral("/error_journal/records.json"))
 {
     load();
 }
@@ -41,8 +43,7 @@ ErrorJournal::~ErrorJournal()
 
 QString ErrorJournal::storagePath() const
 {
-    return QCoreApplication::applicationDirPath()
-        + QStringLiteral("/error_journal/records.json");
+    return m_storagePath;
 }
 
 // ── Record failure ────────────────────────────────────────────────
