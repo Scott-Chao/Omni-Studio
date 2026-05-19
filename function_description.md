@@ -37,10 +37,59 @@
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
-- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
+- .smd 文件格式：采用 `---smd:<type>` 分隔符的单元格分块格式，类似 Jupyter Notebook 的交互模式。编辑器自动识别 `.smd` 后缀切换为 SMD 编辑模式，保存/另存为对话框支持 `.smd` 格式。
+  - 三种单元格类型：Markdown / C++ / Python，每单元格高度自适应内容，输出区独立置于单元格下方（1-15 行自适应，上限 1000 行，超出时保留前 1000 行并提示隐藏行数）
+  - 双模式系统：命令模式（紫色边框 `#C586C0`，键盘导航）与编辑模式（蓝色边框 `#0078D4`，文本编辑），`Esc` 切换
+  - 单元格增删：命令模式下 `A` 上方插入、`B` 下方插入、`Delete` 删除（至少保留一个），支持 `Ctrl+Shift+-` 在光标处分割单元格
+  - *`Ctrl+K` 弹出语言选择菜单（Markdown/C++/Python），新建单元格时自动弹出
+- 单元格执行：编辑模式下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转下一个）触发执行。
+  - Markdown 单元格：异步渲染为图片（QWebEngineView 加载 HTML → 轮询 Mermaid 完成 → 抓取 QPixmap 遮罩），空单元格跳过
+  - C++ 单元格：按 `main()` 函数边界自动分组，同组 cell 合并写入临时文件编译运行，不同程序组互不干扰
+  - Python 单元格：持久化进程执行（`python_executor.py` 守护进程 + JSON-line 协议），跨 cell 共享命名空间，每 cell 独立捕获 stdout/stderr，避免前面 cell 的输出污染
+  - 输出持久化：分隔线 `---smd:<type>` 后支持 JSON 元数据，自动持久化代码输出（base64 编码）和 Markdown 渲染状态，重新打开文件时自动恢复
+  - 执行安全：执行期间禁止增删单元格，`Ctrl+C` 可终止执行
+- LSP 代码智能（`SmdLspManager` 共享后端，每种语言一个 clangd/Jedi 进程，非每 cell 一个）：
+  - 虚拟文档拼接：同语言 cell 拼接为有效源文件，行号自动映射，跨 cell 类型解析
+  - C++ 程序分组：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码，避免多 `main()` 冲突
+  - 代码补全（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**
+  - 诊断波浪线：红色错误 / 黄色警告，cell 头部标签显示错误计数，切换 cell 时自动缓存/恢复诊断
+  - 诊断面板：`Ctrl+E`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
+- `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增
-- Python cell 诊断可视化
+- SMD 单元格编辑（`.smd` 文件格式）：采用 `---smd:<type>` 分隔符，支持 Markdown/C++/Python 三种单元格类型，类似 Jupyter Notebook 的交互模式
+- 双模式系统：**命令模式**（键盘导航）与 **编辑模式**（文本编辑），按 `Esc` 在两者间切换
+  - 命令模式快捷键：
+    - `A` / `B`：当前单元格上方/下方插入新单元格，自动弹出语言选择菜单
+    - `↑` / `↓`：上下导航单元格
+    - `Enter`：进入编辑模式
+    - `Delete`：删除当前单元格（至少保留一个）
+    - `Ctrl+Shift+Z`：MD 单元格取消渲染 / 代码单元格删除输出
+  - 编辑模式快捷键：
+    - `Ctrl+Enter`：执行当前单元格（不跳转）
+    - `Shift+Enter`：执行当前单元格并跳转到下一个
+    - `Ctrl+Shift+-`：在光标处将当前单元格一分为二（类型不变）
+  - 通用快捷键（命令/编辑模式均有效）：
+    - `Ctrl+K`：弹出语言选择菜单修改单元格类型
+    - `Esc`：进入命令模式（语言菜单弹出时关闭菜单）
+    - `Ctrl+E`：切换诊断面板显示/隐藏（编辑模式）
+- 语言选择器（`LangSelectorPopup`）：深色主题弹出菜单，支持 `↑/↓` 导航、`Enter` 确认、`1/2/3` 数字键直接选择、`Esc` 取消；新建单元格时取消自动删除空单元格
+- 单元格执行：
+  - **Markdown 单元格**：异步渲染为图片（QWebEngineView 加载 HTML → 轮询高度 → 抓取 QPixmap），空单元格跳过渲染
+  - **C++ 单元格**：按 `main()` 函数边界自动分组，同组 cell 合并编译，不同 `main()` 组互不干扰，无 `main()` 时仅编译不链接
+  - **Python 单元格**：持久化进程执行（`python_executor.py` 守护进程），维护跨 cell 共享命名空间，每个 cell 独立捕获 stdout/stderr 输出
+  - 执行期间禁止增删单元格操作，`Ctrl+C` 可终止执行
+  - 跳转保护：用户已导航至其他单元格时不自动跳转
+- LSP 代码智能（通过 `SmdLspManager` 共享后端）：
+  - C++ 使用 clangd，Python 使用 Jedi 进程，每种语言仅启动一个后端
+  - **虚拟文档拼接**：同语言 cell 拼接为有效源文件，行号自动映射
+  - **C++ 程序分组**：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码
+  - 红色/黄色诊断波浪线（错误/警告），cell 头部标签显示错误计数
+  - 支持代码补全（Ctrl+I / 自动触发）、悬停类型提示、函数签名帮助
+  - 切换 cell 时自动切换诊断上下文并缓存各组诊断结果
+- `SmdDiagnosticsPanel` 诊断面板：`Ctrl+E`（编辑模式）切换显示，红色错误/黄色警告分区展示，点击条目跳转至对应 cell 和行号
+- 文件格式支持：`.smd` 文件在编辑器打开时自动识别为 SMD 模式，`.md` ↔ `.smd` 双向转换（`Ctrl+T`），保留光标位置映射
+- 自动保存与恢复：输出内容和 Markdown 渲染状态持久化至 JSON 元数据，重新打开文件时自动恢复
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1036,7 +1085,6 @@
 | `Enter`（无修饰键） | 进入编辑模式 |
 | `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
 | `Delete` | 删除当前单元格（至少保留一个） |
-| `Ctrl+D` | 复制当前单元格到下方 |
 
 **编辑模式快捷键**：
 | 快捷键 | 功能 |
@@ -1045,11 +1093,13 @@
 | `Shift+Enter` | 执行当前单元格并跳转到下一个 |
 | `Ctrl+Shift+-` | 在光标处将当前单元格一分为二（类型不变），选中下方单元格 |
 | `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
+| `Ctrl+E` | 切换诊断面板显示/隐藏 |
 
 **通用快捷键（命令模式与编辑模式均有效）**：
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
+| `Ctrl+C` | 终止正在执行的代码单元格 |
 | `Esc` | 进入命令模式（语言选择菜单弹出时：关闭菜单） |
 
 **语言选择器（`LangSelectorPopup`）**：
@@ -1125,7 +1175,7 @@
 
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
-- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
+- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
 - 重写 `eventFilter(QObject*, QEvent*)`：
   - **滚动抑制**：任何 `MouseButtonPress` 事件（无论是否命中 SmdCell）都会设置 `m_clickSuppressScroll = true` 并启动 50ms 单次定时器清除。这确保点击 toolbar 或空白区域导致焦点恢复至 cell 时不会意外滚动。
   - **Cell 激活**：`FocusIn` / `MouseButtonPress` 事件向上查找父 SmdCell，找到则调用 `setActiveCell(idx)` 激活。`m_clickSuppressScroll` 标志在 setActiveCell 中阻止滚动。
@@ -1260,15 +1310,16 @@
 - 引用 `LspClient`（C++ 端）和 `QProcess`（Python 端）管理 LSP 进程。
 
 
-### 30. `debuglog.h` — 文件调试日志
+### 30. `SmdDiagnosticsPanel` — SMD 诊断面板
 
-**文件**：`debuglog.h`
+**文件**：`smddiagnosticspanel.h` / `smddiagnosticspanel.cpp`
 
 **职责**：
-- header-only 工具，提供 `debugLog(const QString &msg)` 内联函数。
-- 将带时间戳、线程 ID 和消息内容的日志追加写入 `release/smd_debug.log`。
-- `QTextStream` 显式 `flush()` 并在独立作用域中析构后 `file.close()`，确保崩溃时日志不丢失。
-- 用于诊断 SMD LSP 相关卡顿/闪退问题（`SmdEditor::enterCommandMode/EditMode`、`SmdCell::setCellType/Active/updateEditorHeight`、`SmdLspManager` 生命周期、`CodeEditor::setCompletionProvider` 等关键路径已埋点）。
+- 继承 `QFrame`，作为 SMD 编辑器的诊断信息汇总面板，以 `Ctrl+E`（编辑模式）切换显示。
+- 内部通过 `DiagnosticSection` 分区展示红色错误（Error）和黄色警告（Warning），每个分区头部显示诊断数量。
+- 面板内容通过 `refresh()` 从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按严重程度分组，每个条目可点击跳转至对应 cell 和行号。
+- 支持防抖刷新（`scheduleRefresh()` + 定时器），避免频繁更新。
+- `DiagnosticSection` 内部类：继承 `QWidget`，带标题和边框色的分区容器，`setDiagnostics()` 设置指定 cell 的诊断列表，`clear()` 清空内容。支持展开/折叠（`setExpanded()`），每条诊断显示 cell 索引和行号信息。点击诊断条目发射 `lineClicked(cellIndex, line)` 信号，由 `SmdEditor` 接收后跳转至目标位置。
 
 
 ### 配置存储说明
