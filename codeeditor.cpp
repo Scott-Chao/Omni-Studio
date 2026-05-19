@@ -3,7 +3,6 @@
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
 #include "smdlspmanager.h"
-#include "debuglog.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -279,8 +278,6 @@ void CodeEditor::createCompletionProvider(const QString &langId)
 
 void CodeEditor::setCompletionProvider(CompletionProvider *provider)
 {
-    debugLog(QStringLiteral("CodeEditor::setCompletionProvider — old=%1 owns=%2 new=%3")
-        .arg(m_completionProvider != nullptr).arg(m_ownsProvider).arg(provider != nullptr));
     if (m_completionProvider) {
         disconnect(m_completionProvider, nullptr, this, nullptr);
         disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);

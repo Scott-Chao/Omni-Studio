@@ -6,7 +6,6 @@
 #include "smdlspmanager.h"
 #include "smddiagnosticspanel.h"
 #include "codeeditor.h"
-#include "debuglog.h"
 #include "compilerutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -411,8 +410,6 @@ void SmdEditor::setPlainText(const QString &text)
 
     connect(m_lspManager, &SmdLspManager::diagnosticsUpdated, this,
             [this](int cellIndex, QList<SmdDiagnostic> diags) {
-                debugLog(QStringLiteral("SmdEditor::diagnosticsUpdated — cell=%1, count=%2")
-                    .arg(cellIndex).arg(diags.size()));
                 if (cellIndex >= 0 && cellIndex < m_cells.size()) {
                     m_cells[cellIndex]->setDiagnostics(diags);
                     if (auto *codeEditor = qobject_cast<CodeEditor*>(
@@ -707,8 +704,6 @@ QList<SmdFormat::Cell> SmdEditor::exportCells() const
 
 void SmdEditor::enterCommandMode()
 {
-    debugLog(QStringLiteral("enterCommandMode — activeCell=%1, cellCount=%2")
-        .arg(m_activeCellIndex).arg(m_cells.size()));
     m_commandMode = true;
     if (m_diagnosticsPanel)
         m_diagnosticsPanel->setVisible(false);
@@ -723,7 +718,6 @@ void SmdEditor::enterCommandMode()
 
 void SmdEditor::enterEditMode()
 {
-    debugLog(QStringLiteral("enterEditMode — activeCell=%1").arg(m_activeCellIndex));
     m_commandMode = false;
     if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size())
         return;
@@ -733,7 +727,6 @@ void SmdEditor::enterEditMode()
         c->setActive(false);
     }
     m_cells[m_activeCellIndex]->setEditorFocus();
-    debugLog(QStringLiteral("enterEditMode — done"));
 }
 
 // ---- Language Selector ----
@@ -742,8 +735,6 @@ void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int original
 {
     if (cellIndex < 0 || cellIndex >= m_cells.size())
         return;
-    debugLog(QStringLiteral("showLanguageSelector — cell=%1 isNew=%2 orig=%3")
-        .arg(cellIndex).arg(isNewCell).arg(originalCellIndex));
 
     // Create popup first so we can capture it in both callbacks for
     // explicit deleteLater().  The popup's hideEvent no longer calls
@@ -1598,8 +1589,6 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
             else if (m_activeCellIndex >= 0) {
-                debugLog(QStringLiteral("eventFilter Ctrl+K — showLanguageSelector cell=%1")
-                    .arg(m_activeCellIndex));
                 showLanguageSelector(m_activeCellIndex);
             }
             return true;

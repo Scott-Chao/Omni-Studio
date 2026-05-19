@@ -42,33 +42,6 @@
 #include <windowsx.h>
 #endif
 
-// 预览调试日志 — 输出到 release 文件夹下的 preview_debug.log
-static void previewLogMw(const QString &msg)
-{
-    static QFile logFile;
-    static QTextStream stream;
-    static bool initialized = false;
-    if (!initialized) {
-        initialized = true;
-        QString logPath = QCoreApplication::applicationDirPath() + QStringLiteral("/preview_debug_mw.log");
-        logFile.setFileName(logPath);
-        if (logFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            stream.setDevice(&logFile);
-            stream << "=== Preview Debug Log (MainWindow) ===" << Qt::endl;
-            stream.flush();
-        }
-    }
-    if (stream.device()) {
-        stream << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << " " << msg << Qt::endl;
-        stream.flush();
-    }
-}
-
-#define PREVIEW_LOG_MW(msg) do { \
-    QString _logMsg; QDebug _dbg(&_logMsg); _dbg << msg; \
-    previewLogMw(_logMsg); \
-} while(0)
-
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QDir>
@@ -411,14 +384,11 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(m_previewAction);
     toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
-        PREVIEW_LOG_MW("previewAction toggled, checked=" << checked);
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
             if (checked && !editor->currentFilePath().toLower().endsWith(".md")) {
-                PREVIEW_LOG_MW("previewAction — 跳过(非.md文件)");
                 return;
             }
-            PREVIEW_LOG_MW("previewAction — 调用 editor->setPreviewMode(" << checked << ")");
             editor->setPreviewMode(checked);
             if (checked && m_splitPreviewAction && m_splitPreviewAction->isChecked()) {
                 m_splitPreviewAction->blockSignals(true);
@@ -2424,19 +2394,6 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
     if (activeCell >= 0 && activeCell < mdResult.cellContentStartLine.size())
         mdCursorLine = mdResult.cellContentStartLine[activeCell] + cursorLineInCell;
 
-    convLog(QStringLiteral("smd2md: activeCell=%1 cursorLineInCell=%2 cursorCol=%3 cells=%4")
-        .arg(activeCell).arg(cursorLineInCell).arg(cursorColumn).arg(cells.size()));
-    for (int ci = 0; ci < cells.size(); ++ci) {
-        int startLine = ci < mdResult.cellContentStartLine.size() ? mdResult.cellContentStartLine[ci] : -1;
-        convLog(QStringLiteral("smd2md:   cell[%1] type=%2 lines=%3 startLine=%4")
-            .arg(ci).arg(cells[ci].type)
-            .arg(cells[ci].content.count(QLatin1Char('\n')) + 1)
-            .arg(startLine));
-    }
-    convLog(QStringLiteral("smd2md: mdCursorLine=%1 (startLine[%2]=%3 + cellLine=%4)")
-        .arg(mdCursorLine).arg(activeCell)
-        .arg(activeCell < mdResult.cellContentStartLine.size() ? mdResult.cellContentStartLine[activeCell] : -1)
-        .arg(cursorLineInCell));
 
     // 5. Determine target path
     QString mdPath = fi.absolutePath() + QDir::separator() + fi.completeBaseName() + QStringLiteral(".md");

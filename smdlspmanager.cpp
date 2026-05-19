@@ -1,6 +1,5 @@
 #include "smdlspmanager.h"
 #include "lspclient.h"
-#include "debuglog.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -142,7 +141,6 @@ SmdLspManager::~SmdLspManager()
 
 void SmdLspManager::shutdown()
 {
-    debugLog(QStringLiteral("SmdLspManager::shutdown — begin"));
     m_shuttingDown = true;
     disconnect();
 
@@ -164,7 +162,6 @@ void SmdLspManager::shutdown()
     m_adapters.clear();
     m_activeCppGroup = 0;
     m_groupDiagnostics.clear();
-    debugLog(QStringLiteral("SmdLspManager::shutdown — done"));
 }
 
 // ─── Initialization ──────────────────────────────────────────────────
@@ -211,11 +208,8 @@ QString SmdLspManager::langIdToLanguageId(const QString &langId) const
 void SmdLspManager::cellAdded(int cellIndex, const QString &langId,
                                const QString &content)
 {
-    debugLog(QStringLiteral("SmdLspManager::cellAdded — idx=%1, lang=%2, contentLen=%3")
-        .arg(cellIndex).arg(langId).arg(content.length()));
     LanguageServer *srv = serverForLang(langId);
     if (!srv) {
-        debugLog(QStringLiteral("SmdLspManager::cellAdded — no server for lang, skip"));
         return;
     }
 
@@ -227,8 +221,6 @@ void SmdLspManager::cellAdded(int cellIndex, const QString &langId,
 
     // Guard: skip if already in cellOrder (duplicate signal connection defense)
     if (srv->cellOrder.contains(cellIndex)) {
-        debugLog(QStringLiteral("SmdLspManager::cellAdded — idx=%1 already in cellOrder, skip insert")
-            .arg(cellIndex));
         rebuildVirtualDoc(langId);
         if (langId == QStringLiteral("python"))
             m_pyDiagnosticsTimer.start();
@@ -258,16 +250,12 @@ void SmdLspManager::cellAdded(int cellIndex, const QString &langId,
     rebuildVirtualDoc(langId);
 
     if (langId == QStringLiteral("python")) {
-        debugLog(QStringLiteral("cellAdded — starting py diagnostics timer, cell=%1, cellOrder=%2")
-            .arg(cellIndex).arg(srv->cellOrder.size()));
         m_pyDiagnosticsTimer.start();
     }
 }
 
 void SmdLspManager::cellRemoved(int cellIndex, const QString &langId)
 {
-    debugLog(QStringLiteral("SmdLspManager::cellRemoved — idx=%1, lang=%2")
-        .arg(cellIndex).arg(langId));
     LanguageServer *srv = serverForLang(langId);
     if (!srv) return;
 
@@ -278,11 +266,8 @@ void SmdLspManager::cellRemoved(int cellIndex, const QString &langId)
         m_pyCellContents.remove(cellIndex);
 
     if (m_adapters.contains(cellIndex)) {
-        debugLog(QStringLiteral("SmdLspManager::cellRemoved — deleting adapter %1 for idx=%2")
-            .arg(reinterpret_cast<quintptr>(m_adapters[cellIndex]), 0, 16).arg(cellIndex));
         delete m_adapters[cellIndex];
         m_adapters.remove(cellIndex);
-        debugLog(QStringLiteral("SmdLspManager::cellRemoved — adapter deleted"));
     }
 
     m_diagnostics.remove(cellIndex);
@@ -407,12 +392,8 @@ void SmdLspManager::cellLocalToVirtual(int cellIndex, int localLine, int localCo
 void SmdLspManager::startCppServer()
 {
     if (m_shuttingDown || m_cppServer.client) {
-        debugLog(QStringLiteral("SmdLspManager::startCppServer — skip (shuttingDown=%1, client=%2)")
-            .arg(m_shuttingDown).arg(m_cppServer.client != nullptr));
         return;
     }
-
-    debugLog(QStringLiteral("SmdLspManager::startCppServer — starting clangd"));
     QString clangdPath = QStandardPaths::findExecutable(QStringLiteral("clangd"));
     if (clangdPath.isEmpty()) {
         qWarning() << "SmdLspManager: clangd not found";
@@ -424,7 +405,6 @@ void SmdLspManager::startCppServer()
     m_cppServer.client = new LspClient(this);
 
     connect(m_cppServer.client, &LspClient::serverStarted, this, [this]() {
-        debugLog(QStringLiteral("SmdLspManager — clangd process started, sending initialize"));
         sendInitialize(QStringLiteral("cpp"));
     });
     connect(m_cppServer.client, &LspClient::serverError, this, [this](QProcess::ProcessError err) {
@@ -467,14 +447,10 @@ void SmdLspManager::sendInitialize(const QString &langId)
 
 void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
 {
-    debugLog(QStringLiteral("SmdLspManager::onCppResponseReceived — id=%1, shuttingDown=%2, client=%3")
-        .arg(id).arg(m_shuttingDown).arg(m_cppServer.client != nullptr));
     if (m_shuttingDown || !m_cppServer.client) return;
 
     if (!m_cppServer.initialized) {
         // Assume initialize response
-        debugLog(QStringLiteral("SmdLspManager — clangd initialized, sending didOpen"));
-        qDebug() << "SmdLspManager: clangd initialized";
         m_cppServer.client->sendNotification(QStringLiteral("initialized"), QJsonObject());
         m_cppServer.initialized = true;
 
@@ -536,7 +512,6 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
                 ci.doc = docVal.toObject().value(QStringLiteral("value")).toString();
             items.append(ci);
         }
-        qDebug() << "SmdLspManager: completion returned" << items.size() << "items for cell" << cellIndex;
         emit completionReadyForCell(cellIndex, items);
 
     } else if (id == m_cppServer.hoverRequestId) {
@@ -618,7 +593,6 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
 
 void SmdLspManager::onCppNotificationReceived(QString method, QJsonObject params)
 {
-    debugLog(QStringLiteral("SmdLspManager::onCppNotificationReceived — method=%1").arg(method));
     if (m_shuttingDown || !m_cppServer.client) return;
     if (method == QStringLiteral("textDocument/publishDiagnostics"))
         processDiagnostics(QStringLiteral("cpp"), params);
@@ -643,7 +617,6 @@ void SmdLspManager::onCppRequestFailed(int id, QJsonObject error)
 void SmdLspManager::onCppServerStopped(int exitCode, QProcess::ExitStatus status)
 {
     if (m_shuttingDown || !m_cppServer.client) return;
-    qDebug() << "SmdLspManager: clangd stopped, exitCode" << exitCode;
     m_cppServer.initialized = false;
     if (status == QProcess::CrashExit) {
         m_cppServer.client->deleteLater();
@@ -659,13 +632,10 @@ void SmdLspManager::processDiagnostics(const QString &langId,
 {
     LanguageServer *srv = serverForLang(langId);
     if (!srv) {
-        debugLog(QStringLiteral("processDiagnostics — no server for lang=%1").arg(langId));
         return;
     }
 
     QJsonArray diagnostics = params.value(QStringLiteral("diagnostics")).toArray();
-    debugLog(QStringLiteral("processDiagnostics — lang=%1, diag count=%2, cellRanges=%3")
-        .arg(langId).arg(diagnostics.size()).arg(srv->cellRanges.size()));
     QMap<int, QList<SmdDiagnostic>> newDiags;
 
     for (const QJsonValue &val : diagnostics) {
@@ -698,8 +668,6 @@ void SmdLspManager::processDiagnostics(const QString &langId,
 
     // Emit per-cell
     for (auto it = newDiags.begin(); it != newDiags.end(); ++it) {
-        debugLog(QStringLiteral("processDiagnostics — emit cell=%1, count=%2")
-            .arg(it.key()).arg(it.value().size()));
         m_diagnostics[it.key()] = it.value();
         emit diagnosticsUpdated(it.key(), it.value());
     }
@@ -710,7 +678,6 @@ void SmdLspManager::processDiagnostics(const QString &langId,
     const QList<int> diagKeys = m_diagnostics.keys();
     for (int ci : diagKeys) {
         if (!newDiags.contains(ci) && srv->cellRanges.contains(ci)) {
-            debugLog(QStringLiteral("processDiagnostics — clear stale cell=%1").arg(ci));
             m_diagnostics.remove(ci);
             emit diagnosticsUpdated(ci, {});
         }
@@ -902,7 +869,6 @@ void SmdLspManager::focusCell(int cellIndex)
 
 void SmdLspManager::startPythonProcess()
 {
-    debugLog(QStringLiteral("SmdLspManager::startPythonProcess"));
     if (m_shuttingDown || m_pyProcess) return;
 
     QString appDir = QCoreApplication::applicationDirPath();
@@ -935,7 +901,6 @@ void SmdLspManager::startPythonProcess()
     m_pyProcess = new QProcess(this);
     m_pyProcess->setProcessChannelMode(QProcess::MergedChannels);
     connect(m_pyProcess, &QProcess::started, this, [this]() {
-        debugLog(QStringLiteral("SmdLspManager — Python process started"));
         m_pyServer.initialized = true;
         emit serverReady(QStringLiteral("python"));
         // Request initial diagnostics if there are Python cells
@@ -1026,12 +991,7 @@ void SmdLspManager::sendPythonRequest(const QString &action, int cellIndex,
 
 void SmdLspManager::requestPythonDiagnostics()
 {
-    debugLog(QStringLiteral("requestPythonDiagnostics — pyProcess=%1, running=%2")
-        .arg(m_pyProcess != nullptr)
-        .arg(m_pyProcess ? m_pyProcess->state() == QProcess::Running : false));
-
     if (!m_pyProcess || m_pyProcess->state() != QProcess::Running) {
-        debugLog(QStringLiteral("requestPythonDiagnostics — bail: process not running"));
         return;
     }
 
@@ -1046,15 +1006,11 @@ void SmdLspManager::requestPythonDiagnostics()
         cell[QStringLiteral("code")] = QString::fromLatin1(
             code.toUtf8().toBase64());
         cells.append(cell);
-        debugLog(QStringLiteral("requestPythonDiagnostics — cell=%1 code=%2")
-            .arg(ci).arg(code));
     }
 
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("diagnostics");
     req[QStringLiteral("cells")] = cells;
-
-    debugLog(QStringLiteral("requestPythonDiagnostics — sending %1 cells").arg(cells.size()));
 
     QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
     m_pyProcess->write(payload);
@@ -1066,12 +1022,9 @@ void SmdLspManager::requestPythonDiagnostics()
 
 void SmdLspManager::onPyReadyRead()
 {
-    debugLog(QStringLiteral("SmdLspManager::onPyReadyRead — pyPending=%1")
-        .arg(static_cast<int>(m_pyPending)));
     if (m_shuttingDown || !m_pyProcess) return;
     while (m_pyProcess->canReadLine()) {
         QByteArray line = m_pyProcess->readLine().trimmed();
-        debugLog(QStringLiteral("onPyReadyRead — raw line: %1").arg(QString::fromUtf8(line)));
         if (!line.isEmpty())
             processPythonResponse(line);
     }
@@ -1085,22 +1038,15 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
     int cellIndex = m_pyRequestingCell;
     m_pyRequestingCell = -1;
 
-    debugLog(QStringLiteral("processPythonResponse — pending=%1, cellIndex=%2")
-        .arg(static_cast<int>(pending)).arg(cellIndex));
-
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(line, &err);
     if (err.error != QJsonParseError::NoError) {
-        debugLog(QStringLiteral("processPythonResponse — JSON parse error: %1")
-            .arg(err.errorString()));
         emitPythonEmptyResults();
         return;
     }
 
     QJsonObject msg = doc.object();
     if (!msg.value(QStringLiteral("ok")).toBool()) {
-        debugLog(QStringLiteral("processPythonResponse — not ok: %1")
-            .arg(msg.value(QStringLiteral("error")).toString()));
         emitPythonEmptyResults();
         return;
     }
@@ -1154,8 +1100,6 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
         // Emit directly instead of going through processDiagnostics which
         // was designed for virtual-document coordinate mapping.
         QJsonArray arr = dataVal.toArray();
-        debugLog(QStringLiteral("processPythonResponse — Diagnostics, count=%1")
-            .arg(arr.size()));
 
         QMap<int, QList<SmdDiagnostic>> newDiags;
         for (const QJsonValue &v : arr) {
@@ -1173,8 +1117,6 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
 
         // Emit per-cell
         for (auto it = newDiags.begin(); it != newDiags.end(); ++it) {
-            debugLog(QStringLiteral("processPythonResponse — emit cell=%1, count=%2")
-                .arg(it.key()).arg(it.value().size()));
             m_diagnostics[it.key()] = it.value();
             emit diagnosticsUpdated(it.key(), it.value());
         }
@@ -1183,7 +1125,6 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
         const QList<int> diagKeys = m_diagnostics.keys();
         for (int ci : diagKeys) {
             if (!newDiags.contains(ci) && m_pyCellContents.contains(ci)) {
-                debugLog(QStringLiteral("processPythonResponse — clear stale cell=%1").arg(ci));
                 m_diagnostics.remove(ci);
                 emit diagnosticsUpdated(ci, {});
             }
@@ -1202,9 +1143,6 @@ void SmdLspManager::emitPythonEmptyResults()
     int cellIndex = m_pyRequestingCell;
     m_pyRequestingCell = -1;
     m_pyTimeoutTimer.stop();
-
-    debugLog(QStringLiteral("emitPythonEmptyResults — pending=%1, cellIndex=%2")
-        .arg(static_cast<int>(pending)).arg(cellIndex));
 
     switch (pending) {
     case PyPending::Completion:
@@ -1233,7 +1171,6 @@ void SmdLspManager::onPyTimeout()
 
 void SmdLspManager::onPyProcessError(QProcess::ProcessError err)
 {
-    debugLog(QStringLiteral("SmdLspManager::onPyProcessError — err=%1").arg(err));
     if (m_shuttingDown || !m_pyProcess) return;
     emitPythonEmptyResults();
     if (err == QProcess::FailedToStart) {
@@ -1247,8 +1184,6 @@ void SmdLspManager::onPyProcessError(QProcess::ProcessError err)
 
 void SmdLspManager::onPyProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
-    debugLog(QStringLiteral("SmdLspManager::onPyProcessFinished — exitCode=%1 status=%2")
-        .arg(exitCode).arg(status));
     if (m_shuttingDown || !m_pyProcess) return;
     emitPythonEmptyResults();
     m_pyServer.initialized = false;

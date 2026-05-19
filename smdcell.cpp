@@ -3,7 +3,6 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "languageutils.h"
-#include "debuglog.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include <QTimer>
@@ -13,10 +12,7 @@
 #include <QWebEnginePage>
 #include <QCoreApplication>
 #include <QFile>
-#include <QTextStream>
-#include <QDateTime>
 #include <QDir>
-#include <QThread>
 #include <QPainter>
 
 // Minimal HTML page that embeds KaTeX + Mermaid + marked.js for
@@ -89,20 +85,6 @@ static QString smdRenderTemplate()
         "})();"
         "</script></body></html>"
     );
-}
-
-// Write debug log to release/smd_render_debug.log
-static void smdDebugLog(const QString &msg)
-{
-    QFile file(QCoreApplication::applicationDirPath()
-               + QStringLiteral("/smd_render_debug.log"));
-    if (file.open(QIODevice::Append | QIODevice::Text)) {
-        QTextStream ts(&file);
-        ts << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"))
-           << QStringLiteral(" [%1] ").arg(reinterpret_cast<quintptr>(QThread::currentThread()), 0, 16)
-           << msg << QStringLiteral("\n");
-        file.close();
-    }
 }
 
 // QWidget that paints a pixmap scaled to fit, with NO sizeHint influence.
@@ -260,7 +242,6 @@ void SmdCell::setupCodeEditor(const QString &langId)
 
 void SmdCell::setCellType(CellType type)
 {
-    debugLog(QStringLiteral("SmdCell::setCellType — from=%1 to=%2").arg(m_type).arg(type));
     if (m_type == type)
         return;
 
@@ -270,7 +251,6 @@ void SmdCell::setCellType(CellType type)
     m_languageId = langIdFromType(type);
     m_rendered = false;
     m_diagnostics.clear();
-    debugLog(QStringLiteral("SmdCell::setCellType — removing old editor"));
 
     if (m_markdownEditor) {
         m_editorStack->removeWidget(m_markdownEditor);
@@ -313,9 +293,7 @@ void SmdCell::setCellType(CellType type)
 
     updateTypeLabel();
     updateBorderStyle();
-    debugLog(QStringLiteral("SmdCell::setCellType — emitting cellTypeChanged"));
     emit cellTypeChanged(oldType);
-    debugLog(QStringLiteral("SmdCell::setCellType — done"));
 }
 
 QString SmdCell::content() const
@@ -426,8 +404,6 @@ void SmdCell::ensureRenderView()
     if (m_renderView)
         return;
 
-    smdDebugLog(QStringLiteral("ensureRenderView — creating QWebEngineView as top-level window"));
-
     // Create as a SEPARATE TOP-LEVEL WINDOW, NOT a child of SmdCell.
     // This prevents Qt from cascading native windows to SmdCell and all ancestor
     // widgets (QScrollArea viewport, etc.) — the root cause of minimize/restore flash.
@@ -459,9 +435,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         initH = m_editorStack->height();
         if (initH < 40) initH = 60;
     }
-
-    smdDebugLog(QStringLiteral("startRenderPipeline — isInitial=%1, stackW=%2, initH=%3")
-        .arg(isInitialRender).arg(m_editorStack->width()).arg(initH));
 
     // Position QWebEngineView at the cell's screen position.
     // It's a separate top-level window (no native cascade into SmdCell).
@@ -511,7 +484,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         tmplFile.close();
     }
     if (tmpl.isEmpty()) {
-        smdDebugLog(QStringLiteral("startRenderPipeline — template read FAILED"));
         tmpl = smdRenderTemplate().arg(
             QString::fromLatin1(content().toUtf8().toBase64()));
     } else {
@@ -523,10 +495,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         tmpl.replace(QStringLiteral("max-width: 960px;"),
                      QStringLiteral(""));
     }
-
-    smdDebugLog(QStringLiteral("startRenderPipeline — top-level win at (%1,%2) size=%3x%4, htmlLen=%5")
-        .arg(m_renderView->x()).arg(m_renderView->y())
-        .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
 
     // Inject zoom-adjusted font size into rendered content
     int renderFontPt = qBound(10, qRound(16 * m_zoomFactor), 32);
@@ -547,7 +515,6 @@ void SmdCell::setRendered(bool rendered)
         ensureRenderView();
         startRenderPipeline(true);
     } else {
-        smdDebugLog(QStringLiteral("setRendered(false) — stop+cleanup+switch to editor"));
         if (m_grabTimer)
             m_grabTimer->stop();
         if (m_renderView)
@@ -606,8 +573,6 @@ void SmdCell::applyRenderHeight(int contentH)
     if (!m_rendered || !m_renderView || contentH <= 0)
         return;
     int totalH = contentH + 4;
-    smdDebugLog(QStringLiteral("applyRenderHeight — contentH=%1, totalH=%2")
-        .arg(contentH).arg(totalH));
 
     m_renderView->setFixedHeight(totalH);
     m_editorStack->setFixedHeight(totalH);
@@ -621,16 +586,11 @@ void SmdCell::applyRenderHeight(int contentH)
 
 void SmdCell::onRenderLoadFinished(bool ok)
 {
-    smdDebugLog(QStringLiteral("onRenderLoadFinished — ok=%1, m_rendered=%2")
-        .arg(ok).arg(m_rendered));
-
     if (!m_rendered) {
-        smdDebugLog(QStringLiteral("onRenderLoadFinished — cell no longer rendered, ignoring"));
         return;
     }
 
     if (!ok) {
-        smdDebugLog(QStringLiteral("onRenderLoadFinished — load FAILED, using fallback"));
         int lineCount = content().count(QLatin1Char('\n')) + 1;
         applyRenderHeight(qMax(60, lineCount * 22 + 32));
         // Force grab on load failure — show what we have after a short delay
@@ -650,7 +610,6 @@ void SmdCell::onRenderLoadFinished(bool ok)
         "})()"),
         [guard = QPointer<SmdCell>(this)](const QVariant &v) {
             if (!guard) return;
-            smdDebugLog(QStringLiteral("runJS immediate — raw=%1").arg(v.toInt()));
             if (v.isValid()) guard->applyRenderHeight(v.toInt());
         });
 
@@ -668,7 +627,6 @@ void SmdCell::startGrabPolling()
     m_pollCount = 0;
     m_polledHeights.clear();
     m_grabTimer->start();
-    smdDebugLog(QStringLiteral("startGrabPolling — started 200ms timer"));
 }
 
 void SmdCell::pollGrabReady()
@@ -719,9 +677,6 @@ void SmdCell::pollGrabReady()
                 if (ce > cs) mermaidCount = json.mid(cs, ce - cs).toInt();
             }
 
-            smdDebugLog(QStringLiteral("pollGrabReady #%1 — h=%2, done=%3, mermaid=%4")
-                .arg(guard->m_pollCount).arg(h).arg(done).arg(mermaidCount));
-
             if (h > 0)
                 guard->applyRenderHeight(h);
 
@@ -738,12 +693,9 @@ void SmdCell::pollGrabReady()
             bool ready = heightStable && (done || mermaidCount == 0);
 
             if (guard->m_pollCount >= SmdCell::kMaxPollCount) {
-                smdDebugLog(QStringLiteral("pollGrabReady — max polls reached, forcing grab"));
                 if (guard->m_grabTimer) guard->m_grabTimer->stop();
                 guard->performGrab();
             } else if (ready) {
-                smdDebugLog(QStringLiteral("pollGrabReady — ready! stable=%1, mermaid=%2 done=%3")
-                    .arg(heightStable).arg(mermaidCount).arg(done));
                 if (guard->m_grabTimer) guard->m_grabTimer->stop();
                 guard->performGrab();
             }
@@ -751,7 +703,6 @@ void SmdCell::pollGrabReady()
 
     // Safety: force grab after max polls (checked in callback too for async safety)
     if (m_pollCount >= kMaxPollCount + 5) {
-        smdDebugLog(QStringLiteral("pollGrabReady — force grab (overflow)"));
         if (m_grabTimer) m_grabTimer->stop();
         performGrab();
     }
@@ -760,30 +711,25 @@ void SmdCell::pollGrabReady()
 void SmdCell::performGrab()
 {
     if (!m_rendered || !m_renderView || !m_renderImage) {
-        smdDebugLog(QStringLiteral("performGrab — aborted (state changed)"));
         return;
     }
     int vw = m_renderView->width();
     int vh = m_renderView->height();
     if (vh < 40) {
-        smdDebugLog(QStringLiteral("performGrab — view too small (%1x%2)").arg(vw).arg(vh));
         return;
     }
 
     // Grab the top-level render window, then immediately hide it.
-    smdDebugLog(QStringLiteral("performGrab — grabbing window %1x%2").arg(vw).arg(vh));
     m_grabbing = true; // suppress focusEntered during hide/cleanup
     QPixmap pm = m_renderView->grab();
     m_renderView->hide(); // hide immediately after grab — no linger
     if (pm.isNull() || pm.height() <= 0) {
-        smdDebugLog(QStringLiteral("performGrab — grab FAILED"));
         return;
     }
 
     qreal dpr = m_renderView->devicePixelRatioF();
     int lw = qRound(pm.width() / dpr);
     int lh = qRound(pm.height() / dpr);
-    smdDebugLog(QStringLiteral("performGrab — OK %1x%2 @dpr=%3").arg(lw).arg(lh).arg(dpr));
 
     // Set up pixmap widget, switch stack, hide overlay
     m_renderImage->setPixmap(pm);
@@ -815,7 +761,6 @@ void SmdCell::performGrab()
     m_grabbing = false;
     emit contentChanged();
     emit renderFinished();
-    smdDebugLog(QStringLiteral("performGrab — done"));
 }
 
 void SmdCell::cleanupRenderView()
@@ -824,7 +769,6 @@ void SmdCell::cleanupRenderView()
         m_grabTimer->stop();
     }
     if (m_renderView) {
-        smdDebugLog(QStringLiteral("cleanupRenderView — closing top-level QWebEngineView"));
         // Disconnect all signals BEFORE stopping to prevent cascading callbacks
         m_renderView->page()->disconnect();
         m_renderView->disconnect();
@@ -833,7 +777,6 @@ void SmdCell::cleanupRenderView()
         m_renderView->close();
         delete m_renderView;
         m_renderView = nullptr;
-        smdDebugLog(QStringLiteral("cleanupRenderView — done"));
     }
 }
 
@@ -857,8 +800,6 @@ void SmdCell::performReRender()
 {
     if (!m_rendered)
         return;
-    smdDebugLog(QStringLiteral("performReRender — width changed from %1 to %2")
-        .arg(m_lastRenderWidth).arg(m_editorStack->width()));
 
     // Stop any in-progress grab polling
     if (m_grabTimer)
