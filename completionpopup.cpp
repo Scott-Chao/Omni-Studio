@@ -91,8 +91,8 @@ CompletionPopup::CompletionPopup(QWidget *parent)
         "QListWidget { background: #252526; border: 1px solid #3C3C3C; }"
         "QListWidget::item { border: none; }"
         "QListWidget::item:selected { background: transparent; }"
-        "QScrollBar:vertical { width: 8px; background: #1E1E1E; }"
-        "QScrollBar::handle:vertical { background: #424242; border-radius: 4px; min-height: 20px; }"
+        "QScrollBar:vertical { width: 10px; background: #1E1E1E; margin: 0; }"
+        "QScrollBar::handle:vertical { background: #555555; border-radius: 5px; min-height: 30px; }"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
     );
     m_listWidget->setCursor(Qt::ArrowCursor);

@@ -79,6 +79,22 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
         "QListWidget { background-color: #1E1E1E; color: #D4D4D4; border: none; outline: none; }"
         "QListWidget::item { padding: 4px 8px; }"
         "QListWidget::item:hover { background-color: #2a2d2e; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 }
 

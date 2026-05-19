@@ -203,6 +203,22 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         "  border-left: 3px solid #0078d4;"
         "  padding-left: 13px;"
         "}"
+        "QScrollBar:vertical {"
+        "  background-color: #252525;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     m_categoryList->addItem(tr("编辑器"));
@@ -294,6 +310,22 @@ QWidget *SettingsPanel::createEditorPage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -506,6 +538,22 @@ QWidget *SettingsPanel::createAppearancePage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -601,6 +649,22 @@ QWidget *SettingsPanel::createOutputPanelPage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -670,6 +734,22 @@ QWidget *SettingsPanel::createPreviewPage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -743,6 +823,22 @@ QWidget *SettingsPanel::createSearchPage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -831,6 +927,22 @@ QWidget *SettingsPanel::createShortcutsPage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;
@@ -940,6 +1052,22 @@ QWidget *SettingsPanel::createAiServicePage()
     scrollArea->setStyleSheet(
         "QScrollArea { background: #2b2b2b; border: none; }"
         "QScrollArea > QWidget > QWidget { background: #2b2b2b; }"
+        "QScrollBar:vertical {"
+        "  background-color: #2b2b2b;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     );
 
     auto *content = new QWidget;

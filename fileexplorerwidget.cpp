@@ -197,7 +197,41 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_treeView->setModel(m_sortProxy);
 
     // 配置树视图外观
-    m_treeView->setStyleSheet("QTreeView::item { height: 24px; }");
+    m_treeView->setStyleSheet(
+        "QTreeView::item { height: 24px; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
+        "QScrollBar:horizontal {"
+        "  background-color: #1E1E1E;"
+        "  height: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:horizontal {"
+        "  background-color: #555555;"
+        "  min-width: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
+        "  width: 0;"
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+        "  background: none;"
+        "}"
+    );
     m_treeView->header()->hide(); // 隐藏表头
     m_treeView->setIndentation(17); // 调整缩进
     m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头

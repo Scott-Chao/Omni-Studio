@@ -30,7 +30,23 @@ SearchPanel::SearchPanel(QWidget *parent)
     m_resultList->setStyleSheet(
         "QListWidget { background: #1E1E1E; color: #D4D4D4; border: none; }"
         "QListWidget::item { padding: 2px 0; }"
-        "QListWidget::item:hover { background: #2a2d2e; }");
+        "QListWidget::item:hover { background: #2a2d2e; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}");
 
     m_statusLabel = new QLabel(tr("打开文件夹以搜索文件"), this);
     m_statusLabel->setStyleSheet(QString("color: #888; padding: 4px 8px; font-size: 12px;"));

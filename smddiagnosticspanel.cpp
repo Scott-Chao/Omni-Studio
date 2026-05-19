@@ -180,6 +180,22 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     contentArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     contentArea->setStyleSheet(QStringLiteral(
         "QScrollArea { background: #1E1E1E; border: none; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
     ));
 
     auto *contentWidget = new QWidget(contentArea);

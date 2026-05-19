@@ -94,7 +94,40 @@ CodeEditor::CodeEditor(QWidget *parent)
     // Dark code editor theme (with override support)
     setStyleSheet(QString(
         "QPlainTextEdit { background-color: %1; color: %2; "
-        "selection-background-color: %3; }")
+        "selection-background-color: %3; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
+        "QScrollBar:horizontal {"
+        "  background-color: #1E1E1E;"
+        "  height: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:horizontal {"
+        "  background-color: #555555;"
+        "  min-width: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
+        "  width: 0;"
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+        "  background: none;"
+        "}"
+    )
         .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
         .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
         .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));
@@ -154,7 +187,40 @@ void CodeEditor::reloadColors()
 
     setStyleSheet(QString(
         "QPlainTextEdit { background-color: %1; color: %2; "
-        "selection-background-color: %3; }")
+        "selection-background-color: %3; }"
+        "QScrollBar:vertical {"
+        "  background-color: #1E1E1E;"
+        "  width: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "  height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "  background: none;"
+        "}"
+        "QScrollBar:horizontal {"
+        "  background-color: #1E1E1E;"
+        "  height: 10px;"
+        "  margin: 0;"
+        "}"
+        "QScrollBar::handle:horizontal {"
+        "  background-color: #555555;"
+        "  min-width: 30px;"
+        "  border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
+        "  width: 0;"
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+        "  background: none;"
+        "}"
+    )
         .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
         .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
         .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));

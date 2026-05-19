@@ -53,6 +53,7 @@ SOURCES += \
     pythonsyntaxhighlighter.cpp \
     pythoncompletionprovider.cpp \
     rightpanelcontainer.cpp \
+    scrollbarhider.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
     smdcell.cpp \
@@ -114,6 +115,7 @@ HEADERS += \
     pythonsyntaxhighlighter.h \
     pythoncompletionprovider.h \
     rightpanelcontainer.h \
+    scrollbarhider.h \
     searchpanel.h \
     settingspanel.h \
     smdcell.h \

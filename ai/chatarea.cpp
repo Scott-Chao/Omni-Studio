@@ -14,16 +14,13 @@ ChatArea::ChatArea(QWidget *parent)
         "QScrollArea { background-color: #1E1E1E; border: none; }"
         "QScrollBar:vertical {"
         "  background-color: #1E1E1E;"
-        "  width: 8px;"
+        "  width: 10px;"
         "  margin: 0;"
         "}"
         "QScrollBar::handle:vertical {"
-        "  background-color: #424242;"
-        "  min-height: 30px;"
-        "  border-radius: 4px;"
-        "}"
-        "QScrollBar::handle:vertical:hover {"
         "  background-color: #555555;"
+        "  min-height: 30px;"
+        "  border-radius: 5px;"
         "}"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
         "  height: 0;"
@@ -35,6 +32,7 @@ ChatArea::ChatArea(QWidget *parent)
 
     m_container = new QWidget(this);
     m_container->setStyleSheet("background-color: #1E1E1E;");
+
     m_layout = new QVBoxLayout(m_container);
     m_layout->setContentsMargins(4, 8, 4, 8);
     m_layout->setSpacing(12);

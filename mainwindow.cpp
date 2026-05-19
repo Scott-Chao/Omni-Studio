@@ -33,6 +33,7 @@
 #include "ai/openaiprovider.h"
 #include "smdformat.h"
 #include "smdeditor.h"
+#include "scrollbarhider.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
@@ -77,6 +78,7 @@
 #include <QCoreApplication>
 #include <QThread>
 #include <QTimer>
+#include <QAbstractScrollArea>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -749,6 +751,23 @@ MainWindow::MainWindow(QWidget *parent)
     updatePreviewActionState();
     updateSplitPreviewActionState();
     updateAiActionBar();
+
+    // Scrollbar auto-hide: manage all scrollable areas
+    auto *hider = new ScrollbarHider(this);
+    {
+        const auto areas = findChildren<QAbstractScrollArea*>();
+        for (auto *area : areas)
+            hider->manage(area);
+    }
+
+    // Watch for dynamically created QAbstractScrollAreas (e.g. PDF view in new tabs)
+    connect(m_tabManager, &QTabWidget::currentChanged, this, [this, hider](int) {
+        if (auto *editor = m_tabManager->currentEditor()) {
+            const auto areas = editor->findChildren<QAbstractScrollArea*>();
+            for (auto *area : areas)
+                hider->manage(area);
+        }
+    });
 }
 
 MainWindow::~MainWindow()
@@ -2034,11 +2053,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
         QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
 
-        // Auto-hide right panel when clicking outside
+        // Auto-hide right panel when clicking in the editor area
         if (m_dockRightPanel->isVisible()) {
             if (btn && btn->defaultAction() == toggleRightPanelAction)
                 return QMainWindow::eventFilter(watched, event);
-            if (!m_dockRightPanel->isAncestorOf(clickedWidget))
+            if (!m_dockRightPanel->isAncestorOf(clickedWidget)
+                && m_tabManager && m_tabManager->isAncestorOf(clickedWidget))
                 m_dockRightPanel->hide();
         }
 
