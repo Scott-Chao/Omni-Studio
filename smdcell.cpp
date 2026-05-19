@@ -307,6 +307,8 @@ void SmdCell::setCellType(CellType type)
     m_editorStack->setCurrentIndex(0);
     if (!oldContent.isEmpty())
         setContent(oldContent);
+    // Re-apply command mode state to the newly created editor
+    setCommandMode(m_commandMode);
     updateEditorHeight();
 
     updateTypeLabel();
@@ -357,6 +359,12 @@ void SmdCell::setCommandMode(bool cmd)
             ed->setReadOnly(true);
             ed->setTextInteractionFlags(Qt::NoTextInteraction);
             ed->setFocusPolicy(Qt::NoFocus);
+            ed->setCursorWidth(0);
+        }
+        // Also hide cursor on the hidden markdown editor for rendered cells,
+        // since editorWidget() returns m_renderImage in that case.
+        if (m_rendered && m_markdownEditor) {
+            m_markdownEditor->setCursorWidth(0);
         }
         if (m_rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
@@ -375,15 +383,16 @@ void SmdCell::setCommandMode(bool cmd)
             ed->setReadOnly(false);
             ed->setTextInteractionFlags(Qt::TextEditorInteraction);
             ed->setFocusPolicy(Qt::StrongFocus);
+            ed->setCursorWidth(1);
         }
+        if (m_rendered && m_markdownEditor)
+            m_markdownEditor->setCursorWidth(1);
         m_executeHint->setVisible(false);
     }
 }
 
 void SmdCell::setActive(bool active)
 {
-    debugLog(QStringLiteral("SmdCell::setActive — active=%1, type=%2, codeEditor=%3")
-        .arg(active).arg(m_type).arg(m_codeEditor != nullptr));
     m_active = active;
     updateBorderStyle();
     if (m_codeEditor) {
@@ -399,9 +408,17 @@ void SmdCell::setActive(bool active)
                 c.clearSelection();
                 ed->setTextCursor(c);
             }
+            ed->setCursorWidth(0);
+        }
+        if (m_rendered && m_markdownEditor)
+            m_markdownEditor->setCursorWidth(0);
+    } else {
+        // Restore cursor in edit mode (command mode cursor is handled by setCommandMode)
+        if (!m_commandMode) {
+            if (auto *ed = qobject_cast<QPlainTextEdit*>(editorWidget()))
+                ed->setCursorWidth(1);
         }
     }
-    debugLog(QStringLiteral("SmdCell::setActive — done"));
 }
 
 void SmdCell::ensureRenderView()
@@ -544,8 +561,19 @@ void SmdCell::setRendered(bool rendered)
         }
         cleanupRenderView();
         m_editorStack->setCurrentIndex(0);
-        if (m_markdownEditor)
-            m_markdownEditor->setFocus();
+        if (m_markdownEditor) {
+            if (m_commandMode) {
+                // In command mode, don't focus the editor — keep it read-only
+                // and cursorless.
+                m_markdownEditor->setReadOnly(true);
+                m_markdownEditor->setTextInteractionFlags(Qt::NoTextInteraction);
+                m_markdownEditor->setFocusPolicy(Qt::NoFocus);
+                m_markdownEditor->setCursorWidth(0);
+            } else {
+                m_markdownEditor->setCursorWidth(1);
+                m_markdownEditor->setFocus();
+            }
+        }
         updateEditorHeight();
     }
     if (m_commandMode) {
@@ -880,8 +908,10 @@ void SmdCell::setEditorFocus()
     QWidget *w = editorWidget();
     if (w) {
         w->setFocus();
-        if (auto *pte = qobject_cast<QPlainTextEdit*>(w))
+        if (auto *pte = qobject_cast<QPlainTextEdit*>(w)) {
+            pte->setCursorWidth(1);
             pte->moveCursor(QTextCursor::End);
+        }
     }
 }
 

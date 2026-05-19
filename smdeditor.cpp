@@ -706,16 +706,12 @@ void SmdEditor::enterCommandMode()
     if (m_diagnosticsPanel)
         m_diagnosticsPanel->setVisible(false);
     for (int i = 0; i < m_cells.size(); ++i) {
-        debugLog(QStringLiteral("enterCommandMode — cell %1/%2 cmd=%3 active=%4")
-            .arg(i).arg(m_cells.size()).arg(m_cells[i] != nullptr)
-            .arg(i == m_activeCellIndex));
         m_cells[i]->setCommandMode(true);
         m_cells[i]->setActive(i == m_activeCellIndex);
     }
     for (SmdOutputWidget *w : m_outputWidgets)
         w->clearSelection();
     setFocus();
-    debugLog(QStringLiteral("enterCommandMode — done"));
 }
 
 void SmdEditor::enterEditMode()
@@ -1572,8 +1568,6 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
             else {
-                debugLog(QStringLiteral("eventFilter Esc — entering command mode, type=%1")
-                    .arg(event->type()));
                 enterCommandMode();
             }
             return true;

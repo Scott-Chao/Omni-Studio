@@ -39,11 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 修复
-修复以下 SMD cell 点击或操作时焦点异常切换的问题：
-- 点击未选中的 cell，焦点被切换到块的中间（现在不会切换）
-- 新建 cell 时视角跳转到顶部（现在视角切换到新建的块上）
-- 分割 cell 时视角切换到顶部（现在视角切换到下方的 cell）
+### 新增
+- 创建 cell 时之前的光标自动隐藏
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -982,13 +979,13 @@
    - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示，销毁 QWebEngineView 释放 GPU 资源。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
 
 **主要接口**：
-- `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容。
+- `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容，最后调用 `setCommandMode(m_commandMode)` 将当前命令/编辑模式状态重新应用到新编辑器。
 - `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
-- `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）。`setActive(false)` 时清除编辑器文本选中（`QTextCursor::clearSelection()`），确保切换单元格后旧选中自动消失。`setCommandMode(true)` 时先显式 `QTextCursor::clearSelection()` 清除选中，再通过 `Qt::NoTextInteraction` 禁用交互。
-- `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源。
+- `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）及光标可见性。`setActive(false)` 时清除编辑器文本选中（`QTextCursor::clearSelection()`）并设置 `setCursorWidth(0)` 隐藏光标。`setActive(true)` 且非命令模式时恢复 `setCursorWidth(1)`。`setCommandMode(true)` 时先显式 `QTextCursor::clearSelection()` 清除选中，再通过 `Qt::NoTextInteraction` + `setCursorWidth(0)` 禁用交互和光标；对已渲染单元格还会直接操作隐藏的 `m_markdownEditor`。退出命令模式时恢复 `setCursorWidth(1)`。
+- `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源，根据 `m_commandMode` 决定是否聚焦编辑器（编辑模式）或保持只读无光标状态（命令模式）。
 - `void setRenderedState(bool rendered)`：仅设置渲染标志位，不触发实际渲染管线。用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
 - `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 RenderPixmapWidget）。
-- `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
+- `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
@@ -1108,9 +1105,13 @@
 - 分割后自动选中下方单元格，光标置于其开头（`QTextCursor::Start`）。
 - 高度更新采用两阶段延迟策略：两个 `QTimer::singleShot(0, ...)` 确保外层布局（cell 宽度分配）和内层布局（QStackedWidget → QPlainTextEdit → QTextDocument 重排）均完成后再调用 `updateEditorHeight()`，避免因 QPlainTextEdit 宽度未更新导致的文档高度计算偏差。之后第三个 `QTimer::singleShot(0)` 将视图滚动到新 cell 光标位置，上方留 50px 边距确保 cell 顶部栏也能完整显示。
 
-**命令模式编辑禁用**：
-- 进入命令模式时 `SmdCell::setCommandMode(true)` 将编辑器设为 `readOnly`、`Qt::NoTextInteraction`、`Qt::NoFocus`，彻底禁用光标和编辑操作；同时清除所有输出控件（`SmdOutputWidget`）的文本选中，确保进入命令模式后无残留选中高亮。
-- 退出命令模式时 `setCommandMode(false)` 恢复 `readOnly=false`、`Qt::TextEditorInteraction`、`Qt::StrongFocus`。
+**命令模式编辑禁用与光标管理**：
+- 进入命令模式时 `SmdCell::setCommandMode(true)` 将编辑器设为 `readOnly`、`Qt::NoTextInteraction`、`Qt::NoFocus`，并设置 `setCursorWidth(0)` 显式隐藏光标；同时清除所有输出控件（`SmdOutputWidget`）的文本选中，确保进入命令模式后无残留选中高亮。对已渲染的 Markdown 单元格，直接操作隐藏的 `m_markdownEditor` 设置 `setCursorWidth(0)`（因为 `editorWidget()` 返回的是 `RenderPixmapWidget`，不是 `QPlainTextEdit`）。
+- 退出命令模式时 `setCommandMode(false)` 恢复 `readOnly=false`、`Qt::TextEditorInteraction`、`Qt::StrongFocus`、`setCursorWidth(1)`。
+- `setActive(false)` 时额外设置 `setCursorWidth(0)` 隐藏非活动单元格的光标；`setActive(true)` 时仅在非命令模式下恢复 `setCursorWidth(1)`（命令模式光标由 `setCommandMode` 统一管理）。
+- `setEditorFocus()` 设置焦点前先调用 `setCursorWidth(1)` 确保活动单元格光标可见。
+- `setRendered(false)` 取消渲染时，若当前为命令模式则保持编辑器只读且光标隐藏，避免非法聚焦。
+- `setCellType()` 切换类型重建编辑器后调用 `setCommandMode(m_commandMode)`，确保新编辑器继承当前模式状态（ReadOnly、NoFocus、cursorWidth 等）。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
