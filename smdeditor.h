@@ -144,6 +144,9 @@ private:
     QString m_filePath;
     QString m_originalContent;
 
+    qreal m_zoomFactor = 1.0;
+    int m_baseFontSize = 14;
+
     SmdLspManager *m_lspManager = nullptr;
     SmdDiagnosticsPanel *m_diagnosticsPanel = nullptr;
 

@@ -442,12 +442,15 @@ void SmdEditor::setModified(bool modified)
 
 void SmdEditor::applyZoom(qreal factor, int baseFontSize)
 {
+    m_zoomFactor = factor;
+    m_baseFontSize = baseFontSize;
     for (SmdCell *c : m_cells)
         c->applyZoom(factor, baseFontSize);
 }
 
 void SmdEditor::setEditorFont(const QString &family, int size)
 {
+    m_baseFontSize = size;
     for (SmdCell *c : m_cells)
         c->applyZoom(1.0, size);
 }
@@ -505,6 +508,8 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
     if (m_lspManager && m_activeCellIndex >= 0
         && m_cells[m_activeCellIndex]->cellType() == SmdCell::Cpp)
         m_lspManager->focusCell(m_activeCellIndex);
+
+    cell->applyZoom(m_zoomFactor, m_baseFontSize);
 
     emit contentChanged();
     return cell;

@@ -116,6 +116,7 @@ private:
     QTimer *m_renderDebounceTimer = nullptr;
     int m_lastRenderWidth = 0;
     qreal m_zoomFactor = 1.0;
+    int m_baseFontSize = 14;
 
     QString m_languageId;
     QList<SmdDiagnostic> m_diagnostics;

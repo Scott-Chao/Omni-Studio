@@ -39,8 +39,8 @@
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
-### 新增
-- 创建 cell 时之前的光标自动隐藏
+### 修复
+- 修复 SMD 缩放后新建 cell 字号不统一的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -986,7 +986,7 @@
 - `void setRenderedState(bool rendered)`：仅设置渲染标志位，不触发实际渲染管线。用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
 - `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 RenderPixmapWidget）。
 - `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
-- `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
+- `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor` 和 `m_baseFontSize`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
   - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
@@ -1084,7 +1084,7 @@
 - `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。re-index 循环中先 `disconnect` 所有相关信号（`focusEntered`、`contentChanged`、**`cellTypeChanged`**）再 `connect`，防止信号重复连接累积。`focusEntered` 信号直接调用 `setActiveCell(index)` 激活 cell，滚动由 `m_clickSuppressScroll` 标志控制（鼠标点击期间置 true 跳过滚动）。
 - `cell->contentChanged` 信号连接至 `m_lspManager->cellContentChanged()`，触发虚拟文档重建和 `textDocument/didChange` 通知。C++ cell 内容变化后额外调用 `focusCell(m_activeCellIndex)` 重新检测程序组边界（支持动态键入/删除 `main()` 时实时切换组）。
 - `cell->cellTypeChanged(CellType oldType)` 信号携带旧类型参数。lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和内容缓存被正确清理后再为新语言创建 adapter。
-- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。`removeCell()` 在 `cellRemoved()` 删除共享 adapter **之前**先调用 `codeEditor->setCompletionProvider(nullptr)` 断开，防止旧编辑器持有悬空指针。增删 cell 后若活动 cell 为 C++ 则调用 `focusCell()` 重新检测组边界。
+- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。`removeCell()` 在 `cellRemoved()` 删除共享 adapter **之前**先调用 `codeEditor->setCompletionProvider(nullptr)` 断开，防止旧编辑器持有悬空指针。`addCell()` 创建 cell 后调用 `cell->applyZoom(m_zoomFactor, m_baseFontSize)` 使新 cell 继承当前编辑器的缩放状态。增删 cell 后若活动 cell 为 C++ 则调用 `focusCell()` 重新检测组边界。
 - `setActiveCell()`：调用旧单元格 `setActive(false)` 清除编辑器选中 + `m_outputWidgets[oldIndex]->clearSelection()` 清除输出区选中 → 激活新单元格 → 同步命令模式状态。若 `m_clickSuppressScroll` 为 false，则通过 `QTimer::singleShot(0)` 延迟调用 `ensureWidgetVisible`（确保布局已处理完 `insertWidget` 等延迟事件后再读取 cell 位置）。鼠标点击激活时该标志为 true，跳过滚动。若目标 cell 为 C++ 则调用 `m_lspManager->focusCell(index)`，切换 clangd 虚拟文档至目标 cell 所在程序组并恢复缓存诊断。
 - `m_lspManager->diagnosticsUpdated` 信号连接至 cell 的 `SmdCell::setDiagnostics()` 和 `CodeEditor::setDiagnostics()`，更新头部标签计数和编辑器波浪线。
 - 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
@@ -1111,16 +1111,17 @@
 - `setActive(false)` 时额外设置 `setCursorWidth(0)` 隐藏非活动单元格的光标；`setActive(true)` 时仅在非命令模式下恢复 `setCursorWidth(1)`（命令模式光标由 `setCommandMode` 统一管理）。
 - `setEditorFocus()` 设置焦点前先调用 `setCursorWidth(1)` 确保活动单元格光标可见。
 - `setRendered(false)` 取消渲染时，若当前为命令模式则保持编辑器只读且光标隐藏，避免非法聚焦。
-- `setCellType()` 切换类型重建编辑器后调用 `setCommandMode(m_commandMode)`，确保新编辑器继承当前模式状态（ReadOnly、NoFocus、cursorWidth 等）。
+- `setCellType()` 切换类型重建编辑器后调用 `setCommandMode(m_commandMode)` 确保新编辑器继承当前模式状态（ReadOnly、NoFocus、cursorWidth 等），然后调用 `applyZoom(m_zoomFactor, m_baseFontSize)` 将当前缩放状态应用到新编辑器，保证字体大小与已有 cell 一致。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：序列化/反序列化所有单元格内容。
 - `bool isModified() const` / `void setModified(bool modified)`：修改状态管理。
 - `int cppGroupForCell(int cellIndex) const`：遍历 `m_cells` 中位于 `cellIndex` 之前的 C++ cell，按 `main()` 边界计算所属程序组 ID（与 `SmdLspManager::computeCppGroup()` 算法相同）。供 `executeCodeCell()` 确定同组合并范围。
-- `void applyZoom(qreal factor, int baseFontSize)`：遍历所有单元格调用 `SmdCell::applyZoom()`。
+- `void applyZoom(qreal factor, int baseFontSize)`：存储当前缩放因子和基准字号至 `m_zoomFactor` / `m_baseFontSize`，然后遍历所有单元格调用 `SmdCell::applyZoom()`，确保后续新建的 cell 可继承当前缩放状态。
 - `void checkCellRenderWidths()`：遍历所有已渲染单元格调用 `SmdCell::checkReRender()`，在 `resizeEvent` 中延迟执行，确保布局稳定后检测宽度变化。
-- `void setEditorFont(const QString &family, int size)` / `void reloadColors()`：字体和颜色更新。
+- `void setEditorFont(const QString &family, int size)`：存储基准字号至 `m_baseFontSize`，遍历所有单元格调用 `SmdCell::applyZoom(1.0, size)`。注意此处 zoom 因子固定为 1.0，实际的缩放因子由 `EditorWidget` 后续调用 `applyZoom()` 重新应用。
+- `void reloadColors()`：颜色更新。
 
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。

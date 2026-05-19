@@ -309,7 +309,7 @@ void SmdCell::setCellType(CellType type)
         setContent(oldContent);
     // Re-apply command mode state to the newly created editor
     setCommandMode(m_commandMode);
-    updateEditorHeight();
+    applyZoom(m_zoomFactor, m_baseFontSize);
 
     updateTypeLabel();
     updateBorderStyle();
@@ -946,6 +946,7 @@ void SmdCell::setCursorPosition(int line, int column)
 void SmdCell::applyZoom(qreal factor, int baseFontSize)
 {
     m_zoomFactor = factor;
+    m_baseFontSize = baseFontSize;
 
     const auto &cfg = ConfigManager::instance();
     int pointSize = qBound(cfg.fontMinPointSize(),
