@@ -1,12 +1,45 @@
 #include "aipanel.h"
 #include "chatarea.h"
 #include "actionbar.h"
+#include "errorlistpanel.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QStackedWidget>
 #include <QLabel>
+
+// ── Shared tab button style ───────────────────────────────────────────
+
+static const char *kInactiveTabStyle = R"(
+    QPushButton {
+        background: transparent;
+        color: #777;
+        border: none;
+        border-bottom: 2px solid transparent;
+        font-size: 12px;
+        font-weight: normal;
+        padding: 0 10px;
+    }
+    QPushButton:hover {
+        color: #aaa;
+    }
+)";
+
+static const char *kActiveTabStyle = R"(
+    QPushButton {
+        background: transparent;
+        color: #cccccc;
+        border: none;
+        border-bottom: 2px solid #0078d4;
+        font-size: 12px;
+        font-weight: bold;
+        padding: 0 10px;
+    }
+)";
+
+// ═══════════════════════════════════════════════════════════════════════
 
 AiPanel::AiPanel(QWidget *parent)
     : QWidget(parent)
@@ -17,16 +50,22 @@ AiPanel::AiPanel(QWidget *parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // ── Title bar ──
+    // ── Title bar with tab buttons ──
     auto *titleBar = new QWidget(this);
     titleBar->setFixedHeight(36);
     titleBar->setStyleSheet("background-color: #252525;");
 
     auto *titleLayout = new QHBoxLayout(titleBar);
-    titleLayout->setContentsMargins(10, 0, 6, 0);
+    titleLayout->setContentsMargins(4, 0, 6, 0);
+    titleLayout->setSpacing(2);
 
-    auto *titleLabel = new QLabel(tr("AI 助手"));
-    titleLabel->setStyleSheet("color: #cccccc; font-size: 12px; font-weight: bold;");
+    m_aiTabBtn = new QPushButton(tr("AI 助手"));
+    m_aiTabBtn->setFixedHeight(32);
+    m_aiTabBtn->setCursor(Qt::PointingHandCursor);
+
+    m_errorTabBtn = new QPushButton(tr("错题本"));
+    m_errorTabBtn->setFixedHeight(32);
+    m_errorTabBtn->setCursor(Qt::PointingHandCursor);
 
     m_clearBtn = new QPushButton(tr("清空对话"));
     m_clearBtn->setFixedHeight(24);
@@ -46,20 +85,27 @@ AiPanel::AiPanel(QWidget *parent)
         "}"
     );
 
-    titleLayout->addWidget(titleLabel);
+    titleLayout->addWidget(m_aiTabBtn);
+    titleLayout->addWidget(m_errorTabBtn);
     titleLayout->addStretch();
     titleLayout->addWidget(m_clearBtn);
 
-    // ── Action bar ──
+    // ── Action bar (only shown on chat tab) ──
     m_actionBar = new ActionBar(this);
 
-    // ── Chat area ──
-    m_chatArea = new ChatArea(this);
+    // ── Stacked widget: chat area (0) | error list (1) ──
+    m_stackedWidget = new QStackedWidget(this);
 
-    // ── Input bar ──
-    auto *inputBar = new QWidget(this);
-    inputBar->setStyleSheet("background-color: #252525;");
-    auto *inputLayout = new QHBoxLayout(inputBar);
+    m_chatArea = new ChatArea(this);
+    m_errorListPanel = new ErrorListPanel(this);
+
+    m_stackedWidget->addWidget(m_chatArea);       // index 0 = ChatTab
+    m_stackedWidget->addWidget(m_errorListPanel);  // index 1 = ErrorTab
+
+    // ── Input bar (only shown on chat tab) ──
+    m_inputBar = new QWidget(this);
+    m_inputBar->setStyleSheet("background-color: #252525;");
+    auto *inputLayout = new QHBoxLayout(m_inputBar);
     inputLayout->setContentsMargins(6, 6, 6, 6);
     inputLayout->setSpacing(6);
 
@@ -103,12 +149,20 @@ AiPanel::AiPanel(QWidget *parent)
     inputLayout->addWidget(m_inputEdit, 1);
     inputLayout->addWidget(m_sendBtn);
 
+    // ── Assemble main layout ──
     mainLayout->addWidget(titleBar);
     mainLayout->addWidget(m_actionBar);
-    mainLayout->addWidget(m_chatArea, 1);
-    mainLayout->addWidget(inputBar);
+    mainLayout->addWidget(m_stackedWidget, 1);
+    mainLayout->addWidget(m_inputBar);
+
+    // ── Start on chat tab ──
+    updateTabButtonStyle();
+    m_stackedWidget->setCurrentIndex(ChatTab);
 
     // ── Connections ──
+    connect(m_aiTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ChatTab); });
+    connect(m_errorTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ErrorTab); });
+
     connect(m_actionBar, &ActionBar::actionTriggered, this, [this](AiAction action) {
         emit actionTriggered(static_cast<int>(action));
     });
@@ -134,7 +188,45 @@ AiPanel::AiPanel(QWidget *parent)
         clearChat();
         emit clearRequested();
     });
+
+    // Forward error list item click
+    connect(m_errorListPanel, &ErrorListPanel::errorClicked,
+            this, &AiPanel::errorSelected);
 }
+
+void AiPanel::onTabSwitch(int index)
+{
+    if (index == m_currentTab)
+        return;
+
+    m_currentTab = index;
+    m_stackedWidget->setCurrentIndex(index);
+    updateTabButtonStyle();
+
+    // Show/hide chat-specific UI
+    bool isChat = (index == ChatTab);
+    m_actionBar->setVisible(isChat);
+    m_inputBar->setVisible(isChat);
+    m_clearBtn->setVisible(isChat);
+
+    // Refresh error list when switching to error tab
+    if (!isChat) {
+        m_errorListPanel->loadRecords();
+    }
+}
+
+void AiPanel::updateTabButtonStyle()
+{
+    m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? kActiveTabStyle : kInactiveTabStyle);
+    m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? kActiveTabStyle : kInactiveTabStyle);
+}
+
+void AiPanel::setCurrentTab(int index)
+{
+    onTabSwitch(index);
+}
+
+// ── Chat operations (delegated to ChatArea) ──────────────────────────
 
 void AiPanel::addUserMessage(const QString &text)
 {
