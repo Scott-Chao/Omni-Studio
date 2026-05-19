@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 #include <QTextBrowser>
 #include <QRegularExpression>
+#include <QSet>
 
 // ═══════════════════════════════════════════════════════════════════
 // Helpers
@@ -382,7 +383,7 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     connect(m_reviewBtn, &QPushButton::clicked, this, [this]() {
         m_record.reviewed = !m_record.reviewed;
         m_reviewBtn->setText(m_record.reviewed ? tr("✅ 已阅") : tr("标记已阅"));
-        emit markReviewed(m_record.id);
+        emit markReviewed(m_record.id, m_record.reviewed);
     });
 }
 
@@ -591,24 +592,22 @@ void ErrorListPanel::setRecords(const QVector<ErrorRecord> &records)
 
 void ErrorListPanel::onFilterChanged()
 {
-    m_expandedId.clear();
-    rebuildList();
+    applyFilter();
 }
 
 void ErrorListPanel::onSearchTextChanged(const QString &text)
 {
     Q_UNUSED(text);
-    m_expandedId.clear();
-    rebuildList();
+    applyFilter();
 }
 
 void ErrorListPanel::rebuildList()
 {
-    // Remove all existing item widgets (including detail widgets)
-    for (auto *item : findChildren<ErrorListItem*>())
-        item->deleteLater();
-    for (auto *detail : findChildren<ErrorDetailWidget*>())
-        detail->deleteLater();
+    // Remove all existing item and detail widgets
+    qDeleteAll(m_listItems);
+    m_listItems.clear();
+    qDeleteAll(m_detailWidgets);
+    m_detailWidgets.clear();
 
     QVector<ErrorRecord> filtered = filteredRecords();
     m_countLabel->setText(tr("共 %1 条记录").arg(filtered.size()));
@@ -616,27 +615,35 @@ void ErrorListPanel::rebuildList()
     for (const auto &record : filtered) {
         auto *item = new ErrorListItem(record, m_listContainer);
         connect(item, &ErrorListItem::clicked, this, &ErrorListPanel::onItemClicked);
-        // Insert before the trailing stretch
         m_listLayout->insertWidget(m_listLayout->count() - 1, item);
+        m_listItems.append(item);
 
-        // If this record was expanded, insert the detail widget right after it
         if (m_expandedId == record.id) {
-            auto *detail = new ErrorDetailWidget(record, m_listContainer);
-            connect(detail, &ErrorDetailWidget::reanalyzeClicked,
-                    this, &ErrorListPanel::onReanalyzeClicked);
-            connect(detail, &ErrorDetailWidget::deleteClicked,
-                    this, &ErrorListPanel::deleteRecordRequested);
-            connect(detail, &ErrorDetailWidget::markReviewed,
-                    this, [this](const QString &recId) {
-                ErrorRecord rec = ErrorJournal::instance().recordById(recId);
-                ErrorJournal::instance().setRecordReviewed(recId, !rec.reviewed);
-                loadRecords();
-            });
+            auto *detail = createDetailWidget(record);
             m_listLayout->insertWidget(m_listLayout->count() - 1, detail);
         }
     }
 
-    // Scroll to top after rebuild
+    m_scrollArea->verticalScrollBar()->setValue(0);
+}
+
+void ErrorListPanel::applyFilter()
+{
+    QVector<ErrorRecord> filtered = filteredRecords();
+    m_countLabel->setText(tr("共 %1 条记录").arg(filtered.size()));
+
+    QSet<QString> filteredIds;
+    for (const auto &rec : filtered)
+        filteredIds.insert(rec.id);
+
+    for (auto *item : m_listItems)
+        item->setVisible(filteredIds.contains(item->recordId()));
+
+    // Hide all detail widgets and clear expanded state
+    for (auto *detail : m_detailWidgets)
+        detail->hide();
+    m_expandedId.clear();
+
     m_scrollArea->verticalScrollBar()->setValue(0);
 }
 
@@ -686,24 +693,60 @@ void ErrorListPanel::onItemClicked(const QString &recordId)
 void ErrorListPanel::expandItem(const QString &recordId)
 {
     m_expandedId = recordId;
-    rebuildList();
+
+    // Hide any other expanded detail
+    for (auto it = m_detailWidgets.begin(); it != m_detailWidgets.end(); ++it) {
+        if (it.key() != recordId)
+            it.value()->hide();
+    }
+
+    // If detail already exists, just show it
+    if (m_detailWidgets.contains(recordId)) {
+        m_detailWidgets.value(recordId)->show();
+        return;
+    }
+
+    // Find the record and create the detail widget
+    ErrorRecord rec = ErrorJournal::instance().recordById(recordId);
+    if (rec.id.isEmpty())
+        return;
+
+    auto *detail = createDetailWidget(rec);
+    for (auto *item : m_listItems) {
+        if (item->recordId() == recordId) {
+            int idx = m_listLayout->indexOf(item);
+            m_listLayout->insertWidget(idx + 1, detail);
+            break;
+        }
+    }
 }
 
 void ErrorListPanel::collapseItem(const QString &recordId)
 {
     Q_UNUSED(recordId);
     m_expandedId.clear();
-    rebuildList();
+    for (auto *detail : m_detailWidgets)
+        detail->hide();
 }
 
 ErrorDetailWidget *ErrorListPanel::findDetail(const QString &recordId) const
 {
-    const auto details = findChildren<ErrorDetailWidget*>();
-    for (auto *d : details) {
-        if (d->recordId() == recordId)
-            return d;
-    }
-    return nullptr;
+    return m_detailWidgets.value(recordId, nullptr);
+}
+
+ErrorDetailWidget *ErrorListPanel::createDetailWidget(const ErrorRecord &record)
+{
+    auto *detail = new ErrorDetailWidget(record, m_listContainer);
+    connect(detail, &ErrorDetailWidget::reanalyzeClicked,
+            this, &ErrorListPanel::onReanalyzeClicked);
+    connect(detail, &ErrorDetailWidget::deleteClicked,
+            this, &ErrorListPanel::deleteRecordRequested);
+    connect(detail, &ErrorDetailWidget::markReviewed,
+            this, [this](const QString &recId, bool reviewed) {
+        ErrorJournal::instance().setRecordReviewed(recId, reviewed);
+    });
+    m_detailWidgets.insert(record.id, detail);
+    return detail;
 }
 
 void ErrorListPanel::onReanalyzeClicked(const QString &recordId)

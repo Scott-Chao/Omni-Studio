@@ -1,8 +1,9 @@
 #ifndef ERRORLISTPANEL_H
 #define ERRORLISTPANEL_H
 
-#include <QWidget>
+#include <QMap>
 #include <QVector>
+#include <QWidget>
 #include "errorjournal.h"
 
 class QComboBox;
@@ -53,7 +54,7 @@ public:
 signals:
     void reanalyzeClicked(const QString &recordId);
     void deleteClicked(const QString &recordId);
-    void markReviewed(const QString &recordId);
+    void markReviewed(const QString &recordId, bool reviewed);
 
 private:
     ErrorRecord m_record;
@@ -91,10 +92,12 @@ private slots:
 
 private:
     void rebuildList();
+    void applyFilter();
     QVector<ErrorRecord> filteredRecords() const;
     ErrorDetailWidget *findDetail(const QString &recordId) const;
     void expandItem(const QString &recordId);
     void collapseItem(const QString &recordId);
+    ErrorDetailWidget *createDetailWidget(const ErrorRecord &record);
 
     QComboBox *m_statusFilter;
     QLineEdit *m_searchEdit;
@@ -106,6 +109,8 @@ private:
 
     QVector<ErrorRecord> m_allRecords;
     QString m_expandedId;  // currently expanded detail record ID, empty if none
+    QVector<ErrorListItem*> m_listItems;
+    QMap<QString, ErrorDetailWidget*> m_detailWidgets;
 };
 
 #endif // ERRORLISTPANEL_H
