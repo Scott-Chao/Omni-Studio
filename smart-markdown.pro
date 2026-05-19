@@ -22,6 +22,7 @@ SOURCES += \
     ai/chatarea.cpp \
     ai/chatbubble.cpp \
     ai/errorjournal.cpp \
+    ai/errorlistpanel.cpp \
     ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
@@ -76,6 +77,7 @@ HEADERS += \
     ai/chatarea.h \
     ai/chatbubble.h \
     ai/errorjournal.h \
+    ai/errorlistpanel.h \
     ai/openaiprovider.h \
     ai/prompttemplates.h \
     activitybar.h \
