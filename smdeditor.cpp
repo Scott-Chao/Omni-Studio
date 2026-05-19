@@ -411,6 +411,8 @@ void SmdEditor::setPlainText(const QString &text)
 
     connect(m_lspManager, &SmdLspManager::diagnosticsUpdated, this,
             [this](int cellIndex, QList<SmdDiagnostic> diags) {
+                debugLog(QStringLiteral("SmdEditor::diagnosticsUpdated — cell=%1, count=%2")
+                    .arg(cellIndex).arg(diags.size()));
                 if (cellIndex >= 0 && cellIndex < m_cells.size()) {
                     m_cells[cellIndex]->setDiagnostics(diags);
                     if (auto *codeEditor = qobject_cast<CodeEditor*>(
@@ -1207,10 +1209,23 @@ void SmdEditor::executePythonCell(SmdCell *cell)
     if (execIndex >= 0 && execIndex < m_outputWidgets.size())
         m_outputWidgets[execIndex]->clearOutput();
 
-    // Send code to persistent Python process
+    // Send code to persistent Python process.
+    // Base64-encode to avoid JSON newline escaping issues.
+    QString code = cell->content();
+    code.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    code.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    for (int i = 0; i < code.size(); ++i) {
+        QChar ch = code.at(i);
+        if (ch.isLowSurrogate() && (i == 0 || !code.at(i - 1).isHighSurrogate()))
+            code[i] = QChar(QChar::ReplacementCharacter);
+        else if (ch.isHighSurrogate()
+                 && (i + 1 >= code.size() || !code.at(i + 1).isLowSurrogate()))
+            code[i] = QChar(QChar::ReplacementCharacter);
+    }
+
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("exec");
-    req[QStringLiteral("code")] = cell->content();
+    req[QStringLiteral("code")] = QString::fromLatin1(code.toUtf8().toBase64());
 
     QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
     m_pyExecProcess->write(payload);

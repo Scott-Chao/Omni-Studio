@@ -15,6 +15,7 @@ Response: {"ok":true,"stdout":"...","stderr":"..."}  or  {"ok":false,"error":"..
 import sys
 import io
 import json
+import base64
 import traceback
 
 
@@ -36,11 +37,25 @@ def main():
         action = req.get("action", "")
 
         if action == "exec":
-            code = req.get("code", "")
-            if not code.strip():
+            code_b64 = req.get("code", "")
+            if not code_b64:
                 reply = {"ok": True, "stdout": "", "stderr": ""}
                 print(json.dumps(reply, ensure_ascii=False), flush=True)
                 continue
+
+            # Decode base64 (avoids JSON newline escaping issues)
+            try:
+                code = base64.b64decode(code_b64).decode("utf-8")
+            except Exception:
+                reply = {"ok": False, "error": "base64 decode failed"}
+                print(json.dumps(reply, ensure_ascii=False), flush=True)
+                continue
+
+            # Sanitize lone surrogates that may come from Qt (UTF-16) strings
+            try:
+                code = code.encode("utf-8", errors="replace").decode("utf-8")
+            except Exception:
+                pass
 
             old_stdout = sys.stdout
             old_stderr = sys.stderr

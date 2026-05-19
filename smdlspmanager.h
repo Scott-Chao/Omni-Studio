@@ -126,6 +126,7 @@ private:
     // Python-specific
     void startPythonProcess();
     void sendPythonRequest(const QString &action, int cellIndex, int line, int col);
+    void requestPythonDiagnostics();
     void processPythonResponse(const QByteArray &line);
     void emitPythonEmptyResults();
     QString pythonVirtualDoc() const;
@@ -142,7 +143,8 @@ private:
     // Python process
     QProcess *m_pyProcess = nullptr;
     QTimer m_pyTimeoutTimer;
-    enum class PyPending { None, Completion, Hover, SignatureHelp };
+    QTimer m_pyDiagnosticsTimer;
+    enum class PyPending { None, Completion, Hover, SignatureHelp, Diagnostics };
     PyPending m_pyPending = PyPending::None;
     int m_pyRequestingCell = -1;
 
