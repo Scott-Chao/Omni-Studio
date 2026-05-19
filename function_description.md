@@ -1,4 +1,4 @@
-## 功能说明文档（v0.9.0）
+## 功能说明文档（v0.9.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -41,20 +41,15 @@
 - AI Provider 层：支持 Anthropic Messages API（`content_block_delta` SSE 流）和 OpenAI 兼容 API（`data: [DONE]` SSE 流，兼容 DeepSeek/OpenAI 等）。抽象基类 `AiProvider` 定义 `chatStream/cancel` 接口和 `partialResponse/finished/error` 信号，通过 `AiProviderFactory` 工厂模式创建。30 秒连接超时，支持网络故障/API Key 无效/频率限制/超时等场景的中文错误提示。
 - AiContextManager：编辑器上下文收集器，自动检测当前编辑模式（Markdown/Code/SMD 单元格），收集文件路径、内容、选中文本、语言类型和光标位置。PromptTemplates header-only 模板系统，为 9 种动作（改进写作/总结笔记/提取标签/出题自测/翻译/解释代码/寻找 Bug/添加注释/优化建议）+ 自由对话生成中英双语 system prompt 和 user prompt。
 - ActivityBar AI 按钮：48x48 图标按钮，位于搜索按钮下方。点击显示/隐藏 AI 面板（快捷键 Ctrl+Shift+A），激活时左边框 #0078D4 高亮。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板。
+- 智能错题本（ErrorJournal）：Judge 评测非 AC 结果自动持久化到 JSON 文件（`error_journal/records.json`），记录完整的测试上下文（题目名、输入/输出、耗时/内存、错误详情）。支持 AI 自动分析错误原因，流式回填分析结果。错题列表支持状态筛选和关键词搜索，点击展开详情查看 AI 分析 Markdown 渲染。
+- AiPanel 标签切换：AI 面板标题栏新增"AI 助手"/"错题本"双标签，内部 QStackedWidget 切换对话视图与错题列表视图，独立管理状态。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
 
-### 新增 v0.9.0
-- **AI 助手面板（AiPanel）**：右侧 QDockWidget，与历史/大纲/标签/反链面板 tabify 共享 dock 区域。面板从上到下依次为标题栏（含"清空对话"按钮）、ActionBar（动态动作按钮）、ChatArea（可滚动消息列表）、InputBar（文本输入 + 发送按钮）。ActivityBar AI 按钮或 Ctrl+Shift+A 切换显示/隐藏，显示 AI 时自动隐藏右面板，反之亦然。
-- **上下文动作按钮（ActionBar）**：根据当前编辑器模式动态显示。Markdown 模式：改进写作、总结笔记、提取标签、出题自测、翻译；Code 模式：解释代码、寻找 Bug、添加注释、优化建议。按钮列表在标签切换时自动刷新。
-- **消息列表（ChatArea + ChatBubble）**：用户气泡蓝色右对齐，助手气泡灰色左对齐。助手消息支持 Markdown 渲染（粗体/斜体/行内代码/链接/标题/列表/围栏代码块/分割线），通过轻量级 `markdownToHtml()` 转换器实现。流式输出实时追加到最后一个助手气泡。
-- **自由对话**：底部 InputBar 输入任意文本，按回车或点击"发送"按钮提交。自由对话保留多轮历史（`QList<Message> m_aiHistory`），接近 token 上限时自动裁剪最早对话对。动作模式（按钮触发）每次清空历史开始新对话。
-- **AI Provider 层**：`AiProvider` 抽象基类定义 `chatStream/cancel` 接口和 `partialResponse/finished/error` 信号。`AnthropicProvider` 实现 Anthropic Messages API（SSE `content_block_delta` 事件），`OpenAiProvider` 实现 OpenAI 兼容 API（SSE `data:` 帧，兼容 DeepSeek/OpenAI 等）。`AiProviderFactory` 工厂根据设置创建对应实例。30 秒连接超时，`/cancel` 支持中断。
-- **PromptTemplates（header-only）**：9 种动作 + 自由对话的中文 prompt 模板。`buildPrompt(action, ctx, freeQuery)` 生成 system + user prompt。`actionsForMode(mode)` 映射模式到动作列表。`actionInfos()` 提供按钮显示名称和悬停提示。
-- **AiContextManager**：静态工具类，从 EditorWidget 收集上下文（模式、文件路径、内容/选中文本、语言、光标位置）。`currentEditorMode()` 支持 SMD 单元格级模式检测。`languageForFile()` 扩展 20+ 种语言映射。
-- **AI 服务设置页**：设置面板新增第 7 页"AI 服务"，包含 API 类型 ComboBox（Anthropic/OpenAI）、端点 LineEdit、API Key 密码输入框、模型 LineEdit、Max Tokens SpinBox（256-16384）、系统提示词 TextEdit。API Key 通过 SettingsManager base64 混淆存储，与 OJ 密码机制相同。
-- **ConfigManager AI 配置**：新增 `aiProviderType/aiEndpoint/aiModel/aiMaxTokens/aiSystemPrompt` 接口，内置默认值（DeepSeek v4 flash / 4096 tokens）。
-- **ActivityBar AI 按钮**：新增 `m_aiBtn`，位于搜索按钮下方。`setAiActive(bool)` 控制激活状态高亮。布局变为 5 个按钮：搜索/AI/stretch/设置/PDF/评测。
-- **智能错误处理**：401/403 → "API Key 无效"，429 → "请求过于频繁，请稍后再试"，网络故障 → "网络连接失败"，超时 → "响应超时"，空响应 → "AI 未返回有效结果"。所有错误信息在 ChatArea 中直观展示。
+### 新增 v0.9.5
+- **智能错题本（ErrorJournal + ErrorListPanel）**：每次 Judge 评测非 AC 结果（WA/RE/TLE/MLE）自动记录到 `error_journal/records.json` JSON 文件，包含完整上下文（题目名、源代码路径、输入/期望输出/实际输出、耗时/内存、错误详情）。AI 面板标题栏新增"AI 助手"/"错题本"标签切换。错题本视图支持状态筛选（全部/WA/RE/TLE/MLE）和关键词搜索。点击错题展开详情：展示问题信息、输入输出对比、AI 分析 Markdown 渲染、操作按钮（重新分析/标记已阅/删除）。错题记录数 badge 显示在标签上。
+- **AI 错题分析（ErrorAnalysis Prompt）**：在 PromptTemplates 中新增 `ErrorAnalysis` action，自动将源代码、测试输入/输出、错误状态打包发送给 AI，指定格式输出（## 错误原因 / ## 具体问题 / ## 修复建议 / ## 相关知识点）。AI 分析异步流式完成，结果回填到 `ErrorRecord::aiAnalysis`，详情面板实时刷新。
+- **JudgePanel 自动记录错题**：在 `onTestFinished()` 中对非 AC 结果调用 `ErrorJournal::instance().recordFailure()`，无需手动操作。`JudgeEngine::TestResult` 新增 `inputData` 字段以记录测试输入。
+- **AiPanel 标签视图切换**：AiPanel 标题栏新增"AI 助手"/"错题本"两个 tab 按钮，内部 QStackedWidget 切换聊天区与错题列表，切换时不丢失状态。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -91,7 +86,7 @@
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
-- 管理 AI 助手面板（`QDockWidget` + `AiPanel`），在 ActivityBar 提供 AI 图标按钮（快捷键 `Ctrl+Shift+A`）。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板（`showRightPanel()` 时反之亦然）。AI 面板内含 ActionBar（上下文相关动作按钮，通过 `updateAiActionBar()` 在标签切换时刷新）、ChatArea（消息列表）、InputBar（自由输入）。面板顶部"清空对话"按钮清除聊天历史。
+- 管理 AI 助手面板（`QDockWidget` + `AiPanel`），在 ActivityBar 提供 AI 图标按钮（快捷键 `Ctrl+Shift+A`）。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板（`showRightPanel()` 时反之亦然）。AI 面板内含 ActionBar（上下文相关动作按钮，通过 `updateAiActionBar()` 在标签切换时刷新）、ChatArea（消息列表）、ErrorListPanel（错题本视图，通过标题栏"AI 助手"/"错题本"标签切换）、InputBar（自由输入，仅 AI 助手 tab 可见）。面板顶部"清空对话"按钮仅在 AI 助手 tab 可见。错误记录由 ErrorJournal 单例管理，JudgePanel::onTestFinished 自动为 WA/RE/TLE/MLE 结果调用 ErrorJournal::recordFailure()。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -781,6 +776,7 @@
 - 超时控制：每个用例 1000ms（复用 `QTimer`，`setSingleShot(true)`），超时标记 TLE。
 - 内存监控：三重捕获策略确保准确读取——① 进程启动后立即同步调用 `captureMemory()`（此时进程等待 stdin 输入，保证存活）；② 100ms `QTimer` 轮询续传（`captureMemory()` 抽取为共享方法，使用 `PROCESS_QUERY_LIMITED_INFORMATION`）；③ 进程退出时补充读取。峰值内存超过 65536KB 标记 MLE 并杀进程。
 - `m_testHandled` 标志位防止超时和进程结束双重触发。
+- `TestResult` 结构体包含 `inputData` 字段（从 `.in` 文件读取），供 `ErrorJournal::recordFailure()` 记录完整测试输入。
 
 **信号**：
 - `judgeOutput(const QString &text, bool isStderr)`：引擎运行过程中的日志输出。
@@ -804,7 +800,7 @@
 - 中部：5 列 `QTableWidget`（#、测试用例、结果、耗时(ms)、内存(KB)），结果列按状态码着色：AC 绿色（`#52C41A`）、WA 红色（`#E74C3C`）、TLE 蓝色（`#3498DB`）、MLE 紫色（`#9B59B6`）、RE 橙色（`#F39C12`）。
 - 中下部：`QPlainTextEdit` 详情区，点击失败行显示状态码、峰值内存、预期输出与实际输出。
 - 底部：摘要 `QLabel` + "运行全部" / "停止" 按钮。
-- 内部持有 `JudgeEngine`，连接所有信号。`runJudge(sourceFile)` 设置源文件和测试目录后启动评测。
+- 内部持有 `JudgeEngine`，连接所有信号。`runJudge(sourceFile)` 设置源文件和测试目录后启动评测。在 `onTestFinished()` 中对非 AC 结果调用 `ErrorJournal::instance().recordFailure()` 自动记录错题。
 - `setTestFolder(path)` 设置文件夹路径并自动清除已有结果，供 OpenJudge 集成使用。
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
 - 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
@@ -1145,27 +1141,34 @@
 **文件**：`ai/aipanel.h` / `ai/aipanel.cpp`
 
 **职责**：
-- 右侧 QDockWidget 的内容组件，最小宽度 340px。布局从上到下依次为：标题栏、ActionBar、ChatArea（可伸缩）、InputBar。
-- 标题栏：左侧"AI 助手"标签，右侧"清空对话"按钮（触发 `clearRequested` 信号）。
+- 右侧 QDockWidget 的内容组件，最小宽度 340px。布局从上到下依次为：标题栏（含"AI 助手"/"错题本"切换标签）、ActionBar（仅 AI 助手 tab）、QStackedWidget（ChatArea / ErrorListPanel）、InputBar（仅 AI 助手 tab）。
+- 标题栏：左侧"AI 助手"/"错题本"两个 tab 按钮（错题本显示记录数 badge"错题本 (N)"），右侧"清空对话"按钮（仅 AI 助手 tab 可见）。
+- `TabIndex` 枚举：`ChatTab = 0`（AI 助手视图）、`ErrorTab = 1`（错题本视图）。
 - 提供 **addUserMessage(text)** / **addAssistantMessage(text)**：在 ChatArea 中添加用户/助手消息气泡。
 - 提供 **appendToLastAssistant(text)**：追加文本到最后一个助手气泡（流式输出用）。
 - 提供 **setActionList(actions)** / **clearActionList()**：委托给 ActionBar 设置动态按钮。
 - 提供 **lastAssistantContent()**：获取最后一个助手气泡的完整文本（用于保存历史）。
 - 提供 **hasStreamingTarget()**：最后一个消息是否为空的助手气泡（标识流式目标存在）。
 - 提供 **setInputEnabled(bool)**：启用/禁用输入编辑框和发送/清空按钮（流式传输期间禁用）。
+- 提供 **setCurrentTab(int index)**：编程切换到指定 tab（ChatTab 或 ErrorTab）。
+- 提供 **errorListPanel()**：返回内部 ErrorListPanel 指针。
+- **onTabSwitch(int index)**：QStackedWidget 切换视图，切换时自动显示/隐藏 ActionBar 和 InputBar（仅 ChatTab 可见），切换到 ErrorTab 时自动调用 ErrorListPanel::loadRecords() 刷新列表。
+- **updateErrorBadge()**：从 ErrorJournal::recordCount() 更新错题本按钮文本，显示错题数量。
 - **clearChat()**：清空所有消息气泡（同时发射 clearRequested 信号）。
 
 **信号**：
 - `void sendMessage(const QString &text)`：用户点击发送或按回车时发出（自由提问）。
 - `void clearRequested()`：用户点击"清空对话"按钮时发出。
 - `void actionTriggered(int actionIndex)`：ActionBar 按钮被点击时转发过来。
+- `void errorSelected(const QString &recordId)`：错题列表项被点击时转发过来。
 
 **协作关系**：
 - 由 `MainWindow` 创建并设置为主窗口 `m_dockAi` 的内容组件。
-- 内部聚合 `ActionBar`、`ChatArea`、`QLineEdit` 和 `QPushButton`。
+- 内部聚合 `ActionBar`、`ChatArea`、`ErrorListPanel`、`QStackedWidget`、`QLineEdit` 和 `QPushButton`。
 - 不直接与 AI Provider 交互 —— 所有 AI 请求由 `MainWindow::startAiRequest()` 协调。
 - 与右侧面板（RightPanelContainer）通过 tabify 共享 dock 区域，通过 `showRightPanel()` / `m_toggleAiAction` 实现互斥切换。
-- `m_inputEdit` 的 `textChanged` 信号控制发送按钮启用状态，`returnPressed` 发射 `sendMessage`。
+- ErrorListPanel 连接到 ErrorJournal::analysisReady 信号以在 AI 分析完成后刷新详情。
+- ErrorJournal 的增删操作通过 AiPanel 中转刷新 ErrorListPanel 列表。
 
 ---
 
@@ -1353,9 +1356,10 @@
 
 **职责**：
 - 为每种 AI 动作预设中文 system prompt 和 user prompt 模板。
-- `AiAction` 枚举：定义 9 种动作 + FreeChat：
+- `AiAction` 枚举：定义 10 种动作 + FreeChat：
   - **Markdown 类**：`ImproveWriting`、`SummarizeNote`、`ExtractTags`、`SelfTest`、`Translate`
   - **Code 类**：`ExplainCode`、`FindBugs`、`AddComments`、`OptimizeCode`
+  - **Judge 错题分析**：`ErrorAnalysis`（无 UI 按钮，由 ErrorJournal::requestAnalysis() 触发）
   - **通用**：`FreeChat`
 - **buildPrompt(action, ctx, freeQuery)**：根据动作类型和 `ContextBundle` 构建 `PromptBundle{systemPrompt, userPrompt}`。自动处理选中文本优先（有 selection 时只用选中内容，否则用全文）。
 - **actionInfos()**：返回 `QVector<ActionInfo>`，每个包含 `AiAction` 枚举值、中文显示名称（"改进写作"、"解释代码"等）和悬停提示。
@@ -1369,6 +1373,61 @@
 - 被 `MainWindow::startAiRequest()` 调用生成发送给 AI 的提示词。
 - ActionInfo 元数据被 `ActionBar` 用于创建按钮。
 - `actionsForMode()` 被 `MainWindow::updateAiActionBar()` 用于更新按钮列表。
+
+
+### 39. `ErrorJournal` — 智能错题本核心
+
+**文件**：`ai/errorjournal.h` / `ai/errorjournal.cpp`
+
+**职责**：
+- 评测错题记录的持久化管理器，单例模式（`ErrorJournal::instance()`）。
+- `ErrorRecord` 数据结构：`id`（UUID）、`problemName`、`sourceFile`、`testFolder`、`testCaseName`、`statusCode`（WA/RE/TLE/MLE）、`elapsedMs`、`memoryKb`、`inputData`、`actualOutput`、`expectedOutput`、`detail`、`aiAnalysis`（异步 AI 分析结果）、`tags`、`timestamp`、`reviewed`。
+- **recordFailure(result, sourceFile, testFolder)**：记录一次非 AC 评测结果，自动生成 UUID、填充 ProblemName（从 testFolder 目录名推断）、保存原始输入/输出数据、持久化到 JSON 文件。
+- **requestAnalysis(recordId)**：触发 AI 异步分析。读取对应记录的源代码文件 → 填充 ContextBundle 错误字段 → 调用 PromptTemplates::buildPrompt(ErrorAnalysis) 生成分析 prompt → 创建配置好的 AiProvider 实例 → 流式收集 AI 响应 → 回填到 ErrorRecord::aiAnalysis → 发射 analysisReady 信号。API Key 未配置时显示提示信息。
+- **allRecords() / recordsByProblem() / recordsByStatus() / recordById()**：多种查询方式。
+- **deleteRecord(id) / clearAll() / setRecordReviewed(id, reviewed)**：管理操作，修改后自动 save() 并发射 recordsChanged()。
+- **load() / save()**：JSON 文件读写（`{executable_dir}/error_journal/records.json`），自动创建目录。存储格式为 version 1 的 JSON 对象，records 数组包含所有 ErrorRecord。
+
+**信号**：
+- `void analysisReady(const QString &recordId)`：AI 分析完成时发出。
+- `void recordsChanged()`：记录增删改后发出（UI 刷新用）。
+
+**协作关系**：
+- 由 `JudgePanel::onTestFinished()` 调用 `recordFailure()` 记录非 AC 结果。
+- 内部使用 `AiProviderFactory` 和 `PromptTemplates` 进行 AI 分析。
+- `AiPanel` 连接 `recordsChanged` 信号更新错题数 badge。
+- `ErrorListPanel` 连接 `analysisReady` 信号在分析完成后刷新详情展示。
+- 存储路径在构造时确定，基于 `QCoreApplication::applicationDirPath()`，析构时自动 save()。
+
+
+### 40. `ErrorListPanel` — 错题列表 UI 面板
+
+**文件**：`ai/errorlistpanel.h` / `ai/errorlistpanel.cpp`
+
+**职责**：
+- QWidget 实现的双视图面板（列表视图 + 详情视图），通过 QStackedWidget 切换。
+- **列表视图**：
+  - 顶部筛选栏：状态 ComboBox（全部/WA/RE/TLE/MLE）+ 关键词 LineEdit（匹配题目名、源代码文件名、状态码、标签）。
+  - 可滚动 QListWidget 按时间倒序显示错题列表。每项包含：状态图标（AC 绿/RE 红/TLE 黄/MLE 紫）、题目名、源文件名、时间、标签（最多显示 2 个 + 溢出计数）。
+  - 底部统计栏："全部删除"按钮 + 记录总数 + 已查阅计数。
+- **详情视图**：
+  - 顶部问题标题栏：状态图标 + 题目名 + tag 标签。
+  - 信息区：源文件、时间、状态码、执行耗时/内存。
+  - 输入输出对比段：三栏 QTextBrowser（输入 / 期望输出 / 实际输出），等宽字体。
+  - AI 分析段：QTextBrowser 渲染 AI 分析的 Markdown 内容（通过轻量级 `markdownToHtml()` 转换）。
+  - 底部操作按钮："重新分析"（调用 ErrorJournal::requestAnalysis）、"标记已阅"（调用 setRecordReviewed）、"删除"（调用 deleteRecord）、"返回列表"。
+- **loadRecords()**：从 ErrorJournal::allRecords() 加载并按时间倒序填入列表，根据筛选状态过滤。
+- **updateAnalysis(recordId)**：收到 analysisReady 信号时，如果当前详情正是该记录则刷新 AI 分析内容展示。
+
+**信号**：
+- `void errorClicked(const QString &recordId)`：错题列表项点击时发出（转发到 AiPanel）。
+- `void deleteRecordRequested(const QString &recordId)`：删除单条记录操作。
+- `void deleteAllRequested()`：全部删除操作。
+
+**协作关系**：
+- 由 `AiPanel` 作为第二个视图嵌入 QStackedWidget 中。
+- 读取 `ErrorJournal` 的数据，调用其管理方法进行增删改。
+- 连接 ErrorJournal::analysisReady 信号更新 AI 分析结果展示。
 
 
 ### 配置存储说明

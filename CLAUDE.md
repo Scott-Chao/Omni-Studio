@@ -45,6 +45,8 @@ MainWindow                   → frameless orchestrator, owns all widgets
   │   ├── AnthropicProvider  → Anthropic Messages API via SSE (content_block_delta)
   │   └── OpenAiProvider     → OpenAI-compatible API via SSE (data: [DONE])
   ├── AiProviderFactory      → factory: createProvider(type), typeFromString(name)
+  ├── ErrorJournal           → singleton, persistent JSON storage of Judge failures at error_journal/records.json
+  ├── ErrorListPanel         → error list UI (tabbed in AiPanel): status filter, keyword search, expand-to-detail
   ├── PromptTemplates        → header-only prompt builder per AiAction, actionsForMode()
   ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
   ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
