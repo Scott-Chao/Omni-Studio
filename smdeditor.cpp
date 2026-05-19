@@ -506,6 +506,7 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
         && m_cells[m_activeCellIndex]->cellType() == SmdCell::Cpp)
         m_lspManager->focusCell(m_activeCellIndex);
 
+    emit contentChanged();
     return cell;
 }
 
