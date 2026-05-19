@@ -1139,7 +1139,7 @@ SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)
 
 bool SmdCell::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
+    if (event->type() == QEvent::FocusIn) {
         if (!m_grabbing)
             emit focusEntered();
     }

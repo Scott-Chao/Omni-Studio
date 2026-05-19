@@ -40,7 +40,10 @@
 - .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。**Python 单元格采用持久化进程执行**——首个 Python cell 执行时启动后台 `python_executor.py` 守护进程，维护跨 cell 的共享命名空间（变量/函数/导入在 cell 间保持），每个 cell 独立捕获 stdout/stderr 输出，避免前面 cell 的 print 输出污染后续 cell 结果，实现 Jupyter-like 的独立输出效果。C++ 单元格仍使用合并写入临时文件 + 独立编译的方式。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。代码单元格通过 **SmdLspManager** 共享 LSP 后端（每种语言一个 clangd/Jedi 进程），支持代码补全、悬停提示、签名帮助和诊断波浪线，跨 cell 类型解析。
 
 ### 修复
-- 修复 SMD 新建 Cell 时不显示未保存标识的问题
+修复以下 SMD cell 点击或操作时焦点异常切换的问题：
+- 点击未选中的 cell，焦点被切换到块的中间（现在不会切换）
+- 新建 cell 时视角跳转到顶部（现在视角切换到新建的块上）
+- 分割 cell 时视角切换到顶部（现在视角切换到下方的 cell）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -997,13 +1000,13 @@
 
 **生命周期安全**：
 - `setCellType()` 切换类型时，先 `removeWidget()` 将旧编辑器从 `QStackedWidget` 移除，调用 `setCompletionProvider(nullptr)` 断开共享 LSP adapter，再 `hide()` 隐藏。**旧编辑器不显式删除** — 它仍是 `m_editorStack` 的子控件，Qt 父子系统在 `SmdCell` 销毁时自动清理。在事件处理期间（如 `MouseButtonRelease`）调用 `delete`/`deleteLater()` 会破坏 Qt 内部事件状态，导致闪退。
-- 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
+- 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。lambda 还对新 editor 安装 `eventFilter`。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
 - `m_lspManager` 在 `setPlainText()` 中 **晚于 `addCell()` 创建**。`addCell()` 执行时 `m_lspManager` 为 null，无法注入共享 provider。`setPlainText()` 中 `cellAdded()` 循环后额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 完成初始注入。
 - 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
 - `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
 
 **事件处理**：
-- 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` / `MouseButtonPress` 事件发射 `focusEntered()` 信号。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
+- 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` 事件发射 `focusEntered()` 信号（`MouseButtonPress` 不再触发，改由 `SmdEditor::eventFilter` 全局过滤器统一处理点击激活）。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
 - 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：保留本地遮罩层避免闪烁 → `setRendered(false)` → 恢复内容 → `setRendered(true)` → 恢复命令模式。
 
 **协作关系**：
@@ -1081,11 +1084,11 @@
 
 **LSP 集成（SmdLspManager）**：
 - `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册，**并额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 注入共享 provider**（因 `addCell()` 时 `m_lspManager` 为 null 无法注入）。加载完成后调用 `focusCell()` 初始化活动程序组。
-- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。re-index 循环中先 `disconnect` 所有相关信号（`focusEntered`、`contentChanged`、**`cellTypeChanged`**）再 `connect`，防止信号重复连接累积。
+- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。re-index 循环中先 `disconnect` 所有相关信号（`focusEntered`、`contentChanged`、**`cellTypeChanged`**）再 `connect`，防止信号重复连接累积。`focusEntered` 信号直接调用 `setActiveCell(index)` 激活 cell，滚动由 `m_clickSuppressScroll` 标志控制（鼠标点击期间置 true 跳过滚动）。
 - `cell->contentChanged` 信号连接至 `m_lspManager->cellContentChanged()`，触发虚拟文档重建和 `textDocument/didChange` 通知。C++ cell 内容变化后额外调用 `focusCell(m_activeCellIndex)` 重新检测程序组边界（支持动态键入/删除 `main()` 时实时切换组）。
 - `cell->cellTypeChanged(CellType oldType)` 信号携带旧类型参数。lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和内容缓存被正确清理后再为新语言创建 adapter。
 - `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。`removeCell()` 在 `cellRemoved()` 删除共享 adapter **之前**先调用 `codeEditor->setCompletionProvider(nullptr)` 断开，防止旧编辑器持有悬空指针。增删 cell 后若活动 cell 为 C++ 则调用 `focusCell()` 重新检测组边界。
-- `setActiveCell()`：调用旧单元格 `setActive(false)` 清除编辑器选中 + `m_outputWidgets[oldIndex]->clearSelection()` 清除输出区选中 → 激活新单元格 → 同步命令模式状态。若目标 cell 为 C++ 则调用 `m_lspManager->focusCell(index)`，切换 clangd 虚拟文档至目标 cell 所在程序组并恢复缓存诊断。
+- `setActiveCell()`：调用旧单元格 `setActive(false)` 清除编辑器选中 + `m_outputWidgets[oldIndex]->clearSelection()` 清除输出区选中 → 激活新单元格 → 同步命令模式状态。若 `m_clickSuppressScroll` 为 false，则通过 `QTimer::singleShot(0)` 延迟调用 `ensureWidgetVisible`（确保布局已处理完 `insertWidget` 等延迟事件后再读取 cell 位置）。鼠标点击激活时该标志为 true，跳过滚动。若目标 cell 为 C++ 则调用 `m_lspManager->focusCell(index)`，切换 clangd 虚拟文档至目标 cell 所在程序组并恢复缓存诊断。
 - `m_lspManager->diagnosticsUpdated` 信号连接至 cell 的 `SmdCell::setDiagnostics()` 和 `CodeEditor::setDiagnostics()`，更新头部标签计数和编辑器波浪线。
 - 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
 
@@ -1093,11 +1096,17 @@
 - 执行期间（`m_executingCell` 非空），`removeCell()` / `insertCellAbove()` / `insertCellBelow()` / `splitCellAtCursor()` 直接返回，阻止 cell 增删操作。
 - `m_executingCell` 使用 `QPointer<SmdCell>`，cell 被删除后自动置 null，`onProcessOutput/Finished/Stop` 中先检查再通过 `m_cells.indexOf()` 定位索引。
 
+**单元格增删**：
+- `insertCellAbove()`：在当前活动单元格**上方**插入 Markdown 空单元格 → `setActiveCell(idx)` 激活 → 延迟 `QTimer::singleShot(0)` 调用 `m_cellLayout->activate()` 后手动将新 cell 滚至视口顶部（`target = cellY - 8`），钳制到 `maxScroll`。弹出语言选择菜单。
+- `insertCellBelow()`：在当前活动单元格**下方**插入 Markdown 空单元格 → `setActiveCell(idx)` 激活 → 向布局底部**临时添加视口高度的 QSpacerItem**（`m_insertScrollPad`）→ 立即 `m_cellLayout->activate()` 使 `maxScroll` 反映扩展后的内容高度 → 延迟回调中再次 `activate() + ensureWidgetVisible` 后手动将新 cell 滚至视口底部（`target = cellTop + cellH - vpH + 8`），钳制到 `maxScroll`。弹出语言选择菜单。
+- 临时衬垫通过 `removeInsertScrollPad()` 清除，调用点包括：语言弹窗的 `onSelected` 回调（确认选择后）、`onCancelled` 回调（取消后，在 `removeCell` 之前）。另有 15 秒超时兜底防止泄漏。
+- `removeCell()`：删除指定索引的单元格，断开 LSP 连接，更新 `m_activeCellIndex`（若删除的索引小于等于当前活动索引则递减），调用 `setActiveCell()` 刷新活动单元格。至少保留一个单元格。
+
 **单元格分割**（`splitCellAtCursor()`）：
 - 编辑模式下 `Ctrl+Shift+-` 触发，在光标位置将当前单元格内容一分为二，两个单元格保持相同类型。
 - 使用 `QPlainTextEdit::textCursor().position()` 定位分割点，前段保留在原单元格，后段创建新单元格插入下方。
 - 分割后自动选中下方单元格，光标置于其开头（`QTextCursor::Start`）。
-- 高度更新采用两阶段延迟策略：两个 `QTimer::singleShot(0, ...)` 确保外层布局（cell 宽度分配）和内层布局（QStackedWidget → QPlainTextEdit → QTextDocument 重排）均完成后再调用 `updateEditorHeight()`，避免因 QPlainTextEdit 宽度未更新导致的文档高度计算偏差。
+- 高度更新采用两阶段延迟策略：两个 `QTimer::singleShot(0, ...)` 确保外层布局（cell 宽度分配）和内层布局（QStackedWidget → QPlainTextEdit → QTextDocument 重排）均完成后再调用 `updateEditorHeight()`，避免因 QPlainTextEdit 宽度未更新导致的文档高度计算偏差。之后第三个 `QTimer::singleShot(0)` 将视图滚动到新 cell 光标位置，上方留 50px 边距确保 cell 顶部栏也能完整显示。
 
 **命令模式编辑禁用**：
 - 进入命令模式时 `SmdCell::setCommandMode(true)` 将编辑器设为 `readOnly`、`Qt::NoTextInteraction`、`Qt::NoFocus`，彻底禁用光标和编辑操作；同时清除所有输出控件（`SmdOutputWidget`）的文本选中，确保进入命令模式后无残留选中高亮。
@@ -1115,7 +1124,10 @@
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
 - 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
-- 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
+- 重写 `eventFilter(QObject*, QEvent*)`：
+  - **滚动抑制**：任何 `MouseButtonPress` 事件（无论是否命中 SmdCell）都会设置 `m_clickSuppressScroll = true` 并启动 50ms 单次定时器清除。这确保点击 toolbar 或空白区域导致焦点恢复至 cell 时不会意外滚动。
+  - **Cell 激活**：`FocusIn` / `MouseButtonPress` 事件向上查找父 SmdCell，找到则调用 `setActiveCell(idx)` 激活。`m_clickSuppressScroll` 标志在 setActiveCell 中阻止滚动。
+  - 同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
   - `Ctrl+Enter` / `Shift+Enter`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段设置 `m_jumpAfterExecute`（Shift 为 true）并调用 `executeCurrentCell()`。
   - `Esc`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段进入命令模式。当 `Qt::Popup` 窗口（如语言选择菜单）激活时跳过拦截，使菜单能正常响应 `Esc`。
   - `Ctrl+K`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段弹出语言选择菜单（命令模式与编辑模式均生效）。

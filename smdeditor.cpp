@@ -554,6 +554,15 @@ void SmdEditor::removeCell(int index)
     }
 }
 
+void SmdEditor::removeInsertScrollPad()
+{
+    if (m_insertScrollPad) {
+        m_cellLayout->removeItem(m_insertScrollPad);
+        delete m_insertScrollPad;
+        m_insertScrollPad = nullptr;
+    }
+}
+
 void SmdEditor::insertCellAbove()
 {
     if (m_executingCell) return; // Block during execution
@@ -561,6 +570,17 @@ void SmdEditor::insertCellAbove()
     int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
     setActiveCell(idx);
+    // Scroll after layout settles so the new cell is visible.
+    QTimer::singleShot(0, this, [this, idx]() {
+        if (idx < 0 || idx >= m_cells.size()) return;
+        m_cellLayout->activate();
+        int cellY = m_cells[idx]->mapTo(m_cellContainer, QPoint(0, 0)).y();
+        int maxScroll = m_scrollArea->verticalScrollBar()->maximum();
+        int target = cellY - 8;
+        if (target < 0) target = 0;
+        if (target > maxScroll) target = maxScroll;
+        m_scrollArea->verticalScrollBar()->setValue(target);
+    });
     showLanguageSelector(idx, true, originalIdx);
 }
 
@@ -571,6 +591,36 @@ void SmdEditor::insertCellBelow()
     int originalIdx = m_activeCellIndex >= 0 ? m_activeCellIndex : 0;
     addCell(idx, SmdCell::Markdown);
     setActiveCell(idx);
+    // Add temporary bottom padding so we have scroll room to show the
+    // new cell even when it would land at the very bottom of the content.
+    // Cleaned up by removeInsertScrollPad() called from language-popup
+    // callbacks, with a 15 s timeout as fallback.
+    removeInsertScrollPad();
+    int vpH = m_scrollArea->viewport()->height();
+    m_insertScrollPad = new QSpacerItem(0, vpH, QSizePolicy::Minimum, QSizePolicy::Minimum);
+    m_cellLayout->addSpacerItem(m_insertScrollPad);
+    // Force layout NOW so that both setActiveCell's deferred scroll and
+    // our own deferred scroll below see the updated content height.
+    m_cellLayout->activate();
+    QTimer::singleShot(15000, this, [this]() { removeInsertScrollPad(); });
+
+    // Scroll after layout settles so the new cell is visible.
+    QTimer::singleShot(0, this, [this, idx, vpH]() {
+        if (idx < 0 || idx >= m_cells.size()) return;
+        // ensureWidgetVisible forces the scroll area to update its internal
+        // layout / scroll range.  activate() alone may not be enough because
+        // QScrollArea reads the content size asynchronously.
+        m_cellLayout->activate();
+        m_scrollArea->ensureWidgetVisible(m_cells[idx], 0, 20);
+        int cellTop = m_cells[idx]->mapTo(m_cellContainer, QPoint(0, 0)).y();
+        int cellH = m_cells[idx]->height();
+        int maxScroll = m_scrollArea->verticalScrollBar()->maximum();
+        // Place the cell near the bottom of the viewport.
+        int target = cellTop + cellH - vpH + 8;
+        if (target < 0) target = 0;
+        if (target > maxScroll) target = maxScroll;
+        m_scrollArea->verticalScrollBar()->setValue(target);
+    });
     showLanguageSelector(idx, true, originalIdx);
 }
 
@@ -578,6 +628,7 @@ void SmdEditor::setActiveCell(int index)
 {
     if (index < 0 || index >= m_cells.size())
         return;
+
     if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
         m_cells[m_activeCellIndex]->setActive(false);
         if (m_activeCellIndex < m_outputWidgets.size())
@@ -586,7 +637,15 @@ void SmdEditor::setActiveCell(int index)
     m_activeCellIndex = index;
     m_cells[index]->setActive(true);
     m_cells[index]->setCommandMode(m_commandMode);
-    m_scrollArea->ensureWidgetVisible(m_cells[index], 0, 20);
+
+    if (!m_clickSuppressScroll) {
+        // Defer scroll by one event-cycle so that any pending layout
+        // request (e.g. from addCell's insertWidget) is processed first.
+        QTimer::singleShot(0, this, [this, idx = index]() {
+            if (!m_clickSuppressScroll && idx >= 0 && idx < m_cells.size())
+                m_scrollArea->ensureWidgetVisible(m_cells[idx], 0, 20);
+        });
+    }
 
     // Cancel pending post-render jump if user manually switched cells (Req 5)
     if (m_pendingRenderJumpIndex >= 0 && index != m_pendingRenderJumpIndex)
@@ -707,6 +766,7 @@ void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int original
         int capturedIdx = cellIndex;
         int restoreIdx = originalCellIndex >= 0 ? originalCellIndex : cellIndex;
         popup->setOnCancelled([this, capturedIdx, restoreIdx]() {
+            removeInsertScrollPad();
             removeCell(capturedIdx);
             setActiveCell(qMin(restoreIdx, m_cells.size() - 1));
             setModified(false);
@@ -715,6 +775,7 @@ void SmdEditor::showLanguageSelector(int cellIndex, bool isNewCell, int original
 
     // Wire onSelected.
     popup->setOnSelected([this, cellIndex](SmdCell::CellType type) {
+        removeInsertScrollPad();
         setFocus();
         if (cellIndex >= 0 && cellIndex < m_cells.size()) {
             m_cells[cellIndex]->setCellType(type);
@@ -1103,9 +1164,18 @@ void SmdEditor::splitCellAtCursor()
     QTimer::singleShot(0, this, [this, cell, newCell]() {
         cell->updateEditorHeight();
         newCell->updateEditorHeight();
-        QTimer::singleShot(0, this, [cell, newCell]() {
+        QTimer::singleShot(0, this, [this, cell, newCell]() {
             cell->updateEditorHeight();
             newCell->updateEditorHeight();
+            // After height settles, scroll cursor into view with room
+            // above for the cell header bar.
+            QTimer::singleShot(0, this, [this, newCell]() {
+                if (auto *pte = qobject_cast<QPlainTextEdit*>(newCell->editorWidget())) {
+                    QRect cr = pte->cursorRect();
+                    QPoint pt = pte->viewport()->mapTo(m_cellContainer, cr.topLeft());
+                    m_scrollArea->ensureVisible(pt.x(), pt.y(), 0, 50);
+                }
+            });
         });
     });
 }
@@ -1449,14 +1519,26 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
 
 bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
 {
+    // Any mouse click anywhere in the application suppresses scroll for a
+    // short window.  This covers both clicks on cells (where we activate
+    // without scrolling) and clicks on toolbars/chrome (where Qt may restore
+    // focus to a cell and we want to suppress the ensuing FocusIn scroll).
+    if (event->type() == QEvent::MouseButtonPress) {
+        m_clickSuppressScroll = true;
+        QTimer::singleShot(50, this, [this]() {
+            m_clickSuppressScroll = false;
+        });
+    }
+
     // Activate the parent SmdCell on FocusIn / MouseButtonPress.
     if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
         if (auto *w = qobject_cast<QWidget*>(obj)) {
             for (QWidget *cur = w; cur; cur = cur->parentWidget()) {
                 if (auto *cell = qobject_cast<SmdCell*>(cur)) {
                     int idx = m_cells.indexOf(cell);
-                    if (idx >= 0 && idx != m_activeCellIndex)
+                    if (idx >= 0 && idx != m_activeCellIndex) {
                         setActiveCell(idx);
+                    }
                     break;
                 }
             }

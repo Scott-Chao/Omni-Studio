@@ -73,6 +73,7 @@ private:
     // Cells
     SmdCell *addCell(int index, SmdCell::CellType type, const QString &content = QString());
     void removeCell(int index);
+    void removeInsertScrollPad();
     void insertCellAbove();
     void insertCellBelow();
 
@@ -108,6 +109,8 @@ private:
     QWidget *m_cellContainer;
     QVBoxLayout *m_cellLayout;
     int m_savedScrollPos = 0;
+    bool m_clickSuppressScroll = false;
+    QSpacerItem *m_insertScrollPad = nullptr;
 
     QList<SmdCell*> m_cells;
     QList<SmdOutputWidget*> m_outputWidgets;
