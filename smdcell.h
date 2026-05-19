@@ -10,9 +10,11 @@
 #include <QHBoxLayout>
 #include <QTimer>
 #include <QList>
+#include <QPointer>
 
 class CodeEditor;
 class RenderPixmapWidget;
+#include "smdlspmanager.h"
 
 class SmdCell : public QFrame
 {
@@ -52,13 +54,14 @@ public:
     void applyZoom(qreal factor, int baseFontSize);
     void checkReRender();
     void updateEditorHeight();
+    void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
 
     static CellType typeFromLangId(const QString &langId);
     static QString langIdFromType(CellType type);
 
 signals:
     void executeRequested();
-    void cellTypeChanged();
+    void cellTypeChanged(SmdCell::CellType oldType);
     void focusEntered();
     void focusLeft();
     void contentChanged();
@@ -90,6 +93,8 @@ private:
     bool m_active = false;
     bool m_rendered = false;
     bool m_grabbing = false;  // suppress focusEntered during performGrab
+    bool m_updatingHeight = false;  // guard against recursive updateEditorHeight
+    int m_pendingContentChanges = 0;  // >0 when QTextDocument signals a real content edit
 
     QWidget *m_headerBar = nullptr;
     QLabel *m_typeLabel = nullptr;
@@ -111,8 +116,10 @@ private:
     QTimer *m_renderDebounceTimer = nullptr;
     int m_lastRenderWidth = 0;
     qreal m_zoomFactor = 1.0;
+    int m_baseFontSize = 14;
 
     QString m_languageId;
+    QList<SmdDiagnostic> m_diagnostics;
 };
 
 #endif // SMDCELL_H

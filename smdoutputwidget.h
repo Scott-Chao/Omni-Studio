@@ -15,6 +15,7 @@ public:
     void setOutput(const QString &text);
     void appendText(const QString &text, bool isStderr = false);
     void clearOutput();
+    void clearSelection();
     void scrollToTop();
     QString outputText() const;
     bool hasOutput() const;

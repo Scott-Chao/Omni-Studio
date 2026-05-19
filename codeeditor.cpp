@@ -2,6 +2,7 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
+#include "smdlspmanager.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -27,11 +28,13 @@
 // before Qt gets a chance to route it to the wrong HWND.
 // ============================================================
 
-class EscNativeFilter : public QAbstractNativeEventFilter
+class EscNativeFilter : public QObject, public QAbstractNativeEventFilter
 {
+    Q_OBJECT
 public:
+    explicit EscNativeFilter(QObject *parent = nullptr) : QObject(parent) {}
     QPointer<CompletionPopup> popup;
-    SignatureHelpManager *sigMgr = nullptr;
+    QPointer<SignatureHelpManager> sigMgr;
 
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
     {
@@ -119,7 +122,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
     {
-        auto *nativeFilter = new EscNativeFilter();
+        auto *nativeFilter = new EscNativeFilter(this);
         nativeFilter->popup = m_completionPopup;
         nativeFilter->sigMgr = m_signatureHelpManager;
         qApp->installNativeEventFilter(nativeFilter);
@@ -191,6 +194,22 @@ void CodeEditor::setLanguage(const QString &langId)
         m_completionProvider->openDocument(editorUri(), langId, toPlainText());
 }
 
+void CodeEditor::setLanguageSyntaxOnly(const QString &langId)
+{
+    if (m_highlighter) {
+        delete m_highlighter;
+        m_highlighter = nullptr;
+    }
+    m_languageId = langId;
+    m_highlighter = LanguageUtils::createHighlighter(langId, document());
+
+    // Connect text sync for when a shared provider is set later
+    disconnect(document(), &QTextDocument::contentsChanged,
+               this, &CodeEditor::onEditorTextChanged);
+    connect(document(), &QTextDocument::contentsChanged,
+            this, &CodeEditor::onEditorTextChanged);
+}
+
 void CodeEditor::onServerReady()
 {
     // Server just became ready (initial start or restart).
@@ -257,18 +276,52 @@ void CodeEditor::createCompletionProvider(const QString &langId)
     m_signatureHelpManager->setProvider(m_completionProvider);
 }
 
+void CodeEditor::setCompletionProvider(CompletionProvider *provider)
+{
+    if (m_completionProvider) {
+        disconnect(m_completionProvider, nullptr, this, nullptr);
+        disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);
+        disconnect(m_completionProvider, nullptr, m_signatureHelpManager, nullptr);
+        if (m_ownsProvider) {
+            // Shut down LSP before deleting to prevent use-after-free
+            if (auto *cpp = qobject_cast<CppCompletionProvider*>(m_completionProvider))
+                cpp->shutdown();
+            else if (auto *py = qobject_cast<PythonCompletionProvider*>(m_completionProvider))
+                py->shutdown();
+            m_completionProvider->deleteLater();
+        }
+        m_completionProvider = nullptr;
+    }
+
+    m_completionProvider = provider;
+    m_ownsProvider = false;
+
+    if (provider) {
+        connect(provider, &CompletionProvider::completionReady,
+                this, &CodeEditor::onCompletionsReady);
+        m_hoverManager->setProvider(provider);
+        m_signatureHelpManager->setProvider(provider);
+    }
+}
+
 void CodeEditor::onProviderFailed(const QString &reason)
 {
     qWarning() << "CodeEditor: provider failed:" << reason
                << "— falling back to keyword completion";
 
     if (m_completionProvider) {
-        m_completionProvider->deleteLater();
+        disconnect(m_completionProvider, nullptr, this, nullptr);
+        disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);
+        disconnect(m_completionProvider, nullptr, m_signatureHelpManager, nullptr);
+        if (m_ownsProvider) {
+            m_completionProvider->deleteLater();
+        }
         m_completionProvider = nullptr;
     }
 
     auto *kw = new KeywordCompletionProvider(m_languageId, this);
     m_completionProvider = kw;
+    m_ownsProvider = true;
 
     connect(m_completionProvider, &CompletionProvider::completionReady,
             this, &CodeEditor::onCompletionsReady);
@@ -372,6 +425,11 @@ void CodeEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
 
 void CodeEditor::highlightCurrentLine()
 {
+    updateExtraSelectionsWithDiagnostics();
+}
+
+void CodeEditor::updateExtraSelectionsWithDiagnostics()
+{
     QList<QTextEdit::ExtraSelection> extraSelections = m_searchHighlights;
 
     if (!isReadOnly()) {
@@ -383,7 +441,58 @@ void CodeEditor::highlightCurrentLine()
         extraSelections.append(selection);
     }
 
+    // Add diagnostic squigglies
+    for (const auto &diag : m_diagnostics) {
+        QTextEdit::ExtraSelection sel;
+        QTextCharFormat fmt;
+        fmt.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        fmt.setUnderlineColor(diag.severity == 1 ? QColor(QStringLiteral("#F44747"))
+                                                  : QColor(QStringLiteral("#CCA700")));
+        fmt.setToolTip(diag.message);
+        sel.format = fmt;
+
+        QTextBlock startBlock = document()->findBlockByLineNumber(diag.startLine);
+        QTextBlock endBlock = document()->findBlockByLineNumber(diag.endLine);
+        if (!startBlock.isValid()) continue;
+        int startPos = startBlock.position() + diag.startCol;
+        int endPos;
+        if (endBlock.isValid())
+            endPos = endBlock.position() + diag.endCol;
+        else
+            endPos = startPos;
+        sel.cursor = QTextCursor(document());
+        sel.cursor.setPosition(startPos);
+        sel.cursor.setPosition(endPos, QTextCursor::KeepAnchor);
+        extraSelections.append(sel);
+    }
+
     setExtraSelections(extraSelections);
+}
+
+void CodeEditor::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
+{
+    m_diagnostics = diagnostics;
+    highlightCurrentLine();
+}
+
+void CodeEditor::clearDiagnostics()
+{
+    m_diagnostics.clear();
+    highlightCurrentLine();
+}
+
+const SmdDiagnostic* CodeEditor::diagnosticAt(int line, int col) const
+{
+    for (const auto &d : m_diagnostics) {
+        if (line < d.startLine || line > d.endLine)
+            continue;
+        if (line == d.startLine && col < d.startCol)
+            continue;
+        if (line == d.endLine && col > d.endCol)
+            continue;
+        return &d;
+    }
+    return nullptr;
 }
 
 // ---- Key handling ----
@@ -451,6 +560,17 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     // Ctrl+I — manual completion trigger (Ctrl+Space is intercepted by Windows IME)
     if (event->key() == Qt::Key_I && (event->modifiers() & Qt::ControlModifier)) {
         triggerCompletion();
+        return;
+    }
+
+    // Ctrl+] — indent right
+    if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
+        handleIndentRight();
+        return;
+    }
+    // Ctrl+[ — indent left
+    if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
+        handleIndentLeft();
         return;
     }
 
@@ -855,6 +975,95 @@ void CodeEditor::handleToggleComment()
     setTextCursor(newCursor);
 }
 
+// ---- Indent left/right ----
+
+void CodeEditor::handleIndentRight()
+{
+    QTextCursor cursor = textCursor();
+    QTextDocument *doc = document();
+    QString indent = indentString();
+
+    if (cursor.hasSelection()) {
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+        // If the selection ends exactly at column 0 of a subsequent block,
+        // exclude that trailing unselected line.
+        if (cursor.selectionEnd() > cursor.selectionStart()
+            && doc->findBlock(cursor.selectionEnd()).position() == cursor.selectionEnd()
+            && startBlock != endBlock) {
+            --endBlock;
+        }
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            if (block.text().trimmed().isEmpty())
+                continue; // skip empty lines in selection
+            QTextCursor lineCursor(block);
+            lineCursor.movePosition(QTextCursor::StartOfBlock);
+            lineCursor.insertText(indent);
+        }
+        cursor.endEditBlock();
+    } else {
+        // No selection: indent current line only
+        QTextBlock block = textCursor().block();
+        QTextCursor lineCursor(block);
+        lineCursor.movePosition(QTextCursor::StartOfBlock);
+        lineCursor.insertText(indent);
+    }
+}
+
+void CodeEditor::handleIndentLeft()
+{
+    QTextCursor cursor = textCursor();
+    QTextDocument *doc = document();
+
+    auto removeLeadingIndent = [this](const QTextBlock &block) -> int {
+        QString text = block.text();
+        int removeCount = 0;
+        for (int j = 0; j < m_indentWidth && j < text.length(); ++j) {
+            if (text.at(j) == QLatin1Char(' '))
+                ++removeCount;
+            else if (text.at(j) == QLatin1Char('\t')) {
+                removeCount = j + 1;
+                break;
+            } else
+                break;
+        }
+        return removeCount;
+    };
+
+    if (cursor.hasSelection()) {
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+        if (cursor.selectionEnd() > cursor.selectionStart()
+            && doc->findBlock(cursor.selectionEnd()).position() == cursor.selectionEnd()
+            && startBlock != endBlock) {
+            --endBlock;
+        }
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            if (block.text().trimmed().isEmpty())
+                continue; // skip empty lines in selection
+            int remove = removeLeadingIndent(block);
+            if (remove > 0) {
+                QTextCursor lineCursor(block);
+                lineCursor.setPosition(block.position() + remove, QTextCursor::KeepAnchor);
+                lineCursor.removeSelectedText();
+            }
+        }
+        cursor.endEditBlock();
+    } else {
+        QTextBlock block = textCursor().block();
+        int remove = removeLeadingIndent(block);
+        if (remove > 0) {
+            QTextCursor lineCursor(block);
+            lineCursor.setPosition(block.position() + remove, QTextCursor::KeepAnchor);
+            lineCursor.removeSelectedText();
+        }
+    }
+}
+
 // ---- Completion popup helpers ----
 
 void CodeEditor::insertCompletion(const CompletionItem &item)
@@ -889,15 +1098,30 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
 {
     // Close popup on mouse click outside of it
     if (obj == viewport() && event->type() == QEvent::MouseButtonPress) {
+        auto *me = static_cast<QMouseEvent *>(event);
+        QPoint globalPos = me->globalPosition().toPoint();
         if (m_completionPopup && m_completionPopup->isActive()) {
-            auto *me = static_cast<QMouseEvent *>(event);
-            QPoint globalPos = me->globalPosition().toPoint();
             if (!m_completionPopup->geometry().contains(globalPos)) {
                 m_completionPopup->hide();
             }
         }
+        if (m_signatureHelpManager && m_signatureHelpManager->isActive()) {
+            hideSignatureHelp();
+        }
     }
     return QPlainTextEdit::eventFilter(obj, event);
+}
+
+void CodeEditor::hideSignatureHelp()
+{
+    if (m_signatureHelpManager)
+        m_signatureHelpManager->hide();
+}
+
+void CodeEditor::focusOutEvent(QFocusEvent *event)
+{
+    hideSignatureHelp();
+    QPlainTextEdit::focusOutEvent(event);
 }
 
 // ---- Helpers ----
@@ -980,3 +1204,5 @@ void CodeEditor::refreshCurrentLineHighlight()
 {
     highlightCurrentLine();
 }
+
+#include "codeeditor.moc"

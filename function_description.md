@@ -1,4 +1,4 @@
-## 功能说明文档（v0.9.5）
+## 功能说明文档（v0.10.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -17,7 +17,8 @@
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
-- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换等功能。语言支持可通过 `LanguageUtils` 注册表扩展。
+- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示** 和 **函数签名帮助**。
+- SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
@@ -30,26 +31,66 @@
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（CaptionBtn 自绘悬停背景）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
-- ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索/AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
+- ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。4 个 SVG 图标按钮（搜索/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
 - 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
-- AI 助手面板：右侧 QDockWidget 集成，与历史/大纲等面板 tabify。支持上下文相关的动作按钮（Markdown：改进写作/总结笔记/提取标签/出题自测/翻译；代码：解释代码/寻找 Bug/添加注释/优化建议）。自由对话通过底部 InputBar 输入，保留多轮对话历史（超过 token 限制自动裁剪）。流式输出实时渲染到 ChatArea 气泡中，支持 Markdown 格式（粗体/斜体/代码块/标题/列表/链接等）。
-- AI 服务设置：设置面板新增"AI 服务"分类页面（索引 6），可配置 API 类型（Anthropic/OpenAI）、API 端点、API Key（密码模式 + base64 混淆存储）、模型名称、Max Tokens（256-16384）、系统提示词。API Key 通过 SettingsManager 的 `setAiApiKey/aiApiKey` 方法管理，存储方式与 OJ 密码一致。
-- AI Provider 层：支持 Anthropic Messages API（`content_block_delta` SSE 流）和 OpenAI 兼容 API（`data: [DONE]` SSE 流，兼容 DeepSeek/OpenAI 等）。抽象基类 `AiProvider` 定义 `chatStream/cancel` 接口和 `partialResponse/finished/error` 信号，通过 `AiProviderFactory` 工厂模式创建。30 秒连接超时，支持网络故障/API Key 无效/频率限制/超时等场景的中文错误提示。
-- AiContextManager：编辑器上下文收集器，自动检测当前编辑模式（Markdown/Code/SMD 单元格），收集文件路径、内容、选中文本、语言类型和光标位置。PromptTemplates header-only 模板系统，为 9 种动作（改进写作/总结笔记/提取标签/出题自测/翻译/解释代码/寻找 Bug/添加注释/优化建议）+ 自由对话生成中英双语 system prompt 和 user prompt。
-- ActivityBar AI 按钮：48x48 图标按钮，位于搜索按钮下方。点击显示/隐藏 AI 面板（快捷键 Ctrl+Shift+A），激活时左边框 #0078D4 高亮。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板。
-- 智能错题本（ErrorJournal）：Judge 评测非 AC 结果自动持久化到 JSON 文件（`error_journal/records.json`），记录完整的测试上下文（题目名、输入/输出、耗时/内存、错误详情）。支持 AI 自动分析错误原因，流式回填分析结果。错题列表支持状态筛选和关键词搜索，点击展开详情查看 AI 分析 Markdown 渲染。
-- AiPanel 标签切换：AI 面板标题栏新增"AI 助手"/"错题本"双标签，内部 QStackedWidget 切换对话视图与错题列表视图，独立管理状态。
-- .smd 文件格式：采用 `---smd:<type>` 分隔符实现单元格分块编辑（Markdown/C++/Python），类似 Jupyter Notebook 的交互模式。单元格高度自适应内容，支持编辑/命令双模式、语言切换和单元格执行。分隔线支持 JSON 元数据，可持久化存储代码输出内容和 Markdown 块渲染状态。输出区域独立置于单元格下方，高度自适应（1-15行），内容上限 1000 行（超过时保留前 1000 行，末尾显示隐藏行数）。重新打开文件时自动恢复输出内容并隐式渲染已渲染的 Markdown 块。保存/另存为对话框中均可选择 `.smd` 格式，从其他模式保存为 `.smd` 时自动切换到 SMD 编辑器。
+- .smd 文件格式：采用 `---smd:<type>` 分隔符的单元格分块格式，类似 Jupyter Notebook 的交互模式。编辑器自动识别 `.smd` 后缀切换为 SMD 编辑模式，保存/另存为对话框支持 `.smd` 格式。
+  - 三种单元格类型：Markdown / C++ / Python，每单元格高度自适应内容，输出区独立置于单元格下方（1-15 行自适应，上限 1000 行，超出时保留前 1000 行并提示隐藏行数）
+  - 双模式系统：命令模式（紫色边框 `#C586C0`，键盘导航）与编辑模式（蓝色边框 `#0078D4`，文本编辑），`Esc` 切换
+  - 单元格增删：命令模式下 `A` 上方插入、`B` 下方插入、`Delete` 删除（至少保留一个），支持 `Ctrl+Shift+-` 在光标处分割单元格
+  - *`Ctrl+K` 弹出语言选择菜单（Markdown/C++/Python），新建单元格时自动弹出
+- 单元格执行：编辑模式下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转下一个）触发执行。
+  - Markdown 单元格：异步渲染为图片（QWebEngineView 加载 HTML → 轮询 Mermaid 完成 → 抓取 QPixmap 遮罩），空单元格跳过
+  - C++ 单元格：按 `main()` 函数边界自动分组，同组 cell 合并写入临时文件编译运行，不同程序组互不干扰
+  - Python 单元格：持久化进程执行（`python_executor.py` 守护进程 + JSON-line 协议），跨 cell 共享命名空间，每 cell 独立捕获 stdout/stderr，避免前面 cell 的输出污染
+  - 输出持久化：分隔线 `---smd:<type>` 后支持 JSON 元数据，自动持久化代码输出（base64 编码）和 Markdown 渲染状态，重新打开文件时自动恢复
+  - 执行安全：执行期间禁止增删单元格，`Ctrl+C` 可终止执行
+- LSP 代码智能（`SmdLspManager` 共享后端，每种语言一个 clangd/Jedi 进程，非每 cell 一个）：
+  - 虚拟文档拼接：同语言 cell 拼接为有效源文件，行号自动映射，跨 cell 类型解析
+  - C++ 程序分组：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码，避免多 `main()` 冲突
+  - 代码补全（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**
+  - 诊断波浪线：红色错误 / 黄色警告，cell 头部标签显示错误计数，切换 cell 时自动缓存/恢复诊断
+  - 诊断面板：`Ctrl+E`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
+- `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.9.5
-- **智能错题本（ErrorJournal + ErrorListPanel）**：每次 Judge 评测非 AC 结果（WA/RE/TLE/MLE）自动记录到 `error_journal/records.json` JSON 文件，包含完整上下文（题目名、源代码路径、输入/期望输出/实际输出、耗时/内存、错误详情）。AI 面板标题栏新增"AI 助手"/"错题本"标签切换。错题本视图支持状态筛选（全部/WA/RE/TLE/MLE）和关键词搜索。点击错题展开详情：展示问题信息、输入输出对比、AI 分析 Markdown 渲染、操作按钮（重新分析/标记已阅/删除）。错题记录数 badge 显示在标签上。
-- **AI 错题分析（ErrorAnalysis Prompt）**：在 PromptTemplates 中新增 `ErrorAnalysis` action，自动将源代码、测试输入/输出、错误状态打包发送给 AI，指定格式输出（## 错误原因 / ## 具体问题 / ## 修复建议 / ## 相关知识点）。AI 分析异步流式完成，结果回填到 `ErrorRecord::aiAnalysis`，详情面板实时刷新。
-- **JudgePanel 自动记录错题**：在 `onTestFinished()` 中对非 AC 结果调用 `ErrorJournal::instance().recordFailure()`，无需手动操作。`JudgeEngine::TestResult` 新增 `inputData` 字段以记录测试输入。
-- **AiPanel 标签视图切换**：AiPanel 标题栏新增"AI 助手"/"错题本"两个 tab 按钮，内部 QStackedWidget 切换聊天区与错题列表，切换时不丢失状态。
+### 新增 v0.10.0
+SMD 升级优化
+- SMD 单元格编辑（`.smd` 文件格式）：采用 `---smd:<type>` 分隔符，支持 Markdown/C++/Python 三种单元格类型，类似 Jupyter Notebook 的交互模式
+- 双模式系统：**命令模式**（键盘导航）与 **编辑模式**（文本编辑），按 `Esc` 在两者间切换
+  - 命令模式快捷键：
+    - `A` / `B`：当前单元格上方/下方插入新单元格，自动弹出语言选择菜单
+    - `↑` / `↓`：上下导航单元格
+    - `Enter`：进入编辑模式
+    - `Delete`：删除当前单元格（至少保留一个）
+    - `Ctrl+Shift+Z`：MD 单元格取消渲染 / 代码单元格删除输出
+  - 编辑模式快捷键：
+    - `Ctrl+Enter`：执行当前单元格（不跳转）
+    - `Shift+Enter`：执行当前单元格并跳转到下一个
+    - `Ctrl+Shift+-`：在光标处将当前单元格一分为二（类型不变）
+  - 通用快捷键（命令/编辑模式均有效）：
+    - `Ctrl+K`：弹出语言选择菜单修改单元格类型
+    - `Esc`：进入命令模式（语言菜单弹出时关闭菜单）
+    - `Ctrl+E`：切换诊断面板显示/隐藏（编辑模式）
+- 语言选择器（`LangSelectorPopup`）：深色主题弹出菜单，支持 `↑/↓` 导航、`Enter` 确认、`1/2/3` 数字键直接选择、`Esc` 取消；新建单元格时取消自动删除空单元格
+- 单元格执行：
+  - **Markdown 单元格**：异步渲染为图片（QWebEngineView 加载 HTML → 轮询高度 → 抓取 QPixmap），空单元格跳过渲染
+  - **C++ 单元格**：按 `main()` 函数边界自动分组，同组 cell 合并编译，不同 `main()` 组互不干扰，无 `main()` 时仅编译不链接
+  - **Python 单元格**：持久化进程执行（`python_executor.py` 守护进程），维护跨 cell 共享命名空间，每个 cell 独立捕获 stdout/stderr 输出
+  - 执行期间禁止增删单元格操作，`Ctrl+C` 可终止执行
+  - 跳转保护：用户已导航至其他单元格时不自动跳转
+- LSP 代码智能（通过 `SmdLspManager` 共享后端）：
+  - C++ 使用 clangd，Python 使用 Jedi 进程，每种语言仅启动一个后端
+  - **虚拟文档拼接**：同语言 cell 拼接为有效源文件，行号自动映射
+  - **C++ 程序分组**：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码
+  - 红色/黄色诊断波浪线（错误/警告），cell 头部标签显示错误计数
+  - 支持代码补全（Ctrl+I / 自动触发）、悬停类型提示、函数签名帮助
+  - 切换 cell 时自动切换诊断上下文并缓存各组诊断结果
+- `SmdDiagnosticsPanel` 诊断面板：`Ctrl+E`（编辑模式）切换显示，红色错误/黄色警告分区展示，点击条目跳转至对应 cell 和行号
+- 文件格式支持：`.smd` 文件在编辑器打开时自动识别为 SMD 模式，`.md` ↔ `.smd` 双向转换（`Ctrl+T`），保留光标位置映射
+- 自动保存与恢复：输出内容和 Markdown 渲染状态持久化至 JSON 元数据，重新打开文件时自动恢复
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -86,7 +127,6 @@
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
-- 管理 AI 助手面板（`QDockWidget` + `AiPanel`），在 ActivityBar 提供 AI 图标按钮（快捷键 `Ctrl+Shift+A`）。AI 面板与右侧面板 tabify 共用一个 dock 区域，显示 AI 时自动隐藏右侧面板（`showRightPanel()` 时反之亦然）。AI 面板内含 ActionBar（上下文相关动作按钮，通过 `updateAiActionBar()` 在标签切换时刷新）、ChatArea（消息列表）、ErrorListPanel（错题本视图，通过标题栏"AI 助手"/"错题本"标签切换）、InputBar（自由输入，仅 AI 助手 tab 可见）。面板顶部"清空对话"按钮仅在 AI 助手 tab 可见。错误记录由 ErrorJournal 单例管理，JudgePanel::onTestFinished 自动为 WA/RE/TLE/MLE 结果调用 ErrorJournal::recordFailure()。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -109,14 +149,6 @@
   同时，在 `connectCurrentEditorZoomSignal()` 中连接当前编辑器的 `filePathChanged` 信号到 `updatePreviewActionState`，以便文件路径（如通过外部重命名或另存为）变化时刷新按钮状态。
 - `void syncFileTreeSelection()`：在标签页切换时将文件树的选中项同步到当前编辑器正在编辑的文件，内部获取当前文件路径并转发给 `FileExplorerWidget::selectFile()`。
 - `void onRequestDelete(const QString &path, bool isDir)`：响应文件树发出的删除请求，检查未保存文件，弹出确认对话框，强制关闭相关标签页，最后执行实际删除。
-- `void onAiSettingChanged(const QString &key, const QVariant &value)`：处理 AI 设置变更。`ai.api_key` 键时调用 `m_settings->setAiApiKey()` 存储到 config.ini（base64 混淆），其余键调用 `setSettingOverride` 持久化。
-- `void updateAiActionBar()`：在标签页切换、文件保存时调用。通过 `AiContextManager::currentEditorMode(editor)` 获取当前编辑器模式，调用 `actionsForMode(mode)` 获取对应动作列表，更新到 `m_aiPanel->setActionList()`。
-- `void startAiRequest(AiAction action, const QString &freeQuery = QString())`：启动 AI 请求。中止已有请求 → 动作模式清空历史 → 收集上下文 → 构建 Prompt → 读取 API 设置 → 创建 Provider → 配置端点/Key/模型 → 连接信号 → 在 ChatArea 添加用户消息 → 添加空助手气泡作为流式目标 → 调用 `chatStream()` 发送。自由对话保留历史消息（超 maxTokens*4 字符时裁剪最早对话对），动作模式发送单条消息。开始前禁用输入控件。
-- `void abortAiRequest()`：取消进行中的 AI 请求。调用 `m_aiProvider->cancel()`，断开信号连接，恢复输入控件。
-- `void onAiPartialResponse(const QString &text)`：收到流式响应片段，追加到最后一个助手气泡：`m_aiPanel->appendToLastAssistant(text)`。
-- `void onAiFinished()`：流式完成。若为自由对话则将助手回复追加到 `m_aiHistory` 保留上下文。恢复输入控件。
-- `void onAiError(const QString &message)`：流式错误。将错误文本（"**错误：**..."）追加到当前流式目标气泡或新建气泡。恢复输入控件。
-- `void showRightPanel(int panelIndex)`：显示右侧面板（历史/大纲/标签/反链），同时隐藏 AI 面板。用于工具栏按钮切换右面板时确保 AI 面板不遮挡。
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置全屏预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
 - `void updateSplitPreviewActionState()`：与 `updatePreviewActionState()` 对称，管理分屏预览按钮的可见性、启用状态和勾选状态。确保两个预览按钮互斥（开启一个自动关闭另一个）。
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
@@ -152,11 +184,6 @@
   - 工具栏显示/隐藏按钮通过 `m_dockBacklinks->toggleViewAction()` 实现，行为与历史面板一致。
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
 - 安装全局事件过滤器，当历史面板或反链面板可见时，若鼠标点击发生在面板外部，则自动隐藏对应面板。工具栏按钮点击不触发隐藏，由 toggle 动作自行处理。
-- 持有 AI 助手相关组件：`AiPanel*`（面板内容）、`QDockWidget*`（dock 容器）、`QAction*`（toggle 快捷键）、`AiProvider*`（当前 Provider 实例）、`QList<Message>`（自由对话历史记录）、`bool m_aiStreaming`（流式状态标志）。
-  - AI 面板 dock 通过 `tabifyDockWidget` 与右侧面板共享 dock 区域，二者互斥显示。
-  - 监听 `ActivityBar::aiClicked` 信号，切换 AI 面板显示/隐藏；监听 `QDockWidget::visibilityChanged` 同步更新 ActivityBar 激活状态和 toggle 动作选中状态。
-  - 标签页切换时自动调用 `updateAiActionBar()` 刷新 ActionBar 按钮。
-  - 动作执行与自由提问统一走 `startAiRequest()` 管道，保证创建 Provider、配置参数、处理流式响应的一致性。
 
 ---
 
@@ -562,25 +589,45 @@
 **职责**：
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
+- **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。鼠标移动/离开/点击/滚轮时关闭。
+- **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
 - 闭合括号跳过（`handleClosingBracketSkip`）：输入右括号时若光标后紧跟相同字符，则跳过而非重复插入。
 - 退格成对删除（`handleBackspacePairRemoval`）：光标位于空括号对中间时，退格同时删除左右括号。
 - 智能退格（`handleBackspaceIndent`）：光标在行首空白区域时，退格删除至前一缩进边界（4 空格为单位）。Tab 字符单独删除一个。
 - Tab 缩进（`handleTabKey`）：插入 4 空格缩进；有选区时批量缩进选中行。
-- 切换行注释（`handleToggleComment` / `commentPrefix`  `Ctrl+/`）：无选区时注释/取消注释当前行，有选区时注释/取消注释所有选中行。C++ 使用 `//`、Python 使用 `#`，注释符号统一放在行首（column 0）。再次按 `Ctrl+/` 自动取消注释（保留选中状态）。
+- 缩进调整（`handleIndentLeft` / `handleIndentRight` / `Ctrl+[` 向左缩进 / `Ctrl+]` 向右缩进）。无选区时调整当前行缩进；有选区时调整所有选中行的缩进，自动跳过空行。
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索结果高亮列表（金色 `#FFD700`），与当前行高亮合并后通过 `setExtraSelections` 统一应用。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
 **主要接口**：
-- `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器。
+- `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器，创建独立的 LSP CompletionProvider（仅独立代码文件使用）。
+- `void setLanguageSyntaxOnly(const QString &langId)`：仅安装语法高亮器和文本同步信号，**不创建私有 LSP provider**。供 SMD cell 中的 CodeEditor 使用（LSP 由 SmdLspManager 共享管理）。
 - `QString languageId() const`：返回当前语言 ID。
+- `CompletionProvider *completionProvider() const`：返回当前补全提供者。
+- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
+- `void hideSignatureHelp()`：隐藏签名帮助弹出窗口。由 `focusOutEvent` 失焦时调用，也由 `SmdEditor` 在执行 cell 前调用以确保弹出窗口不残留。
+- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。
 - `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
 - `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
+
+**LSP 补全集成**：
+- 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。
+  - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
+  - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
+  - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
+- SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
+- 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
+
+**诊断波浪线渲染**：
+- `updateExtraSelectionsWithDiagnostics()`：将 `m_diagnostics` 列表转换为 `QTextEdit::ExtraSelection`（错误红色 `#F44747` / 警告黄色 `#CCA700` 波浪下划线，tooltip 显示诊断信息），与当前行高亮、搜索高亮合并后通过 `setExtraSelections()` 统一应用。
+- 由 `highlightCurrentLine()` 和 `setDiagnostics()` 触发刷新。
 
 **内部类 `LineNumberArea`**：
 - 继承 `QWidget`，作为 `CodeEditor` 的子控件。
@@ -776,7 +823,6 @@
 - 超时控制：每个用例 1000ms（复用 `QTimer`，`setSingleShot(true)`），超时标记 TLE。
 - 内存监控：三重捕获策略确保准确读取——① 进程启动后立即同步调用 `captureMemory()`（此时进程等待 stdin 输入，保证存活）；② 100ms `QTimer` 轮询续传（`captureMemory()` 抽取为共享方法，使用 `PROCESS_QUERY_LIMITED_INFORMATION`）；③ 进程退出时补充读取。峰值内存超过 65536KB 标记 MLE 并杀进程。
 - `m_testHandled` 标志位防止超时和进程结束双重触发。
-- `TestResult` 结构体包含 `inputData` 字段（从 `.in` 文件读取），供 `ErrorJournal::recordFailure()` 记录完整测试输入。
 
 **信号**：
 - `judgeOutput(const QString &text, bool isStderr)`：引擎运行过程中的日志输出。
@@ -800,7 +846,7 @@
 - 中部：5 列 `QTableWidget`（#、测试用例、结果、耗时(ms)、内存(KB)），结果列按状态码着色：AC 绿色（`#52C41A`）、WA 红色（`#E74C3C`）、TLE 蓝色（`#3498DB`）、MLE 紫色（`#9B59B6`）、RE 橙色（`#F39C12`）。
 - 中下部：`QPlainTextEdit` 详情区，点击失败行显示状态码、峰值内存、预期输出与实际输出。
 - 底部：摘要 `QLabel` + "运行全部" / "停止" 按钮。
-- 内部持有 `JudgeEngine`，连接所有信号。`runJudge(sourceFile)` 设置源文件和测试目录后启动评测。在 `onTestFinished()` 中对非 AC 结果调用 `ErrorJournal::instance().recordFailure()` 自动记录错题。
+- 内部持有 `JudgeEngine`，连接所有信号。`runJudge(sourceFile)` 设置源文件和测试目录后启动评测。
 - `setTestFolder(path)` 设置文件夹路径并自动清除已有结果，供 OpenJudge 集成使用。
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
 - 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
@@ -915,23 +961,24 @@
   - **预览**：分屏防抖延迟微调框（100-2000ms，百分号移出框外使用独立 `%` 标签）、分屏比例微调框（30-70）。
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
   - **快捷键**：只读 `QTableWidget`，两列（动作名 + 按键序列），从 ConfigManager 读取。
-
-**信号**：
-- `editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
+- **信号**：`editorSettingChanged`、`appearanceSettingChanged`、`outputPanelSettingChanged`、`previewSettingChanged`、`searchSettingChanged`，均为 `(const QString &key, const QVariant &value)` 泛型模式。
 - `syncFromSettings(SettingsManager &sm)`：面板打开时由 `MainWindow` 调用，从 `SettingsManager::value()` 读取已持久化的覆盖值回填所有控件（使用 ConfigManager 默认值作为 fallback）。恢复默认设置后同样调用此方法重置控件。
 - 支持标题栏拖拽移动：在标题栏区域按住鼠标左键拖动可移动面板位置，移动范围限制在遮罩层内。
 - 支持八方向边缘拖拽调整大小：在面板边缘 8px 范围内按住鼠标左键拖动可调整面板大小，光标形状自动切换。最小尺寸 400×300 像素。
 - `QSizeGrip` 放置在右下角，提供可视化的调整大小手柄。
 - 尺寸从 `ConfigManager` 读取（`settings_panel.width` / `settings_panel.height`，默认 680×480）。
 - 点击遮罩层背景区域自动关闭面板（通过 `MainWindow::eventFilter` 处理）。
-- `void aiSettingChanged(const QString &key, const QVariant &value)`：AI 服务设置变更时发出。`MainWindow::onAiSettingChanged()` 响应：`ai.api_key` 键调用 `SettingsManager::setAiApiKey()`（base64 混淆存储），其他键调用 `setSettingOverride()` 持久化。
+
+**信号**：
+- `void closeRequested()`：用户点击关闭按钮时发出，由 `MainWindow::toggleSettings()` 响应。
+- `void defaultZoomChanged(qreal zoom)`：默认缩放值变更时发出，由 `MainWindow::onDefaultZoomChanged()` 响应。
+- `void resetToDefaultsRequested()`：点击"恢复默认设置"并确认后发出，由 `MainWindow::onResetToDefaults()` 响应。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
 - 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。
 - `MainWindow::resizeEvent()` 中处理遮罩层尺寸同步和面板位置约束。
-- `MainWindow` 连接所有 6 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
-- AI 服务页（索引 6）：包含 API 类型 ComboBox、端点 LineEdit、API Key Password LineEdit、模型 LineEdit、Max Tokens SpinBox、系统提示词 TextEdit。`syncFromSettings()` 中新增从 SettingsManager 同步 AI 设置的逻辑。
+- `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
 
 ---
 
@@ -957,8 +1004,7 @@
 - `QString toMarkdown(const QList<Cell> &cells)`：将 SMD 转换为 `.md` 格式。Markdown 单元格直接拼接内容，C++/Python 单元格包装为 fenced code block。
 - `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表。检测 fenced code block 分隔符并拆分单元格，Mermaid 图表保留为独立 Markdown 单元格。
 - `FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)`：增强版，额外返回 `mdLineToCell` / `mdLineToCellLine` 映射，用于 `.md` → `.smd` 光标定位。
-- `ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)`：增强版，额外返回 `cellContentStartLine` 向量，用于 `.smd` → `.md` 光标定位。
-- `QList<Cell> fromMarkdown(const QString &markdown)`：从 `.md` 文本反向转换为单元格列表（桩实现）。检测 fenced code block 分隔符并拆分单元格。
+- `ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)`：增强版，额外返回 `cellContentStartLine` 向量，用于 `.smd` → `.md` 光标定位。行数按 `\n` 计数 + 1 统一计算（空内容计为 1 行），避免空 cell 导致后续 cell 光标映射偏移。
 
 **协作关系**：
 - 被 `SmdEditor` 在 `loadFile()` 和 `saveFile()` 中调用以解析和序列化文件内容。
@@ -974,7 +1020,7 @@
 - 继承 `QFrame`，表示 `.smd` 文件中的一个单元格（Cell），包含类型标签和编辑器/渲染视图栈。输出区域已移出至独立的 `SmdOutputWidget`，由 `SmdEditor` 管理。
 - 支持三种 `CellType`：`Markdown`、`Cpp`、`Python`。
 - **自适应高度**：编辑器高度通过遍历所有 `QTextBlock` 的 `QTextLayout::boundingRect()` 精确求和得出，覆盖通过 `QFontMetricsF` 获取子像素精度，加上 `contentsMargins` 边距和 `+2px` 浮点舍入缓冲，确保编辑器内容完整可见无内部滚动条。整个页面通过父级 `QScrollArea` 统一滚动。
-- **选中视觉效果**：active 状态下四周显示 2px 蓝色边框（`#0078d4`），背景微亮（`#252526`）；非 active 命令模式显示灰色边框（`#3c3c3c`）；编辑模式透明边框。
+- **选中视觉效果**：active 状态下，编辑模式显示 2px 蓝色边框（`#0078d4`），命令模式显示 2px 紫色边框（`#C586C0`），背景微亮（`#252526`）；非 active 命令模式显示灰色边框（`#3c3c3c`）；编辑模式透明边框。
 
 **布局结构（垂直）**：
 1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
@@ -983,21 +1029,31 @@
    - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示，销毁 QWebEngineView 释放 GPU 资源。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
 
 **主要接口**：
-- `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容。
+- `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容，最后调用 `setCommandMode(m_commandMode)` 将当前命令/编辑模式状态重新应用到新编辑器。
 - `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
-- `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）。
-- `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源。
+- `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）及光标可见性。`setActive(false)` 时清除编辑器文本选中（`QTextCursor::clearSelection()`）并设置 `setCursorWidth(0)` 隐藏光标。`setActive(true)` 且非命令模式时恢复 `setCursorWidth(1)`。`setCommandMode(true)` 时先显式 `QTextCursor::clearSelection()` 清除选中，再通过 `Qt::NoTextInteraction` + `setCursorWidth(0)` 禁用交互和光标；对已渲染单元格还会直接操作隐藏的 `m_markdownEditor`。退出命令模式时恢复 `setCursorWidth(1)`。
+- `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源，根据 `m_commandMode` 决定是否聚焦编辑器（编辑模式）或保持只读无光标状态（命令模式）。
 - `void setRenderedState(bool rendered)`：仅设置渲染标志位，不触发实际渲染管线。用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
 - `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 RenderPixmapWidget）。
-- `void setEditorFocus()`：将焦点设置到编辑器控件，若为渲染视图则先返回编辑模式。
-- `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
+- `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
+- `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor` 和 `m_baseFontSize`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
+  - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
+  - **内容变更计数器**：`m_pendingContentChanges` 由 document 信号 lambda 递增、`updateEditorHeight` 入口原子性获取并清零。仅当计数器 > 0（真正的用户编辑）时才 `emit contentChanged()`，避免 layout 触发的重算虚假发射 LSP `cellContentChanged` → `syncVirtualDoc` 通知风暴。
+- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
 
 **信号**：同上。
 
+**生命周期安全**：
+- `setCellType()` 切换类型时，先 `removeWidget()` 将旧编辑器从 `QStackedWidget` 移除，调用 `setCompletionProvider(nullptr)` 断开共享 LSP adapter，再 `hide()` 隐藏。**旧编辑器不显式删除** — 它仍是 `m_editorStack` 的子控件，Qt 父子系统在 `SmdCell` 销毁时自动清理。在事件处理期间（如 `MouseButtonRelease`）调用 `delete`/`deleteLater()` 会破坏 Qt 内部事件状态，导致闪退。
+- 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。lambda 还对新 editor 安装 `eventFilter`。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
+- `m_lspManager` 在 `setPlainText()` 中 **晚于 `addCell()` 创建**。`addCell()` 执行时 `m_lspManager` 为 null，无法注入共享 provider。`setPlainText()` 中 `cellAdded()` 循环后额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 完成初始注入。
+- 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
+- `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
+
 **事件处理**：
-- 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` / `MouseButtonPress` 事件发射 `focusEntered()` 信号。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
+- 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` 事件发射 `focusEntered()` 信号（`MouseButtonPress` 不再触发，改由 `SmdEditor::eventFilter` 全局过滤器统一处理点击激活）。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
 - 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：保留本地遮罩层避免闪烁 → `setRendered(false)` → 恢复内容 → `setRendered(true)` → 恢复命令模式。
 
 **协作关系**：
@@ -1018,7 +1074,7 @@
 
 **模式管理**：
 - **编辑模式**（默认）：当前活动单元格的编辑器获得焦点，用户可直接输入内容。边框透明。
-- **命令模式**（`Esc` 进入）：所有编辑器失焦，活动单元格显示蓝色边框。通过键盘快捷键操作单元格。
+- **命令模式**（`Esc` 进入）：所有编辑器失焦，活动单元格显示紫色边框（`#C586C0`）。通过键盘快捷键操作单元格。
 - 按 `Enter`（命令模式）回到编辑模式；按 `Esc`（编辑模式）进入命令模式。
 
 **命令模式快捷键**：
@@ -1027,19 +1083,25 @@
 | `A` | 当前单元格上方插入新单元格（Markdown），弹出语言选择菜单 |
 | `B` | 当前单元格下方插入新单元格（Markdown），弹出语言选择菜单 |
 | `↑` / `↓` | 上下导航单元格 |
-| `Enter`（无 Ctrl） | 进入编辑模式 |
-| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
-| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
+| `Enter`（无修饰键） | 进入编辑模式 |
+| `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
 | `Delete` | 删除当前单元格（至少保留一个） |
-| `Ctrl+D` | 复制当前单元格到下方 |
+
+**编辑模式快捷键**：
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+Enter` | 执行当前单元格（不跳转，保持编辑模式） |
+| `Shift+Enter` | 执行当前单元格并跳转到下一个 |
+| `Ctrl+Shift+-` | 在光标处将当前单元格一分为二（类型不变），选中下方单元格 |
+| `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
+| `Ctrl+E` | 切换诊断面板显示/隐藏 |
 
 **通用快捷键（命令模式与编辑模式均有效）**：
 | 快捷键 | 功能 |
 |--------|------|
 | `Ctrl+K` | 弹出语言选择菜单修改当前单元格类型 |
+| `Ctrl+C` | 终止正在执行的代码单元格 |
 | `Esc` | 进入命令模式（语言选择菜单弹出时：关闭菜单） |
-| `Ctrl+Enter` | 执行当前单元格并跳转到下一个 |
-| `Ctrl+Shift+Z` | 取消 MD 单元格的渲染，返回文本编辑 |
 
 **语言选择器（`LangSelectorPopup`）**：
 - 继承 `QFrame`（`Qt::Popup`），深色主题无边框下拉菜单，出现于编辑区域顶部居中位置。
@@ -1050,15 +1112,14 @@
 - **取消行为**：如果在新建单元格流程中弹出（按 `A`/`B`），取消时自动删除该单元格、恢复原始活动单元格、清除修改状态标识。
 
 **单元格执行**：
-- `executeCurrentCell()`：根据当前活动单元格类型分发执行。编辑模式下 `Ctrl+Enter` 触发（同时处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截），命令模式下 `Ctrl+Enter` 同样生效。
-- **Markdown 单元格**：若未渲染则调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染，直接跳转。执行后进入命令模式并跳转下一个单元格。
-- **C++ 单元格**：将代码保存到临时文件 → `ProcessRunner::startCompileAndRun()` → stdout/stderr 流式输出到独立的 `SmdOutputWidget`（无 "--- Running ---" 头） → 清理临时文件 → 进入命令模式并跳转下一个单元格。
-- **Python 单元格**：将代码保存到临时文件 → `ProcessRunner::startRunPython()` → 输出到 `SmdOutputWidget` → 清理临时文件 → 命令模式 + 跳转。
-- **空代码单元格**：不启动执行流程，直接进入命令模式并跳转。
-- 执行期间不支持标准输入交互。
-- 临时文件路径：`QDir::tempPath()/smd_cell_<PID>_<counter>.<ext>`。
+- `executeCurrentCell()`：根据当前活动单元格类型分发执行。**仅编辑模式**下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转）触发，通过 `eventFilter` 处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截。`m_jumpAfterExecute` 标志控制执行后是否跳转到下一个单元格。执行前后不改变编辑/命令模式状态。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
+- **Markdown 单元格**：空单元格（`content().trimmed().isEmpty()`）跳过渲染，直接根据 `m_jumpAfterExecute` 决定是否跳转。非空且未渲染时调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
+- **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → `m_jumpAfterExecute` 为 true 时跳转下一个单元格。
+- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。代码在发送前进行预处理：规范化行尾（`\r\n`/`\r` → `\n`）、替换孤立 UTF-16 surrogate。通过 **base64 编码**传输代码以避免 JSON 换行转义问题。守护进程解码后在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
+- **空单元格**：Markdown 和代码单元格均跳过执行/渲染流程，`m_jumpAfterExecute` 为 true 时直接跳转。
+- 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
-- 修改跟踪：执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出内容的变化能反映在文件修改状态上（未保存标识）。
+- 修改跟踪：`isModified()` 使用 `toPlainText()`（含 output 字段）与 `m_originalContent` 比较，输出内容变化（执行产生新输出、`Ctrl+Shift+Z` 清除输出）均会触发修改标记。执行完成后通过 `emit contentChanged()` 通知 `EditorWidget` 执行内容检查，确保输出变化反映在文件修改状态上。
 
 **文件 I/O**：
 - `loadFile()`：读取文件 → `SmdFormat::parse()` 解析（含元数据） → `addCell()` 创建单元格和输出控件。恢复输出到 `m_outputWidgets[i]`，若有已渲染的 MD 单元格则加入 `m_autoRenderQueue`。
@@ -1067,26 +1128,65 @@
 - 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`，不改变活动单元格和焦点，隐式完成渲染。
 - 修改状态同步：文件加载时先通过 `setRenderedState(true)` 预置已渲染单元格的标志位，然后采集 `m_originalContent`，使序列化结果与文件内容一致，避免自动渲染完成后误判为已修改。
 
-**修改状态**：通过比较当前序列化内容与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。
+**修改状态**：通过比较当前序列化内容（含 output 字段）与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。修改单元格内容或输出区内容均可触发修改标记（输出变化、`Ctrl+Shift+Z` 清除输出）。
+
+**LSP 集成（SmdLspManager）**：
+- `setPlainText()` 中创建 `SmdLspManager` 实例，解析完成后遍历所有代码 cell 调用 `cellAdded()` 注册，**并额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 注入共享 provider**（因 `addCell()` 时 `m_lspManager` 为 null 无法注入）。加载完成后调用 `focusCell()` 初始化活动程序组。
+- `connectCellSignals()` 中为 C++/Python cell 注入共享 CompletionProvider（`codeEditor->setCompletionProvider(m_lspManager->providerForCell(...))`）。re-index 循环中先 `disconnect` 所有相关信号（`focusEntered`、`contentChanged`、**`cellTypeChanged`**）再 `connect`，防止信号重复连接累积。`focusEntered` 信号直接调用 `setActiveCell(index)` 激活 cell，滚动由 `m_clickSuppressScroll` 标志控制（鼠标点击期间置 true 跳过滚动）。
+- `cell->contentChanged` 信号连接至 `m_lspManager->cellContentChanged()`，触发虚拟文档重建和 `textDocument/didChange` 通知。C++ cell 内容变化后额外调用 `focusCell(m_activeCellIndex)` 重新检测程序组边界（支持动态键入/删除 `main()` 时实时切换组）。
+- `cell->cellTypeChanged(CellType oldType)` 信号携带旧类型参数。lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和内容缓存被正确清理后再为新语言创建 adapter。
+- `addCell()` / `removeCell()` 中通知 `m_lspManager->cellAdded()` / `cellRemoved()` 更新虚拟文档。`removeCell()` 在 `cellRemoved()` 删除共享 adapter **之前**先调用 `codeEditor->setCompletionProvider(nullptr)` 断开，防止旧编辑器持有悬空指针。`addCell()` 创建 cell 后调用 `cell->applyZoom(m_zoomFactor, m_baseFontSize)` 使新 cell 继承当前编辑器的缩放状态。增删 cell 后若活动 cell 为 C++ 则调用 `focusCell()` 重新检测组边界。
+- `setActiveCell()`：调用旧单元格 `setActive(false)` 清除编辑器选中 + `m_outputWidgets[oldIndex]->clearSelection()` 清除输出区选中 → 激活新单元格 → 同步命令模式状态。若 `m_clickSuppressScroll` 为 false，则通过 `QTimer::singleShot(0)` 延迟调用 `ensureWidgetVisible`（确保布局已处理完 `insertWidget` 等延迟事件后再读取 cell 位置）。鼠标点击激活时该标志为 true，跳过滚动。若目标 cell 为 C++ 则调用 `m_lspManager->focusCell(index)`，切换 clangd 虚拟文档至目标 cell 所在程序组并恢复缓存诊断。
+- `m_lspManager->diagnosticsUpdated` 信号连接至 cell 的 `SmdCell::setDiagnostics()` 和 `CodeEditor::setDiagnostics()`，更新头部标签计数和编辑器波浪线。C++ 和 Python 诊断统一通过此信号分发，下游可视化组件（CodeEditor 波浪线、SmdCell 标签、SmdDiagnosticsPanel 面板、HoverManager 工具提示）均为语言无关。
+- 打开新文件或重新解析内容时，先 `shutdown()` 旧 SmdLspManager 再创建新实例。
+
+**执行安全**：
+- 执行期间（`m_executingCell` 非空），`removeCell()` / `insertCellAbove()` / `insertCellBelow()` / `splitCellAtCursor()` 直接返回，阻止 cell 增删操作。
+- `m_executingCell` 使用 `QPointer<SmdCell>`，cell 被删除后自动置 null，`onProcessOutput/Finished/Stop` 中先检查再通过 `m_cells.indexOf()` 定位索引。
+
+**单元格增删**：
+- `insertCellAbove()`：在当前活动单元格**上方**插入 Markdown 空单元格 → `setActiveCell(idx)` 激活 → 延迟 `QTimer::singleShot(0)` 调用 `m_cellLayout->activate()` 后手动将新 cell 滚至视口顶部（`target = cellY - 8`），钳制到 `maxScroll`。弹出语言选择菜单。
+- `insertCellBelow()`：在当前活动单元格**下方**插入 Markdown 空单元格 → `setActiveCell(idx)` 激活 → 向布局底部**临时添加视口高度的 QSpacerItem**（`m_insertScrollPad`）→ 立即 `m_cellLayout->activate()` 使 `maxScroll` 反映扩展后的内容高度 → 延迟回调中再次 `activate() + ensureWidgetVisible` 后手动将新 cell 滚至视口底部（`target = cellTop + cellH - vpH + 8`），钳制到 `maxScroll`。弹出语言选择菜单。
+- 临时衬垫通过 `removeInsertScrollPad()` 清除，调用点包括：语言弹窗的 `onSelected` 回调（确认选择后）、`onCancelled` 回调（取消后，在 `removeCell` 之前）。另有 15 秒超时兜底防止泄漏。
+- `removeCell()`：删除指定索引的单元格，断开 LSP 连接，更新 `m_activeCellIndex`（若删除的索引小于等于当前活动索引则递减），调用 `setActiveCell()` 刷新活动单元格。至少保留一个单元格。
+
+**单元格分割**（`splitCellAtCursor()`）：
+- 编辑模式下 `Ctrl+Shift+-` 触发，在光标位置将当前单元格内容一分为二，两个单元格保持相同类型。
+- 使用 `QPlainTextEdit::textCursor().position()` 定位分割点，前段保留在原单元格，后段创建新单元格插入下方。
+- 分割后自动选中下方单元格，光标置于其开头（`QTextCursor::Start`）。
+- 高度更新采用两阶段延迟策略：两个 `QTimer::singleShot(0, ...)` 确保外层布局（cell 宽度分配）和内层布局（QStackedWidget → QPlainTextEdit → QTextDocument 重排）均完成后再调用 `updateEditorHeight()`，避免因 QPlainTextEdit 宽度未更新导致的文档高度计算偏差。之后第三个 `QTimer::singleShot(0)` 将视图滚动到新 cell 光标位置，上方留 50px 边距确保 cell 顶部栏也能完整显示。
+
+**命令模式编辑禁用与光标管理**：
+- 进入命令模式时 `SmdCell::setCommandMode(true)` 将编辑器设为 `readOnly`、`Qt::NoTextInteraction`、`Qt::NoFocus`，并设置 `setCursorWidth(0)` 显式隐藏光标；同时清除所有输出控件（`SmdOutputWidget`）的文本选中，确保进入命令模式后无残留选中高亮。对已渲染的 Markdown 单元格，直接操作隐藏的 `m_markdownEditor` 设置 `setCursorWidth(0)`（因为 `editorWidget()` 返回的是 `RenderPixmapWidget`，不是 `QPlainTextEdit`）。
+- 退出命令模式时 `setCommandMode(false)` 恢复 `readOnly=false`、`Qt::TextEditorInteraction`、`Qt::StrongFocus`、`setCursorWidth(1)`。
+- `setActive(false)` 时额外设置 `setCursorWidth(0)` 隐藏非活动单元格的光标；`setActive(true)` 时仅在非命令模式下恢复 `setCursorWidth(1)`（命令模式光标由 `setCommandMode` 统一管理）。
+- `setEditorFocus()` 设置焦点前先调用 `setCursorWidth(1)` 确保活动单元格光标可见。
+- `setRendered(false)` 取消渲染时，若当前为命令模式则保持编辑器只读且光标隐藏，避免非法聚焦。
+- `setCellType()` 切换类型重建编辑器后调用 `setCommandMode(m_commandMode)` 确保新编辑器继承当前模式状态（ReadOnly、NoFocus、cursorWidth 等），然后调用 `applyZoom(m_zoomFactor, m_baseFontSize)` 将当前缩放状态应用到新编辑器，保证字体大小与已有 cell 一致。
 
 **主要接口**：
 - `bool loadFile(const QString &filePath)` / `bool saveFile()`：文件加载与保存。
 - `QString toPlainText() const` / `void setPlainText(const QString &text)`：序列化/反序列化所有单元格内容。
 - `bool isModified() const` / `void setModified(bool modified)`：修改状态管理。
-- `void applyZoom(qreal factor, int baseFontSize)`：遍历所有单元格调用 `SmdCell::applyZoom()`。
+- `int cppGroupForCell(int cellIndex) const`：遍历 `m_cells` 中位于 `cellIndex` 之前的 C++ cell，按 `main()` 边界计算所属程序组 ID（与 `SmdLspManager::computeCppGroup()` 算法相同）。供 `executeCodeCell()` 确定同组合并范围。
+- `void applyZoom(qreal factor, int baseFontSize)`：存储当前缩放因子和基准字号至 `m_zoomFactor` / `m_baseFontSize`，然后遍历所有单元格调用 `SmdCell::applyZoom()`，确保后续新建的 cell 可继承当前缩放状态。
 - `void checkCellRenderWidths()`：遍历所有已渲染单元格调用 `SmdCell::checkReRender()`，在 `resizeEvent` 中延迟执行，确保布局稳定后检测宽度变化。
-- `void setEditorFont(const QString &family, int size)` / `void reloadColors()`：字体和颜色更新。
+- `void setEditorFont(const QString &family, int size)`：存储基准字号至 `m_baseFontSize`，遍历所有单元格调用 `SmdCell::applyZoom(1.0, size)`。注意此处 zoom 因子固定为 1.0，实际的缩放因子由 `EditorWidget` 后续调用 `applyZoom()` 重新应用。
+- `void reloadColors()`：颜色更新。
 
 **事件处理**：
 - 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
-- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete/Ctrl+D）。
-  `Ctrl+K` 不再在此处理（提升到全局 `eventFilter`，编辑模式下也可用）。
-- 重写 `eventFilter(QObject*, QEvent*)`：同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
-  - `Ctrl+Enter`：`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段执行单元格。
+- 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
+- 重写 `eventFilter(QObject*, QEvent*)`：
+  - **滚动抑制**：任何 `MouseButtonPress` 事件（无论是否命中 SmdCell）都会设置 `m_clickSuppressScroll = true` 并启动 50ms 单次定时器清除。这确保点击 toolbar 或空白区域导致焦点恢复至 cell 时不会意外滚动。
+  - **Cell 激活**：`FocusIn` / `MouseButtonPress` 事件向上查找父 SmdCell，找到则调用 `setActiveCell(idx)` 激活。`m_clickSuppressScroll` 标志在 setActiveCell 中阻止滚动。
+  - 同时处理 `ShortcutOverride` 和 `KeyPress` 事件。
+  - `Ctrl+Enter` / `Shift+Enter`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 快捷键拦截；`KeyPress` 阶段设置 `m_jumpAfterExecute`（Shift 为 true）并调用 `executeCurrentCell()`。
   - `Esc`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段进入命令模式。当 `Qt::Popup` 窗口（如语言选择菜单）激活时跳过拦截，使菜单能正常响应 `Esc`。
   - `Ctrl+K`：`ShortcutOverride` 阶段 `event->accept()`；`KeyPress` 阶段弹出语言选择菜单（命令模式与编辑模式均生效）。
   - `Ctrl+C`：执行期间终止进程（`ShortcutOverride` + `KeyPress`）。
-  - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段在编辑模式下直接取消渲染，命令模式放行给 `keyPressEvent`。
+  - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段对 MD 单元格取消渲染，对代码单元格清除输出。命令模式放行给 `keyPressEvent`。
+  - `Ctrl+Shift+-`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 缩放快捷键拦截；`KeyPress` 阶段调用 `splitCellAtCursor()` 将当前单元格在光标处一分为二（类型保持不变），选中下方单元格并将光标置于其开头。
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
@@ -1096,8 +1196,9 @@
 - 键盘事件处理：`↑/↓` 导航选项、`Enter` 确认选择、`1/2/3` 快捷键、`Esc` 关闭。
 - 点击 `QLabel` 选项通过 `eventFilter` 检测 `MouseButtonRelease` 并确认选择。
 - 确认时设置 `m_confirmed = true` 再关闭，避免 `hideEvent` 触发取消回调。
-- 重写 `hideEvent`：若未确认且有取消回调则执行取消逻辑（如新建单元格时删除单元格），然后自动 `deleteLater()` 释放内存。
-- 构造函数新增 `onCancelled` 参数，用于取消时的回调（新建单元格流程传入 `removeCell` + 恢复活动单元格 + 清除修改标识；已有单元格流程不传入，取消时无副作用）。
+- 重写 `hideEvent`：若未确认且有取消回调则执行取消逻辑（如新建单元格时删除单元格）。**不在此处调用 `deleteLater()`** — `Qt::Popup` 隐式设置 `WA_DeleteOnClose` 会重复触发，且 `hideEvent` 可能被 Qt 多次投递导致 double-delete。
+- 构造函数中 `setAttribute(Qt::WA_DeleteOnClose, false)` 禁用自动删除，`confirm()` 通过 `QTimer::singleShot(0, this, [this]() { close(); })` 延迟关闭。延迟避免 `QWidget::close()` 在 `m_onSelected`（`setCellType`）修改控件树后立即遍历焦点链导致崩溃。
+- 提供 `setOnSelected()` / `setOnCancelled()` setter，`showLanguageSelector()` 创建 popup 后通过 setter 注入回调（含 popup 指针捕获以支持取消时清理）。
 
 **协作关系**：
 - 由 `EditorWidget` 创建并作为 `QStackedWidget` 的第 5 页（索引 5）。
@@ -1120,314 +1221,106 @@
 **自适应高度**：
 - `kMaxVisibleLines = 15`：高度随内容行数增长，最多显示 15 行。未达上限时滚动条强制关闭（`ScrollBarAlwaysOff`），超出时启用滚动条（`ScrollBarAsNeeded`）。
 - `kMaxOutputLines = 1000`：内容行数上限。超出的行从开头删除，替换为灰色 `[... more lines]` 提示。
-- `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，自动调整固定高度。
+- `updateHeight()` 槽连接 `QTextDocument::blockCountChanged`，在 `appendText()` 追加文本时自动触发调整固定高度；`setOutput()` 中通过 `QTimer::singleShot(0, ...)` 延迟调用，避免加载时控件尚未完成布局导致高度计算异常。
 
 **主要接口**：
-- `void setOutput(const QString &text)`：清除后设置输出文本，超行截断，自动显示控件。
-- `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
-- `void clearOutput()`：清空内容并隐藏控件。
-- `QString outputText() const`：返回原始输出文本（用于序列化）。
+- `void setOutput(const QString &text)`：加载文件时恢复已保存的输出文本。自动检测文本格式：若以 `<!DOCTYPE HTML` 开头则通过 `QTextDocument::setHtml()` 恢复带颜色的格式化输出；否则视为纯文本（兼容旧文件），按行分割、超行截断后通过 `setPlainText()` 设置。先阻断文档信号防止设置过程中提前触发 `updateHeight()`，设置文本后再解除信号阻塞，显示控件，最后通过 `QTimer::singleShot(0, ...)` 延迟计算高度确保布局就绪。
+- `void appendText(const QString &text, bool isStderr = false)`：追加文本到末尾，首次追加时自动显示控件。stderr 以红色 `#F48771` 显示。每次追加后检查行数上限并截断。
+- `void clearOutput()`：清空内容并隐藏控件。执行前调用以重置输出区域，控件保持隐藏直至 `appendText()` 收到实际输出。
+- `void clearSelection()`：仅清除 `m_outputEdit` 的文本选中状态，不清空内容。用于切换单元格或进入命令模式时移除输出区的选中高亮。
+- `QString outputText() const`：返回输出文本的 HTML 格式（保留颜色等字符格式），供序列化保存。输出为空时返回空字符串，避免空输出被持久化到文件。
 - `bool hasOutput() const`：是否有输出内容。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，与 `SmdCell` 通过 `m_outputWidgets` 列表一一对应。
-- 内容通过 `SmdEditor::toPlainText()` 序列化（base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。
+- 内容通过 `SmdEditor::toPlainText()` 序列化（HTML 格式的 base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。HTML 格式保留了 stderr 红色、截断提示灰色等字符格式信息，使保存后重新打开仍能显示彩色输出。
 
 
----
+### 29. `SmdLspManager` — SMD 共享 LSP 管理器
 
-### 29. `AiPanel` — AI 助手面板
-
-**文件**：`ai/aipanel.h` / `ai/aipanel.cpp`
+**文件**：`smdlspmanager.h` / `smdlspmanager.cpp`
 
 **职责**：
-- 右侧 QDockWidget 的内容组件，最小宽度 340px。布局从上到下依次为：标题栏（含"AI 助手"/"错题本"切换标签）、ActionBar（仅 AI 助手 tab）、QStackedWidget（ChatArea / ErrorListPanel）、InputBar（仅 AI 助手 tab）。
-- 标题栏：左侧"AI 助手"/"错题本"两个 tab 按钮（错题本显示记录数 badge"错题本 (N)"），右侧"清空对话"按钮（仅 AI 助手 tab 可见）。
-- `TabIndex` 枚举：`ChatTab = 0`（AI 助手视图）、`ErrorTab = 1`（错题本视图）。
-- 提供 **addUserMessage(text)** / **addAssistantMessage(text)**：在 ChatArea 中添加用户/助手消息气泡。
-- 提供 **appendToLastAssistant(text)**：追加文本到最后一个助手气泡（流式输出用）。
-- 提供 **setActionList(actions)** / **clearActionList()**：委托给 ActionBar 设置动态按钮。
-- 提供 **lastAssistantContent()**：获取最后一个助手气泡的完整文本（用于保存历史）。
-- 提供 **hasStreamingTarget()**：最后一个消息是否为空的助手气泡（标识流式目标存在）。
-- 提供 **setInputEnabled(bool)**：启用/禁用输入编辑框和发送/清空按钮（流式传输期间禁用）。
-- 提供 **setCurrentTab(int index)**：编程切换到指定 tab（ChatTab 或 ErrorTab）。
-- 提供 **errorListPanel()**：返回内部 ErrorListPanel 指针。
-- **onTabSwitch(int index)**：QStackedWidget 切换视图，切换时自动显示/隐藏 ActionBar 和 InputBar（仅 ChatTab 可见），切换到 ErrorTab 时自动调用 ErrorListPanel::loadRecords() 刷新列表。
-- **updateErrorBadge()**：从 ErrorJournal::recordCount() 更新错题本按钮文本，显示错题数量。
-- **clearChat()**：清空所有消息气泡（同时发射 clearRequested 信号）。
+- 继承 `QObject`，为 SMD 文件每种编程语言管理一个共享 LSP 后端。每个 SMD 文件仅启动 1 个 clangd（C++）+ 1 个 Jedi（Python），而非每 cell 一个。
+- 通过 **虚拟文档** 技术将同语言所有 cell 拼接为一个有效源文件，实现跨 cell 类型解析。
+- 管理 cell 本地位置 ↔ 虚拟文档位置的 **行号映射**。
+- 处理 `textDocument/publishDiagnostics` 通知，将诊断信息分发到各 cell。
+- 为每个 cell 创建 `CellCompletionAdapter`，实现 `CompletionProvider` 接口，供 CodeEditor 作为共享 Provider 使用。
+
+**虚拟文档策略**：
+- 同语言所有 cell 按 cellOrder 顺序拼接，每个 cell 内容前插入一行注释分隔符（C++ 用 `// --- smd:cell:N ---`，Python 用 `# --- smd:cell:N ---`）。
+- **C++ 程序分组**：`computeCppGroup()` 按 `main()` 函数边界将 C++ cell 划分为程序组（`m_activeCppGroup`）。`rebuildVirtualDoc()` 和 `buildVirtualDocContent()` 仅向 clangd 发送当前活动组的 cell，确保 clangd 每份虚拟文档最多含一个 `main()`。默认活动组为 0（首个程序组）。
+- clangd/Jedi 将虚拟文档视为一个翻译单元，同组内 cell 0 定义的类型在 cell 1 中可解析。
+- clangd 使用全量文本同步（`textDocument/didChange` 始终发送完整虚拟文档）。
+
+**行号映射**：
+- `LanguageServer::cellRanges[cellIndex] = {firstVirtualLine, localLineCount}`：记录每个 cell 在虚拟文档中的起始行和本地行数。
+- 补全/悬停请求时：cell 本地 (line, col) → 虚拟 (firstVirtualLine + line, col)。
+- C++ 诊断反向映射：虚拟 line → 查找所在 cell → 本地 line = virtualLine - firstVirtualLine。`processDiagnostics()` 仅清除同语言 cell 的过期诊断（`srv->cellRanges.contains(ci)`），防止 C++ 诊断清除 Python 诊断（反之亦然）。
+- Python 诊断**不使用虚拟文档**：每 cell 代码独立编译，返回 cell 本地行号，直接发射 `diagnosticsUpdated`。
+
+**核心数据结构**：
+- `SmdDiagnostic`：诊断信息（cellIndex、startLine/Col、endLine/Col、message、severity 1-4）。
+- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪）。
+- `m_activeCppGroup`：当前活动 C++ 程序组 ID（0 起始），虚拟文档仅向 clangd 发送该组的 cell。
+- `m_groupDiagnostics`：两级 Map（groupId → cellIndex → diagnostics），缓存各组诊断结果，支持切换 cell 时即时恢复，避免闪烁。
+
+**内部类 `CellCompletionAdapter`**：
+- 继承 `CompletionProvider`，持有 `SmdLspManager*` + `cellIndex`。
+- `requestCompletion/Hover/SignatureHelp(text, cursorPos)` 将绝对 cursorPos 转换为 cell 本地 (line, col)，委托给 `SmdLspManager::requestCompletion/Hover/SignatureHelp(cellIndex, line, col)`。
+- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
+
+**C++ LSP 后端**（clangd）：
+- `startCppServer()`：查找 clangd → 创建 `LspClient` → 连接信号 → `--fallback-style=Google` 参数启动。
+- `sendInitialize()`：发送 `initialize` 请求（JSON-RPC）。
+- 初始化完成后发送 `textDocument/didOpen` 通知（完整虚拟文档），之后每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`。
+- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp 响应。
+- `onCppNotificationReceived()`：处理 `textDocument/publishDiagnostics` → `processDiagnostics()` 翻译行号 → `diagnosticsUpdated` 信号。
+- 崩溃自动重启（1s 延迟的 `QTimer::singleShot`）。
+
+**Python 后端**（Jedi + 诊断）：
+- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断请求。
+- 补全/悬停/签名请求：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`。
+- **Python 诊断**（新增）：
+  - `m_pyDiagnosticsTimer`（500ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后启动，防抖触发 `requestPythonDiagnostics()`。
+  - `requestPythonDiagnostics()`：遍历 `m_pyServer.cellOrder`，对每个 Python cell 的代码调用 `sanitizeForPython()`（规范化 `\r\n`/`\r` → `\n`、替换孤立 surrogate），通过 **base64 编码**发送 `{"action":"diagnostics","cells":[{cellIndex,code}]}` 以避免 JSON 换行转义问题。
+  - `completion_helper.py` 的 `handle_diagnostics(cells)` 对每个 cell 代码独立调用 `compile()`，返回 cell 本地行号（0-based）的诊断列表，无需虚拟文档坐标映射。
+  - 响应在 `processPythonResponse()` 的 `PyPending::Diagnostics` 分支直接构建 `SmdDiagnostic` 并发射 `diagnosticsUpdated`，绕过 `processDiagnostics()`（后者为虚拟文档坐标映射设计）。过期诊断仅清除同语言（`m_pyCellContents.contains(ci)`）cell 的条目。
+  - `PyPending` 枚举新增 `Diagnostics` 值；超时/错误时不主动清除诊断（静默忽略）。
+
+**主要接口**：
+- `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
+- `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。`cellAdded()` 在插入 `cellOrder` 前检查 `contains()` 护盾，防止重复信号连接导致同一 cell 重复插入；`cellRemoved()` 删除共享 adapter（`CellCompletionAdapter`）并从 `cellOrder` 中移除。
+- `void focusCell(int cellIndex)`：程序组切换入口。计算 cell 所属组，若与当前活动组不同则保存当前诊断至 `m_groupDiagnostics` 缓存、清除旧诊断、恢复新组缓存诊断、重建虚拟文档并同步至 clangd。
+- `int computeCppGroup(int cellIndex) const`：遍历 `cellOrder` 中位于 `cellIndex` 之前的 C++ cell，通过正则 `\bmain\s*\(` 计数 `main()` 函数出现次数，返回 cell 所属程序组 ID。
+- `void requestCompletion/Hover/SignatureHelp(int cellIndex, int cursorLine, int cursorCol)`：公共请求 API，cell 本地位置 → 虚拟位置 → LSP 请求。
+- `CompletionProvider *providerForCell(int cellIndex, const QString &langId)`：返回 cell 对应的 CellCompletionAdapter。
+- `QList<SmdDiagnostic> diagnosticsForCell(int cellIndex) const`：获取 cell 的诊断列表。
+- `void shutdown()`：安全关闭（设置 `m_shuttingDown` 标志、断开信号、停止 LSP 进程、删除 adapter、重置活动组和诊断缓存）。
 
 **信号**：
-- `void sendMessage(const QString &text)`：用户点击发送或按回车时发出（自由提问）。
-- `void clearRequested()`：用户点击"清空对话"按钮时发出。
-- `void actionTriggered(int actionIndex)`：ActionBar 按钮被点击时转发过来。
-- `void errorSelected(const QString &recordId)`：错题列表项被点击时转发过来。
+- `diagnosticsUpdated(int cellIndex, QList<SmdDiagnostic>)`：诊断更新，由 SmdEditor 连接至 cell 的 CodeEditor 和 SmdCell。
+- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
+- `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
 
 **协作关系**：
-- 由 `MainWindow` 创建并设置为主窗口 `m_dockAi` 的内容组件。
-- 内部聚合 `ActionBar`、`ChatArea`、`ErrorListPanel`、`QStackedWidget`、`QLineEdit` 和 `QPushButton`。
-- 不直接与 AI Provider 交互 —— 所有 AI 请求由 `MainWindow::startAiRequest()` 协调。
-- 与右侧面板（RightPanelContainer）通过 tabify 共享 dock 区域，通过 `showRightPanel()` / `m_toggleAiAction` 实现互斥切换。
-- ErrorListPanel 连接到 ErrorJournal::analysisReady 信号以在 AI 分析完成后刷新详情。
-- ErrorJournal 的增删操作通过 AiPanel 中转刷新 ErrorListPanel 列表。
+- 由 `SmdEditor` 创建、持有和管理（`m_lspManager`）。
+- `SmdEditor::setActiveCell()` 调用 `focusCell()` 切换程序组；`contentChanged`/`addCell`/`removeCell` 后调用 `focusCell()` 重新检测组边界。
+- `SmdEditor::connectCellSignals()` 调用 `providerForCell()` 获取 adapter 并注入 CodeEditor。
+- `SmdEditor::executeCodeCell()` 调用自身的 `cppGroupForCell()`（与 `computeCppGroup` 算法相同但遍历 `m_cells`）确定合并范围。
+- 引用 `LspClient`（C++ 端）和 `QProcess`（Python 端）管理 LSP 进程。
 
----
 
-### 30. `ActionBar` — AI 上下文动作按钮栏
+### 30. `SmdDiagnosticsPanel` — SMD 诊断面板
 
-**文件**：`ai/actionbar.h` / `ai/actionbar.cpp`
+**文件**：`smddiagnosticspanel.h` / `smddiagnosticspanel.cpp`
 
 **职责**：
-- 动态按钮栏，基于当前编辑器上下文显示对应的动作按钮。
-- **setActions(QVector<AiAction>)**：清除所有旧按钮，根据 `ActionInfo`（来自 `prompttemplates.h`）创建新按钮。Markdown 模式创建 5 个按钮（改进写作/总结笔记/提取标签/出题自测/翻译），Code 模式创建 4 个（解释代码/寻找 Bug/添加注释/优化建议）。
-- **clearActions()**：移除所有按钮。
-- 按钮样式：`#3c3c3c` 背景、`#cccccc` 文字、`#555` 边框、`#0078d4` 悬停边框。
-
-**信号**：
-- `void actionTriggered(AiAction action)`：任意按钮点击时发出，携带对应的动作枚举值。
-
-**协作关系**：
-- 由 `AiPanel` 聚合，按钮列表由 `MainWindow::updateAiActionBar()` 在标签页切换时更新。
-- 动作枚举和元数据由 `PromptTemplates`（`prompttemplates.h`）定义。
-
----
-
-### 31. `ChatArea` — AI 消息列表
-
-**文件**：`ai/chatarea.h` / `ai/chatarea.cpp`
-
-**职责**：
-- 可滚动的消息列表，使用 `QScrollArea` + 内部垂直布局。
-- **addMessage(ChatBubble::Role, text)**：创建并添加一条新消息气泡。
-- **appendToLastMessage(text)**：追加文本到最后一条消息气泡（流式传输使用）。
-- **clear()**：移除所有气泡。
-- **messageCount()**：返回当前气泡数量。
-- **lastBubble()**：返回最后一条气泡的指针。
-- 新消息添加后自动滚动到底部。
-
-**协作关系**：
-- 由 `AiPanel` 聚合，所有消息操作委托给该类。
-- 每个消息使用 `ChatBubble` 控件展示。
-
----
-
-### 32. `ChatBubble` — AI 消息气泡
-
-**文件**：`ai/chatbubble.h` / `ai/chatbubble.cpp`
-
-**职责**：
-- 单条消息的显示控件，使用 QTextBrowser 渲染 HTML 内容。
-- 两种角色：**User**（右侧对齐，蓝色背景 #1a3a5c）和 **Assistant**（左侧对齐，灰色背景 #2d2d2d）。
-- 角色标签位于气泡上方：User 显示"你"（蓝色 #4da3ff），Assistant 显示"AI 助手"（绿色 #6a9955）。
-- **setText(text)** / **appendText(text)**：设置或追加消息文本，自动更新 HTML 渲染并自适应高度。
-- **role()** / **text()**：获取角色和完整文本。
-
-**轻量级 Markdown → HTML 转换器（`markdownToHtml`）**：
-- 支持：`# ##` 标题、`**粗体**`、`*斜体*`、`` `行内代码` ``（橙色 #ce9178）、`[链接](url)`（蓝色 #4da3ff）、`-`/`*` 无序列表、`1.` 有序列表、```` ```code ``` ```` 围栏代码块（深色背景 #1e1e1e）、`---` 水平分割线。
-- 行内转换顺序：先 HTML 转义 → 保护行内代码 → **粗体** → *斜体* → 链接 → 还原代码。
-- 高度自适应：通过 `QTextDocument::size()` 计算内容高度并设置 `m_browser->setFixedHeight()`。
-
-**协作关系**：
-- 由 `ChatArea` 创建和管理。
-- 用户消息纯文本（HTML 转义后渲染），助手消息先经过 `markdownToHtml` 转换再渲染。
-
----
-
-### 33. `AiContextManager` — 编辑器上下文收集器
-
-**文件**：`ai/aicontextmanager.h` / `ai/aicontextmanager.cpp`
-
-**职责**：
-- 纯静态工具类，从当前编辑器中收集 AI 需要的上下文信息。
-- **collectContext(EditorWidget\*)**：返回 `ContextBundle` 结构体，包含以下字段：
-  - `mode`：`AiEditorMode` 枚举（Markdown / Code / Unknown）。
-  - `filePath`：当前文件路径。
-  - `fileContent`：当前文件完整内容（无选中文本时）。
-  - `selectedText`：当前选中的文本（非空时 `fileContent` 为空）。
-  - `language`：语言标识字符串（markdown / cpp / python / html / javascript 等）。
-  - `cursorLine` / `cursorColumn`：光标行列位置。
-- **currentEditorMode(EditorWidget\*)**：快速模式检测。SMD 编辑器根据活跃单元格类型返回 Markdown/Code；CodeEditor 返回 Code；其余（MarkdownEdit/Preview/PdfView）返回 Markdown。
-- **languageForFile(filePath)**：根据文件扩展名推断语言。优先使用 `LanguageUtils::languageForExtension()`，不足时补充内置映射（html/css/javascript/typescript/json/xml/yaml/java/go/rust/ruby/php/sql/bash/powershell 等）。
-
-**协作关系**：
-- 被 `MainWindow::startAiRequest()` 调用来收集上下文。
-- 被 `MainWindow::updateAiActionBar()` 通过 `currentEditorMode()` 确定动作按钮列表。
-
----
-
-### 34. `AiProvider` — AI Provider 抽象基类
-
-**文件**：`ai/aiprovider.h`
-
-**职责**：
-- 所有 AI 提供商（LLM）的抽象基类，继承自 `QObject`。
-- `Message` 结构体：包含 `role`（User/Assistant/System 枚举）和 `content`（QString 文本），提供 `roleToJson()` 转换为 API 使用的角色字符串（"user"/"assistant"/"system"）。
-
-**纯虚接口**：
-- `void setApiKey(const QString &key)`：设置 API Key。
-- `void setModel(const QString &model)`：设置模型名称。
-- `void setSystemPrompt(const QString &prompt)`：设置系统提示词。
-- `void setMaxTokens(int maxTokens)`：设置最大输出 token 数。
-- `void chatStream(const QList<Message> &messages)`：发起流式聊天请求，实现类负责 SSE 连接与解析。
-- `void cancel()`：取消当前请求。
-
-**信号**：
-- `void partialResponse(const QString &text)`：收到流式响应片段。
-- `void finished()`：流式响应完成。
-- `void error(const QString &message)`：发生错误。
-
----
-
-### 35. `AnthropicProvider` — Anthropic Messages API 实现
-
-**文件**：`ai/anthropicprovider.h` / `ai/anthropicprovider.cpp`
-
-**职责**：
-- 通过 Anthropic Messages API 实现 `AiProvider` 接口。
-- 默认端点：`https://api.anthropic.com/v1`，可通过 `setEndpoint()` 修改。
-
-**请求格式**：
-- POST 到 `{endpoint}/messages`
-- 请求头：`x-api-key`（API Key）、`anthropic-version: 2023-06-01`、`Content-Type: application/json`
-- 请求体：`{ model, max_tokens, stream: true, system (可选), messages: [{ role, content: [{ type: "text", text }] }] }`
-
-**SSE 解析**：
-- 帧格式：`event: <type>\ndata: <json>\n\n`
-- `content_block_delta` → 提取 `delta.text` → 发射 `partialResponse`
-- `message_stop` → 发射 `finished`
-- `error` → 提取 `error.message` → 发射 `error`
-- 忽略 `message_start`、`ping`、`content_block_start` 等其他事件类型
-
-**错误处理**：
-- HTTP 401/403 → "API Key 无效，请在设置中检查"
-- HTTP 429 → "请求过于频繁，请稍后再试"
-- 其他网络错误 → "网络连接失败: {errorString}"
-- 30 秒超时 → "响应超时"
-
----
-
-### 36. `OpenAiProvider` — OpenAI 兼容 API 实现
-
-**文件**：`ai/openaiprovider.h` / `ai/openaiprovider.cpp`
-
-**职责**：
-- 通过 OpenAI 兼容 API（Chat Completions）实现 `AiProvider` 接口。
-- 默认端点：`https://api.deepseek.com/v1`，可通过 `setEndpoint()` 修改（兼容 DeepSeek、OpenAI 等）。
-
-**请求格式**：
-- POST 到 `{endpoint}/chat/completions`
-- 请求头：`Authorization: Bearer {apiKey}`、`Content-Type: application/json`
-- 请求体：`{ model, max_tokens, stream: true, messages: [{ role: "system", content }, { role: "user"/"assistant", content }] }`
-- system prompt 作为一条 role="system" 的消息插入消息数组首位。
-
-**SSE 解析**：
-- 帧格式：`data: <json>\n\n`
-- 提取 `choices[0].delta.content` → 发射 `partialResponse`
-- `data: [DONE]` 或 `choices[0].finish_reason` 非空 → 发射 `finished`
-- `error` 字段存在 → 提取 `error.message` → 发射 `error`
-
-**错误处理**：与 AnthropicProvider 相同（401/403、429、30s 超时）。
-
----
-
-### 37. `AiProviderFactory` — AI Provider 工厂
-
-**文件**：`ai/aiproviderfactory.h` / `ai/aiproviderfactory.cpp`
-
-**职责**：
-- 静态工厂，根据配置字符串创建对应的 Provider 实例。
-- **ProviderType 枚举**：`Anthropic`、`OpenAiCompatible`。
-- **createProvider(type, parent)**：返回 `AiProvider*` 新实例（AnthropicProvider 或 OpenAiProvider）。
-- **typeFromString(name)**：从设置面板保存的字符串映射到枚举：
-  - `"Anthropic"` → `Anthropic`
-  - `"OpenAI"` → `OpenAiCompatible`
-  - 其余 → `OpenAiCompatible`（默认）
-- **availableProviders()**：返回 `{"Anthropic", "OpenAI"}`，用于填充设置面板 ComboBox。
-
-**协作关系**：
-- 设置面板 "API 类型" 下拉框通过 `availableProviders()` 填充。
-- `MainWindow::startAiRequest()` 通过 `typeFromString` + `createProvider` 每次重建 Provider 实例（确保设置变更即时生效）。
-- 新创建的 Provider 通过 `qobject_cast<AnthropicProvider*>` 或 `OpenAiProvider*` 向下转换以调用 `setEndpoint()`。
-
----
-
-### 38. `PromptTemplates` — AI 提示词模板系统
-
-**文件**：`ai/prompttemplates.h`（header-only）
-
-**职责**：
-- 为每种 AI 动作预设中文 system prompt 和 user prompt 模板。
-- `AiAction` 枚举：定义 10 种动作 + FreeChat：
-  - **Markdown 类**：`ImproveWriting`、`SummarizeNote`、`ExtractTags`、`SelfTest`、`Translate`
-  - **Code 类**：`ExplainCode`、`FindBugs`、`AddComments`、`OptimizeCode`
-  - **Judge 错题分析**：`ErrorAnalysis`（无 UI 按钮，由 ErrorJournal::requestAnalysis() 触发）
-  - **通用**：`FreeChat`
-- **buildPrompt(action, ctx, freeQuery)**：根据动作类型和 `ContextBundle` 构建 `PromptBundle{systemPrompt, userPrompt}`。自动处理选中文本优先（有 selection 时只用选中内容，否则用全文）。
-- **actionInfos()**：返回 `QVector<ActionInfo>`，每个包含 `AiAction` 枚举值、中文显示名称（"改进写作"、"解释代码"等）和悬停提示。
-- **findActionInfo(action)**：根据枚举值查找对应的 `ActionInfo`。
-- **actionsForMode(mode)**：根据 `AiEditorMode` 返回适用的动作列表：
-  - `Markdown` → 5 个 Markdown 动作
-  - `Code` → 4 个 Code 动作
-  - `Unknown` → 空列表（仅有自由提问）
-
-**协作关系**：
-- 被 `MainWindow::startAiRequest()` 调用生成发送给 AI 的提示词。
-- ActionInfo 元数据被 `ActionBar` 用于创建按钮。
-- `actionsForMode()` 被 `MainWindow::updateAiActionBar()` 用于更新按钮列表。
-
-
-### 39. `ErrorJournal` — 智能错题本核心
-
-**文件**：`ai/errorjournal.h` / `ai/errorjournal.cpp`
-
-**职责**：
-- 评测错题记录的持久化管理器，单例模式（`ErrorJournal::instance()`）。
-- `ErrorRecord` 数据结构：`id`（UUID）、`problemName`、`sourceFile`、`testFolder`、`testCaseName`、`statusCode`（WA/RE/TLE/MLE）、`elapsedMs`、`memoryKb`、`inputData`、`actualOutput`、`expectedOutput`、`detail`、`aiAnalysis`（异步 AI 分析结果）、`tags`、`timestamp`、`reviewed`。
-- **recordFailure(result, sourceFile, testFolder)**：记录一次非 AC 评测结果，自动生成 UUID、填充 ProblemName（从 testFolder 目录名推断）、保存原始输入/输出数据、持久化到 JSON 文件。
-- **requestAnalysis(recordId)**：触发 AI 异步分析。读取对应记录的源代码文件 → 填充 ContextBundle 错误字段 → 调用 PromptTemplates::buildPrompt(ErrorAnalysis) 生成分析 prompt → 创建配置好的 AiProvider 实例 → 流式收集 AI 响应 → 回填到 ErrorRecord::aiAnalysis → 发射 analysisReady 信号。API Key 未配置时显示提示信息。
-- **allRecords() / recordsByProblem() / recordsByStatus() / recordById()**：多种查询方式。
-- **deleteRecord(id) / clearAll() / setRecordReviewed(id, reviewed)**：管理操作，修改后自动 save() 并发射 recordsChanged()。
-- **load() / save()**：JSON 文件读写（`{executable_dir}/error_journal/records.json`），自动创建目录。存储格式为 version 1 的 JSON 对象，records 数组包含所有 ErrorRecord。
-
-**信号**：
-- `void analysisReady(const QString &recordId)`：AI 分析完成时发出。
-- `void recordsChanged()`：记录增删改后发出（UI 刷新用）。
-
-**协作关系**：
-- 由 `JudgePanel::onTestFinished()` 调用 `recordFailure()` 记录非 AC 结果。
-- 内部使用 `AiProviderFactory` 和 `PromptTemplates` 进行 AI 分析。
-- `AiPanel` 连接 `recordsChanged` 信号更新错题数 badge。
-- `ErrorListPanel` 连接 `analysisReady` 信号在分析完成后刷新详情展示。
-- 存储路径在构造时确定，基于 `QCoreApplication::applicationDirPath()`，析构时自动 save()。
-
-
-### 40. `ErrorListPanel` — 错题列表 UI 面板
-
-**文件**：`ai/errorlistpanel.h` / `ai/errorlistpanel.cpp`
-
-**职责**：
-- QWidget 实现的双视图面板（列表视图 + 详情视图），通过 QStackedWidget 切换。
-- **列表视图**：
-  - 顶部筛选栏：状态 ComboBox（全部/WA/RE/TLE/MLE）+ 关键词 LineEdit（匹配题目名、源代码文件名、状态码、标签）。
-  - 可滚动 QListWidget 按时间倒序显示错题列表。每项包含：状态图标（AC 绿/RE 红/TLE 黄/MLE 紫）、题目名、源文件名、时间、标签（最多显示 2 个 + 溢出计数）。
-  - 底部统计栏："全部删除"按钮 + 记录总数 + 已查阅计数。
-- **详情视图**：
-  - 顶部问题标题栏：状态图标 + 题目名 + tag 标签。
-  - 信息区：源文件、时间、状态码、执行耗时/内存。
-  - 输入输出对比段：三栏 QTextBrowser（输入 / 期望输出 / 实际输出），等宽字体。
-  - AI 分析段：QTextBrowser 渲染 AI 分析的 Markdown 内容（通过轻量级 `markdownToHtml()` 转换）。
-  - 底部操作按钮："重新分析"（调用 ErrorJournal::requestAnalysis）、"标记已阅"（调用 setRecordReviewed）、"删除"（调用 deleteRecord）、"返回列表"。
-- **loadRecords()**：从 ErrorJournal::allRecords() 加载并按时间倒序填入列表，根据筛选状态过滤。
-- **updateAnalysis(recordId)**：收到 analysisReady 信号时，如果当前详情正是该记录则刷新 AI 分析内容展示。
-
-**信号**：
-- `void errorClicked(const QString &recordId)`：错题列表项点击时发出（转发到 AiPanel）。
-- `void deleteRecordRequested(const QString &recordId)`：删除单条记录操作。
-- `void deleteAllRequested()`：全部删除操作。
-
-**协作关系**：
-- 由 `AiPanel` 作为第二个视图嵌入 QStackedWidget 中。
-- 读取 `ErrorJournal` 的数据，调用其管理方法进行增删改。
-- 连接 ErrorJournal::analysisReady 信号更新 AI 分析结果展示。
+- 继承 `QFrame`，作为 SMD 编辑器的诊断信息汇总面板，以 `Ctrl+E`（编辑模式）切换显示。
+- 内部通过 `DiagnosticSection` 分区展示红色错误（Error）和黄色警告（Warning），每个分区头部显示诊断数量。
+- 面板内容通过 `refresh()` 从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按严重程度分组，每个条目可点击跳转至对应 cell 和行号。
+- 支持防抖刷新（`scheduleRefresh()` + 定时器），避免频繁更新。
+- `DiagnosticSection` 内部类：继承 `QWidget`，带标题和边框色的分区容器，`setDiagnostics()` 设置指定 cell 的诊断列表，`clear()` 清空内容。支持展开/折叠（`setExpanded()`），每条诊断显示 cell 索引和行号信息。点击诊断条目发射 `lineClicked(cellIndex, line)` 信号，由 `SmdEditor` 接收后跳转至目标位置。
 
 
 ### 配置存储说明

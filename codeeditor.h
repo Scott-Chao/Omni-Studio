@@ -3,8 +3,10 @@
 
 #include <QPlainTextEdit>
 #include <QTextEdit>
+#include <QList>
 
 #include "completionprovider.h"
+#include "smdlspmanager.h"
 
 class QSyntaxHighlighter;
 class CompletionProvider;
@@ -21,15 +23,23 @@ public:
     explicit CodeEditor(QWidget *parent = nullptr);
 
     void setLanguage(const QString &langId);
+    void setLanguageSyntaxOnly(const QString &langId);
     QString languageId() const { return m_languageId; }
 
     CompletionProvider *completionProvider() const { return m_completionProvider; }
+
+    void setCompletionProvider(CompletionProvider *provider);
+
+    void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
+    void clearDiagnostics();
+    const SmdDiagnostic* diagnosticAt(int line, int col) const;
 
     void setIndentWidth(int width);
     int indentWidth() const { return m_indentWidth; }
 
     void reloadColors();
 
+    void hideSignatureHelp();
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
     void clearCurrentLineHighlight();
@@ -42,6 +52,7 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
@@ -57,7 +68,10 @@ private:
     void createCompletionProvider(const QString &langId);
 
     QSyntaxHighlighter *m_highlighter = nullptr;
+    void updateExtraSelectionsWithDiagnostics();
+
     CompletionProvider *m_completionProvider = nullptr;
+    bool m_ownsProvider = true;
     CompletionPopup *m_completionPopup = nullptr;
     HoverManager *m_hoverManager = nullptr;
     SignatureHelpManager *m_signatureHelpManager = nullptr;
@@ -68,6 +82,7 @@ private:
     QColor m_cachedLnFg;
     QColor m_cachedCurrentLine;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
+    QList<SmdDiagnostic> m_diagnostics;
 
     void handleAutoIndent();
     bool handleBracketCompletion(QKeyEvent *event);
@@ -76,6 +91,8 @@ private:
     bool handleTabKey(QKeyEvent *event);
     bool handleClosingBracketSkip(QKeyEvent *event);
     void handleToggleComment();
+    void handleIndentLeft();
+    void handleIndentRight();
     void triggerCompletion();
     void insertCompletion(const CompletionItem &item);
     QString commentPrefix() const;

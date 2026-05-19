@@ -1,5 +1,7 @@
 #include "smdcell.h"
 #include "codeeditor.h"
+#include "cppcompletionprovider.h"
+#include "pythoncompletionprovider.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -10,10 +12,7 @@
 #include <QWebEnginePage>
 #include <QCoreApplication>
 #include <QFile>
-#include <QTextStream>
-#include <QDateTime>
 #include <QDir>
-#include <QThread>
 #include <QPainter>
 
 // Minimal HTML page that embeds KaTeX + Mermaid + marked.js for
@@ -86,20 +85,6 @@ static QString smdRenderTemplate()
         "})();"
         "</script></body></html>"
     );
-}
-
-// Write debug log to release/smd_render_debug.log
-static void smdDebugLog(const QString &msg)
-{
-    QFile file(QCoreApplication::applicationDirPath()
-               + QStringLiteral("/smd_render_debug.log"));
-    if (file.open(QIODevice::Append | QIODevice::Text)) {
-        QTextStream ts(&file);
-        ts << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"))
-           << QStringLiteral(" [%1] ").arg(reinterpret_cast<quintptr>(QThread::currentThread()), 0, 16)
-           << msg << QStringLiteral("\n");
-        file.close();
-    }
 }
 
 // QWidget that paints a pixmap scaled to fit, with NO sizeHint influence.
@@ -228,9 +213,9 @@ void SmdCell::setupMarkdownEditor()
     m_markdownEditor->setTabChangesFocus(false);
 
     connect(m_markdownEditor->document(), &QTextDocument::blockCountChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     connect(m_markdownEditor->document(), &QTextDocument::contentsChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     m_markdownEditor->installEventFilter(this);
     m_editorStack->insertWidget(0, m_markdownEditor);
     QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);
@@ -239,7 +224,7 @@ void SmdCell::setupMarkdownEditor()
 void SmdCell::setupCodeEditor(const QString &langId)
 {
     m_codeEditor = new CodeEditor(this);
-    m_codeEditor->setLanguage(langId);
+    m_codeEditor->setLanguageSyntaxOnly(langId);
     m_codeEditor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_codeEditor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_codeEditor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -247,9 +232,9 @@ void SmdCell::setupCodeEditor(const QString &langId)
     m_codeEditor->document()->setDocumentMargin(0);
 
     connect(m_codeEditor->document(), &QTextDocument::blockCountChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     connect(m_codeEditor->document(), &QTextDocument::contentsChanged,
-            this, &SmdCell::updateEditorHeight);
+            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     m_codeEditor->installEventFilter(this);
     m_editorStack->insertWidget(0, m_codeEditor);
     QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);
@@ -261,20 +246,36 @@ void SmdCell::setCellType(CellType type)
         return;
 
     QString oldContent = content();
+    CellType oldType = m_type;
     m_type = type;
     m_languageId = langIdFromType(type);
     m_rendered = false;
+    m_diagnostics.clear();
 
-    // Remove old editor from stack
     if (m_markdownEditor) {
         m_editorStack->removeWidget(m_markdownEditor);
-        m_markdownEditor->deleteLater();
+        m_markdownEditor->hide();
         m_markdownEditor = nullptr;
+        // Old editor is NOT deleted — it's still a child of m_editorStack.
+        // Qt cleans it up automatically when the SmdCell (parent chain) is
+        // destroyed.  Calling delete/deleteLater during event processing
+        // (MouseButtonRelease) causes crashes.
     }
     if (m_codeEditor) {
         m_editorStack->removeWidget(m_codeEditor);
-        m_codeEditor->deleteLater();
+        // Shut down old-style per-cell LSP provider if present.
+        if (auto *cp = m_codeEditor->completionProvider()) {
+            if (auto *cpp = qobject_cast<CppCompletionProvider*>(cp))
+                cpp->shutdown();
+            else if (auto *py = qobject_cast<PythonCompletionProvider*>(cp))
+                py->shutdown();
+        }
+        // Detach from shared LSP adapter before it may be deleted by
+        // cellRemoved() during the cellTypeChanged signal below.
+        m_codeEditor->setCompletionProvider(nullptr);
+        m_codeEditor->hide();
         m_codeEditor = nullptr;
+        // Not deleted — see m_markdownEditor comment above.
     }
 
     if (type == Markdown) {
@@ -286,11 +287,13 @@ void SmdCell::setCellType(CellType type)
     m_editorStack->setCurrentIndex(0);
     if (!oldContent.isEmpty())
         setContent(oldContent);
-    updateEditorHeight();
+    // Re-apply command mode state to the newly created editor
+    setCommandMode(m_commandMode);
+    applyZoom(m_zoomFactor, m_baseFontSize);
 
     updateTypeLabel();
     updateBorderStyle();
-    emit cellTypeChanged();
+    emit cellTypeChanged(oldType);
 }
 
 QString SmdCell::content() const
@@ -323,16 +326,45 @@ void SmdCell::setCommandMode(bool cmd)
     m_commandMode = cmd;
     updateBorderStyle();
     if (cmd) {
+        // Disable editing and cursor in command mode
+        QPlainTextEdit *ed = qobject_cast<QPlainTextEdit *>(editorWidget());
+        if (ed) {
+            QTextCursor c = ed->textCursor();
+            if (c.hasSelection()) {
+                c.clearSelection();
+                ed->setTextCursor(c);
+            }
+            ed->setReadOnly(true);
+            ed->setTextInteractionFlags(Qt::NoTextInteraction);
+            ed->setFocusPolicy(Qt::NoFocus);
+            ed->setCursorWidth(0);
+        }
+        // Also hide cursor on the hidden markdown editor for rendered cells,
+        // since editorWidget() returns m_renderImage in that case.
+        if (m_rendered && m_markdownEditor) {
+            m_markdownEditor->setCursorWidth(0);
+        }
         if (m_rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
             m_executeHint->setVisible(true);
         } else if (m_type == Markdown) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
             m_executeHint->setVisible(true);
         } else {
-            m_executeHint->setVisible(false);
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 运行 | Shift+Enter: 运行并跳转"));
+            m_executeHint->setVisible(true);
         }
     } else {
+        // Restore editing and cursor in edit mode
+        QPlainTextEdit *ed = qobject_cast<QPlainTextEdit *>(editorWidget());
+        if (ed) {
+            ed->setReadOnly(false);
+            ed->setTextInteractionFlags(Qt::TextEditorInteraction);
+            ed->setFocusPolicy(Qt::StrongFocus);
+            ed->setCursorWidth(1);
+        }
+        if (m_rendered && m_markdownEditor)
+            m_markdownEditor->setCursorWidth(1);
         m_executeHint->setVisible(false);
     }
 }
@@ -347,14 +379,30 @@ void SmdCell::setActive(bool active)
         else
             m_codeEditor->clearCurrentLineHighlight();
     }
+    if (!active) {
+        if (auto *ed = qobject_cast<QPlainTextEdit*>(editorWidget())) {
+            QTextCursor c = ed->textCursor();
+            if (c.hasSelection()) {
+                c.clearSelection();
+                ed->setTextCursor(c);
+            }
+            ed->setCursorWidth(0);
+        }
+        if (m_rendered && m_markdownEditor)
+            m_markdownEditor->setCursorWidth(0);
+    } else {
+        // Restore cursor in edit mode (command mode cursor is handled by setCommandMode)
+        if (!m_commandMode) {
+            if (auto *ed = qobject_cast<QPlainTextEdit*>(editorWidget()))
+                ed->setCursorWidth(1);
+        }
+    }
 }
 
 void SmdCell::ensureRenderView()
 {
     if (m_renderView)
         return;
-
-    smdDebugLog(QStringLiteral("ensureRenderView — creating QWebEngineView as top-level window"));
 
     // Create as a SEPARATE TOP-LEVEL WINDOW, NOT a child of SmdCell.
     // This prevents Qt from cascading native windows to SmdCell and all ancestor
@@ -387,9 +435,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         initH = m_editorStack->height();
         if (initH < 40) initH = 60;
     }
-
-    smdDebugLog(QStringLiteral("startRenderPipeline — isInitial=%1, stackW=%2, initH=%3")
-        .arg(isInitialRender).arg(m_editorStack->width()).arg(initH));
 
     // Position QWebEngineView at the cell's screen position.
     // It's a separate top-level window (no native cascade into SmdCell).
@@ -439,7 +484,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         tmplFile.close();
     }
     if (tmpl.isEmpty()) {
-        smdDebugLog(QStringLiteral("startRenderPipeline — template read FAILED"));
         tmpl = smdRenderTemplate().arg(
             QString::fromLatin1(content().toUtf8().toBase64()));
     } else {
@@ -451,10 +495,6 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         tmpl.replace(QStringLiteral("max-width: 960px;"),
                      QStringLiteral(""));
     }
-
-    smdDebugLog(QStringLiteral("startRenderPipeline — top-level win at (%1,%2) size=%3x%4, htmlLen=%5")
-        .arg(m_renderView->x()).arg(m_renderView->y())
-        .arg(m_renderView->width()).arg(m_renderView->height()).arg(tmpl.size()));
 
     // Inject zoom-adjusted font size into rendered content
     int renderFontPt = qBound(10, qRound(16 * m_zoomFactor), 32);
@@ -475,7 +515,6 @@ void SmdCell::setRendered(bool rendered)
         ensureRenderView();
         startRenderPipeline(true);
     } else {
-        smdDebugLog(QStringLiteral("setRendered(false) — stop+cleanup+switch to editor"));
         if (m_grabTimer)
             m_grabTimer->stop();
         if (m_renderView)
@@ -489,15 +528,26 @@ void SmdCell::setRendered(bool rendered)
         }
         cleanupRenderView();
         m_editorStack->setCurrentIndex(0);
-        if (m_markdownEditor)
-            m_markdownEditor->setFocus();
+        if (m_markdownEditor) {
+            if (m_commandMode) {
+                // In command mode, don't focus the editor — keep it read-only
+                // and cursorless.
+                m_markdownEditor->setReadOnly(true);
+                m_markdownEditor->setTextInteractionFlags(Qt::NoTextInteraction);
+                m_markdownEditor->setFocusPolicy(Qt::NoFocus);
+                m_markdownEditor->setCursorWidth(0);
+            } else {
+                m_markdownEditor->setCursorWidth(1);
+                m_markdownEditor->setFocus();
+            }
+        }
         updateEditorHeight();
     }
     if (m_commandMode) {
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
         }
         m_executeHint->setVisible(true);
     }
@@ -512,7 +562,7 @@ void SmdCell::setRenderedState(bool rendered)
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染"));
+            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
         }
         m_executeHint->setVisible(true);
     }
@@ -523,8 +573,6 @@ void SmdCell::applyRenderHeight(int contentH)
     if (!m_rendered || !m_renderView || contentH <= 0)
         return;
     int totalH = contentH + 4;
-    smdDebugLog(QStringLiteral("applyRenderHeight — contentH=%1, totalH=%2")
-        .arg(contentH).arg(totalH));
 
     m_renderView->setFixedHeight(totalH);
     m_editorStack->setFixedHeight(totalH);
@@ -538,21 +586,16 @@ void SmdCell::applyRenderHeight(int contentH)
 
 void SmdCell::onRenderLoadFinished(bool ok)
 {
-    smdDebugLog(QStringLiteral("onRenderLoadFinished — ok=%1, m_rendered=%2")
-        .arg(ok).arg(m_rendered));
-
     if (!m_rendered) {
-        smdDebugLog(QStringLiteral("onRenderLoadFinished — cell no longer rendered, ignoring"));
         return;
     }
 
     if (!ok) {
-        smdDebugLog(QStringLiteral("onRenderLoadFinished — load FAILED, using fallback"));
         int lineCount = content().count(QLatin1Char('\n')) + 1;
         applyRenderHeight(qMax(60, lineCount * 22 + 32));
         // Force grab on load failure — show what we have after a short delay
-        QTimer::singleShot(400, this, [this]() {
-            if (m_rendered) performGrab();
+        QTimer::singleShot(400, this, [guard = QPointer<SmdCell>(this)]() {
+            if (guard && guard->m_rendered) guard->performGrab();
         });
         return;
     }
@@ -565,9 +608,9 @@ void SmdCell::onRenderLoadFinished(bool ok)
         "  if(!h){var el=document.getElementById('preview');if(el)h=el.offsetHeight||el.scrollHeight;}"
         "  return h||0;"
         "})()"),
-        [this](const QVariant &v) {
-            smdDebugLog(QStringLiteral("runJS immediate — raw=%1").arg(v.toInt()));
-            if (v.isValid()) applyRenderHeight(v.toInt());
+        [guard = QPointer<SmdCell>(this)](const QVariant &v) {
+            if (!guard) return;
+            if (v.isValid()) guard->applyRenderHeight(v.toInt());
         });
 
     // --- Adaptive polling: re-measure until height stable + Mermaid done ---
@@ -584,7 +627,6 @@ void SmdCell::startGrabPolling()
     m_pollCount = 0;
     m_polledHeights.clear();
     m_grabTimer->start();
-    smdDebugLog(QStringLiteral("startGrabPolling — started 200ms timer"));
 }
 
 void SmdCell::pollGrabReady()
@@ -606,8 +648,8 @@ void SmdCell::pollGrabReady()
         "  }"
         "  return JSON.stringify({h:h,done:done,c:els.length});"
         "})()"),
-        [this](const QVariant &v) {
-            if (!m_rendered || !m_renderView) return;
+        [guard = QPointer<SmdCell>(this)](const QVariant &v) {
+            if (!guard || !guard->m_rendered || !guard->m_renderView) return;
             QString json = v.toString();
             // Parse simple JSON manually to avoid QStringView issues
             int h = 0;
@@ -635,39 +677,32 @@ void SmdCell::pollGrabReady()
                 if (ce > cs) mermaidCount = json.mid(cs, ce - cs).toInt();
             }
 
-            smdDebugLog(QStringLiteral("pollGrabReady #%1 — h=%2, done=%3, mermaid=%4")
-                .arg(m_pollCount).arg(h).arg(done).arg(mermaidCount));
-
             if (h > 0)
-                applyRenderHeight(h);
+                guard->applyRenderHeight(h);
 
             // Track height history for stability
-            m_polledHeights.append(h);
-            if (m_polledHeights.size() > 3)
-                m_polledHeights.removeFirst();
+            guard->m_polledHeights.append(h);
+            if (guard->m_polledHeights.size() > 3)
+                guard->m_polledHeights.removeFirst();
 
-            bool heightStable = (m_polledHeights.size() >= 3)
-                && (m_polledHeights[0] == m_polledHeights[1])
-                && (m_polledHeights[1] == m_polledHeights[2]);
+            bool heightStable = (guard->m_polledHeights.size() >= 3)
+                && (guard->m_polledHeights[0] == guard->m_polledHeights[1])
+                && (guard->m_polledHeights[1] == guard->m_polledHeights[2]);
 
             // Ready when height is stable AND all Mermaid rendered (or no Mermaid at all)
             bool ready = heightStable && (done || mermaidCount == 0);
 
-            if (m_pollCount >= kMaxPollCount) {
-                smdDebugLog(QStringLiteral("pollGrabReady — max polls reached, forcing grab"));
-                if (m_grabTimer) m_grabTimer->stop();
-                performGrab();
+            if (guard->m_pollCount >= SmdCell::kMaxPollCount) {
+                if (guard->m_grabTimer) guard->m_grabTimer->stop();
+                guard->performGrab();
             } else if (ready) {
-                smdDebugLog(QStringLiteral("pollGrabReady — ready! stable=%1, mermaid=%2 done=%3")
-                    .arg(heightStable).arg(mermaidCount).arg(done));
-                if (m_grabTimer) m_grabTimer->stop();
-                performGrab();
+                if (guard->m_grabTimer) guard->m_grabTimer->stop();
+                guard->performGrab();
             }
         });
 
     // Safety: force grab after max polls (checked in callback too for async safety)
     if (m_pollCount >= kMaxPollCount + 5) {
-        smdDebugLog(QStringLiteral("pollGrabReady — force grab (overflow)"));
         if (m_grabTimer) m_grabTimer->stop();
         performGrab();
     }
@@ -676,30 +711,25 @@ void SmdCell::pollGrabReady()
 void SmdCell::performGrab()
 {
     if (!m_rendered || !m_renderView || !m_renderImage) {
-        smdDebugLog(QStringLiteral("performGrab — aborted (state changed)"));
         return;
     }
     int vw = m_renderView->width();
     int vh = m_renderView->height();
     if (vh < 40) {
-        smdDebugLog(QStringLiteral("performGrab — view too small (%1x%2)").arg(vw).arg(vh));
         return;
     }
 
     // Grab the top-level render window, then immediately hide it.
-    smdDebugLog(QStringLiteral("performGrab — grabbing window %1x%2").arg(vw).arg(vh));
     m_grabbing = true; // suppress focusEntered during hide/cleanup
     QPixmap pm = m_renderView->grab();
     m_renderView->hide(); // hide immediately after grab — no linger
     if (pm.isNull() || pm.height() <= 0) {
-        smdDebugLog(QStringLiteral("performGrab — grab FAILED"));
         return;
     }
 
     qreal dpr = m_renderView->devicePixelRatioF();
     int lw = qRound(pm.width() / dpr);
     int lh = qRound(pm.height() / dpr);
-    smdDebugLog(QStringLiteral("performGrab — OK %1x%2 @dpr=%3").arg(lw).arg(lh).arg(dpr));
 
     // Set up pixmap widget, switch stack, hide overlay
     m_renderImage->setPixmap(pm);
@@ -731,7 +761,6 @@ void SmdCell::performGrab()
     m_grabbing = false;
     emit contentChanged();
     emit renderFinished();
-    smdDebugLog(QStringLiteral("performGrab — done"));
 }
 
 void SmdCell::cleanupRenderView()
@@ -740,14 +769,14 @@ void SmdCell::cleanupRenderView()
         m_grabTimer->stop();
     }
     if (m_renderView) {
-        smdDebugLog(QStringLiteral("cleanupRenderView — closing top-level QWebEngineView"));
+        // Disconnect all signals BEFORE stopping to prevent cascading callbacks
+        m_renderView->page()->disconnect();
+        m_renderView->disconnect();
         m_renderView->stop();
-        disconnect(m_renderView->page(), nullptr, this, nullptr);
         m_renderView->hide();
         m_renderView->close();
         delete m_renderView;
         m_renderView = nullptr;
-        smdDebugLog(QStringLiteral("cleanupRenderView — done"));
     }
 }
 
@@ -771,8 +800,6 @@ void SmdCell::performReRender()
 {
     if (!m_rendered)
         return;
-    smdDebugLog(QStringLiteral("performReRender — width changed from %1 to %2")
-        .arg(m_lastRenderWidth).arg(m_editorStack->width()));
 
     // Stop any in-progress grab polling
     if (m_grabTimer)
@@ -822,8 +849,10 @@ void SmdCell::setEditorFocus()
     QWidget *w = editorWidget();
     if (w) {
         w->setFocus();
-        if (auto *pte = qobject_cast<QPlainTextEdit*>(w))
+        if (auto *pte = qobject_cast<QPlainTextEdit*>(w)) {
+            pte->setCursorWidth(1);
             pte->moveCursor(QTextCursor::End);
+        }
     }
 }
 
@@ -858,6 +887,7 @@ void SmdCell::setCursorPosition(int line, int column)
 void SmdCell::applyZoom(qreal factor, int baseFontSize)
 {
     m_zoomFactor = factor;
+    m_baseFontSize = baseFontSize;
 
     const auto &cfg = ConfigManager::instance();
     int pointSize = qBound(cfg.fontMinPointSize(),
@@ -902,11 +932,25 @@ void SmdCell::applyZoom(qreal factor, int baseFontSize)
 
 void SmdCell::updateEditorHeight()
 {
+    // Save and reset the pending-changes counter atomically at entry.
+    // This prevents a stale counter when blockCountChanged + contentsChanged
+    // fire in the same event: the first call processes and clears the
+    // counter, the second increments it but is rejected by the guard below,
+    // leaving the counter stuck at 1 for the next timer-driven call.
+    int pendingChanges = m_pendingContentChanges;
+    m_pendingContentChanges = 0;
+
+    // Guard against recursion: setFixedHeight → layout → document signals → updateEditorHeight
+    if (m_updatingHeight)
+        return;
+    m_updatingHeight = true;
+
     QPlainTextEdit *ed = nullptr;
     if (m_rendered) {
         // After grab: QLabel determines height, no dynamic changes needed
         if (m_renderImage && !m_renderImage->pixmap().isNull()) {
             updateGeometry();
+            m_updatingHeight = false;
             return;
         }
         // Before grab: editor height used for the stack, QWebEngineView size updated elsewhere
@@ -914,6 +958,7 @@ void SmdCell::updateEditorHeight()
             m_editorStack->setFixedHeight(m_markdownEditor->height());
         }
         updateGeometry();
+        m_updatingHeight = false;
         return;
     }
     if (m_type == Markdown)
@@ -921,8 +966,10 @@ void SmdCell::updateEditorHeight()
     else if (m_codeEditor)
         ed = m_codeEditor;
 
-    if (!ed)
+    if (!ed) {
+        m_updatingHeight = false;
         return;
+    }
 
     // Measure actual content height by summing each block's QTextLayout
     // bounding rect. Use QFontMetricsF::lineSpacing() as a minimum per visual
@@ -975,7 +1022,16 @@ void SmdCell::updateEditorHeight()
     ed->setFixedHeight(contentH);
     m_editorStack->setFixedHeight(contentH);
     updateGeometry();
-    emit contentChanged();
+    if (pendingChanges > 0) {
+        emit contentChanged();
+    }
+    m_updatingHeight = false;
+}
+
+void SmdCell::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
+{
+    m_diagnostics = diagnostics;
+    updateTypeLabel();
 }
 
 void SmdCell::updateTypeLabel()
@@ -996,6 +1052,22 @@ void SmdCell::updateTypeLabel()
         color = QStringLiteral("#b8952e");
         break;
     }
+
+    // Append diagnostic counts if any
+    int errors = 0, warnings = 0;
+    for (const auto &d : m_diagnostics) {
+        if (d.severity == 1) ++errors;
+        else if (d.severity == 2) ++warnings;
+    }
+    if (errors > 0 || warnings > 0) {
+        QStringList parts;
+        if (errors > 0) parts.append(tr("%1 errors").arg(errors));
+        if (warnings > 0) parts.append(tr("%1 warnings").arg(warnings));
+        text += QStringLiteral(" (") + parts.join(QStringLiteral(", ")) + QStringLiteral(")");
+        if (errors > 0)
+            color = QStringLiteral("#d43838");
+    }
+
     m_typeLabel->setText(text);
     m_typeLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: #e0e0e0; font-size: 10px; padding: 1px 6px; "
@@ -1005,7 +1077,12 @@ void SmdCell::updateTypeLabel()
 
 void SmdCell::updateBorderStyle()
 {
-    if (m_active) {
+    if (m_active && m_commandMode) {
+        setStyleSheet(QStringLiteral(
+            "SmdCell { border: 2px solid #C586C0; "
+            "background-color: #252526; }"
+        ));
+    } else if (m_active) {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid #0078d4; "
             "background-color: #252526; }"
@@ -1034,7 +1111,7 @@ SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)
 
 bool SmdCell::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::FocusIn || event->type() == QEvent::MouseButtonPress) {
+    if (event->type() == QEvent::FocusIn) {
         if (!m_grabbing)
             emit focusEntered();
     }

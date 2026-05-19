@@ -10,33 +10,7 @@
 #include <QByteArray>
 #include <QVector>
 #include <QPair>
-#include <QFile>
-#include <QTextStream>
-#include <QCoreApplication>
 #include <QDateTime>
-#include <QDebug>
-
-// Conversion debug log — outputs to release folder
-static void convLog(const QString &msg)
-{
-    static QFile logFile;
-    static QTextStream stream;
-    static bool initialized = false;
-    if (!initialized) {
-        initialized = true;
-        QString logPath = QCoreApplication::applicationDirPath() + QStringLiteral("/conversion_debug.log");
-        logFile.setFileName(logPath);
-        if (logFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            stream.setDevice(&logFile);
-            stream << QStringLiteral("=== Conversion Debug Log ===") << Qt::endl;
-            stream.flush();
-        }
-    }
-    if (stream.device()) {
-        stream << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz")) << QStringLiteral(" ") << msg << Qt::endl;
-        stream.flush();
-    }
-}
 
 namespace SmdFormat {
 
@@ -171,15 +145,13 @@ inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
     QStringList parts;
     int currentLine = 0;
 
-    convLog(QStringLiteral("toMD: cells=") + QString::number(cells.size()));
-
     for (int i = 0; i < cells.size(); ++i) {
         const Cell &cell = cells[i];
 
         if (cell.type == QStringLiteral("markdown")) {
             result.cellContentStartLine.append(currentLine);
             parts.append(cell.content);
-            currentLine += cell.content.count(QLatin1Char('\n')) + (cell.content.isEmpty() ? 0 : 1);
+            currentLine += cell.content.count(QLatin1Char('\n')) + 1;
         } else {
             QString lang = (cell.type == QStringLiteral("cpp"))
                 ? QStringLiteral("cpp") : QStringLiteral("python");
@@ -187,15 +159,13 @@ inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
             currentLine += 1;
             result.cellContentStartLine.append(currentLine);
             parts.append(cell.content);
-            currentLine += cell.content.count(QLatin1Char('\n')) + (cell.content.isEmpty() ? 0 : 1);
+            currentLine += cell.content.count(QLatin1Char('\n')) + 1;
             parts.append(QStringLiteral("```"));
             currentLine += 1;
         }
     }
 
     result.markdown = parts.join(QLatin1Char('\n'));
-    convLog(QStringLiteral("toMD result: len=") + QString::number(result.markdown.length())
-            + QStringLiteral(" cellStartLines=") + QString::number(result.cellContentStartLine.size()));
     return result;
 }
 
@@ -302,9 +272,6 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
         Cell cell;
         cell.type = currentType;
         cell.content = currentContent.join(QLatin1Char('\n'));
-        convLog(QStringLiteral("flush: type=") + cell.type
-                + QStringLiteral(" len=") + QString::number(cell.content.length())
-                + QStringLiteral(" ncell=") + QString::number(result.cells.size()));
         if (!cell.content.isEmpty() || !currentContent.isEmpty())
             result.cells.append(cell);
         currentContent.clear();
@@ -316,8 +283,6 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
         result.mdLineToCell.append(cellIdx);
         result.mdLineToCellLine.append(lineWithinCell);
     };
-
-    convLog(QStringLiteral("fromMD: input lines=") + QString::number(lines.size()));
 
     for (const QString &line : lines) {
         static const QRegularExpression fenceStart(R"(^```(\w*)$)");
@@ -402,7 +367,6 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
 
     flushCell();
 
-    convLog(QStringLiteral("fromMD result: cells=") + QString::number(result.cells.size()));
     return result;
 }
 

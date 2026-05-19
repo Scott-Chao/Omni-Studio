@@ -1,5 +1,6 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
+#include "smdlspmanager.h"
 
 #include <QMouseEvent>
 #include <QToolTip>
@@ -94,16 +95,58 @@ void HoverManager::onHoverTimeout()
     requestHoverAt(m_mousePos);
 }
 
+bool HoverManager::tryShowDiagnosticToolTip(const QPoint &viewportPos)
+{
+    QTextCursor cursor = m_editor->cursorForPosition(viewportPos);
+    int line = cursor.blockNumber();
+    int col = cursor.positionInBlock();
+
+    const SmdDiagnostic *diag = m_editor->diagnosticAt(line, col);
+    if (!diag)
+        return false;
+
+    bool isError = (diag->severity == 1);
+    QString severityLabel = isError ? QStringLiteral("错误") : QStringLiteral("警告");
+    QString bgColor   = isError ? QStringLiteral("#5a1d1d") : QStringLiteral("#5a4d00");
+    QString borderColor = isError ? QStringLiteral("#F44747") : QStringLiteral("#CCA700");
+    QString textColor = isError ? QStringLiteral("#f8d7da") : QStringLiteral("#fff3cd");
+
+    // Save & apply tooltip styling so the coloured background fills the
+    // entire tooltip window (no black edges).
+    m_savedTooltipStyle = m_editor->styleSheet();
+    m_editor->setStyleSheet(m_savedTooltipStyle + QStringLiteral(
+        " QToolTip { background-color: %1; color: %2; "
+        "border: 1px solid %3; border-radius: 3px; "
+        "padding: 5px 8px; "
+        "font-family: Consolas, Microsoft YaHei, sans-serif; "
+        "font-size: 12px; }")
+        .arg(bgColor, textColor, borderColor));
+
+    QString html = QStringLiteral(
+        "<b>%1:</b> %2")
+        .arg(severityLabel, diag->message.toHtmlEscaped());
+
+    QPoint globalPos = m_editor->viewport()->mapToGlobal(viewportPos);
+    globalPos += QPoint(15, 20);
+    QToolTip::showText(globalPos, html, m_editor);
+    m_tooltipShowing = true;
+    m_diagnosticTooltipActive = true;
+    return true;
+}
+
 void HoverManager::requestHoverAt(const QPoint &viewportPos)
 {
-    if (!m_provider) {
-        return;
-    }
-
     QTextCursor cursor = m_editor->cursorForPosition(viewportPos);
     m_hoverCursorPos = cursor.position();
-    QString text = m_editor->toPlainText();
 
+    // Phase 1: Check for diagnostics at cursor position (local data, no round-trip).
+    if (tryShowDiagnosticToolTip(viewportPos))
+        return;
+
+    // Phase 2: Fall through to LSP hover
+    if (!m_provider)
+        return;
+    QString text = m_editor->toPlainText();
     m_provider->requestHover(text, m_hoverCursorPos);
 }
 
@@ -147,4 +190,9 @@ void HoverManager::hideHover()
     m_hoverTimer.stop();
     m_hoverCursorPos = -1;
     m_tooltipShowing = false;
+    if (m_diagnosticTooltipActive) {
+        m_editor->setStyleSheet(m_savedTooltipStyle);
+        m_savedTooltipStyle.clear();
+    }
+    m_diagnosticTooltipActive = false;
 }

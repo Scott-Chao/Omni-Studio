@@ -36,6 +36,28 @@ void ProcessRunner::startCompile(const QString &sourceFile)
     startProcess(compiler.compilerPath, args, fi.absolutePath());
 }
 
+void ProcessRunner::startCompileOnly(const QString &sourceFile)
+{
+    stop();
+    m_mode = CompileOnly;
+    m_sourceFile = sourceFile;
+    QFileInfo fi(sourceFile);
+    m_outputFile = fi.absolutePath() + QStringLiteral("/") + fi.completeBaseName()
+                   + QStringLiteral(".o");
+
+    CompilerInfo compiler = CompilerUtils::defaultCompiler();
+    if (!compiler.available) {
+        emit outputReceived(tr("错误: 未检测到编译器 (g++)。\n"), true);
+        emit compileFinished(false);
+        return;
+    }
+
+    QStringList args = CompilerUtils::getCompileOnlyArgs(
+        compiler.id, sourceFile, m_outputFile);
+
+    startProcess(compiler.compilerPath, args, fi.absolutePath());
+}
+
 void ProcessRunner::startRun(const QString &executable)
 {
     stop();

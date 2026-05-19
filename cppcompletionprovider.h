@@ -27,6 +27,8 @@ public:
 
     bool isServerReady() const { return m_initialized; }
 
+    void shutdown();
+
 signals:
     void serverReady();
     void serverFailed(const QString &reason);

@@ -3,15 +3,22 @@
 
 #include <QWidget>
 #include <QScrollArea>
+#include <QSplitter>
 #include <QVBoxLayout>
 #include <QList>
 #include <QTimer>
+#include <QPointer>
+#include <QProcess>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "smdcell.h"
 #include "smdformat.h"
 
 class ProcessRunner;
 class SmdOutputWidget;
+class SmdLspManager;
+class SmdDiagnosticsPanel;
 
 class SmdEditor : public QWidget
 {
@@ -41,6 +48,7 @@ public:
     int activeCellIndex() const { return m_activeCellIndex; }
     void setActiveCell(int index);
     SmdCell *cellAt(int index) const;
+    SmdLspManager *lspManager() const { return m_lspManager; }
     int activeCellCursorLine() const;
     int activeCellCursorColumn() const;
     void setActiveCellCursor(int line, int column);
@@ -65,6 +73,7 @@ private:
     // Cells
     SmdCell *addCell(int index, SmdCell::CellType type, const QString &content = QString());
     void removeCell(int index);
+    void removeInsertScrollPad();
     void insertCellAbove();
     void insertCellBelow();
 
@@ -72,9 +81,22 @@ private:
     void executeCurrentCell();
     void executeMarkdownCell(SmdCell *cell);
     void executeCodeCell(SmdCell *cell);
+    void executePythonCell(SmdCell *cell);
     void jumpToNextCell();
+    int cppGroupForCell(int cellIndex) const;
     void onCellRenderFinished();
     void handleProcessStop();
+    void splitCellAtCursor();
+
+    // Persistent Python execution (Jupyter-like)
+    void startPythonExecProcess();
+    void stopPythonExecProcess();
+    void onPyExecReadyRead();
+    void onPyExecFinished(int exitCode, QProcess::ExitStatus status);
+    void onPyExecError(QProcess::ProcessError error);
+
+    // Diagnostics panel
+    void toggleDiagnosticsPanel();
 
     // Language selector
     void showLanguageSelector(int cellIndex, bool isNewCell = false, int originalCellIndex = -1);
@@ -82,10 +104,13 @@ private:
     // Connections
     void connectCellSignals(SmdCell *cell, int index);
 
+    QSplitter *m_splitter;
     QScrollArea *m_scrollArea;
     QWidget *m_cellContainer;
     QVBoxLayout *m_cellLayout;
     int m_savedScrollPos = 0;
+    bool m_clickSuppressScroll = false;
+    QSpacerItem *m_insertScrollPad = nullptr;
 
     QList<SmdCell*> m_cells;
     QList<SmdOutputWidget*> m_outputWidgets;
@@ -105,10 +130,12 @@ private:
     void onProcessFinished(int exitCode);
 
     ProcessRunner *m_processRunner;
-    int m_executingCellIndex = -1;
+    QPointer<SmdCell> m_executingCell;
     int m_pendingRenderJumpIndex = -1;
     bool m_userTerminated = false;
+    bool m_jumpAfterExecute = false;
     QString m_executingTempFile;
+    bool m_executingCompileOnly = false;
     int m_executeCounter = 0;
     QMetaObject::Connection m_execOutputConn;
     QMetaObject::Connection m_execCompileConn;
@@ -116,6 +143,17 @@ private:
 
     QString m_filePath;
     QString m_originalContent;
+
+    qreal m_zoomFactor = 1.0;
+    int m_baseFontSize = 14;
+
+    SmdLspManager *m_lspManager = nullptr;
+    SmdDiagnosticsPanel *m_diagnosticsPanel = nullptr;
+
+    // Persistent Python execution process (Jupyter-like)
+    QProcess *m_pyExecProcess = nullptr;
+    QByteArray m_pyExecBuffer;
+    QString m_pyExecScriptPath;
 };
 
 #endif // SMDEDITOR_H

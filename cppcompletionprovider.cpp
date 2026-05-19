@@ -18,7 +18,29 @@ CppCompletionProvider::CppCompletionProvider(QObject *parent)
 
 CppCompletionProvider::~CppCompletionProvider()
 {
-    // LspClient child is destroyed via Qt parent-child chain without blocking
+    // LspClient child is destroyed via Qt parent-child chain without blocking.
+    // Do NOT call shutdown() here — its waitForFinished() blocks the main
+    // thread and causes freeze/crash when closing files.
+}
+
+void CppCompletionProvider::shutdown()
+{
+    // Disconnect all signals so no pending responses reach us
+    disconnect();
+
+    if (m_client) {
+        m_client->stop();
+        m_client->deleteLater();
+        m_client = nullptr;
+    }
+
+    m_requestTimer.stop();
+    m_initialized = false;
+    m_documentOpen = false;
+    m_pendingRequest = PendingRequest::None;
+    m_completionRequestId = -1;
+    m_hoverRequestId = -1;
+    m_signatureHelpRequestId = -1;
 }
 
 void CppCompletionProvider::startServer()
@@ -33,6 +55,18 @@ void CppCompletionProvider::startServer()
 
     m_client = new LspClient(this);
 
+    connect(m_client, &LspClient::serverStarted, this, [this]() {
+        sendInitialize();
+    });
+    connect(m_client, &LspClient::serverError, this, [this](QProcess::ProcessError err) {
+        // Only handle startup failures; runtime errors are handled by serverStopped
+        if (err != QProcess::FailedToStart) return;
+        if (!m_client) return;
+        qWarning() << "CppCompletionProvider: clangd failed to start";
+        emit serverFailed(tr("Failed to start clangd process."));
+        m_client->deleteLater();
+        m_client = nullptr;
+    });
     connect(m_client, &LspClient::responseReceived,
             this, &CppCompletionProvider::onResponseReceived);
     connect(m_client, &LspClient::notificationReceived,
@@ -48,16 +82,8 @@ void CppCompletionProvider::startServer()
         QStringLiteral("--fallback-style=Google")
     };
 
-    if (!m_client->start(clangdPath, args)) {
-        qWarning() << "CppCompletionProvider: failed to start clangd";
-        emit serverFailed(tr("Failed to start clangd process."));
-
-        delete m_client;
-        m_client = nullptr;
-        return;
-    }
-
-    sendInitialize();
+    m_client->start(clangdPath, args);
+    // startup is async — serverStarted / serverError signals handle result
 }
 
 void CppCompletionProvider::sendInitialize()
@@ -72,6 +98,9 @@ void CppCompletionProvider::sendInitialize()
 
 void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 {
+    if (!m_client)
+        return;
+
     // Stop timeout on any response
     m_requestTimer.stop();
     m_pendingRequest = PendingRequest::None;
@@ -85,6 +114,10 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 
         // Tell the owner (CodeEditor) that we're ready — it will call openDocument()
         emit serverReady();
+
+    } else if (!m_initialized) {
+        // Ignore responses before initialization completes
+        return;
 
     } else if (id == m_completionRequestId) {
         m_completionRequestId = -1;
@@ -129,12 +162,16 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
 
 void CppCompletionProvider::onNotificationReceived(QString method, QJsonObject params)
 {
+    if (!m_client || !m_initialized)
+        return;
     Q_UNUSED(method);
     Q_UNUSED(params);
 }
 
 void CppCompletionProvider::onRequestFailed(int id, QJsonObject error)
 {
+    if (!m_client || !m_initialized)
+        return;
     qWarning() << "CppCompletionProvider: request" << id << "failed:" << error;
     m_requestTimer.stop();
     m_pendingRequest = PendingRequest::None;
@@ -145,6 +182,8 @@ void CppCompletionProvider::onRequestFailed(int id, QJsonObject error)
 
 void CppCompletionProvider::onServerError(QProcess::ProcessError err)
 {
+    if (!m_client)
+        return;
     qWarning() << "CppCompletionProvider: server error" << err;
     m_initialized = false;
     m_documentOpen = false;
@@ -152,22 +191,28 @@ void CppCompletionProvider::onServerError(QProcess::ProcessError err)
 
 void CppCompletionProvider::onServerStopped(int exitCode, QProcess::ExitStatus status)
 {
+    if (!m_client)
+        return;
     m_initialized = false;
     m_documentOpen = false;
 
     if (status == QProcess::CrashExit) {
         qDebug() << "CppCompletionProvider: clangd crashed, restarting in 1s...";
         QTimer::singleShot(1000, this, &CppCompletionProvider::restartServer);
+    } else {
+        // Normal exit — server is gone, clean up
+        m_client->deleteLater();
+        m_client = nullptr;
     }
 }
 
 void CppCompletionProvider::restartServer()
 {
-    if (m_client) {
-        m_client->stop();
-        m_client->deleteLater();
-        m_client = nullptr;
-    }
+    if (!m_client)
+        return;
+    m_client->stop();
+    m_client->deleteLater();
+    m_client = nullptr;
     m_initialized = false;
     startServer();
 }
@@ -522,6 +567,8 @@ void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursor
 
 void CppCompletionProvider::onRequestTimeout()
 {
+    if (!m_client || !m_initialized)
+        return;
     qWarning() << "CppCompletionProvider: request timed out after 500ms";
     m_requestTimer.stop();
 

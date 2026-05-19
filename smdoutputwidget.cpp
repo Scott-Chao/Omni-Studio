@@ -3,6 +3,7 @@
 #include <QTextCursor>
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QTimer>
 
 SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     : QWidget(parent)
@@ -15,7 +16,7 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
 
     m_outputEdit = new QPlainTextEdit(this);
     m_outputEdit->setReadOnly(true);
-    m_outputEdit->setFocusPolicy(Qt::NoFocus);
+    m_outputEdit->setFocusPolicy(Qt::StrongFocus);
     m_outputEdit->setMaximumBlockCount(0);
     m_outputEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_outputEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -39,16 +40,32 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
 void SmdOutputWidget::setOutput(const QString &text)
 {
     m_hiddenLineCount = 0;
-    QStringList lines = text.split(QLatin1Char('\n'));
-    if (!lines.isEmpty() && lines.constLast().isEmpty())
-        lines.removeLast();
-    if (lines.size() > kMaxOutputLines) {
-        m_hiddenLineCount = lines.size() - kMaxOutputLines;
-        lines = lines.mid(0, kMaxOutputLines);
-        lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
+
+    // Block signals during bulk text set to avoid premature updateHeight()
+    // before the widget is visible and properly laid out.
+    m_outputEdit->document()->blockSignals(true);
+
+    if (text.startsWith(QStringLiteral("<!DOCTYPE HTML"), Qt::CaseInsensitive)) {
+        // HTML format (saved by current code) — restore with colors
+        m_outputEdit->document()->setHtml(text);
+    } else {
+        // Plain text format (legacy files or direct calls)
+        QStringList lines = text.split(QLatin1Char('\n'));
+        if (!lines.isEmpty() && lines.constLast().isEmpty())
+            lines.removeLast();
+        if (lines.size() > kMaxOutputLines) {
+            m_hiddenLineCount = lines.size() - kMaxOutputLines;
+            lines = lines.mid(0, kMaxOutputLines);
+            lines.append(QStringLiteral("[%1 more lines]").arg(m_hiddenLineCount));
+        }
+        m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
     }
-    m_outputEdit->setPlainText(lines.join(QLatin1Char('\n')));
+
+    m_outputEdit->document()->blockSignals(false);
+
     setVisible(true);
+    // Defer height update to ensure font metrics and layout are valid
+    QTimer::singleShot(0, this, &SmdOutputWidget::updateHeight);
 }
 
 void SmdOutputWidget::appendText(const QString &text, bool isStderr)
@@ -109,6 +126,15 @@ void SmdOutputWidget::clearOutput()
     setVisible(false);
 }
 
+void SmdOutputWidget::clearSelection()
+{
+    QTextCursor c = m_outputEdit->textCursor();
+    if (c.hasSelection()) {
+        c.clearSelection();
+        m_outputEdit->setTextCursor(c);
+    }
+}
+
 void SmdOutputWidget::scrollToTop()
 {
     QTextCursor cursor = m_outputEdit->textCursor();
@@ -118,7 +144,9 @@ void SmdOutputWidget::scrollToTop()
 
 QString SmdOutputWidget::outputText() const
 {
-    return m_outputEdit->toPlainText();
+    if (m_outputEdit->toPlainText().isEmpty())
+        return {};
+    return m_outputEdit->document()->toHtml();
 }
 
 bool SmdOutputWidget::hasOutput() const

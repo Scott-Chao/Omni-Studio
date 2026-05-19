@@ -28,8 +28,11 @@ private:
     QPoint m_mousePos;          // viewport-local coordinates
     int m_hoverCursorPos = -1; // text position of current/last hover request
     bool m_tooltipShowing = false;
+    bool m_diagnosticTooltipActive = false;
+    QString m_savedTooltipStyle;
 
     void requestHoverAt(const QPoint &viewportPos);
+    bool tryShowDiagnosticToolTip(const QPoint &viewportPos);
     void showHoverToolTip(const HoverInfo &info);
     void hideHover();
 
