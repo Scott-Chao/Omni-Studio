@@ -188,6 +188,64 @@ void ErrorListItem::paintEvent(QPaintEvent *event)
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Markdown → HTML renderer (simple but handles common AI output patterns)
+// ═══════════════════════════════════════════════════════════════════
+
+static QString renderMarkdown(const QString &md)
+{
+    if (md.isEmpty())
+        return {};
+
+    // Must HTML-escape FIRST so code content (e.g. <iostream>, a < b) isn't
+    // misinterpreted as HTML tags by Qt's rich text renderer.
+    // Markdown syntax characters (#, *, `) are unaffected by escaping, so the
+    // pattern replacements below still work correctly.
+    QString html = md.toHtmlEscaped();
+
+    // Normalize line endings
+    html.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    html.replace(QStringLiteral("\r"), QStringLiteral("\n"));
+
+    // Code blocks must be handled before inline patterns to avoid
+    // contaminating code with heading / bold / etc. replacements.
+    // Opening: ```lang\n → <pre>
+    html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
+                 QStringLiteral("<pre style='background:#1a1a1a;padding:8px;"
+                                "border-radius:3px;font-size:11px;color:#ccc'>"));
+    // Closing: remaining ``` → </pre>
+    html.replace(QStringLiteral("```"), QStringLiteral("</pre>"));
+
+    // Headings (MultilineOption enables ^/$ per line)
+    html.replace(
+        QRegularExpression(QStringLiteral("^### (.+)$"),
+                           QRegularExpression::MultilineOption),
+        QStringLiteral("<h4 style='color:#aaa;margin:8px 0 4px'>\\1</h4>"));
+    html.replace(
+        QRegularExpression(QStringLiteral("^## (.+)$"),
+                           QRegularExpression::MultilineOption),
+        QStringLiteral("<h3 style='color:#0078d4;margin:10px 0 4px'>\\1</h3>"));
+
+    // Bold **text**
+    html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
+                 QStringLiteral("<b>\\1</b>"));
+
+    // Inline code `code`
+    html.replace(QRegularExpression(QStringLiteral("`([^`]+)`")),
+                 QStringLiteral("<code style='background:#2d2d2d;color:#ce9178;"
+                                "padding:1px 5px;border-radius:2px;font-size:11px'>"
+                                "\\1</code>"));
+
+    // Newlines → <br>
+    html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
+
+    // Clean up: remove <br> that immediately follows block tags
+    html.replace(QRegularExpression(QStringLiteral("<br>(</h[34]>)")), QStringLiteral("\\1"));
+    html.replace(QRegularExpression(QStringLiteral("<br>(</pre>)")), QStringLiteral("\\1"));
+
+    return html;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // ErrorDetailWidget — expanded detail view for a single error record
 // ═══════════════════════════════════════════════════════════════════
 
@@ -254,22 +312,7 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     m_aiAnalysisLabel->setMinimumHeight(40);
 
     if (!m_record.aiAnalysis.isEmpty()) {
-        // Convert Markdown-ish text to HTML for display
-        QString html = m_record.aiAnalysis;
-        // Simple Markdown→HTML conversion for common patterns
-        html.replace(QRegularExpression(QStringLiteral("^## (.+)$")),
-                     QStringLiteral("<h3 style='color:#0078d4;margin:8px 0 4px'>\\1</h3>"));
-        html.replace(QRegularExpression(QStringLiteral("^### (.+)$")),
-                     QStringLiteral("<h4 style='color:#aaa;margin:6px 0 3px'>\\1</h4>"));
-        html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
-                     QStringLiteral("<pre style='background:#1a1a1a;padding:6px;border-radius:3px;overflow-x:auto'>"));
-        html.replace(QStringLiteral("```"),
-                     QStringLiteral("</pre>"));
-        html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
-        // Bold
-        html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
-                     QStringLiteral("<b>\\1</b>"));
-
+        QString html = renderMarkdown(m_record.aiAnalysis);
         m_aiAnalysisLabel->setText(html);
     } else {
         m_aiAnalysisLabel->setText(QStringLiteral(
@@ -352,18 +395,7 @@ void ErrorDetailWidget::setAnalysis(const QString &analysis)
         return;
     }
 
-    QString html = analysis;
-    html.replace(QRegularExpression(QStringLiteral("^## (.+)$")),
-                 QStringLiteral("<h3 style='color:#0078d4;margin:8px 0 4px'>\\1</h3>"));
-    html.replace(QRegularExpression(QStringLiteral("^### (.+)$")),
-                 QStringLiteral("<h4 style='color:#aaa;margin:6px 0 3px'>\\1</h4>"));
-    html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
-                 QStringLiteral("<pre style='background:#1a1a1a;padding:6px;border-radius:3px;overflow-x:auto'>"));
-    html.replace(QStringLiteral("```"), QStringLiteral("</pre>"));
-    html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
-    html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
-                 QStringLiteral("<b>\\1</b>"));
-
+    QString html = renderMarkdown(analysis);
     m_aiAnalysisLabel->setText(html);
 }
 

@@ -65,6 +65,7 @@ public:
 
 signals:
     void recordAdded(const ErrorRecord &record);
+    void recordDeleted(const QString &recordId);
     void analysisReady(const QString &recordId);
     void recordsCleared();
 

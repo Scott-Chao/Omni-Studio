@@ -11,6 +11,7 @@ class ErrorListPanel;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
+class ErrorJournal;
 
 class AiPanel : public QWidget
 {
@@ -52,6 +53,7 @@ private slots:
 
 private:
     void updateTabButtonStyle();
+    void updateErrorBadge();
 
     ChatArea *m_chatArea;
     ActionBar *m_actionBar;

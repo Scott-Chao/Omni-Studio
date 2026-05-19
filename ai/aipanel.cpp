@@ -209,6 +209,17 @@ AiPanel::AiPanel(QWidget *parent)
         if (m_currentTab == ErrorTab)
             m_errorListPanel->loadRecords();
     });
+
+    // ── Error journal badge tracking ──
+    connect(&ErrorJournal::instance(), &ErrorJournal::recordAdded,
+            this, &AiPanel::updateErrorBadge);
+    connect(&ErrorJournal::instance(), &ErrorJournal::recordDeleted,
+            this, &AiPanel::updateErrorBadge);
+    connect(&ErrorJournal::instance(), &ErrorJournal::recordsCleared,
+            this, &AiPanel::updateErrorBadge);
+
+    // Show initial badge count
+    updateErrorBadge();
 }
 
 void AiPanel::onTabSwitch(int index)
@@ -236,6 +247,15 @@ void AiPanel::updateTabButtonStyle()
 {
     m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? kActiveTabStyle : kInactiveTabStyle);
     m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? kActiveTabStyle : kInactiveTabStyle);
+}
+
+void AiPanel::updateErrorBadge()
+{
+    int count = ErrorJournal::instance().recordCount();
+    if (count > 0)
+        m_errorTabBtn->setText(tr("错题本 (%1)").arg(count));
+    else
+        m_errorTabBtn->setText(tr("错题本"));
 }
 
 void AiPanel::setCurrentTab(int index)

@@ -364,6 +364,7 @@ void ErrorJournal::deleteRecord(const QString &id)
     if (it != m_records.end()) {
         m_records.erase(it, m_records.end());
         save();
+        emit recordDeleted(id);
     }
 }
 
