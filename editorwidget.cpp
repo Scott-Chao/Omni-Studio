@@ -421,16 +421,6 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
     const QColor strColor   = cfg.syntaxStrings();       // #CE9178
     const QColor cmtColor   = cfg.syntaxComments();      // #6A9955
 
-    // --- Helper: wrap a token in a colored span ---
-    auto span = [&](const QString &text, const QColor &color, bool bold = false) {
-        if (color.isValid() && color != QColor(0, 0, 0)) {
-            QString style = QStringLiteral("color:%1;").arg(color.name());
-            if (bold) style += QStringLiteral("font-weight:bold;");
-            return QStringLiteral("<span style=\"%1\">%2</span>").arg(style, text.toHtmlEscaped());
-        }
-        return text.toHtmlEscaped();
-    };
-
     struct MultiLineSpan { QString placeholder; QString raw; };
 
     if (langId == QStringLiteral("cpp")) {
@@ -975,7 +965,7 @@ void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
     QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
     m_previewView->page()->runJavaScript(
         QStringLiteral("window.renderFromBase64('%1')").arg(base64),
-        [this, onFinished](const QVariant &) {
+        [onFinished](const QVariant &) {
             if (onFinished)
                 onFinished();
         });

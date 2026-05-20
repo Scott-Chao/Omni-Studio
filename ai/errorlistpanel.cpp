@@ -739,7 +739,7 @@ ErrorDetailWidget *ErrorListPanel::createDetailWidget(const ErrorRecord &record)
     connect(detail, &ErrorDetailWidget::deleteClicked,
             this, &ErrorListPanel::deleteRecordRequested);
     connect(detail, &ErrorDetailWidget::markReviewed,
-            this, [this](const QString &recId, bool reviewed) {
+            this, [](const QString &recId, bool reviewed) {
         ErrorJournal::instance().setRecordReviewed(recId, reviewed);
     });
     m_detailWidgets.insert(record.id, detail);

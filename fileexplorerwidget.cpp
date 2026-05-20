@@ -1,4 +1,4 @@
-#include "FileExplorerWidget.h"
+#include "fileexplorerwidget.h"
 #include "settingsmanager.h"
 #include <QFileDialog>
 #include <QDir>

@@ -484,7 +484,7 @@ QWidget *SettingsPanel::createEditorPage()
     m_fontFamilyCombo->setFixedWidth(180);
     m_fontFamilyCombo->setStyleSheet(kInputStyle);
 
-    static const QStringList families = QFontDatabase().families();
+    static const QStringList families = QFontDatabase::families();
     m_fontFamilyCombo->addItems(families);
     int fontIdx = m_fontFamilyCombo->findText(cfg.editorFontFamily());
     if (fontIdx >= 0) m_fontFamilyCombo->setCurrentIndex(fontIdx);
