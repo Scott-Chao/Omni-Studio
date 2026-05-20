@@ -4,6 +4,7 @@
 #include <QTextBrowser>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QResizeEvent>
 #include <QRegularExpression>
 
 // ── Markdown → HTML converter (lightweight) ──────────────────────────
@@ -218,6 +219,7 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     m_browser->setFrameShape(QFrame::NoFrame);
     m_browser->setStyleSheet(messageStyleSheet());
     m_browser->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    m_browser->document()->setDocumentMargin(0);
 
     // We update height synchronously after setHtml(), NOT via contentsChanged,
     // because contentsChanged fires mid-setHtml when document layout is incomplete.
@@ -300,10 +302,19 @@ void ChatBubble::updateContent()
 
     // Force height update after setHtml() completes.
     QTextDocument *doc = m_browser->document();
-    doc->adjustSize();
     doc->setTextWidth(m_browser->viewport()->width());
-    int docHeight = qCeil(doc->size().height());
-    m_browser->setFixedHeight(docHeight + 4);
+    m_browser->setFixedHeight(qCeil(doc->size().height()));
+}
+
+void ChatBubble::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    // Recalculate browser height when bubble gets its final layout width.
+    // The constructor's updateContent() might run before the widget has its
+    // actual width, leading to a stale fixed height and blank space at bottom.
+    QTextDocument *doc = m_browser->document();
+    doc->setTextWidth(m_browser->viewport()->width());
+    m_browser->setFixedHeight(qCeil(doc->size().height()));
 }
 
 QString ChatBubble::messageStyleSheet() const

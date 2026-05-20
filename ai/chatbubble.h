@@ -6,6 +6,7 @@
 
 class QTextBrowser;
 class QLabel;
+class QResizeEvent;
 
 class ChatBubble : public QWidget
 {
@@ -25,6 +26,7 @@ public:
 
 private:
     void updateContent();
+    void resizeEvent(QResizeEvent *event) override;
     QString messageStyleSheet() const;
 
     Role m_role;
