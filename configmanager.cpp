@@ -95,7 +95,7 @@ bool ConfigManager::reload()
     return load(m_filePath);
 }
 
-// ---- File-scope helper ----
+// ---- File-scope helpers ----
 
 static QJsonValue traverseJsonPath(const QJsonObject &root, const QString &jsonPath)
 {
@@ -518,6 +518,25 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["delete_file"] = "Delete";
     shortcuts["export_pdf"] = "Ctrl+E";
     shortcuts["convert_md_smd"] = "Ctrl+T";
+
+    // CodeEditor widget shortcuts
+    shortcuts["completion_trigger"] = "Ctrl+I";
+    shortcuts["indent_right"] = "Ctrl+]";
+    shortcuts["indent_left"] = "Ctrl+[";
+
+    // SmdEditor cell shortcuts
+    shortcuts["cell_execute"] = "Ctrl+Return";
+    shortcuts["cell_execute_jump"] = "Shift+Return";
+    shortcuts["cell_language"] = "Ctrl+K";
+    shortcuts["cell_terminate"] = "Ctrl+C";
+    shortcuts["cell_clear_output"] = "Ctrl+Shift+Z";
+    shortcuts["cell_split"] = "Ctrl+Shift+-";
+    shortcuts["toggle_diagnostics"] = "Ctrl+E";
+
+    // SmdEditor command-mode shortcuts
+    shortcuts["cell_insert_above"] = "A";
+    shortcuts["cell_insert_below"] = "B";
+    shortcuts["cell_delete"] = "Delete";
     root["shortcuts"] = shortcuts;
 
     return root;

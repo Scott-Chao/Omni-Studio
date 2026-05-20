@@ -1,4 +1,5 @@
 #include "FileExplorerWidget.h"
+#include "settingsmanager.h"
 #include <QFileDialog>
 #include <QDir>
 #include <QHeaderView>
@@ -146,14 +147,17 @@ private:
 class DeleteKeyFilter : public QObject {
 public:
     bool deletePressed = false;
+    QKeySequence targetSeq;
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override {
         if (event->type() == QEvent::KeyPress) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
-            if (keyEvent->key() == Qt::Key_Delete) {
+            Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+            if (!targetSeq.isEmpty() && QKeySequence(mods | keyEvent->key()) == targetSeq) {
                 deletePressed = true;
                 if (auto *menu = qobject_cast<QMenu*>(obj)) {
-                    menu->close();  // 关闭菜单
+                    menu->close();
                 }
                 return true;
             }
@@ -269,6 +273,14 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_treeView->viewport()->installEventFilter(this);
 
     m_dropTargetIndex = QModelIndex();
+
+    reloadShortcuts();
+}
+
+void FileExplorerWidget::reloadShortcuts()
+{
+    auto &sm = SettingsManager::instance();
+    m_deleteShortcut = QKeySequence(sm.value("shortcuts.delete_file", "Delete").toString());
 }
 
 FileExplorerWidget::~FileExplorerWidget()
@@ -315,7 +327,11 @@ bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
 
         if (obj == m_treeView && event->type() == QEvent::KeyPress) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
-            if (keyEvent->key() == Qt::Key_Delete) {
+            Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+            bool deleteMatch = !m_deleteShortcut.isEmpty()
+                && QKeySequence(mods | keyEvent->key()) == m_deleteShortcut;
+            if (deleteMatch) {
                 // 如果焦点在编辑器（如重命名时），不拦截，让 Delete 作为文本删除
                 QWidget *fw = QApplication::focusWidget();
                 if (fw && (fw->parent() == m_treeView->viewport() || fw->parent() == m_treeView)) {
@@ -517,10 +533,11 @@ void FileExplorerWidget::onCustomContextMenu(const QPoint &point) {
         menu.addSeparator();
         renameAction = menu.addAction(tr("重命名"));
         deleteAction = menu.addAction(tr("删除"));
-        deleteAction->setShortcut(QKeySequence(Qt::Key_Delete));
+        deleteAction->setShortcut(m_deleteShortcut);
     }
 
     DeleteKeyFilter filter;
+    filter.targetSeq = m_deleteShortcut;
     menu.installEventFilter(&filter);
 
     QAction *selected = menu.exec(m_treeView->viewport()->mapToGlobal(point));

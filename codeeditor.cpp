@@ -172,6 +172,18 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     updateLineNumberAreaWidth(0);
     highlightCurrentLine();
+
+    // Load configurable shortcuts
+    reloadShortcuts();
+}
+
+void CodeEditor::reloadShortcuts()
+{
+    auto &sm = SettingsManager::instance();
+    m_completionTrigger = QKeySequence(sm.value("shortcuts.completion_trigger", "Ctrl+I").toString());
+    m_indentRight = QKeySequence(sm.value("shortcuts.indent_right", "Ctrl+]").toString());
+    m_indentLeft = QKeySequence(sm.value("shortcuts.indent_left", "Ctrl+[").toString());
+    m_toggleComment = QKeySequence(sm.value("shortcuts.toggle_comment", "Ctrl+/").toString());
 }
 
 void CodeEditor::setIndentWidth(int width)
@@ -617,25 +629,30 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         }
     }
 
-    // Ctrl+/ — toggle line comment
-    if (event->key() == Qt::Key_Slash && (event->modifiers() & Qt::ControlModifier)) {
+    // ---- Configurable shortcuts (loaded from settings) ----
+    auto matchShortcut = [&](const QKeySequence &seq) -> bool {
+        if (seq.isEmpty())
+            return false;
+        Qt::KeyboardModifiers mods = event->modifiers() & ~Qt::KeypadModifier;
+        return QKeySequence(mods | event->key()) == seq;
+    };
+
+    if (matchShortcut(m_toggleComment)) {
         handleToggleComment();
         return;
     }
 
-    // Ctrl+I — manual completion trigger (Ctrl+Space is intercepted by Windows IME)
-    if (event->key() == Qt::Key_I && (event->modifiers() & Qt::ControlModifier)) {
+    if (matchShortcut(m_completionTrigger)) {
         triggerCompletion();
         return;
     }
 
-    // Ctrl+] — indent right
-    if (event->key() == Qt::Key_BracketRight && (event->modifiers() & Qt::ControlModifier)) {
+    if (matchShortcut(m_indentRight)) {
         handleIndentRight();
         return;
     }
-    // Ctrl+[ — indent left
-    if (event->key() == Qt::Key_BracketLeft && (event->modifiers() & Qt::ControlModifier)) {
+
+    if (matchShortcut(m_indentLeft)) {
         handleIndentLeft();
         return;
     }

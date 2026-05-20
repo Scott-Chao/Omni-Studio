@@ -79,6 +79,7 @@ public:
     bool isPdfView() const { return m_editorMode == PdfView; }
     bool isSmdEdit() const { return m_editorMode == SmdEdit; }
     SmdEditor* smdEditor() const { return m_smdEditor; }
+    CodeEditor* codeEditor() const { return m_codeEditor; }
 
     // Cursor position
     int cursorLine() const;

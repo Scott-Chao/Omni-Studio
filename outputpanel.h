@@ -24,6 +24,8 @@ public:
     void setOutputFont(const QFont &font);
     void setMaxBlocks(int max);
 
+    void reloadShortcuts();
+
 signals:
     void stopRequested();
     void sendInput(const QString &text);
@@ -45,6 +47,10 @@ private:
 
     bool m_acceptingInput = false;
     QString m_inputBuffer;
+
+    // Configurable shortcuts
+    QKeySequence m_stopShortcut;
+    QKeySequence m_pasteShortcut;
     QStringList m_pasteQueue;
     bool m_pasteEndsWithNewline = false;
     QTimer *m_pasteTimer = nullptr;

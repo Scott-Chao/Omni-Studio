@@ -992,6 +992,27 @@ QWidget *SettingsPanel::createShortcutsPage()
         {tr("删除文件"),           "delete_file"},
         {tr("导出 PDF"),           "export_pdf"},
         {tr("转换 .md ↔ .smd"),   "convert_md_smd"},
+
+        // --- CodeEditor ---
+        {tr("代码补全"),           "completion_trigger"},
+        {tr("向右缩进"),           "indent_right"},
+        {tr("向左缩进"),           "indent_left"},
+
+        // --- SmdEditor ---
+        {tr("执行单元格"),         "cell_execute"},
+        {tr("执行并跳转"),         "cell_execute_jump"},
+        {tr("选择语言"),           "cell_language"},
+        {tr("终止执行"),           "cell_terminate"},
+        {tr("清除输出/取消渲染"),  "cell_clear_output"},
+        {tr("分割单元格"),         "cell_split"},
+        {tr("切换诊断面板"),       "toggle_diagnostics"},
+        {tr("上方插入单元格"),     "cell_insert_above"},
+        {tr("下方插入单元格"),     "cell_insert_below"},
+        {tr("删除单元格"),         "cell_delete"},
+
+        // --- OutputPanel ---
+        {tr("输出面板-中断"),      "stop_in_output"},
+        {tr("输出面板-粘贴"),      "paste_in_output"},
     };
 
     // Header row

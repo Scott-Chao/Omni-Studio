@@ -35,6 +35,7 @@ public:
     QString rootPath() const; // 获取当前根目录
     void selectFile(const QString &filePath); // 选中并展开到指定文件
     bool isDropTargetFolder(const QModelIndex &proxyIndex) const; // 判断某个代理索引是否当前拖拽悬停的文件夹
+    void reloadShortcuts();
 
 signals:
     void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
@@ -68,6 +69,9 @@ private:
     QWidget *m_breadcrumb;
     FlowLayout *m_breadcrumbLayout;
     void updateBreadcrumb();
+
+    // Configurable shortcuts
+    QKeySequence m_deleteShortcut;
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

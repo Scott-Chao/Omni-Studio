@@ -38,6 +38,7 @@ public:
     int indentWidth() const { return m_indentWidth; }
 
     void reloadColors();
+    void reloadShortcuts();
 
     void hideSignatureHelp();
     void setSearchHighlights(const QString &searchText);
@@ -83,6 +84,12 @@ private:
     QColor m_cachedCurrentLine;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
     QList<SmdDiagnostic> m_diagnostics;
+
+    // Configurable shortcuts
+    QKeySequence m_completionTrigger;
+    QKeySequence m_indentRight;
+    QKeySequence m_indentLeft;
+    QKeySequence m_toggleComment;
 
     void handleAutoIndent();
     bool handleBracketCompletion(QKeyEvent *event);

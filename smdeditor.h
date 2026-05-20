@@ -53,6 +53,7 @@ public:
     int activeCellCursorColumn() const;
     void setActiveCellCursor(int line, int column);
     QList<SmdFormat::Cell> exportCells() const;
+    void reloadShortcuts();
 
 signals:
     void modificationChanged(bool modified);
@@ -149,6 +150,18 @@ private:
 
     SmdLspManager *m_lspManager = nullptr;
     SmdDiagnosticsPanel *m_diagnosticsPanel = nullptr;
+
+    // Configurable shortcuts
+    QKeySequence m_cellExecute;
+    QKeySequence m_cellExecuteJump;
+    QKeySequence m_cellLanguage;
+    QKeySequence m_cellTerminate;
+    QKeySequence m_cellClearOutput;
+    QKeySequence m_cellSplit;
+    QKeySequence m_toggleDiagnostics;
+    QKeySequence m_cellInsertAbove;
+    QKeySequence m_cellInsertBelow;
+    QKeySequence m_cellDelete;
 
     // Persistent Python execution process (Jupyter-like)
     QProcess *m_pyExecProcess = nullptr;

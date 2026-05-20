@@ -226,6 +226,9 @@ SmdEditor::SmdEditor(QWidget *parent)
         if (QWidget *tlw = window())
             tlw->installEventFilter(this);
     });
+
+    // Load configurable shortcuts
+    reloadShortcuts();
 }
 
 SmdEditor::~SmdEditor()
@@ -242,6 +245,21 @@ SmdEditor::~SmdEditor()
     // Remove event filter from top-level window
     if (QWidget *tlw = window())
         tlw->removeEventFilter(this);
+}
+
+void SmdEditor::reloadShortcuts()
+{
+    auto &sm = SettingsManager::instance();
+    m_cellExecute       = QKeySequence(sm.value("shortcuts.cell_execute", "Ctrl+Return").toString());
+    m_cellExecuteJump   = QKeySequence(sm.value("shortcuts.cell_execute_jump", "Shift+Return").toString());
+    m_cellLanguage      = QKeySequence(sm.value("shortcuts.cell_language", "Ctrl+K").toString());
+    m_cellTerminate     = QKeySequence(sm.value("shortcuts.cell_terminate", "Ctrl+C").toString());
+    m_cellClearOutput   = QKeySequence(sm.value("shortcuts.cell_clear_output", "Ctrl+Shift+Z").toString());
+    m_cellSplit         = QKeySequence(sm.value("shortcuts.cell_split", "Ctrl+Shift+-").toString());
+    m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics", "Ctrl+E").toString());
+    m_cellInsertAbove   = QKeySequence(sm.value("shortcuts.cell_insert_above", "A").toString());
+    m_cellInsertBelow   = QKeySequence(sm.value("shortcuts.cell_insert_below", "B").toString());
+    m_cellDelete        = QKeySequence(sm.value("shortcuts.cell_delete", "Delete").toString());
 }
 
 // ---- File I/O ----
@@ -1467,6 +1485,14 @@ void SmdEditor::onCellRenderFinished()
 
 void SmdEditor::keyPressEvent(QKeyEvent *event)
 {
+    auto matchShortcut = [&](const QKeySequence &seq) -> bool {
+        if (seq.isEmpty())
+            return false;
+        Qt::KeyboardModifiers mods = event->modifiers()
+            & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+        return QKeySequence(mods | event->key()) == seq;
+    };
+
     if (m_commandMode) {
         switch (event->key()) {
         case Qt::Key_Return:
@@ -1479,46 +1505,47 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
         case Qt::Key_Escape:
             return;
 
-        case Qt::Key_A:
+        default:
+            break;
+        }
+
+        // Check configurable command-mode shortcuts
+        if (matchShortcut(m_cellInsertAbove)) {
             insertCellAbove();
             return;
-
-        case Qt::Key_B:
+        }
+        if (matchShortcut(m_cellInsertBelow)) {
             insertCellBelow();
             return;
-
-        case Qt::Key_Up:
-            if (m_activeCellIndex > 0)
-                setActiveCell(m_activeCellIndex - 1);
-            return;
-
-        case Qt::Key_Down:
-            if (m_activeCellIndex < m_cells.size() - 1)
-                setActiveCell(m_activeCellIndex + 1);
-            return;
-
-        case Qt::Key_Z:
-            if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
-                if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
-                    SmdCell *cell = m_cells[m_activeCellIndex];
-                    if (cell->cellType() != SmdCell::Markdown) {
-                        m_outputWidgets[m_activeCellIndex]->clearOutput();
-                        emit contentChanged();
-                    } else if (cell->isRendered()) {
-                        cell->setRendered(false);
-                    }
+        }
+        if (matchShortcut(m_cellClearOutput)) {
+            if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
+                SmdCell *cell = m_cells[m_activeCellIndex];
+                if (cell->cellType() != SmdCell::Markdown) {
+                    m_outputWidgets[m_activeCellIndex]->clearOutput();
+                    emit contentChanged();
+                } else if (cell->isRendered()) {
+                    cell->setRendered(false);
                 }
-                return;
             }
-            break;
-
-        case Qt::Key_Delete:
+            return;
+        }
+        if (matchShortcut(m_cellDelete)) {
             if (m_activeCellIndex >= 0 && m_cells.size() > 1)
                 removeCell(m_activeCellIndex);
             return;
+        }
 
-        default:
-            break;
+        // Legacy navigation keys (non-configurable)
+        if (event->key() == Qt::Key_Up) {
+            if (m_activeCellIndex > 0)
+                setActiveCell(m_activeCellIndex - 1);
+            return;
+        }
+        if (event->key() == Qt::Key_Down) {
+            if (m_activeCellIndex < m_cells.size() - 1)
+                setActiveCell(m_activeCellIndex + 1);
+            return;
         }
     }
     QWidget::keyPressEvent(event);
@@ -1556,17 +1583,24 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
-        // Ctrl+Enter: execute without jumping (edit mode only).
-        // Shift+Enter: execute and jump to next cell (edit mode only).
+        auto matchShortcut = [&](const QKeySequence &seq) -> bool {
+            if (seq.isEmpty())
+                return false;
+            Qt::KeyboardModifiers mods = key->modifiers()
+                & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+            return QKeySequence(mods | key->key()) == seq;
+        };
+
+        // Ctrl+Enter / Shift+Enter: execute current cell (edit mode only).
         if (!m_commandMode
             && (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)) {
-            bool ctrl = (key->modifiers() & Qt::ControlModifier);
-            bool shift = (key->modifiers() & Qt::ShiftModifier);
-            if (ctrl || shift) {
+            bool exec        = matchShortcut(m_cellExecute);
+            bool execJump    = matchShortcut(m_cellExecuteJump);
+            if (exec || execJump) {
                 if (event->type() == QEvent::ShortcutOverride) {
                     event->accept();
                 } else {
-                    m_jumpAfterExecute = shift;
+                    m_jumpAfterExecute = execJump;
                     executeCurrentCell();
                 }
                 return true;
@@ -1584,20 +1618,25 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
             return true;
         }
 
-        // Ctrl+K: show language selector in any mode (command or edit).
-        if (key->key() == Qt::Key_K && (key->modifiers() & Qt::ControlModifier)) {
+        // Configurable shortcut checks
+        auto handleOverrideOrAction = [&](const QKeySequence &seq, auto actionFn) -> bool {
+            if (seq.isEmpty() || !matchShortcut(seq))
+                return false;
             if (event->type() == QEvent::ShortcutOverride)
                 event->accept();
-            else if (m_activeCellIndex >= 0) {
-                showLanguageSelector(m_activeCellIndex);
-            }
+            else
+                actionFn();
             return true;
-        }
+        };
 
-        // Ctrl+C: terminate cell execution (Req 6)
-        if ((key->key() == Qt::Key_C)
-            && (key->modifiers() & Qt::ControlModifier)
-            && m_executingCell) {
+        // Ctrl+K: show language selector in any mode (command or edit).
+        if (handleOverrideOrAction(m_cellLanguage, [this]() {
+            if (m_activeCellIndex >= 0)
+                showLanguageSelector(m_activeCellIndex);
+        })) return true;
+
+        // Ctrl+C: terminate cell execution (only when a cell is executing).
+        if (!m_cellTerminate.isEmpty() && matchShortcut(m_cellTerminate) && m_executingCell) {
             if (event->type() == QEvent::ShortcutOverride) {
                 event->accept();
             } else {
@@ -1609,36 +1648,36 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         }
 
         // Ctrl+Shift+Z: un-render MD cells, or clear output for code cells.
-        if (key->key() == Qt::Key_Z
-            && (key->modifiers() & Qt::ControlModifier)
-            && (key->modifiers() & Qt::ShiftModifier)) {
-            if (event->type() == QEvent::ShortcutOverride) {
-                event->accept();
-                return true;
-            }
-            if (!m_commandMode) {
-                if (event->type() == QEvent::KeyPress) {
-                    if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
-                        SmdCell *cell = m_cells[m_activeCellIndex];
-                        if (cell->cellType() != SmdCell::Markdown) {
-                            m_outputWidgets[m_activeCellIndex]->clearOutput();
-                            emit contentChanged();
-                        } else if (cell->isRendered()) {
-                            cell->setRendered(false);
-                        }
-                    }
+        // In command mode the event falls through to keyPressEvent.
+        if (!m_cellClearOutput.isEmpty()) {
+            bool matchClear = matchShortcut(m_cellClearOutput);
+            if (matchClear) {
+                if (event->type() == QEvent::ShortcutOverride) {
+                    event->accept();
                     return true;
                 }
+                if (!m_commandMode) {
+                    if (event->type() == QEvent::KeyPress) {
+                        if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
+                            SmdCell *cell = m_cells[m_activeCellIndex];
+                            if (cell->cellType() != SmdCell::Markdown) {
+                                m_outputWidgets[m_activeCellIndex]->clearOutput();
+                                emit contentChanged();
+                            } else if (cell->isRendered()) {
+                                cell->setRendered(false);
+                            }
+                        }
+                        return true;
+                    }
+                }
+                // In command mode, KeyPress falls through to keyPressEvent
             }
-            // In command mode, KeyPress falls through to keyPressEvent
         }
 
         // Ctrl+Shift+-: split cell at cursor (edit mode only).
-        // Match both Key_Minus and Key_Underscore (Windows may report either).
         if (!m_commandMode
             && (key->key() == Qt::Key_Minus || key->key() == Qt::Key_Underscore)
-            && (key->modifiers() & Qt::ControlModifier)
-            && (key->modifiers() & Qt::ShiftModifier)) {
+            && matchShortcut(m_cellSplit)) {
             if (event->type() == QEvent::ShortcutOverride) {
                 event->accept();
                 return true;
@@ -1650,18 +1689,9 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
         }
 
         // Ctrl+E: toggle diagnostics panel (edit mode only).
-        if (!m_commandMode
-            && key->key() == Qt::Key_E
-            && (key->modifiers() & Qt::ControlModifier)) {
-            if (event->type() == QEvent::ShortcutOverride) {
-                event->accept();
-                return true;
-            }
-            if (event->type() == QEvent::KeyPress) {
-                toggleDiagnosticsPanel();
-                return true;
-            }
-        }
+        if (!m_commandMode && handleOverrideOrAction(m_toggleDiagnostics, [this]() {
+            toggleDiagnosticsPanel();
+        })) return true;
 
     }
 

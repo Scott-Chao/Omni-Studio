@@ -125,6 +125,15 @@ OutputPanel::OutputPanel(QWidget *parent)
     connect(m_stopBtn, &QPushButton::clicked, this, &OutputPanel::stopRequested);
     connect(m_clearBtn, &QPushButton::clicked, this, &OutputPanel::clearOutput);
     connect(m_hideBtn, &QPushButton::clicked, this, &OutputPanel::hideRequested);
+
+    reloadShortcuts();
+}
+
+void OutputPanel::reloadShortcuts()
+{
+    auto &sm = SettingsManager::instance();
+    m_stopShortcut  = QKeySequence(sm.value("shortcuts.stop_in_output", "Ctrl+C").toString());
+    m_pasteShortcut = QKeySequence(sm.value("shortcuts.paste_in_output", "Ctrl+V").toString());
 }
 
 void OutputPanel::appendOutput(const QString &text, bool isStderr)
@@ -217,14 +226,24 @@ bool OutputPanel::eventFilter(QObject *obj, QEvent *event)
         if (event->type() == QEvent::KeyPress) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
 
-            // Ctrl+C: stop the running process
-            if (keyEvent->key() == Qt::Key_C && keyEvent->modifiers() == Qt::ControlModifier) {
-                emit stopRequested();
-                return true;
+            // Stop process (configurable, default Ctrl+C)
+            if (!m_stopShortcut.isEmpty()) {
+                Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                    & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+                if (QKeySequence(mods | keyEvent->key()) == m_stopShortcut) {
+                    emit stopRequested();
+                    return true;
+                }
             }
 
-            // Ctrl+V: paste (multi-line aware)
-            if (keyEvent->matches(QKeySequence::Paste)) {
+            // Paste (configurable, default Ctrl+V)
+            bool pasteMatch = false;
+            if (!m_pasteShortcut.isEmpty()) {
+                Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                    & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+                pasteMatch = (QKeySequence(mods | keyEvent->key()) == m_pasteShortcut);
+            }
+            if (pasteMatch || keyEvent->matches(QKeySequence::Paste)) {
                 pasteToInput();
                 return true;
             }

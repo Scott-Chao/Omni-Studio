@@ -33,6 +33,7 @@
 #include "ai/openaiprovider.h"
 #include "smdformat.h"
 #include "smdeditor.h"
+#include "codeeditor.h"
 #include "scrollbarhider.h"
 #include <QDateTime>
 #include <QDebug>
@@ -1158,6 +1159,21 @@ void MainWindow::onShortcutChanged(const QString &actionKey, const QString &keyS
     if (auto *action = m_shortcutActions.value(actionKey)) {
         action->setShortcut(QKeySequence(keySequenceText));
     }
+
+    // Notify editor widgets to reload their configurable shortcuts
+    if (auto *editor = m_tabManager->currentEditor()) {
+        if (editor->isCodeEdit()) {
+            if (auto *ce = editor->codeEditor())
+                ce->reloadShortcuts();
+        } else if (editor->isSmdEdit()) {
+            if (auto *se = editor->smdEditor())
+                se->reloadShortcuts();
+        }
+    }
+    if (m_outputPanel)
+        m_outputPanel->reloadShortcuts();
+    if (m_explorer)
+        m_explorer->reloadShortcuts();
 }
 
 void MainWindow::showRightPanel(int panelIndex)
@@ -1380,11 +1396,24 @@ void MainWindow::onResetToDefaults()
         it.value()->setShortcut(QKeySequence(defaultVal));
     }
 
+    // Reload configurable shortcuts on all editor and explorer widgets
+    for (int i = 0; i < m_tabManager->count(); ++i) {
+        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+            if (auto *ce = editor->codeEditor())
+                ce->reloadShortcuts();
+            if (auto *se = editor->smdEditor())
+                se->reloadShortcuts();
+        }
+    }
+    if (m_explorer)
+        m_explorer->reloadShortcuts();
+
     // Reset output panel
     QFont opFont = m_outputPanel->font();
     opFont.setPointSize(cfg.outputPanelFontSize());
     m_outputPanel->setOutputFont(opFont);
     m_outputPanel->setMaxBlocks(cfg.outputPanelMaxBlocks());
+    m_outputPanel->reloadShortcuts();
 
     // Reset preview settings on current editor
     if (auto *editor = m_tabManager->currentEditor()) {
