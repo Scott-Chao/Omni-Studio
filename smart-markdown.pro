@@ -45,6 +45,7 @@ SOURCES += \
     historypanel.cpp \
     judgeengine.cpp \
     judgepanel.cpp \
+    keyrecorder.cpp \
     logindialog.cpp \
     openjudgewindow.cpp \
     outlinepanel.cpp \
@@ -106,6 +107,7 @@ HEADERS += \
     historypanel.h \
     judgeengine.h \
     judgepanel.h \
+    keyrecorder.h \
     logindialog.h \
     openjudgewindow.h \
     outlinepanel.h \

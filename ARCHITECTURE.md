@@ -46,7 +46,8 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn
   ├── SubmitResultPanel   → QWidget, dark-themed submission result display
   ├── LoginDialog         → QDialog, username/password + auto-login checkbox
-  ├── SettingsPanel       → Floating overlay with dimming background, drag/resize
+  ├── KeyRecorder         → Click-to-record widget with Normal/Recording/Cleared states, conflict detection via ShortcutOverride event
+  ├── SettingsPanel       → Floating overlay with dimming background, drag/resize, 7 category pages (including Shortcuts with KeyRecorder)
   └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout
 ```
 
@@ -238,7 +239,7 @@ Category "AI 服务" (index 6) in settings panel sidebar. Controls: API type Com
 QDialog: username, password, auto-login checkbox, Login/Skip buttons.
 
 ### SettingsPanel (`settingspanel.h/cpp`)
-Floating overlay with dimming background. Category sidebar (6 pages) + reset button. Drag-move, 8-direction edge resize (min 400x300). Toggle via Ctrl+, or toolbar. Persists to config.ini [settings_overrides].
+Floating overlay with dimming background. Category sidebar (now 7 pages including Shortcuts) + reset button. Shortcuts page uses interactive KeyRecorder widgets with conflict detection and runtime QAction rebinding. Drag-move, 8-direction edge resize (min 400x300). Toggle via Ctrl+, or toolbar. Persists to config.ini [settings_overrides].
 
 ### FlowLayout (`flowlayout.h/cpp`)
 Custom QLayout implementing auto-wrapping. heightForWidth() for constrained containers. Used by breadcrumb bar.

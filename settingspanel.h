@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QVariant>
 #include <QPainter>
+#include <QMap>
 #include <functional>
 
 class QLabel;
@@ -18,6 +19,7 @@ class QLineEdit;
 class QVBoxLayout;
 class QSizeGrip;
 class QTextEdit;
+class KeyRecorder;
 
 // 自定义开关控件，类似 Windows 系统设置的 Toggle Switch
 class ToggleSwitch : public QWidget
@@ -76,6 +78,7 @@ signals:
     void previewSettingChanged(const QString &key, const QVariant &value);
     void searchSettingChanged(const QString &key, const QVariant &value);
     void aiSettingChanged(const QString &key, const QVariant &value);
+    void shortcutChanged(const QString &actionKey, const QString &keySequenceText);
     void resetToDefaultsRequested();
 
 protected:
@@ -135,6 +138,9 @@ private:
     QSpinBox *m_searchPerFileSpin = nullptr;
     QSpinBox *m_searchTotalSpin = nullptr;
     QSpinBox *m_searchSnippetSpin = nullptr;
+
+    // Shortcuts
+    QMap<QString, KeyRecorder*> m_keyRecorders;
 
     // AI service controls
     QComboBox *m_aiProviderCombo = nullptr;

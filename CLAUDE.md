@@ -79,6 +79,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **stdin in OutputPanel**: Terminal-mode event filter captures keystrokes, buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
 - **Compile & Run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++ or MSVC for C/C++, python for .py).
 - **Code Completion**: Ctrl+I (IME-safe alternative to Ctrl+Space) triggers completion manually. Auto-trigger on `.`, `::`, `->`. C++ clangd via LspClient (JSON-RPC over QProcess), Python via Jedi helper script. Fallback to keyword + document-words when server unavailable. `EscNativeFilter` catches VK_ESCAPE at Windows message level to close popups when Qt::Tool window HWND routing interferes.
+- **Custom Shortcuts**: SettingsPanel Shortcuts page (index 5) uses interactive KeyRecorder widgets with click-to-record, conflict detection dialog (overwrite/cancel), and runtime QAction rebinding via SettingsManager overrides. Persisted to config.ini [settings_overrides]. Includes all 25+ actions.
 
 ## Coding Standards
 - **Qt Logic**: Always use the **new signal/slot syntax**: `connect(sender, &Sender::signal, receiver, &Receiver::slot)`.

@@ -24,7 +24,9 @@
 #include <QFontDatabase>
 #include <QPainter>
 #include <QMessageBox>
+#include <QMap>
 #include <functional>
+#include "keyrecorder.h"
 
 namespace {
 
@@ -949,40 +951,15 @@ QWidget *SettingsPanel::createShortcutsPage()
     content->setStyleSheet("background: #2b2b2b;");
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(24, 16, 24, 16);
-    layout->setSpacing(8);
+    layout->setSpacing(2);
 
     layout->addWidget(createSectionLabel(tr("快捷键")));
 
-    auto *table = new QTableWidget;
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSelectionMode(QAbstractItemView::NoSelection);
-    table->setFocusPolicy(Qt::NoFocus);
-    table->setShowGrid(false);
-    table->setAlternatingRowColors(true);
-    table->verticalHeader()->hide();
-    table->horizontalHeader()->hide();
-    table->setColumnCount(2);
-    table->setStyleSheet(
-        "QTableWidget {"
-        "  background-color: #2b2b2b;"
-        "  alternate-background-color: #2f2f2f;"
-        "  border: 1px solid #3c3c3c;"
-        "  color: #cccccc;"
-        "  font-size: 12px;"
-        "}"
-        "QTableWidget::item {"
-        "  padding: 4px 8px;"
-        "  border: none;"
-        "}"
-        "QHeaderView::section {"
-        "  background-color: #333333;"
-        "  color: #999999;"
-        "  padding: 4px 8px;"
-        "  border: none;"
-        "  border-bottom: 1px solid #3c3c3c;"
-        "  font-weight: bold;"
-        "}"
-    );
+    // 说明文字
+    auto *descLabel = new QLabel(tr("点击快捷键可重新录制，按 Delete/Backspace 清除，按 Escape 取消"));
+    descLabel->setStyleSheet("color: #999999; font-size: 11px; margin-bottom: 8px;");
+    descLabel->setWordWrap(true);
+    layout->addWidget(descLabel);
 
     // Shortcut mapping: action name -> config key
     struct ShortcutItem {
@@ -990,47 +967,153 @@ QWidget *SettingsPanel::createShortcutsPage()
         QString configKey;
     };
     ShortcutItem items[] = {
-        {tr("新建文件"),     "new_file"},
-        {tr("保存"),         "save"},
-        {tr("另存为"),       "save_as"},
-        {tr("切换预览"),     "toggle_preview"},
-        {tr("分屏预览"),     "toggle_split_preview"},
-        {tr("历史记录"),     "toggle_history"},
-        {tr("反向链接"),     "toggle_backlinks"},
-        {tr("标签面板"),     "toggle_tags"},
-        {tr("大纲面板"),     "toggle_outline"},
-        {tr("全文搜索"),     "toggle_search"},
-        {tr("本地评测"),     "toggle_judge"},
-        {tr("设置"),         "toggle_settings"},
-        {tr("编译并运行"),   "compile_and_run"},
-        {tr("仅编译"),       "compile_only"},
-        {tr("仅运行"),       "run_only"},
-        {tr("停止进程"),     "stop_process"},
-        {tr("放大"),         "zoom_in"},
-        {tr("缩小"),         "zoom_out"},
-        {tr("重置缩放"),     "zoom_reset"},
-        {tr("切换注释"),     "toggle_comment"},
-        {tr("删除文件"),     "delete_file"},
+        {tr("新建文件"),           "new_file"},
+        {tr("保存"),               "save"},
+        {tr("另存为"),             "save_as"},
+        {tr("切换预览"),           "toggle_preview"},
+        {tr("分屏预览"),           "toggle_split_preview"},
+        {tr("右侧面板"),           "toggle_right_panel"},
+        {tr("历史记录"),           "toggle_history"},
+        {tr("反向链接"),           "toggle_backlinks"},
+        {tr("标签面板"),           "toggle_tags"},
+        {tr("大纲面板"),           "toggle_outline"},
+        {tr("全文搜索"),           "toggle_search"},
+        {tr("AI 助手"),            "toggle_ai"},
+        {tr("本地评测"),           "toggle_judge"},
+        {tr("设置"),               "toggle_settings"},
+        {tr("编译并运行"),         "compile_and_run"},
+        {tr("仅编译"),             "compile_only"},
+        {tr("仅运行"),             "run_only"},
+        {tr("停止进程"),           "stop_process"},
+        {tr("放大"),               "zoom_in"},
+        {tr("缩小"),               "zoom_out"},
+        {tr("重置缩放"),           "zoom_reset"},
+        {tr("切换注释"),           "toggle_comment"},
+        {tr("删除文件"),           "delete_file"},
+        {tr("导出 PDF"),           "export_pdf"},
+        {tr("转换 .md ↔ .smd"),   "convert_md_smd"},
     };
 
-    int rowCount = sizeof(items) / sizeof(items[0]);
-    table->setRowCount(rowCount);
-    table->setColumnWidth(0, 200);
-    table->horizontalHeader()->setStretchLastSection(true);
+    // Header row
+    auto *headerRow = new QWidget;
+    headerRow->setStyleSheet("background: #333333; border: 1px solid #3c3c3c; border-bottom: none;");
+    auto *headerLayout = new QHBoxLayout(headerRow);
+    headerLayout->setContentsMargins(8, 4, 8, 4);
+    auto *nameHeader = new QLabel(tr("操作"));
+    nameHeader->setStyleSheet("color: #999999; font-weight: bold; font-size: 12px;");
+    auto *keyHeader = new QLabel(tr("快捷键"));
+    keyHeader->setStyleSheet("color: #999999; font-weight: bold; font-size: 12px;");
+    headerLayout->addWidget(nameHeader, 1);
+    headerLayout->addWidget(keyHeader, 1);
+    layout->addWidget(headerRow);
 
-    for (int i = 0; i < rowCount; ++i) {
-        QString shortcutStr = cfg.shortcut(items[i].configKey, "");
+    // Build a container for the list
+    auto *listContainer = new QWidget;
+    listContainer->setStyleSheet("background: #2b2b2b; border: 1px solid #3c3c3c;");
+    auto *listLayout = new QVBoxLayout(listContainer);
+    listLayout->setContentsMargins(0, 0, 0, 0);
+    listLayout->setSpacing(0);
 
-        auto *nameItem = new QTableWidgetItem(items[i].displayName);
-        nameItem->setForeground(QColor("#cccccc"));
-        table->setItem(i, 0, nameItem);
+    // Conflict detection lambda
+    auto checkConflict = [this](KeyRecorder *sender, const QString &newKs) {
+        if (newKs.isEmpty())
+            return QString();
+        for (auto it = m_keyRecorders.constBegin(); it != m_keyRecorders.constEnd(); ++it) {
+            if (it.value() == sender)
+                continue;
+            if (it.value()->keySequence() == newKs)
+                return it.key();
+        }
+        return QString();
+    };
 
-        auto *keyItem = new QTableWidgetItem(shortcutStr);
-        keyItem->setForeground(QColor("#569CD6"));
-        table->setItem(i, 1, keyItem);
+    m_keyRecorders.clear();
+
+    for (const auto &item : items) {
+        auto *row = new QWidget;
+        row->setFixedHeight(32);
+        row->setStyleSheet("background: transparent;");
+
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(8, 0, 8, 0);
+        rowLayout->setSpacing(8);
+
+        auto *label = new QLabel(item.displayName);
+        label->setStyleSheet("color: #cccccc; font-size: 12px;");
+        rowLayout->addWidget(label, 1);
+
+        QString shortcutStr = cfg.shortcut(item.configKey, "");
+        auto *recorder = new KeyRecorder(item.configKey, shortcutStr);
+        rowLayout->addWidget(recorder, 1);
+
+        m_keyRecorders[item.configKey] = recorder;
+
+        connect(recorder, &KeyRecorder::keySequenceCaptured,
+                this, [this, recorder, checkConflict, item](const QString &actionKey, const QKeySequence &ks) {
+            QString newText = ks.toString(QKeySequence::NativeText);
+
+            // Conflict detection
+            QString conflictAction = checkConflict(recorder, newText);
+            if (!conflictAction.isEmpty()) {
+                QMessageBox msgBox(this);
+                msgBox.setWindowTitle(tr("快捷键冲突"));
+                msgBox.setText(tr("快捷键 %1 已被「%2」使用。\n是否将 %1 分配给「%3」？")
+                               .arg(newText, conflictAction, item.configKey));
+                msgBox.setIcon(QMessageBox::Warning);
+                auto *overwriteBtn = msgBox.addButton(tr("覆盖"), QMessageBox::AcceptRole);
+                msgBox.addButton(tr("取消"), QMessageBox::RejectRole);
+                msgBox.exec();
+
+                if (msgBox.clickedButton() == overwriteBtn) {
+                    if (m_keyRecorders.contains(conflictAction)) {
+                        m_keyRecorders[conflictAction]->setKeySequence(QString());
+                        emit shortcutChanged(conflictAction, QString());
+                    }
+                    recorder->setKeySequence(newText);
+                    emit shortcutChanged(actionKey, newText);
+                } else {
+                    recorder->restorePreviousSequence();
+                }
+                return;
+            }
+
+            // No conflict
+            recorder->setKeySequence(newText);
+            emit shortcutChanged(actionKey, newText);
+        });
+
+        listLayout->addWidget(row);
+
+        // Separator
+        auto *sep = new QFrame;
+        sep->setFrameShape(QFrame::HLine);
+        sep->setStyleSheet("color: #3c3c3c;");
+        sep->setFixedHeight(1);
+        listLayout->addWidget(sep);
     }
 
-    layout->addWidget(table, 1);
+    layout->addWidget(listContainer, 1);
+
+    // Reset all button
+    auto *resetBtn = new QPushButton(tr("恢复默认"));
+    resetBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: #3c3c3c; color: #cccccc; border: 1px solid #555;"
+        "  padding: 6px 16px; border-radius: 3px; font-size: 12px;"
+        "}"
+        "QPushButton:hover { background: #4c4c4c; }"
+    );
+    resetBtn->setFixedWidth(120);
+    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+        const auto &cfg2 = ConfigManager::instance();
+        for (auto it = m_keyRecorders.begin(); it != m_keyRecorders.end(); ++it) {
+            QString defaultVal = cfg2.shortcut(it.key(), "");
+            it.value()->setKeySequence(defaultVal);
+            emit shortcutChanged(it.key(), defaultVal);
+        }
+    });
+    layout->addWidget(resetBtn, 0, Qt::AlignLeft);
+
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
     return page;
@@ -1263,6 +1346,13 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
     if (m_aiSystemPromptEdit)
         m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
+
+    // Shortcuts page: sync overrides to KeyRecorder widgets
+    for (auto it = m_keyRecorders.begin(); it != m_keyRecorders.end(); ++it) {
+        QString val = sm.value("shortcuts." + it.key(), "").toString();
+        if (!val.isEmpty())
+            it.value()->setKeySequence(val);
+    }
 }
 
 void SettingsPanel::setDefaultZoom(qreal zoom)

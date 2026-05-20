@@ -358,16 +358,19 @@ MainWindow::MainWindow(QWidget *parent)
         QAction *newAct = fileMenu->addAction(tr("新建文件"));
         newAct->setShortcut(QKeySequence::New);
         connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
+        m_shortcutActions["new_file"] = newAct;
 
         QAction *saveAct = fileMenu->addAction(tr("保存"));
         saveAct->setShortcut(QKeySequence::Save);
         addAction(saveAct);
         connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
+        m_shortcutActions["save"] = saveAct;
 
         QAction *saveAsAct = fileMenu->addAction(tr("另存为"));
         saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
         addAction(saveAsAct);
         connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
+        m_shortcutActions["save_as"] = saveAsAct;
 
         fileMenuBtn->setMenu(fileMenu);
     }
@@ -565,6 +568,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
+    connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
 
     // ----- AI 助手面板 -----
     m_aiPanel = new AiPanel(this);
@@ -590,6 +594,28 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     addAction(m_toggleAiAction);
+
+    // Build shortcut action map for dynamic rebinding
+    m_shortcutActions["toggle_right_panel"] = toggleRightPanelAction;
+    m_shortcutActions["toggle_history"] = m_toggleHistoryAction;
+    m_shortcutActions["toggle_outline"] = m_toggleOutlineAction;
+    m_shortcutActions["toggle_tags"] = m_toggleTagsAction;
+    m_shortcutActions["toggle_backlinks"] = m_toggleBacklinksAction;
+    m_shortcutActions["toggle_search"] = toggleSearchAction;
+    m_shortcutActions["toggle_judge"] = m_toggleJudgeAction;
+    m_shortcutActions["toggle_preview"] = m_previewAction;
+    m_shortcutActions["toggle_split_preview"] = m_splitPreviewAction;
+    m_shortcutActions["compile_only"] = m_compileAction;
+    m_shortcutActions["run_only"] = m_runAction;
+    m_shortcutActions["compile_and_run"] = m_compileRunAction;
+    m_shortcutActions["stop_process"] = m_stopAction;
+    m_shortcutActions["toggle_settings"] = m_settingsAction;
+    m_shortcutActions["export_pdf"] = m_exportPdfAction;
+    m_shortcutActions["convert_md_smd"] = m_convertMdSmdAction;
+    m_shortcutActions["zoom_in"] = m_zoomInAction;
+    m_shortcutActions["zoom_out"] = m_zoomOutAction;
+    m_shortcutActions["zoom_reset"] = m_zoomResetAction;
+    m_shortcutActions["toggle_ai"] = m_toggleAiAction;
 
     // AI 端到端信号连接
     connect(m_aiPanel, &AiPanel::sendMessage, this, [this](const QString &text) {
@@ -1123,6 +1149,17 @@ void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
     }
 }
 
+void MainWindow::onShortcutChanged(const QString &actionKey, const QString &keySequenceText)
+{
+    // Persist via SettingsManager override
+    m_settings->setSettingOverride("shortcuts." + actionKey, keySequenceText);
+
+    // Apply to the live QAction
+    if (auto *action = m_shortcutActions.value(actionKey)) {
+        action->setShortcut(QKeySequence(keySequenceText));
+    }
+}
+
 void MainWindow::showRightPanel(int panelIndex)
 {
     m_dockAi->hide();
@@ -1336,6 +1373,12 @@ void MainWindow::onResetToDefaults()
         }
     }
     updateZoomLabel();
+
+    // Reset all shortcuts to defaults
+    for (auto it = m_shortcutActions.constBegin(); it != m_shortcutActions.constEnd(); ++it) {
+        QString defaultVal = cfg.shortcut(it.key(), "");
+        it.value()->setShortcut(QKeySequence(defaultVal));
+    }
 
     // Reset output panel
     QFont opFont = m_outputPanel->font();

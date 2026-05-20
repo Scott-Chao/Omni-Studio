@@ -183,6 +183,9 @@ private:
     // .md ↔ .smd 转换
     QAction *m_convertMdSmdAction = nullptr;
 
+    // 快捷键动态映射
+    QMap<QString, QAction*> m_shortcutActions;
+
     // 自定义标题栏控件
     QPushButton *m_minimizeBtn = nullptr;
     QPushButton *m_maximizeBtn = nullptr;
@@ -217,6 +220,7 @@ private:
     void onAiFinished();
     void onAiError(const QString &message);
     void onResetToDefaults();
+    void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
