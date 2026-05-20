@@ -616,6 +616,7 @@ void SmdLspManager::onCppRequestFailed(int id, QJsonObject error)
 
 void SmdLspManager::onCppServerStopped(int exitCode, QProcess::ExitStatus status)
 {
+    Q_UNUSED(exitCode);
     if (m_shuttingDown || !m_cppServer.client) return;
     m_cppServer.initialized = false;
     if (status == QProcess::CrashExit) {
@@ -1184,6 +1185,7 @@ void SmdLspManager::onPyProcessError(QProcess::ProcessError err)
 
 void SmdLspManager::onPyProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
+    Q_UNUSED(exitCode);
     if (m_shuttingDown || !m_pyProcess) return;
     emitPythonEmptyResults();
     m_pyServer.initialized = false;

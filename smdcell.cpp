@@ -713,7 +713,6 @@ void SmdCell::performGrab()
     if (!m_rendered || !m_renderView || !m_renderImage) {
         return;
     }
-    int vw = m_renderView->width();
     int vh = m_renderView->height();
     if (vh < 40) {
         return;
@@ -728,7 +727,6 @@ void SmdCell::performGrab()
     }
 
     qreal dpr = m_renderView->devicePixelRatioF();
-    int lw = qRound(pm.width() / dpr);
     int lh = qRound(pm.height() / dpr);
 
     // Set up pixmap widget, switch stack, hide overlay

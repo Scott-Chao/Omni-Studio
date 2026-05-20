@@ -322,6 +322,7 @@ void JudgePanel::onCompileFinished(bool success, const QString &errorOutput)
 
 void JudgePanel::onTestStarted(int index, const QString &testName)
 {
+    Q_UNUSED(index);
     Q_UNUSED(testName);
     m_summaryLabel->setText(tr("评测中..."));
 }

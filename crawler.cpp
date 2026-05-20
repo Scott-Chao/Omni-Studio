@@ -34,7 +34,7 @@ static void debugLog(const QString &msg)
 static void clearLog()
 {
     QFile file(ConfigManager::instance().openJudgeDebugLogFile());
-    file.open(QIODevice::WriteOnly | QIODevice::Text);
+    (void)file.open(QIODevice::WriteOnly | QIODevice::Text);
     file.close();
 }
 
@@ -1411,8 +1411,8 @@ void Crawler::doPollSubmissionStatus()
 
             // Check for Compile Error link
             {
-                QRegularExpression ceLinkRx(QStringLiteral("compile[^\"\\s]*error[^\"\\s]*",
-                    QRegularExpression::CaseInsensitiveOption));
+                QRegularExpression ceLinkRx(QStringLiteral("compile[^\"\\s]*error[^\"\\s]*"),
+                    QRegularExpression::CaseInsensitiveOption);
                 QRegularExpressionMatch ceMatch = ceLinkRx.match(html);
                 if (ceMatch.hasMatch()) {
                     QRegularExpression hrefRx(QStringLiteral("href=\"([^\"]*%1[^\"]*)\"").arg(ceMatch.captured(0)),

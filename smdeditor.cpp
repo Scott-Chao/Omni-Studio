@@ -467,6 +467,7 @@ void SmdEditor::applyZoom(qreal factor, int baseFontSize)
 
 void SmdEditor::setEditorFont(const QString &family, int size)
 {
+    Q_UNUSED(family);
     m_baseFontSize = size;
     for (SmdCell *c : m_cells)
         c->applyZoom(1.0, size);

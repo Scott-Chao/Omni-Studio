@@ -2015,8 +2015,6 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
             const int y = GET_Y_LPARAM(msg->lParam);
             RECT r;
             GetWindowRect(reinterpret_cast<HWND>(winId()), &r);
-            const int bw = r.right - r.left;
-            const int bh = r.bottom - r.top;
             const int m = 10;
             const bool onL = (x >= r.left && x <= r.left + m);
             const bool onR = (x >= r.right - m && x <= r.right);
@@ -2101,7 +2099,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if (shouldMove && me->button() == Qt::LeftButton) {
                 if (isMaximized()) {
                     // 最大化拖拽：还原 → 处理事件 → 定位 → 系统拖拽
-                    QPoint gpos = me->globalPos();
+                    QPoint gpos = me->globalPosition().toPoint();
                     QPoint localInWindow = mapFromGlobal(gpos);
                     showNormal();
                     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
@@ -2856,7 +2854,7 @@ void MainWindow::checkCrashRecovery()
                                  "选择“恢复”将打开临时文件供您手动保存；\n"
                                  "选择“丢弃”将删除所有临时文件。"));
     QPushButton *restoreBtn = msgBox.addButton(tr("恢复(&R)"), QMessageBox::AcceptRole);
-    QPushButton *discardBtn = msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
+    msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
     msgBox.setDefaultButton(restoreBtn);
 
     msgBox.exec();

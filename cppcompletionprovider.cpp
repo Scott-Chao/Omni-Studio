@@ -191,6 +191,7 @@ void CppCompletionProvider::onServerError(QProcess::ProcessError err)
 
 void CppCompletionProvider::onServerStopped(int exitCode, QProcess::ExitStatus status)
 {
+    Q_UNUSED(exitCode);
     if (!m_client)
         return;
     m_initialized = false;

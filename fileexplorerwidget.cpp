@@ -55,12 +55,6 @@ public:
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
                const QModelIndex &index) const override
     {
-        if (option.state & QStyle::State_Editing) {
-            QStyleOptionViewItem opt = option;
-            opt.text = QString();
-            QStyledItemDelegate::paint(painter, opt, index);
-            return;
-        }
         QStyledItemDelegate::paint(painter, option, index);
 
         // 额外绘制：如果是当前拖拽目标文件夹，底部画条
