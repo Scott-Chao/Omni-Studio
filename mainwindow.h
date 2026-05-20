@@ -35,6 +35,7 @@ class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
 class SettingsPanel;
+class HelpPanel;
 class AiPanel;
 
 QT_BEGIN_NAMESPACE
@@ -170,6 +171,11 @@ private:
     QWidget *m_settingsOverlay = nullptr;
     QAction *m_settingsAction = nullptr;
 
+    // 帮助面板
+    HelpPanel *m_helpPanel = nullptr;
+    QWidget *m_helpOverlay = nullptr;
+    QAction *m_helpAction = nullptr;
+
     // AI 助手
     AiPanel *m_aiPanel = nullptr;
     QDockWidget *m_dockAi = nullptr;
@@ -210,6 +216,7 @@ private:
     void onSubmissionResultReady(const SubmissionResult &result);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
+    void toggleHelp();
     void onDefaultZoomChanged(qreal zoom);
     void onEditorSettingChanged(const QString &key, const QVariant &value);
     void onAppearanceSettingChanged(const QString &key, const QVariant &value);

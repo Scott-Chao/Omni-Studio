@@ -58,6 +58,7 @@ SOURCES += \
     scrollbarhider.cpp \
     searchpanel.cpp \
     settingspanel.cpp \
+    helppanel.cpp \
     smdcell.cpp \
     smddiagnosticspanel.cpp \
     smdeditor.cpp \
@@ -123,6 +124,7 @@ HEADERS += \
     scrollbarhider.h \
     searchpanel.h \
     settingspanel.h \
+    helppanel.h \
     smdcell.h \
     smddiagnosticspanel.h \
     smdeditor.h \

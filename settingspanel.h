@@ -94,7 +94,7 @@ private:
         TopLeft, TopRight, BottomLeft, BottomRight
     };
 
-    static constexpr int kEdgeMargin = 8;
+    static constexpr int kEdgeMargin = 0;
     static constexpr int kTitleBarHeight = 36;
     static constexpr int kCategoryWidth = 170;
 

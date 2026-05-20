@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Markdown 帮助文档</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #d4d4d4;
+    background: #1e1e1e;
+    padding: 20px 24px;
+  }
+  h1 { font-size: 22px; color: #e0e0e0; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 1px solid #333; }
+  h2 { font-size: 17px; color: #569cd6; margin: 20px 0 10px 0; }
+  h3 { font-size: 15px; color: #4ec9b0; margin: 16px 0 8px 0; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  code {
+    background: #2d2d2d;
+    color: #ce9178;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: #252526;
+    color: #d4d4d4;
+    padding: 12px 16px;
+    border-radius: 4px;
+    border: 1px solid #333;
+    overflow-x: auto;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    margin: 10px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  th {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    text-align: left;
+    border: 1px solid #404040;
+    font-weight: bold;
+  }
+  td {
+    padding: 6px 12px;
+    border: 1px solid #404040;
+  }
+  tr:nth-child(even) { background: #252526; }
+  kbd {
+    display: inline-block;
+    background: #2d2d2d;
+    border: 1px solid #555;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: #d4d4d4;
+    box-shadow: 0 1px 0 #555;
+  }
+  .shortcut { white-space: nowrap; }
+  .note {
+    background: #2d2d2d;
+    border-left: 3px solid #569cd6;
+    padding: 10px 14px;
+    margin: 12px 0;
+    border-radius: 0 4px 4px 0;
+    color: #b0b0b0;
+  }
+  .warning {
+    border-left-color: #dcdcaa;
+  }
+  .section { margin-bottom: 24px; }
+</style>
+</head>
+<body>
+
+<div id="welcome" class="section">
+<h1>Smart Markdown — 帮助文档</h1>
+<p>Smart Markdown 是一款支持 Markdown 编辑、代码编辑、双向链接、SMD 单元格编辑、代码编译运行、本地评测、AI 助手等功能的全功能文本编辑器。</p>
+
+<h2>快速入门</h2>
+<p><b>1. 打开文件夹</b>：点击工具栏「文件 → 打开目录」或通过快捷键，选择一个文件夹作为工作区根目录。文件树将显示该目录下的所有文本文件。</p>
+<p><b>2. 打开文件</b>：在左侧文件树中点击任意文件即可打开。支持同时打开多个文件，以标签页形式呈现。</p>
+<p><b>3. 编辑与保存</b>：直接编辑文件内容，支持 <kbd>Ctrl+S</kbd> 保存。新建文件使用 <kbd>Ctrl+N</kbd>。</p>
+<p><b>4. 预览 Markdown</b>：打开 <code>.md</code> 文件后，点击工具栏「预览」按钮或 <kbd>Ctrl+Shift+P</kbd> 进入渲染预览模式。</p>
+<p><b>5. 代码编辑与运行</b>：打开 <code>.cpp</code>、<code>.py</code> 等代码文件，自动切换为代码编辑模式（语法高亮、行号、代码补全）。按 <kbd>F5</kbd> 编译运行。</p>
+<p><b>6. 探索更多</b>：左侧活动栏提供搜索、AI 助手、设置、评测等功能入口。右侧面板提供历史记录、大纲、标签、反链等功能。</p>
+</div>
+
+<div id="file-management" class="section">
+<h1>文件管理</h1>
+
+<h2>文件树</h2>
+<p>左侧文件树以树状结构展示当前工作区根目录下的所有文件和文件夹。支持的操作包括：</p>
+<ul>
+  <li><b>点击</b>：打开文件（自动切换标签页）</li>
+  <li><b>右键</b>：弹出上下文菜单，支持新建文件、新建文件夹、重命名、删除</li>
+  <li><b>拖拽</b>：在文件树内拖拽移动文件或文件夹</li>
+  <li><b>Delete 键</b>：选中文件/文件夹后直接删除</li>
+</ul>
+
+<h2>文件操作</h2>
+<ul>
+  <li><b>新建文件</b>（<kbd>Ctrl+N</kbd>）：在文件树中或通过快捷键创建新文件</li>
+  <li><b>保存</b>（<kbd>Ctrl+S</kbd>）：保存当前编辑的文件</li>
+  <li><b>另存为</b>（<kbd>Ctrl+Shift+S</kbd>）：将当前文件另存为新文件</li>
+  <li><b>关闭</b>：关闭标签页时若文件有未保存的修改，会提示保存</li>
+</ul>
+
+<h2>面包屑路径</h2>
+<p>文件树顶部显示当前根目录的完整路径，每个路径段可点击快速跳转。路径过长时自动换行。</p>
+
+<h2>文件类型支持</h2>
+<p>支持 40+ 种常见文本文件格式，包括：<code>.md</code>、<code>.txt</code>、<code>.c</code>、<code>.cpp</code>、<code>.py</code>、<code>.js</code>、<code>.html</code>、<code>.css</code>、<code>.json</code>、<code>.xml</code> 等。所有文件以纯文本形式呈现在编辑器中。</p>
+
+<h2>标签页联动</h2>
+<p>切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。</p>
+</div>
+
+<div id="editor" class="section">
+<h1>编辑器</h1>
+<p>编辑器根据文件扩展名自动切换为合适的编辑模式，共支持六种模式：</p>
+
+<h2>Markdown 编辑模式（.md, .txt 等）</h2>
+<p>使用 <code>WikiLinkTextEdit</code>（QTextEdit 子类），支持：</p>
+<ul>
+  <li><code>[[wikilink]]</code> 自动补全：输入 <code>[[</code> 时弹出文件名列表，方向键选择，Tab 补全并自动闭合 <code>]]</code></li>
+  <li><code>#tag</code> 自动补全：输入 <code>#</code> 时弹出已有标签列表，Tab 补全</li>
+  <li>Markdown 语法高亮</li>
+</ul>
+
+<h2>代码编辑模式（.cpp, .py, .js 等）</h2>
+<p>使用 <code>CodeEditor</code>（QPlainTextEdit 子类），提供 IDE 风格功能：</p>
+<ul>
+  <li><b>语法高亮</b>：深色主题，C/C++（关键字蓝色、类型青色、字符串橙色、注释绿色），Python（类似配色）</li>
+  <li><b>行号显示</b>：左侧灰色行号区域</li>
+  <li><b>自动缩进</b>：Enter 自动保持缩进，智能处理 <code>{ }</code> 和 Python 冒号缩进</li>
+  <li><b>括号补全</b>：输入 <code>{</code> <code>(</code> <code>[</code> <code>"</code> <code>'</code> 时自动插入匹配对</li>
+  <li><b>智能退格</b>：退格键以缩进步长为单位删除前导空白</li>
+  <li><b>行注释切换</b>：<kbd>Ctrl+/</kbd> 切换注释/取消注释</li>
+  <li><b>缩进调整</b>：<kbd>Ctrl+[</kbd> 向左缩进，<kbd>Ctrl+]</kbd> 向右缩进</li>
+  <li><b>代码补全</b>：<kbd>Ctrl+I</kbd> 或输入 <code>.</code> <code>::</code> <code>-&gt;</code> 自动触发。C/C++ 使用 clangd LSP 后端，Python 使用 Jedi 后端</li>
+  <li><b>悬停类型提示</b>：鼠标悬停在变量/函数上 400ms 后显示类型信息</li>
+  <li><b>函数签名帮助</b>：输入 <code>(</code> 后弹出函数签名提示</li>
+  <li><b>诊断波浪线</b>：红色错误 / 黄色警告波浪下划线，鼠标悬停显示诊断信息</li>
+  <li><b>诊断面板</b>：<kbd>Ctrl+D</kbd> 切换底部诊断面板（与输出面板合并）</li>
+</ul>
+
+<h2>其他模式</h2>
+<ul>
+  <li><b>PDF 阅读模式</b>：打开 <code>.pdf</code> 文件时自动切换，使用 QPdfView + QPdfDocument 渲染</li>
+  <li><b>SMD 编辑模式</b>：打开 <code>.smd</code> 文件时自动切换，单元格分块编辑（详见 SMD 编辑器章节）</li>
+</ul>
+
+<h2>字体缩放</h2>
+<p>支持对编辑器和 Markdown 预览进行字体缩放，范围 50%~300%：</p>
+<ul>
+  <li>工具栏缩放按钮（− / 百分比 / + / 重置）</li>
+  <li><kbd>Ctrl+=</kbd> 放大、<kbd>Ctrl+-</kbd> 缩小、<kbd>Ctrl+0</kbd> 重设为默认缩放比例</li>
+  <li><kbd>Ctrl+鼠标滚轮</kbd> 缩放</li>
+  <li>触控板缩放手势</li>
+</ul>
+</div>
+
+<div id="markdown-preview" class="section">
+<h1>Markdown 预览</h1>
+<p>打开 <code>.md</code> 文件时可切换至渲染预览模式，基于 WebEngine 渲染引擎。</p>
+
+<h2>全屏预览</h2>
+<p>点击工具栏「预览」按钮或按 <kbd>Ctrl+Shift+P</kbd> 进入全屏预览模式。支持以下渲染特性：</p>
+<ul>
+  <li><b>GitHub Flavored Markdown</b>：标准 Markdown 语法（标题、列表、表格、代码块、引用等）</li>
+  <li><b>LaTeX 数学公式</b>：<code>$...$</code> 行内公式、<code>$$...$$</code> 块级公式（基于 KaTeX）</li>
+  <li><b>Mermaid 图表</b>：<code>```mermaid</code> 代码块渲染为流程图、时序图、甘特图等</li>
+  <li><b>代码块语法高亮</b>：使用 C++ 端预处理方案，复用编辑器语法高亮规则</li>
+  <li><b>WikiLink</b>：<code>[[文件名]]</code> 自动识别为超链接，点击可跳转至对应文件</li>
+  <li><b>Tag</b>：<code>#tag</code> 自动识别为可点击标签</li>
+  <li><b>代码块运行按钮</b>：预览代码块右上角显示 ▶ 运行按钮，点击可编译运行</li>
+</ul>
+
+<h2>分屏预览</h2>
+<p>点击工具栏「分屏」按钮或按 <kbd>Ctrl+P</kbd> 进入分屏预览模式。编辑器区域被竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。</p>
+<ul>
+  <li>全屏预览与分屏预览互斥（开启一个自动关闭另一个）</li>
+  <li>右侧预览采用 500ms 防抖延迟更新（可在设置面板中调节）</li>
+  <li>分屏比例可在设置面板中调节（30%~70%）</li>
+  <li>切换文件时自动记忆各标签页的预览状态</li>
+</ul>
+
+<div class="note">
+<p><b>提示</b>：非 <code>.md</code> 文件下预览按钮自动隐藏且快捷键无效。</p>
+</div>
+</div>
+
+<div id="smd-editor" class="section">
+<h1>SMD 编辑器</h1>
+<p>.smd 文件采用 <code>---smd:&lt;type&gt;</code> 分隔符的单元格分块格式，类似 Jupyter Notebook 的交互模式。</p>
+
+<h2>单元格类型</h2>
+<ul>
+  <li><b>Markdown 单元格</b>：Markdown 文本，可渲染为图片</li>
+  <li><b>C++ 单元格</b>：C++ 代码，按 <code>main()</code> 函数边界自动分组编译</li>
+  <li><b>Python 单元格</b>：Python 代码，持久化进程执行，跨 cell 共享命名空间</li>
+</ul>
+
+<h2>操作方式</h2>
+<p>SMD 编辑支持双模式系统：</p>
+<ul>
+  <li><b>命令模式</b>（紫色边框 <code>#C586C0</code>）：键盘导航，<kbd>Esc</kbd> 从编辑模式切换至命令模式</li>
+  <li><b>编辑模式</b>（蓝色边框 <code>#0078D4</code>）：文本编辑</li>
+</ul>
+
+<p><b>快捷键</b>：</p>
+<ul>
+  <li><kbd>A</kbd> / <kbd>B</kbd>（命令模式）：在当前单元格上方/下方插入新单元格</li>
+  <li><kbd>Delete</kbd>（命令模式）：删除当前单元格（至少保留一个）</li>
+  <li><kbd>Ctrl+K</kbd>：弹出语言选择菜单（Markdown/C++/Python）</li>
+  <li><kbd>Ctrl+Shift+-</kbd>：在光标处分割单元格</li>
+  <li><kbd>Ctrl+Enter</kbd>：执行当前单元格（不跳转）</li>
+  <li><kbd>Shift+Enter</kbd>：执行当前单元格并跳转至下一个</li>
+  <li><kbd>Ctrl+T</kbd>：<code>.md</code> ↔ <code>.smd</code> 双向转换</li>
+  <li><kbd>Ctrl+D</kbd>（编辑模式）：切换诊断面板</li>
+</ul>
+
+<h2>输出与诊断</h2>
+<ul>
+  <li>每个单元格下方有独立的输出显示区域（stdout/stderr），自适应高度（1~15 行，上限 1000 行）</li>
+  <li>C++ 单元格按 <code>main()</code> 边界自动分组，同组 cell 合并编译，互不干扰</li>
+  <li>Python 单元格使用持久化进程（<code>python_executor.py</code>），跨 cell 共享命名空间</li>
+  <li>输出自动持久化至 <code>.smd</code> 文件元数据中，重新打开时自动恢复</li>
+</ul>
+
+<h2>LSP 代码智能</h2>
+<p>SMD 文件中的 C++/Python 单元格共享 LSP 后端（每种语言一个 clangd/Jedi 进程），提供：</p>
+<ul>
+  <li>代码补全（<kbd>Ctrl+I</kbd> / 自动触发）</li>
+  <li>悬停类型提示</li>
+  <li>函数签名帮助</li>
+  <li>诊断波浪线（红色错误 / 黄色警告）</li>
+  <li>虚拟文档拼接技术实现跨 cell 类型解析</li>
+</ul>
+</div>
+
+<div id="compile-run" class="section">
+<h1>代码编译与运行</h1>
+<p>在代码编辑模式下，支持编译运行 C/C++ 和 Python 文件。非代码文件时工具栏运行按钮自动隐藏，快捷键同步失效。</p>
+
+<h2>快捷键</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>F5</kbd></td><td>编译并运行（C/C++ 编译后运行，Python 直接运行）</td></tr>
+<tr><td class="shortcut"><kbd>F6</kbd></td><td>仅编译（C/C++；Python 提示不需要编译）</td></tr>
+<tr><td class="shortcut"><kbd>F7</kbd></td><td>仅运行（无可执行文件时自动转为编译运行）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Break</kbd></td><td>终止正在运行的编译或程序</td></tr>
+</table>
+
+<h2>输出面板</h2>
+<p>编译和运行的结果显示在编辑器下方的输出面板中（嵌入右侧分割区，不延伸至文件树区域）。支持：</p>
+<ul>
+  <li>stdout 白色显示、stderr 红色显示</li>
+  <li>运行时支持标准输入交互（直接输入、粘贴多行）</li>
+  <li>底部状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮</li>
+  <li>隐藏输出面板时若进程正在运行则自动终止</li>
+</ul>
+</div>
+
+<div id="search-outline" class="section">
+<h1>搜索与大纲</h1>
+
+<h2>全文搜索</h2>
+<p>通过左侧活动栏的搜索按钮（<kbd>Ctrl+Shift+F</kbd>）打开全文搜索面板。在当前根目录的所有文本文件中检索关键词。</p>
+<ul>
+  <li>搜索输入 300ms 防抖，避免频繁磁盘扫描</li>
+  <li>结果显示文件名、行号和上下文片段</li>
+  <li>点击结果跳转至对应文件并高亮匹配关键词</li>
+  <li>结果上限可配置（每文件最大匹配数、总结果上限、片段最大长度）</li>
+  <li>与评测面板共用左侧 dock 区域（显示一个时自动隐藏另一个）</li>
+</ul>
+
+<h2>大纲面板</h2>
+<p>通过右侧面板的「大纲」标签页（<kbd>Ctrl+Shift+O</kbd>）打开。自动解析当前 Markdown 文档中的全部标题（<code>#</code> ~ <code>######</code>，跳过围栏代码块）。</p>
+<ul>
+  <li>按层级缩进显示，h1 最亮 h6 逐级变暗</li>
+  <li>h1/h2 加粗</li>
+  <li>点击标题精准跳转至对应位置</li>
+  <li>切换标签页、保存文件时自动刷新</li>
+  <li>非 <code>.md</code> 文件时面板自动清空</li>
+</ul>
+</div>
+
+<div id="wikilinks-tags" class="section">
+<h1>双向链接与标签</h1>
+
+<h2>WikiLink 双向链接</h2>
+<p>使用 <code>[[文件名]]</code> 语法创建文件之间的双向链接。预览模式下自动识别为超链接，点击可跳转至对应文件。</p>
+<ul>
+  <li><b>自动补全</b>：输入 <code>[[</code> 时自动弹出文件名列表，<kbd>Tab</kbd> 补全并自动闭合 <code>]]</code></li>
+  <li><b>自动创建</b>：若链接的文件不存在，支持一键自动创建</li>
+  <li><b>重命名同步</b>：文件重命名时，自动更新所有引用文件中的双向链接文本</li>
+  <li><b>路径匹配</b>：支持多级搜索策略，通过文件名索引智能解析路径</li>
+</ul>
+
+<h2>标签系统</h2>
+<p>使用 <code>#tag</code> 语法为文档添加标签。</p>
+<ul>
+  <li><b>自动补全</b>：输入 <code>#</code> 时自动弹出已有标签列表，<kbd>Tab</kbd> 补全</li>
+  <li><b>可点击标签</b>：预览模式下 <code>#tag</code> 自动转为可点击链接</li>
+  <li><b>标签导航</b>：通过右侧面板的「标签」标签页（<kbd>Ctrl+Shift+T</kbd>）浏览所有标签及关联文件</li>
+</ul>
+
+<h2>反向链接面板</h2>
+<p>通过右侧面板的「反链」标签页（<kbd>Ctrl+Shift+B</kbd>）查看引用当前文件的来源文件列表。包含：</p>
+<ul>
+  <li>点击来源文件可快速跳转</li>
+  <li>自动扫描 <code>[[wikilink]]</code> 引用关系</li>
+  <li>文件保存后增量更新反链索引</li>
+  <li>文件重命名/删除时自动维护索引一致性</li>
+</ul>
+</div>
+
+<div id="history-backlinks" class="section">
+<h1>历史记录</h1>
+<p>通过右侧面板的「历史」标签页（<kbd>Ctrl+H</kbd>）访问最近打开的文件列表。</p>
+<ul>
+  <li>列表上限 50 条，自动去重</li>
+  <li>顶部为最新打开的文件</li>
+  <li>点击可快速重新打开</li>
+  <li>文件删除后自动清理对应历史条目</li>
+  <li>底部「清空历史记录」按钮</li>
+</ul>
+</div>
+
+<div id="judge" class="section">
+<h1>评测系统</h1>
+<p>提供本地评测（OJ 风格）和 OpenJudge 在线评测集成。</p>
+
+<h2>本地评测</h2>
+<p>通过活动栏的评测按钮（<kbd>Ctrl+Shift+J</kbd>）打开评测面板。在代码编辑模式下，可选择测试用例文件夹，一键批量运行所有测试用例。</p>
+<ul>
+  <li><b>结果状态</b>：AC（通过）、WA（答案错误）、RE（运行时错误）、TLE（超时）、MLE（超内存），结果列按状态码着色</li>
+  <li><b>耗时/内存</b>：每个用例的耗时(ms)和峰值内存(KB)检测</li>
+  <li><b>详情查看</b>：点击失败行查看预期输出与实际输出对比</li>
+  <li><b>预热机制</b>：编译后先运行一次消除冷启动计时偏差</li>
+  <li><b>时间限制</b>：每个用例 1000ms</li>
+  <li><b>内存限制</b>：64MB（65536KB），三重捕获策略确保准确检测</li>
+  <li>支持 C/C++ 和 Python 评测</li>
+</ul>
+</div>
+
+<div id="openjudge" class="section">
+<h1>OpenJudge 集成</h1>
+<p>通过评测面板的「从OpenJudge获取」按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览题目。</p>
+
+<h2>功能概述</h2>
+<ul>
+  <li><b>作业浏览</b>：三级导航（作业列表 → 题目列表 → 题目详情），已结束作业支持分页浏览</li>
+  <li><b>题目详情</b>：左侧章节导航，右侧渲染题目内容（深色主题）</li>
+  <li><b>样例提取</b>：点击「选择此题目」自动提取样例输入/输出并写入临时缓存目录</li>
+  <li><b>自动登录</b>：支持保存凭据并自动登录</li>
+</ul>
+
+<h2>代码提交</h2>
+<p>评测面板的「提交到OpenJudge」按钮可将当前代码文件直接提交到选定的题目。</p>
+<ul>
+  <li>自动映射文件扩展名到对应语言（<code>.c</code> → GCC，<code>.cpp</code> → G++，<code>.py</code> → Python3）</li>
+  <li>提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中</li>
+  <li>提交后自动显示评测结果面板（暗色主题），大号彩色状态文字</li>
+  <li>AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色</li>
+  <li>显示用时(ms)和内存(KB)，CE 时展示编译错误日志</li>
+</ul>
+</div>
+
+<div id="ai-assistant" class="section">
+<h1>AI 助手</h1>
+<p>通过活动栏的 AI 按钮（<kbd>Ctrl+Shift+A</kbd>）打开 AI 助手面板。支持 Anthropic Claude 和 OpenAI 兼容 API。</p>
+
+<h2>使用方式</h2>
+<ul>
+  <li>在输入框中输入问题或指令，按发送按钮或 Enter 提交</li>
+  <li>支持上下文感知操作按钮（改进、总结、解释等），根据编辑器当前模式动态显示</li>
+  <li>AI 上下文管理器自动收集编辑器上下文（模式、文件、选区、语言）</li>
+  <li>流式响应显示（SSE）</li>
+</ul>
+
+<h2>配置</h2>
+<p>在设置面板的「AI 服务」页面配置：</p>
+<ul>
+  <li>AI 供应商（Anthropic / OpenAI）</li>
+  <li>API 端点</li>
+  <li>API 密钥</li>
+  <li>模型名称</li>
+  <li>最大 Token 数</li>
+  <li>系统提示词</li>
+</ul>
+</div>
+
+<div id="settings" class="section">
+<h1>设置与快捷键</h1>
+
+<h2>设置面板</h2>
+<p>通过活动栏的设置按钮（<kbd>Ctrl+,</kbd>）打开悬浮式设置面板。支持拖拽标题栏移动和边缘拖拽调整大小。</p>
+
+<p><b>设置分类</b>：</p>
+<table>
+<tr><th>分类</th><th>可设置项</th></tr>
+<tr><td>编辑器</td><td>默认缩放比例（50%~300%）、缩进宽度、编辑器字体、字号</td></tr>
+<tr><td>外观</td><td>编辑器背景色、前景色、行号背景/前景、当前行高亮、搜索高亮</td></tr>
+<tr><td>输出面板</td><td>字号、最大行数</td></tr>
+<tr><td>预览</td><td>分屏防抖延迟（100~2000ms）、分屏比例（30%~70%）</td></tr>
+<tr><td>搜索</td><td>每文件最大匹配数、总结果上限、片段最大长度</td></tr>
+<tr><td>快捷键</td><td>自定义所有快捷键（点击录制，Delete/Backspace 清除，Esc 取消）</td></tr>
+<tr><td>AI 服务</td><td>供应商、端点、API 密钥、模型、最大 Token 数、系统提示词</td></tr>
+</table>
+
+<h2>快捷键自定义</h2>
+<p>在设置面板的「快捷键」页面支持交互式录制：</p>
+<ul>
+  <li>点击快捷键区域进入录制状态</li>
+  <li>按下目标组合键完成录制</li>
+  <li><kbd>Delete</kbd> / <kbd>Backspace</kbd> 清除当前快捷键</li>
+  <li><kbd>Esc</kbd> 取消录制</li>
+  <li>冲突检测：弹窗提示覆盖或取消，覆盖时自动清空冲突操作的快捷键</li>
+  <li>所有修改实时生效，自动持久化至 <code>config.ini</code></li>
+  <li>「恢复默认设置」一键重置所有快捷键</li>
+</ul>
+
+<h2>自动保存</h2>
+<p>编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器。可在设置面板中开启/关闭。</p>
+</div>
+
+<div id="shortcuts" class="section">
+<h1>快捷键参考</h1>
+
+<h2>文件操作</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+N</kbd></td><td>新建文件</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+S</kbd></td><td>保存文件</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+S</kbd></td><td>另存为</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+E</kbd></td><td>导出 PDF（仅 .md 文件）</td></tr>
+</table>
+
+<h2>编辑操作</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Z</kbd></td><td>撤销</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Y</kbd></td><td>重做</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+X</kbd></td><td>剪切</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+C</kbd></td><td>复制</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+V</kbd></td><td>粘贴</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+A</kbd></td><td>全选</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+/</kbd></td><td>行注释切换（代码模式）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+[</kbd></td><td>向左缩进（代码模式）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+]</kbd></td><td>向右缩进（代码模式）</td></tr>
+</table>
+
+<h2>视图与面板</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+P</kbd></td><td>全屏预览切换（仅 .md）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+P</kbd></td><td>分屏预览切换（仅 .md）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+E</kbd></td><td>右侧面板（历史/大纲/标签/反链）</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+H</kbd></td><td>历史记录面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+O</kbd></td><td>大纲面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+T</kbd></td><td>标签面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+B</kbd></td><td>反链面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+F</kbd></td><td>搜索面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+J</kbd></td><td>评测面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+A</kbd></td><td>AI 助手面板</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+,</kbd></td><td>设置面板</td></tr>
+<tr><td class="shortcut"><kbd>F1</kbd></td><td>帮助面板</td></tr>
+</table>
+
+<h2>缩放</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+=</kbd></td><td>放大字体</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+-</kbd></td><td>缩小字体</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+0</kbd></td><td>重置缩放至默认比例</td></tr>
+</table>
+
+<h2>代码运行</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>F5</kbd></td><td>编译运行</td></tr>
+<tr><td class="shortcut"><kbd>F6</kbd></td><td>仅编译</td></tr>
+<tr><td class="shortcut"><kbd>F7</kbd></td><td>仅运行</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Break</kbd></td><td>终止编译或运行</td></tr>
+</table>
+
+<h2>SMD 编辑器</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Esc</kbd></td><td>切换至命令模式</td></tr>
+<tr><td class="shortcut"><kbd>A</kbd> / <kbd>B</kbd> (命令模式)</td><td>上方/下方插入单元格</td></tr>
+<tr><td class="shortcut"><kbd>Delete</kbd> (命令模式)</td><td>删除单元格</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+K</kbd></td><td>语言选择菜单</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Shift+-</kbd></td><td>分割单元格</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+Enter</kbd></td><td>执行单元格（不跳转）</td></tr>
+<tr><td class="shortcut"><kbd>Shift+Enter</kbd></td><td>执行单元格并跳转</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+T</kbd></td><td>.md ↔ .smd 双向转换</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+D</kbd> (编辑模式)</td><td>诊断面板切换</td></tr>
+</table>
+
+<h2>代码补全与诊断</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+I</kbd></td><td>触发代码补全</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+D</kbd></td><td>切换底部诊断面板</td></tr>
+</table>
+
+<h2>诊断面板（输出面板）</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th></tr>
+<tr><td class="shortcut"><kbd>Ctrl+C</kbd> (运行中)</td><td>终止运行</td></tr>
+<tr><td class="shortcut"><kbd>Ctrl+V</kbd> (运行中)</td><td>粘贴到终端</td></tr>
+</table>
+
+<div class="note">
+<p><b>提示</b>：所有快捷键均可通过设置面板的「快捷键」页面自定义修改。</p>
+</div>
+</div>
+
+</body>
+</html>

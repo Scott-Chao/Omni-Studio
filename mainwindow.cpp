@@ -27,6 +27,7 @@
 #include "outlinepanel.h"
 #include "outlineutils.h"
 #include "settingspanel.h"
+#include "helppanel.h"
 #include "ai/aipanel.h"
 #include "ai/aicontextmanager.h"
 #include "ai/prompttemplates.h"
@@ -391,6 +392,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolBar->addWidget(m_toolbarSpacer);
 
+    // 帮助按钮（置于侧栏按钮左侧）
+    m_helpAction = new QAction(QIcon(":/icons/help"), tr("帮助"), this);
+    m_helpAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_help", "F1")));
+    addAction(m_helpAction);
+    toolBar->addAction(m_helpAction);
+    connect(m_helpAction, &QAction::triggered, this, &MainWindow::toggleHelp);
+
     // 右侧面板（历史/大纲/标签/反链）
     toggleRightPanelAction->setIcon(QIcon(":/icons/panel"));
     toolBar->addAction(toggleRightPanelAction);
@@ -581,6 +589,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
     connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
 
+    // ----- 帮助面板（悬浮遮罩 + 面板）-----
+    m_helpOverlay = new QWidget(this);
+    m_helpOverlay->setObjectName("helpOverlay");
+    m_helpOverlay->setStyleSheet(
+        "#helpOverlay { background-color: rgba(0, 0, 0, 128); }"
+    );
+    m_helpOverlay->hide();
+
+    m_helpPanel = new HelpPanel(m_helpOverlay);
+    connect(m_helpPanel, &HelpPanel::closeRequested, this, &MainWindow::toggleHelp);
+
     // ----- AI 助手面板 -----
     m_aiPanel = new AiPanel(this);
     m_dockAi = new QDockWidget(tr("AI 助手"), this);
@@ -621,6 +640,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutActions["compile_and_run"] = m_compileRunAction;
     m_shortcutActions["stop_process"] = m_stopAction;
     m_shortcutActions["toggle_settings"] = m_settingsAction;
+    m_shortcutActions["toggle_help"] = m_helpAction;
     m_shortcutActions["export_pdf"] = m_exportPdfAction;
     m_shortcutActions["convert_md_smd"] = m_convertMdSmdAction;
     m_shortcutActions["zoom_in"] = m_zoomInAction;
@@ -1050,11 +1070,17 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     QMainWindow::resizeEvent(event);
     if (m_settingsOverlay && m_settingsOverlay->isVisible()) {
         m_settingsOverlay->setGeometry(this->rect());
-        // Clamp panel position to stay within new overlay bounds
         QPoint panelPos = m_settingsPanel->pos();
         panelPos.setX(qBound(0, panelPos.x(), m_settingsOverlay->width() - m_settingsPanel->width()));
         panelPos.setY(qBound(0, panelPos.y(), m_settingsOverlay->height() - m_settingsPanel->height()));
         m_settingsPanel->move(panelPos);
+    }
+    if (m_helpOverlay && m_helpOverlay->isVisible()) {
+        m_helpOverlay->setGeometry(this->rect());
+        QPoint panelPos = m_helpPanel->pos();
+        panelPos.setX(qBound(0, panelPos.x(), m_helpOverlay->width() - m_helpPanel->width()));
+        panelPos.setY(qBound(0, panelPos.y(), m_helpOverlay->height() - m_helpPanel->height()));
+        m_helpPanel->move(panelPos);
     }
 }
 
@@ -1080,6 +1106,28 @@ void MainWindow::toggleSettings()
         m_settingsPanel->raise();
 
         m_settingsOverlay->show();
+    }
+}
+
+void MainWindow::toggleHelp()
+{
+    if (!m_helpOverlay || !m_helpPanel)
+        return;
+
+    if (m_helpOverlay->isVisible()) {
+        m_helpOverlay->hide();
+    } else {
+        m_helpOverlay->setGeometry(this->rect());
+        m_helpOverlay->raise();
+
+        int panelW = m_helpPanel->width();
+        int panelH = m_helpPanel->height();
+        int x = (m_helpOverlay->width() - panelW) / 2;
+        int y = (m_helpOverlay->height() - panelH) / 2;
+        m_helpPanel->move(qMax(0, x), qMax(0, y));
+        m_helpPanel->raise();
+
+        m_helpOverlay->show();
     }
 }
 
@@ -2186,6 +2234,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if (m_settingsOverlay->isAncestorOf(clickedWidget) &&
                 !m_settingsPanel->isAncestorOf(clickedWidget)) {
                 toggleSettings();
+            }
+        }
+
+        // Close help panel when clicking overlay background
+        if (m_helpOverlay && m_helpOverlay->isVisible()) {
+            if (btn && btn->defaultAction() == m_helpAction)
+                return QMainWindow::eventFilter(watched, event);
+            if (m_helpPanel->isAncestorOf(clickedWidget))
+                return QMainWindow::eventFilter(watched, event);
+            if (m_activityBar && m_activityBar->isAncestorOf(clickedWidget))
+                return QMainWindow::eventFilter(watched, event);
+            if (m_helpOverlay->isAncestorOf(clickedWidget) &&
+                !m_helpPanel->isAncestorOf(clickedWidget)) {
+                toggleHelp();
             }
         }
     }

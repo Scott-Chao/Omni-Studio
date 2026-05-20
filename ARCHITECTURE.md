@@ -51,6 +51,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── LoginDialog         → QDialog, username/password + auto-login checkbox
   ├── KeyRecorder         → Click-to-record widget with Normal/Recording/Cleared states, conflict detection via ShortcutOverride event
   ├── SettingsPanel       → Floating overlay with dimming background, drag/resize, 7 category pages (including Shortcuts with KeyRecorder)
+  ├── HelpPanel           → Floating overlay help panel, 14-category sidebar + QTextBrowser, scroll-sync, drag-move only, F1 toggle
   └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout
 ```
 
@@ -250,6 +251,9 @@ Floating overlay with dimming background. Category sidebar (now 7 pages includin
 
 ### FlowLayout (`flowlayout.h/cpp`)
 Custom QLayout implementing auto-wrapping. heightForWidth() for constrained containers. Used by breadcrumb bar.
+
+### HelpPanel (`helppanel.h/cpp`)
+Floating overlay help panel, same pattern as SettingsPanel but simpler. Semi-transparent overlay (`rgba(0,0,0,128)`) covers the full window, panel centered on top. Title bar with "帮助" label + close button, drag-move only (no resize). Left: QListWidget (170px) with 14 category items storing section IDs in Qt::UserRole. Right: QTextBrowser loading HTML from `:/help/content` resource. Scroll sync: `showEvent` triggers `computeSectionPositions()` using `QTextDocument::find()` + `blockBoundingRect().y()` for pixel-accurate Y positions; `onScrollChanged` compares scrollbar pixel value against positions and auto-highlights matching category. `m_updatingCategory` guard prevents feedback loop. Toggled via toolbar [帮助] button or F1 shortcut, handled by MainWindow::toggleHelp().
 
 ## Naming Convention
 

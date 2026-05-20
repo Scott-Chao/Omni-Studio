@@ -61,12 +61,13 @@ MainWindow                   → frameless orchestrator, owns all widgets
   │   ├── OutputPanel        → terminal-style stdout/stderr (tab 0)
   │   └── DiagnosticsTab     → error/warning list (tab 1), per-file via CodeEditor diagnostics cache
   ├── SettingsPanel          → floating overlay settings panel (includes AI Service page)
-  └── ProcessRunner          → compile→run QProcess pipeline
+  ├── HelpPanel             → floating overlay help panel, category list + QTextBrowser, F1 toggle
+  └── ProcessRunner         → compile→run QProcess pipeline
 ```
 
 ### Key Conventions (not obvious from source)
 
-- **Toolbar = title bar**: Single QToolBar serves as frameless title bar. Layout: [文件▼] | drag area | [面板][预览][分屏][运行▼] | [min][max][close]
+- **Toolbar = title bar**: Single QToolBar serves as frameless title bar. Layout: [文件▼] | drag area | [帮助][面板][预览][分屏][运行▼] | [min][max][close]
 - **ActivityBar**: Always-visible 48px left bar. Search/AI top group, Settings/Export PDF/Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files.
 - **Right panel tabs**: History/Outline/Tags/Backlinks in a single QDockWidget with QStackedWidget. Toggled via toolbar [面板] button. Click-outside auto-hides.
 - **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.

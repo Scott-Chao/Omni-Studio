@@ -47,5 +47,9 @@
     <file alias="tags">icons/icon-tags.svg</file>
     <file alias="backlinks">icons/icon-backlinks.svg</file>
     <file alias="pdf">icons/icon-pdf.svg</file>
+    <file alias="help">icons/icon-help.svg</file>
+  </qresource>
+  <qresource prefix="/help">
+    <file alias="content">help-content.html</file>
   </qresource>
 </RCC>
