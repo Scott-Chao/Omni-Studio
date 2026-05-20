@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QFileSystemModel>
+#include <QFileIconProvider>
 #include <QTreeView>
 #include <QString>
 #include <QSortFilterProxyModel>
@@ -19,6 +20,11 @@ public:
 
 protected:
     bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;
+
+private:
+    mutable QFileIconProvider m_iconProvider;
+    mutable QIcon m_folderIcon;
+    mutable QIcon m_fileIcon;
 };
 
 class DragDropTreeView;

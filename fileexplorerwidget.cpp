@@ -232,6 +232,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     );
     m_treeView->header()->hide(); // 隐藏表头
     m_treeView->setIndentation(17); // 调整缩进
+    m_treeView->setUniformRowHeights(true); // 所有行高度一致（样式表已固定24px），避免逐行查询高度
     m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头
     m_treeView->hideColumn(1); // 隐藏大小列
     m_treeView->hideColumn(2); // 隐藏类型列
@@ -664,32 +665,26 @@ QVariant FileSortProxyModel::data(const QModelIndex &index, int role) const
 {
     QVariant result = QSortFilterProxyModel::data(index, role);
     if (role == Qt::DecorationRole && index.isValid()) {
-        // 检查 QIcon 是否真的包含有效像素图。
-        // Windows 上 QFileSystemModel 通过 SHGetFileInfo→HICON 获取图标，
-        // setRootPath 切换后原监视根目录的 HICON 可能失效，导致 QIcon
-        // 报告 availableSizes 非空但所有 pixmap 均为 null（"空心"图标）。
         QIcon icon = result.value<QIcon>();
-        bool hasValidPixmap = false;
-        if (!icon.isNull()) {
-            const QList<QSize> sizes = icon.availableSizes();
-            for (const QSize &sz : sizes) {
-                if (!icon.pixmap(sz).isNull()) {
-                    hasValidPixmap = true;
-                    break;
-                }
-            }
-        }
+        // 单次 pixmap() 检查替代 availableSizes() 遍历——空心图标（Windows
+        // setRootPath 后 HICON 失效）返回 null pixmap。
+        bool hasValidPixmap = !icon.isNull()
+                              && !icon.pixmap(QSize(16, 16)).isNull();
         if (!hasValidPixmap) {
             QFileSystemModel *fsModel = qobject_cast<QFileSystemModel*>(sourceModel());
             if (fsModel) {
                 QModelIndex sourceIndex = mapToSource(index);
                 if (sourceIndex.isValid()) {
                     QFileInfo info = fsModel->fileInfo(sourceIndex);
-                    QFileIconProvider provider;
-                    if (info.isDir())
-                        return provider.icon(QFileIconProvider::Folder);
-                    else
-                        return provider.icon(QFileIconProvider::File);
+                    if (info.isDir()) {
+                        if (m_folderIcon.isNull())
+                            m_folderIcon = m_iconProvider.icon(QFileIconProvider::Folder);
+                        return m_folderIcon;
+                    } else {
+                        if (m_fileIcon.isNull())
+                            m_fileIcon = m_iconProvider.icon(QFileIconProvider::File);
+                        return m_fileIcon;
+                    }
                 }
             }
         }
