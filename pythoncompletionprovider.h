@@ -32,19 +32,23 @@ private slots:
     void onProcessError(QProcess::ProcessError err);
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
     void onTimeout();
+    void onDiagnosticsDebounce();
 
 private:
     void startProcess();
     void restartProcess();
     void sendRequest(const QString &action, const QString &text, int cursorPos);
+    void sendDiagnosticsRequest(const QString &text);
     void processResponse(const QByteArray &line);
     void emitEmptyResults();
 
     QProcess *m_process = nullptr;
     QTimer m_timeoutTimer;
+    QTimer m_diagnosticsTimer;
+    QString m_lastDiagnosticsText;
     bool m_jediAvailable = true;
 
-    enum class PendingRequest { None, Completion, Hover, SignatureHelp };
+    enum class PendingRequest { None, Completion, Hover, SignatureHelp, Diagnostics };
     PendingRequest m_pendingRequest = PendingRequest::None;
 };
 

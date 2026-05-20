@@ -32,9 +32,11 @@ MainWindow                   → frameless orchestrator, owns all widgets
   │       ├── SmdEditor (in SmdEdit mode)
   │       │   ├── SmdCell             → QFrame, one cell (Markdown/C++/Python) with editor/view stack
   │       │   ├── SmdOutputWidget     → per-cell output display (stdout/stderr), auto-height max 15 lines
+  │       │   ├── SmdDiagnosticsPanel → per-SMD error/warning panel, toggled via Ctrl+D in edit mode
   │       │   └── SmdLspManager       → shared LSP backend for code cells, virtual-document stitching
   │       └── CodeEditor (in CodeEdit mode)
   │           ├── CompletionProvider (abstract) ← CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider
+  │           │   └── diagnosticsUpdated() signal — all providers emit diagnostics via SmdDiagnostic struct
   │           ├── CompletionPopup              → floating list QWidget
   │           ├── HoverManager                 → 400ms delayed tooltip
   │           └── SignatureHelpManager         → function signature popup
@@ -55,7 +57,9 @@ MainWindow                   → frameless orchestrator, owns all widgets
   ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
   ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
   ├── OpenJudgeWindow        → separate QMainWindow for OpenJudge browsing + submission
-  ├── OutputPanel            → bottom dock, terminal-style stdout/stderr
+  ├── BottomPanel            → unified bottom panel (Output + Diagnostics tabs), replaces standalone OutputPanel
+  │   ├── OutputPanel        → terminal-style stdout/stderr (tab 0)
+  │   └── DiagnosticsTab     → error/warning list (tab 1), per-file via CodeEditor diagnostics cache
   ├── SettingsPanel          → floating overlay settings panel (includes AI Service page)
   └── ProcessRunner          → compile→run QProcess pipeline
 ```
@@ -68,7 +72,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.
 
 - **File → mode mapping**: `.pdf` → PdfView, `.smd` → SmdEditor (cell-based), code extensions (`.cpp`/`.py` etc.) → CodeEditor with syntax highlighting, everything else → MarkdownEdit (WikiLinkTextEdit with `[[wikilink]]` autocomplete).
-- **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files. Active cell border: blue (`#0078d4`) in edit mode, purple (`#C586C0`) in command mode. C++ cells auto-group by `main()` boundaries for per-group compilation; Python cells use a persistent process with shared namespace across the same file. `Ctrl+E` toggles the `SmdDiagnosticsPanel` for error/warning inspection.
+- **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files. Active cell border: blue (`#0078d4`) in edit mode, purple (`#C586C0`) in command mode. C++ cells auto-group by `main()` boundaries for per-group compilation; Python cells use a persistent process with shared namespace across the same file. `Ctrl+D` toggles the `SmdDiagnosticsPanel` for error/warning inspection.
 - **WikiLinks**: `[[filename]]` → bidirectional links indexed by BacklinkIndex. Preview converts to `<a href="wikilink:...">`; click resolves via multi-level filename matching.
 - **Tags**: `#tag` → TagIndex (bidirectional). Preview converts to `<a href="tag:...">`.
 - **Async indexing**: File index/backlinks/tags rebuilt on worker thread with cancellation token + generation counter to reject stale results.
@@ -76,10 +80,11 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **Preview code block run**: marked renderer adds ▶ Run button on fenced code blocks; clicks navigate `runblock:execute` → C++ intercepts → saves temp file → ProcessRunner compiles/runs.
 - **Local Judge**: Compile → warmup → per-test-case execution with 1s timeout + 64MB memory limit. Line-by-line trimmed output comparison.
 - **OpenJudge**: Crawler-based HTTP (cxsjsx.openjudge.cn) for homework browsing, auto-login, sample extraction, code submission with 30s status polling.
-- **stdin in OutputPanel**: Terminal-mode event filter captures keystrokes, buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
+- **stdin in BottomPanel**: Terminal-mode event filter captures keystrokes via OutputPanel (now a child tab of BottomPanel), buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
 - **Compile & Run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++ or MSVC for C/C++, python for .py).
-- **Code Completion**: Ctrl+I (IME-safe alternative to Ctrl+Space) triggers completion manually. Auto-trigger on `.`, `::`, `->`. C++ clangd via LspClient (JSON-RPC over QProcess), Python via Jedi helper script. Fallback to keyword + document-words when server unavailable. `EscNativeFilter` catches VK_ESCAPE at Windows message level to close popups when Qt::Tool window HWND routing interferes.
-- **Custom Shortcuts**: SettingsPanel Shortcuts page (index 5) uses interactive KeyRecorder widgets with click-to-record, conflict detection dialog (overwrite/cancel), and runtime QAction rebinding via SettingsManager overrides. Persisted to config.ini [settings_overrides]. Includes all 25+ actions.
+- **Code Completion & Diagnostics**: Ctrl+I (IME-safe alternative to Ctrl+Space) triggers completion manually. Auto-trigger on `.`, `::`, `->`. C++ clangd via LspClient (JSON-RPC over QProcess), Python via Jedi helper script. Fallback to keyword + document-words when server unavailable. `EscNativeFilter` catches VK_ESCAPE at Windows message level to close popups when Qt::Tool window HWND routing interferes. All `CompletionProvider` subclasses emit `diagnosticsUpdated(QList<SmdDiagnostic>)` — C++ via clangd `textDocument/publishDiagnostics`, Python via Jedi `diagnostics` action (base64-encoded, 500ms debounce). `SmdDiagnostic` struct lives in standalone `smddiagnostic.h`, shared by `CodeEditor` (squiggly lines), `BottomPanel` (diagnostics tab), and `SmdDiagnosticsPanel` (SMD diagnostics).
+- **Custom Shortcuts**: SettingsPanel Shortcuts page (index 5) uses interactive KeyRecorder widgets with click-to-record, conflict detection dialog (overwrite/cancel), and runtime QAction rebinding via SettingsManager overrides. Persisted to config.ini [settings_overrides]. Includes all 25+ actions. `toggle_diagnostics` (default `Ctrl+D`) toggles BottomPanel diagnostics tab in code editors / SmdDiagnosticsPanel in SMD editor.
+- **Diagnostics Architecture**: Two diagnostic panels coexist: (1) `SmdDiagnosticsPanel` for SMD cells (cell-granularity, embedded in SmdEditor splitter), (2) `BottomPanel` DiagnosticsTab for standalone `.cpp`/`.py` files (flat-file, shown in bottom splitter). `SmdEditor::eventFilter` has a widget-hierarchy guard to prevent its QApplication-level filter from stealing shortcuts (e.g. Ctrl+D) meant for CodeEditor.
 
 ## Coding Standards
 - **Qt Logic**: Always use the **new signal/slot syntax**: `connect(sender, &Sender::signal, receiver, &Receiver::slot)`.

@@ -531,7 +531,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     shortcuts["cell_terminate"] = "Ctrl+C";
     shortcuts["cell_clear_output"] = "Ctrl+Shift+Z";
     shortcuts["cell_split"] = "Ctrl+Shift+-";
-    shortcuts["toggle_diagnostics"] = "Ctrl+E";
+    shortcuts["toggle_diagnostics"] = "Ctrl+D";
 
     // SmdEditor command-mode shortcuts
     shortcuts["cell_insert_above"] = "A";

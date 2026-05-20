@@ -113,6 +113,7 @@ signals:
 
     void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
     void runCodeBlockRequested(const QString &language, const QString &code); // 转发代码块运行请求
+    void diagnosticsToggleRequested(); // Ctrl+E 切换诊断面板
     void tagClicked(const QString &tag); // 点击 #tag 时发出
     void pdfExportCompleted(const QString &filePath, bool success); // PDF 导出完成
 

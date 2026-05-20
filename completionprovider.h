@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QIcon>
 
+#include "smddiagnostic.h"
+
 struct CompletionItem {
     QString name;           // 符号名
     QString type;           // "function", "class", "variable", "method", "keyword"
@@ -55,6 +57,7 @@ signals:
     void completionReady(QList<CompletionItem> items);
     void hoverReady(HoverInfo info);
     void signatureHelpReady(QList<SignatureInfo> signatures, int activeIndex);
+    void diagnosticsUpdated(QList<SmdDiagnostic> diagnostics);
 };
 
 #endif // COMPLETIONPROVIDER_H

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.2）
+## 功能说明文档（v0.10.3）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -17,7 +17,7 @@
 - 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
-- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示** 和 **函数签名帮助**。
+- 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**和 **诊断波浪线**（错误/警告）。`.py` 文件通过 Jedi helper 进程的 `diagnostics` action 获取语法诊断，`.cpp` 文件通过 clangd 的 `textDocument/publishDiagnostics` 获取诊断。诊断信息通过 `Ctrl+D` 切换底部 `BottomPanel` 的诊断标签页查看。
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
@@ -27,7 +27,7 @@
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
-- 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换输出面板位置，可手动隐藏。
+- 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（CaptionBtn 自绘悬停背景）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
@@ -54,17 +54,15 @@
   - C++ 程序分组：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码，避免多 `main()` 冲突
   - 代码补全（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**
   - 诊断波浪线：红色错误 / 黄色警告，cell 头部标签显示错误计数，切换 cell 时自动缓存/恢复诊断
-  - 诊断面板：`Ctrl+E`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
+  - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.2
-快捷键扩展
-- **代码编辑器快捷键可配置**：`Ctrl+I`（补全触发）、`Ctrl+]`（向右缩进）、`Ctrl+[`（向左缩进）、`Ctrl+/`（切换注释）加入快捷键设置面板，支持自定义
-- **SMD 编辑器快捷键可配置**：`Ctrl+Enter`（执行）、`Shift+Enter`（执行并跳转）、`Ctrl+K`（语言选择）、`Ctrl+C`（终止执行）、`Ctrl+Shift+Z`（清除输出）、`Ctrl+Shift+-`（分割单元格）、`Ctrl+E`（诊断面板）、`A`/`B`（插入上/下方）、`Delete`（删除单元格）加入设置面板
-- **输出面板快捷键可配置**：`Ctrl+C`（中断）、`Ctrl+V`（粘贴）加入设置面板
-- **文件资源管理器 Delete 键可配置**：`delete_file` 快捷键现在实际生效，设置后立即影响文件树删除操作
-- **补全缺失的快捷键默认值**：config.json 新增 `toggle_ai`、`toggle_settings`、`toggle_right_panel`、`convert_md_smd` 等缺失条目
-- **实时刷新**：修改非 QAction 类快捷键后，当前编辑器/面板立即生效；重置时遍历所有标签页刷新
+### 新增 v0.10.3
+代码编辑器诊断支持
+- 代码编辑器中加入诊断功能，错误/警告信息用波浪线显示，鼠标悬停显示具体信息
+- 代码编辑器加入诊断面板，与输出面板合并，可通过按钮切换
+- 从代码文件切换文件时，如果切换到代码文件，则底部面板不会自动隐藏，但信息发生更新；切换到其他文件时，底部面板自动隐藏
+- 诊断面板加入设置面板的快捷键设置，默认键位 `Ctrl+D`
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -80,7 +78,7 @@
 - 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
 - 管理工具栏，包括文件操作（新建、保存、另存为、导出PDF）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。导出PDF按钮仅 `.md` 文件可见。
 - 支持以下快捷键：
-  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+T` .md ↔ .smd 转换（仅 `.md` / `.smd` 文件）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
+  - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+D` 切换底部诊断面板（仅代码文件）、`Ctrl+T` .md ↔ .smd 转换（仅 `.md` / `.smd` 文件）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
   - `Ctrl+=` 放大字体、`Ctrl+-` 缩小字体、`Ctrl+0` 重置缩放至设置面板中配置的默认缩放比例
   - `Ctrl+H` 打开/关闭历史记录面板
   - `Ctrl+Shift+B` 打开/关闭反向链接面板
@@ -99,7 +97,7 @@
   通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
 - 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
-- 管理输出面板（`OutputPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `hideRequested` 信号，隐藏面板时若进程运行中则先终止进程再隐藏。
+- 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时自动管理诊断 provider 连接：切换到代码文件时清空旧诊断、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
@@ -581,15 +579,26 @@
 **主要接口**：
 - `void setLanguage(const QString &langId)`：安装对应语言的语法高亮器，创建独立的 LSP CompletionProvider（仅独立代码文件使用）。
 - `void setLanguageSyntaxOnly(const QString &langId)`：仅安装语法高亮器和文本同步信号，**不创建私有 LSP provider**。供 SMD cell 中的 CodeEditor 使用（LSP 由 SmdLspManager 共享管理）。
+- `void setDocumentUri(const QString &uri)`：设置当前文档 URI（`file:///` + 文件路径），供 LSP 后端识别文件身份。独立代码文件在 `EditorWidget::loadFile()` 中调用。
 - `QString languageId() const`：返回当前语言 ID。
 - `CompletionProvider *completionProvider() const`：返回当前补全提供者。
 - `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
 - `void hideSignatureHelp()`：隐藏签名帮助弹出窗口。由 `focusOutEvent` 失焦时调用，也由 `SmdEditor` 在执行 cell 前调用以确保弹出窗口不残留。
-- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。
+- `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。构造函数连接 `provider->diagnosticsUpdated` → `setDiagnostics()`。
+- `QList<SmdDiagnostic> diagnostics() const`：返回缓存的诊断列表。供 `MainWindow` 在切换标签页时立即恢复诊断，无需等待 provider 重发。
 - `void setSearchHighlights(const QString &searchText)` / `void clearSearchHighlights()`：设置或清除搜索高亮。
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
 - `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
+
+**诊断面板快捷键**（`toggle_diagnostics`，默认 `Ctrl+D`）：
+- `reloadShortcuts()` 从 `SettingsManager` / `ConfigManager` 加载 `m_toggleDiagnostics` QKeySequence。
+- `keyPressEvent()`：`matchShortcut(m_toggleDiagnostics)` → emit `diagnosticsToggleRequested()`。
+- `eventFilter()`（覆盖 `QPlainTextEdit::eventFilter`）：在 `ShortcutOverride` 阶段 `event->accept()` 防止 Qt 快捷键系统拦截；在 `KeyPress` 阶段 emit 信号。同时监听 `this` 和 `viewport()`，确保 QAbstractScrollArea 转发机制下均能匹配。
+- 信号链：`CodeEditor::diagnosticsToggleRequested` → `EditorWidget` 转发 → `MainWindow::toggleDiagnosticsInCodeEditor()` → 显示/隐藏 `BottomPanel` 的诊断标签页。
+
+**信号**：
+- `diagnosticsToggleRequested()`：用户按下诊断面板快捷键时发出。
 
 **LSP 补全集成**：
 - 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。
@@ -733,9 +742,10 @@
 
 **文件**：`outputpanel.h` / `outputpanel.cpp`
 
+`OutputPanel` 现在是 `BottomPanel` 的子组件，嵌入 BottomPanel 的「输出」标签页中。
+
 **职责**：
-- 嵌入右侧垂直分割区（置于编辑器下方）的输出面板，深色终端风格，用于显示编译信息和程序运行输出，同时支持运行时标准输入交互。
-- `QPlainTextEdit`（Consolas 10pt，背景 `#1E1E1E`）：stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。程序输出精确还原，不添加人工换行。
+- 深色终端风格（`QPlainTextEdit`，Consolas 10pt，背景 `#1E1E1E`），显示编译信息和程序运行输出，同时支持运行时标准输入交互。stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
 - 进程运行时，输出区域自动变为可编辑，支持终端式直接输入：
   - 键盘输入：字符实时回显到输出区域，同时缓冲到 `m_inputBuffer`
   - Enter：将缓冲行通过 `sendInput` 信号发送到进程 stdin，光标换行
@@ -744,20 +754,44 @@
   - Ctrl+C：终止正在运行的进程（emit `stopRequested()`）
   - 屏蔽方向键、Ctrl+Z 等编辑快捷键，防止破坏输出内容；粘贴发送期间也屏蔽按键
 - 编译阶段完全禁用交互（`NoTextInteraction`，吞噬按键事件）；运行结束后恢复文本选中但保持只读；进程结束后焦点移至编辑器，下次运行需手动点击终端
-- `pasteToInput()`：从剪贴板读取文本，统一换行符（`\r\n` → `\n`），丢弃当前输入缓冲区，将文本拆分为行后逐行发送。有换行符结尾的行立即回显并发送（逐行 20ms 间隔，`processEvents()` 确保交错输出）；最后一行无换行符时回显并放入输入缓冲区，用户可编辑后按 Enter 发送。
-- `sendNextPasteLine()`：定时器触发的逐行发送函数，处理回显、发送和交错输出逻辑。
-- 右键菜单：进程运行时直接粘贴；非运行时显示"复制"和"全选"菜单。
-- 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮 + 隐藏按钮。
+- 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮。隐藏按钮已移至 `BottomPanel` 标题栏。
 - `appendOutput(text, isStderr)`：追加输出到面板，stdout 不添加人工换行。
 - `setStatus(status, isError)`：更新状态标签文字和颜色。
 - `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲/粘贴队列/定时器）。运行阶段启用 `TextEditorInteraction`，结束后设为 `TextSelectableByMouse`。
-- `enableTextSelection(bool)`：切换文本交互模式，编译阶段 `NoTextInteraction`，运行结束后恢复可选。
-- `setMaxBlocks(int max)`：动态更新输出面板的最大行数限制，v0.5.4 起从 `SettingsManager` 覆盖值读取，支持设置面板实时调整。
+- `setMaxBlocks(int max)`：动态更新输出面板的最大行数限制，从 `SettingsManager` 覆盖值读取。
+
+**快捷键（可配置）**：
+- `stop_in_output`（默认 `Ctrl+C`）：终止运行
+- `paste_in_output`（默认 `Ctrl+V`）：粘贴到终端
 
 **信号**：
 - `stopRequested()`：用户点击终止按钮或按 Ctrl+C 时发出。
 - `sendInput(const QString &text)`：用户输入一行数据时发出，由 MainWindow 转发到 ProcessRunner 写入进程 stdin。
-- `hideRequested()`：用户点击隐藏按钮时发出。MainWindow 连接此信号，若进程运行中则先终止再隐藏面板。
+
+---
+
+### 17b. `BottomPanel` — 底部统一面板（输出 + 诊断）
+
+**文件**：`bottompanel.h` / `bottompanel.cpp`
+
+**职责**：
+- 统一底部面板，替代原来的独立 `OutputPanel`。通过标题栏标签页切换：「输出」（编译/运行结果和 stdin 交互）和「诊断」（代码诊断列表）。
+- 标题栏：28px 高度，#2d2d2d 背景。左侧标签页按钮（输出/诊断，当前激活加粗高亮），右侧 ✕ 关闭按钮（emit `closeRequested`）。
+- 内容区使用 `QStackedWidget`：索引 0 为 `OutputPanel`，索引 1 为诊断页面。
+- 诊断页面（`m_diagnosticsPage`）：
+  - `QScrollArea` 包含两个 `DiagnosticSection`（错误 / 警告），分别以红色（`#F44747`）和黄色（`#CCA700`）标注。
+  - `setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：按 severity 分组统计并重建诊断条目。每条诊断显示行号和消息，点击发射 `diagnosticsLineClicked(line)`。
+  - `clearDiagnostics()`：清空所有诊断。
+  - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
+  - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
+- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到非代码文件时自动 `hide()`。
+
+**信号**：
+- `closeRequested()`：标题栏关闭按钮点击。
+- `diagnosticsLineClicked(int line)`：诊断条目点击，MainWindow 连接至 `EditorWidget::navigateEditorToLine()`。
+
+**内部类 `DiagnosticSection`**（定义于 `smddiagnosticspanel.h`）：
+- 继承 `QWidget`，带标题和边框色的分区容器。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充条目。`count()` 返回当前条目数。支持展开/折叠。
 
 ---
 
@@ -1068,7 +1102,7 @@
 | `Shift+Enter` | 执行当前单元格并跳转到下一个 |
 | `Ctrl+Shift+-` | 在光标处将当前单元格一分为二（类型不变），选中下方单元格 |
 | `Ctrl+Shift+Z` | MD 单元格：取消渲染 / 代码单元格：删除输出 |
-| `Ctrl+E` | 切换诊断面板显示/隐藏 |
+| `Ctrl+D` | 切换诊断面板显示/隐藏 |
 
 **通用快捷键（命令模式与编辑模式均有效）**：
 | 快捷键 | 功能 |
@@ -1161,6 +1195,8 @@
   - `Ctrl+C`：执行期间终止进程（`ShortcutOverride` + `KeyPress`）。
   - `Ctrl+Shift+Z`：`ShortcutOverride` 阶段拦截防止 Qt 转换为 Redo；`KeyPress` 阶段对 MD 单元格取消渲染，对代码单元格清除输出。命令模式放行给 `keyPressEvent`。
   - `Ctrl+Shift+-`：仅编辑模式生效。`ShortcutOverride` 阶段 `event->accept()` 防止被 Qt 缩放快捷键拦截；`KeyPress` 阶段调用 `splitCellAtCursor()` 将当前单元格在光标处一分为二（类型保持不变），选中下方单元格并将光标置于其开头。
+  - `Ctrl+D`（`toggle_diagnostics`，可配置）：仅编辑模式。切换 `SmdDiagnosticsPanel` 显示/隐藏。
+  - **快捷键作用域守卫**：由于 `eventFilter` 同时安装在 `QApplication`（全局，用于 FocusIn/MousePress 激活 cell）、自身和顶层窗口上，键盘快捷键处理入口添加了 widget 层级检查——仅处理事件目标为本 SmdEditor 后代控件的快捷键，防止从 `CodeEditor` 等其他编辑器控件「窃取」`Ctrl+D` 等快捷键。
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
@@ -1234,7 +1270,7 @@
 - Python 诊断**不使用虚拟文档**：每 cell 代码独立编译，返回 cell 本地行号，直接发射 `diagnosticsUpdated`。
 
 **核心数据结构**：
-- `SmdDiagnostic`：诊断信息（cellIndex、startLine/Col、endLine/Col、message、severity 1-4）。
+- `SmdDiagnostic`：诊断信息结构体（cellIndex、startLine/Col、endLine/Col、message、severity 1=错误,2=警告,3=信息,4=提示）。已从 `smdlspmanager.h` 移至独立的 `smddiagnostic.h`，供所有诊断生产者/消费者（SmdLspManager、CppCompletionProvider、PythonCompletionProvider、CodeEditor、BottomPanel、SmdDiagnosticsPanel）共享。
 - `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪）。
 - `m_activeCppGroup`：当前活动 C++ 程序组 ID（0 起始），虚拟文档仅向 clangd 发送该组的 cell。
 - `m_groupDiagnostics`：两级 Map（groupId → cellIndex → diagnostics），缓存各组诊断结果，支持切换 cell 时即时恢复，避免闪烁。
@@ -1273,7 +1309,14 @@
 - `void shutdown()`：安全关闭（设置 `m_shuttingDown` 标志、断开信号、停止 LSP 进程、删除 adapter、重置活动组和诊断缓存）。
 
 **信号**：
-- `diagnosticsUpdated(int cellIndex, QList<SmdDiagnostic>)`：诊断更新，由 SmdEditor 连接至 cell 的 CodeEditor 和 SmdCell。
+- `diagnosticsUpdated(int cellIndex, QList<SmdDiagnostic>)`：SMD 诊断更新，由 SmdEditor 连接至 cell 的 CodeEditor 和 SmdCell。
+
+**独立文件诊断**（`.cpp`/`.py`，非 SMD）：
+- `CompletionProvider` 基类新增 `diagnosticsUpdated(QList<SmdDiagnostic>)` 信号（`completionprovider.h`），统一所有 provider 的诊断接口。
+- **C++ 独立文件**（`CppCompletionProvider`）：`onNotificationReceived()` 处理 clangd 的 `textDocument/publishDiagnostics` 通知，`parseDiagnostics()` 将 LSP 诊断 JSON 转换为 `SmdDiagnostic` 列表（`cellIndex = 0` 表示平面文件），emit `diagnosticsUpdated`。
+- **Python 独立文件**（`PythonCompletionProvider`）：新增 `sendDiagnosticsRequest()`，将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
+- `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
+- `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
 - `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
 - `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
 
@@ -1286,6 +1329,21 @@
 
 
 ### 30. `SmdDiagnosticsPanel` — SMD 诊断面板
+
+**文件**：`smddiagnosticspanel.h` / `smddiagnosticspanel.cpp`
+
+**职责**：
+- 继承 `QFrame`，作为 SMD 编辑器的诊断信息汇总面板，以 `Ctrl+D`（编辑模式）切换显示。嵌入 `SmdEditor` 的 `m_splitter` 中，默认隐藏。
+- `DiagnosticSection` 内部类（复用于 `BottomPanel`）：继承 `QWidget`，带标题和边框色（错误 `#F44747` / 警告 `#CCA700`）。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充可点击条目。每条诊断显示行号和消息，`lineClicked(cellIndex, line)` 信号触发 `SmdEditor` 跳转。`count()` 返回当前条目数。支持展开/折叠（`setExpanded()`），头部显示 ▾/▸ + 标题 + 计数。
+- `refresh()`：从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按 severity 分组填充两个 `DiagnosticSection`。通过 `scheduleRefresh()` + 50ms 定时器防抖更新。
+- 关闭按钮（✕）点击隐藏面板。
+
+**与 BottomPanel 的关系**：
+- `SmdDiagnosticsPanel` 仅用于 SMD 编辑器（cell 粒度诊断）。
+- `BottomPanel` 的「诊断」标签页用于独立代码文件（`.cpp`/`.py` 平面文件诊断）。
+- 两者共享 `SmdDiagnostic` 数据结构和 `DiagnosticSection` UI 组件。
+
+---
 
 ### 31. `ScrollbarHider` — 滚动条自动隐藏控制器
 
@@ -1311,15 +1369,6 @@
 - `MainWindow` 在构造末尾调用 `hider->manage(area)` 注册所有现有可滚动区域。
 - `MainWindow` 通过 `QTabWidget::currentChanged` 信号注册新标签页内部的滚动区域。
 - 被管理的区域销毁时自动清理（`QObject::destroyed` 连接），避免悬空指针。
-
-**文件**：`smddiagnosticspanel.h` / `smddiagnosticspanel.cpp`
-
-**职责**：
-- 继承 `QFrame`，作为 SMD 编辑器的诊断信息汇总面板，以 `Ctrl+E`（编辑模式）切换显示。
-- 内部通过 `DiagnosticSection` 分区展示红色错误（Error）和黄色警告（Warning），每个分区头部显示诊断数量。
-- 面板内容通过 `refresh()` 从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按严重程度分组，每个条目可点击跳转至对应 cell 和行号。
-- 支持防抖刷新（`scheduleRefresh()` + 定时器），避免频繁更新。
-- `DiagnosticSection` 内部类：继承 `QWidget`，带标题和边框色的分区容器，`setDiagnostics()` 设置指定 cell 的诊断列表，`clear()` 清空内容。支持展开/折叠（`setExpanded()`），每条诊断显示 cell 索引和行号信息。点击诊断条目发射 `lineClicked(cellIndex, line)` 信号，由 `SmdEditor` 接收后跳转至目标位置。
 
 
 ### 配置存储说明
@@ -1355,9 +1404,9 @@
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **大纲面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+O`）。打开 `.md` 文件时自动解析并展示所有标题（`#` ~ `######`），按层级缩进显示，h1 最亮 h6 逐级变暗。点击标题跳转到编辑器对应行。跳过围栏代码块。切换标签页和保存文件时自动刷新。非 Markdown 文件时面板清空。点击面板外部自动隐藏。
-- **编译运行输出面板**：嵌入右侧垂直分割区，置于编辑器下方，默认隐藏。其左边缘与水平分隔条对齐，仅占据编辑区宽度，不延伸至左侧文件树区域。与历史记录、反向链接等右侧面板垂直排列互不遮挡。输出面板在首次编译/运行时自动显示。深色终端风格只读文本区域，stdout 白色、stderr 红色。底部工具栏包含状态标签、终止、清除、隐藏按钮。运行期间通过隐藏按钮关闭面板时自动终止进程，确保工具栏按钮恢复可用。
+- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接，切换到非代码文件时自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
-- **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、输出面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
+- **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
 - **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。

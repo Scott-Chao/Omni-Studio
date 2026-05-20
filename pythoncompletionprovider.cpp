@@ -14,6 +14,11 @@ PythonCompletionProvider::PythonCompletionProvider(QObject *parent)
     m_timeoutTimer.setSingleShot(true);
     connect(&m_timeoutTimer, &QTimer::timeout, this, &PythonCompletionProvider::onTimeout);
 
+    m_diagnosticsTimer.setSingleShot(true);
+    m_diagnosticsTimer.setInterval(500);
+    connect(&m_diagnosticsTimer, &QTimer::timeout,
+            this, &PythonCompletionProvider::onDiagnosticsDebounce);
+
     startProcess();
 }
 
@@ -37,6 +42,7 @@ void PythonCompletionProvider::shutdown()
     }
 
     m_timeoutTimer.stop();
+    m_diagnosticsTimer.stop();
     m_pendingRequest = PendingRequest::None;
 }
 
@@ -116,19 +122,26 @@ void PythonCompletionProvider::restartProcess()
     startProcess();
 }
 
-// ---- Document sync (no-op for Jedi-based provider) ----
+// ---- Document sync ----
 
 void PythonCompletionProvider::openDocument(const QString &uri, const QString &languageId, const QString &text)
 {
     Q_UNUSED(uri);
     Q_UNUSED(languageId);
-    Q_UNUSED(text);
-    // Jedi is stateless — each request carries the full code text.
+    // Request diagnostics immediately on open.
+    sendDiagnosticsRequest(text);
 }
 
 void PythonCompletionProvider::updateText(const QString &text)
 {
-    Q_UNUSED(text);
+    // Debounce diagnostics on text changes.
+    m_lastDiagnosticsText = text;
+    m_diagnosticsTimer.start();
+}
+
+void PythonCompletionProvider::onDiagnosticsDebounce()
+{
+    sendDiagnosticsRequest(m_lastDiagnosticsText);
 }
 
 // ---- Request sending ----
@@ -180,6 +193,37 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
     else if (action == QStringLiteral("signature"))
         m_pendingRequest = PendingRequest::SignatureHelp;
 
+    m_timeoutTimer.start(500);
+}
+
+void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
+{
+    // Diagnostics don't require Jedi (uses compile()), so skip jedi check.
+    if (!m_process || m_process->state() != QProcess::Running) {
+        restartProcess();
+        return;
+    }
+
+    // Cancel previous pending request
+    m_pendingRequest = PendingRequest::None;
+    m_timeoutTimer.stop();
+
+    // Base64-encode the code to avoid JSON escaping issues (matching SMD cell format)
+    QByteArray codeBase64 = text.toUtf8().toBase64();
+
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("diagnostics");
+    QJsonArray cells;
+    QJsonObject cell;
+    cell[QStringLiteral("cellIndex")] = 0;
+    cell[QStringLiteral("code")] = QString::fromLatin1(codeBase64);
+    cells.append(cell);
+    req[QStringLiteral("cells")] = cells;
+
+    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+    m_process->write(payload);
+
+    m_pendingRequest = PendingRequest::Diagnostics;
     m_timeoutTimer.start(500);
 }
 
@@ -304,6 +348,24 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         }
         qDebug() << "PythonCompletionProvider: signatureHelp returned" << signatures.size() << "signatures";
         emit signatureHelpReady(signatures, activeIndex);
+        break;
+    }
+    case PendingRequest::Diagnostics: {
+        QList<SmdDiagnostic> diagnostics;
+        QJsonArray arr = dataVal.toArray();
+        for (const QJsonValue &v : arr) {
+            QJsonObject obj = v.toObject();
+            SmdDiagnostic d;
+            d.startLine = obj.value(QStringLiteral("startLine")).toInt();
+            d.startCol  = obj.value(QStringLiteral("startCol")).toInt();
+            d.endLine   = obj.value(QStringLiteral("endLine")).toInt();
+            d.endCol    = obj.value(QStringLiteral("endCol")).toInt();
+            d.message   = obj.value(QStringLiteral("message")).toString();
+            d.severity  = obj.value(QStringLiteral("severity")).toInt(1);
+            diagnostics.append(d);
+        }
+        qDebug() << "PythonCompletionProvider: diagnostics returned" << diagnostics.size() << "items";
+        emit diagnosticsUpdated(diagnostics);
         break;
     }
     default:

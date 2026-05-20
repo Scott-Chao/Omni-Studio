@@ -284,7 +284,7 @@
     "cell_terminate": "Ctrl+C",
     "cell_clear_output": "Ctrl+Shift+Z",
     "cell_split": "Ctrl+Shift+-",
-    "toggle_diagnostics": "Ctrl+E",
+    "toggle_diagnostics": "Ctrl+D",
     "cell_insert_above": "A",
     "cell_insert_below": "B",
     "cell_delete": "Delete"

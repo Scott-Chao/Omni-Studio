@@ -8,6 +8,7 @@
 #include "fileutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
+#include "debuglog.h"
 #include <QFile>
 #include <QTextStream>
 #include <QUuid>
@@ -265,6 +266,11 @@ EditorWidget::EditorWidget(QWidget *parent)
     // 当编辑区内容改变时，更新修改标志并刷新预览
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::onTextChanged);
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::onTextChanged);
+    connect(m_codeEditor, &CodeEditor::diagnosticsToggleRequested,
+            this, [this]() {
+        debugLog("EditorWidget: forwarding diagnosticsToggleRequested");
+        emit diagnosticsToggleRequested();
+    });
     // 当编辑区修改状态变化时发出信号
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::updateModificationChanged);
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::updateModificationChanged);
@@ -996,7 +1002,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     // PDF 特殊处理：绕过 textExtension 检查，使用 WebEngine 渲染
     if (suffix == QStringLiteral("pdf")) {
         m_editorMode = PdfView;
-        m_filePath = QFileInfo(filePath).absoluteFilePath();
+                m_filePath = QFileInfo(filePath).absoluteFilePath();
         // 退出分屏和全屏预览
         if (m_splitPreview) {
             m_splitTextWrapper->layout()->removeWidget(m_textEdit);
@@ -1016,7 +1022,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     // SMD 文件特殊处理
     if (suffix == QStringLiteral("smd")) {
         m_editorMode = SmdEdit;
-        m_filePath = QFileInfo(filePath).absoluteFilePath();
+                m_filePath = QFileInfo(filePath).absoluteFilePath();
         if (m_splitPreview) {
             m_splitTextWrapper->layout()->removeWidget(m_textEdit);
             m_stackedWidget->insertWidget(0, m_textEdit);
@@ -1063,13 +1069,15 @@ bool EditorWidget::loadFile(const QString &filePath)
     QString lang = LanguageUtils::languageForExtension(suffix);
     if (!lang.isEmpty()) {
         m_editorMode = CodeEdit;
+        m_codeEditor->setDocumentUri(QStringLiteral("file:///") + filePath);
+        debugLog(QString("EditorWidget: CodeEdit mode, uri=file:///%1").arg(filePath));
         m_codeEditor->setLanguage(lang);
         m_stackedWidget->setCurrentIndex(2);
-    } else {
+            } else {
         m_editorMode = MarkdownEdit;
         if (m_stackedWidget->currentIndex() != 0)
             m_stackedWidget->setCurrentIndex(0);
-    }
+            }
 
     m_loading = true;  // suppress modificationChanged during setPlainText
     setPlainText(content);
@@ -1546,19 +1554,20 @@ void EditorWidget::setFilePath(const QString &newPath) {
     QString ext = QFileInfo(newPath).suffix().toLower();
     if (ext == QStringLiteral("smd")) {
         m_editorMode = SmdEdit;
-        m_smdEditor->setFilePath(normalized);
+                m_smdEditor->setFilePath(normalized);
         m_stackedWidget->setCurrentWidget(m_smdEditor);
         applyZoom();
     } else {
         QString lang = LanguageUtils::languageForExtension(ext);
         if (!lang.isEmpty()) {
             m_editorMode = CodeEdit;
+                        m_codeEditor->setDocumentUri(QStringLiteral("file:///") + normalized);
             m_codeEditor->setLanguage(lang);
             m_stackedWidget->setCurrentIndex(2);
             applyZoom();
         } else {
             m_editorMode = MarkdownEdit;
-            if (m_stackedWidget->currentIndex() != 0)
+                        if (m_stackedWidget->currentIndex() != 0)
                 m_stackedWidget->setCurrentIndex(0);
         }
     }

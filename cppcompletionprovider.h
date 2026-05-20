@@ -74,6 +74,7 @@ private:
     HoverInfo parseHoverResponse(const QJsonObject &result);
     SignatureInfo parseSignatureHelpItem(const QJsonObject &sig);
     static QString completionKindToString(int kind);
+    QList<SmdDiagnostic> parseDiagnostics(const QJsonArray &diags);
 };
 
 #endif // CPPCOMPLETIONPROVIDER_H

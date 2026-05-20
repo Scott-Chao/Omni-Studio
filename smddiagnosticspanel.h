@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <QList>
 
-#include "smdlspmanager.h"
+#include "smddiagnostic.h"
 
 class SmdEditor;
 

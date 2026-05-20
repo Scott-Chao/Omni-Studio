@@ -54,6 +54,7 @@ public:
     void setActiveCellCursor(int line, int column);
     QList<SmdFormat::Cell> exportCells() const;
     void reloadShortcuts();
+    void toggleDiagnosticsPanel();
 
 signals:
     void modificationChanged(bool modified);
@@ -96,8 +97,7 @@ private:
     void onPyExecFinished(int exitCode, QProcess::ExitStatus status);
     void onPyExecError(QProcess::ProcessError error);
 
-    // Diagnostics panel
-    void toggleDiagnosticsPanel();
+    // Diagnostics panel (public, also used by MainWindow shortcut)
 
     // Language selector
     void showLanguageSelector(int cellIndex, bool isNewCell = false, int originalCellIndex = -1);

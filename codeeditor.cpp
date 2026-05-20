@@ -2,7 +2,8 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
-#include "smdlspmanager.h"
+#include "smddiagnostic.h"
+#include "debuglog.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -175,6 +176,9 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     // Load configurable shortcuts
     reloadShortcuts();
+
+    // Also intercept ShortcutOverride on this widget (not just viewport)
+    installEventFilter(this);
 }
 
 void CodeEditor::reloadShortcuts()
@@ -184,6 +188,10 @@ void CodeEditor::reloadShortcuts()
     m_indentRight = QKeySequence(sm.value("shortcuts.indent_right", "Ctrl+]").toString());
     m_indentLeft = QKeySequence(sm.value("shortcuts.indent_left", "Ctrl+[").toString());
     m_toggleComment = QKeySequence(sm.value("shortcuts.toggle_comment", "Ctrl+/").toString());
+    m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics",
+        ConfigManager::instance().shortcut("toggle_diagnostics", "Ctrl+D")).toString());
+    debugLog(QString("CodeEditor::reloadShortcuts toggle_diagnostics=%1")
+        .arg(m_toggleDiagnostics.toString()));
 }
 
 void CodeEditor::setIndentWidth(int width)
@@ -245,9 +253,9 @@ void CodeEditor::reloadColors()
     m_lineNumberArea->update();
 }
 
-static QString editorUri()
+void CodeEditor::setDocumentUri(const QString &uri)
 {
-    return QStringLiteral("file:///untitled");
+    m_documentUri = uri;
 }
 
 void CodeEditor::setLanguage(const QString &langId)
@@ -269,7 +277,7 @@ void CodeEditor::setLanguage(const QString &langId)
 
     // Open document with current content (triggers didOpen when server is ready)
     if (m_completionProvider)
-        m_completionProvider->openDocument(editorUri(), langId, toPlainText());
+        m_completionProvider->openDocument(m_documentUri, langId, toPlainText());
 }
 
 void CodeEditor::setLanguageSyntaxOnly(const QString &langId)
@@ -293,7 +301,7 @@ void CodeEditor::onServerReady()
     // Server just became ready (initial start or restart).
     // Open (or re-open) the document so clangd knows about its content.
     if (m_completionProvider)
-        m_completionProvider->openDocument(editorUri(), m_languageId, toPlainText());
+        m_completionProvider->openDocument(m_documentUri, m_languageId, toPlainText());
 }
 
 void CodeEditor::onEditorTextChanged()
@@ -348,6 +356,8 @@ void CodeEditor::createCompletionProvider(const QString &langId)
     // Common signal connections
     connect(m_completionProvider, &CompletionProvider::completionReady,
             this, &CodeEditor::onCompletionsReady);
+    connect(m_completionProvider, &CompletionProvider::diagnosticsUpdated,
+            this, &CodeEditor::setDiagnostics);
 
     // Notify hover and signature managers of the new provider
     m_hoverManager->setProvider(m_completionProvider);
@@ -577,6 +587,11 @@ const SmdDiagnostic* CodeEditor::diagnosticAt(int line, int col) const
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
+    // Debug: trace Ctrl+D
+    if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
+        debugLog("CodeEditor::keyPressEvent: Ctrl+D received!");
+    }
+
     // ---- Completion popup key routing ----
     if (m_completionPopup && m_completionPopup->isActive()) {
         // Accept modifiers + alphanumeric: just let through (don't close popup)
@@ -654,6 +669,12 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
 
     if (matchShortcut(m_indentLeft)) {
         handleIndentLeft();
+        return;
+    }
+
+    if (matchShortcut(m_toggleDiagnostics)) {
+        debugLog("CodeEditor: toggleDiagnostics shortcut matched");
+        emit diagnosticsToggleRequested();
         return;
     }
 
@@ -1179,6 +1200,28 @@ void CodeEditor::insertCompletion(const CompletionItem &item)
 
 bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
 {
+    // Handle diagnostics toggle shortcut (this or viewport receives ShortcutOverride/KeyPress)
+    if ((obj == this || obj == viewport()) && !m_toggleDiagnostics.isEmpty()) {
+        if (event->type() == QEvent::ShortcutOverride) {
+            QKeyEvent *ke = static_cast<QKeyEvent *>(event);
+            Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
+            if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
+                debugLog("CodeEditor::eventFilter: ShortcutOverride accepted");
+                event->accept();
+                return true;
+            }
+        }
+        if (event->type() == QEvent::KeyPress) {
+            QKeyEvent *ke = static_cast<QKeyEvent *>(event);
+            Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
+            if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
+                debugLog("CodeEditor::eventFilter: KeyPress -> emit");
+                emit diagnosticsToggleRequested();
+                return true;
+            }
+        }
+    }
+
     // Close popup on mouse click outside of it
     if (obj == viewport() && event->type() == QEvent::MouseButtonPress) {
         auto *me = static_cast<QMouseEvent *>(event);

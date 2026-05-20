@@ -1,6 +1,6 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
-#include "smdlspmanager.h"
+#include "smddiagnostic.h"
 
 #include <QMouseEvent>
 #include <QToolTip>

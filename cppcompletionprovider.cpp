@@ -1,5 +1,6 @@
 #include "cppcompletionprovider.h"
 #include "lspclient.h"
+#include "debuglog.h"
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonValue>
@@ -108,6 +109,7 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
     if (id == m_initRequestId) {
         Q_UNUSED(result);
         qDebug() << "CppCompletionProvider: clangd initialized successfully";
+        debugLog("CppCompletionProvider: clangd initialized");
 
         m_client->sendNotification(QStringLiteral("initialized"), QJsonObject());
         m_initialized = true;
@@ -164,8 +166,36 @@ void CppCompletionProvider::onNotificationReceived(QString method, QJsonObject p
 {
     if (!m_client || !m_initialized)
         return;
-    Q_UNUSED(method);
-    Q_UNUSED(params);
+
+    if (method == QStringLiteral("textDocument/publishDiagnostics")) {
+        QJsonArray diags = params.value(QStringLiteral("diagnostics")).toArray();
+        QList<SmdDiagnostic> parsed = parseDiagnostics(diags);
+        debugLog(QString("CppCompletionProvider: publishDiagnostics, %1 diagnostics").arg(parsed.size()));
+        emit diagnosticsUpdated(parsed);
+    }
+}
+
+QList<SmdDiagnostic> CppCompletionProvider::parseDiagnostics(const QJsonArray &diags)
+{
+    QList<SmdDiagnostic> result;
+    result.reserve(diags.size());
+    for (const QJsonValue &val : diags) {
+        QJsonObject d = val.toObject();
+        QJsonObject range = d.value(QStringLiteral("range")).toObject();
+        QJsonObject start = range.value(QStringLiteral("start")).toObject();
+        QJsonObject end = range.value(QStringLiteral("end")).toObject();
+
+        SmdDiagnostic sd;
+        sd.cellIndex = 0; // flat file, not cell-based
+        sd.startLine = start.value(QStringLiteral("line")).toInt(0);
+        sd.startCol = start.value(QStringLiteral("character")).toInt(0);
+        sd.endLine = end.value(QStringLiteral("line")).toInt(0);
+        sd.endCol = end.value(QStringLiteral("character")).toInt(0);
+        sd.message = d.value(QStringLiteral("message")).toString();
+        sd.severity = d.value(QStringLiteral("severity")).toInt(0);
+        result.append(sd);
+    }
+    return result;
 }
 
 void CppCompletionProvider::onRequestFailed(int id, QJsonObject error)
@@ -225,6 +255,8 @@ void CppCompletionProvider::openDocument(const QString &uri, const QString &lang
     m_documentUri = uri;
     m_documentLanguageId = languageId;
     m_documentVersion = 1;
+    debugLog(QString("CppCompletionProvider::openDocument uri=%1 lang=%2 len=%3 initialized=%4")
+        .arg(uri, languageId).arg(text.length()).arg(m_initialized));
 
     if (!m_initialized) {
         // Server not ready yet — save text so onServerReady can pick it up

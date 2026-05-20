@@ -14,7 +14,7 @@
 
 class CodeEditor;
 class RenderPixmapWidget;
-#include "smdlspmanager.h"
+#include "smddiagnostic.h"
 
 class SmdCell : public QFrame
 {

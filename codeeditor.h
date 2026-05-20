@@ -6,7 +6,7 @@
 #include <QList>
 
 #include "completionprovider.h"
-#include "smdlspmanager.h"
+#include "smddiagnostic.h"
 
 class QSyntaxHighlighter;
 class CompletionProvider;
@@ -25,12 +25,14 @@ public:
     void setLanguage(const QString &langId);
     void setLanguageSyntaxOnly(const QString &langId);
     QString languageId() const { return m_languageId; }
+    void setDocumentUri(const QString &uri);
 
     CompletionProvider *completionProvider() const { return m_completionProvider; }
 
     void setCompletionProvider(CompletionProvider *provider);
 
     void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
+    QList<SmdDiagnostic> diagnostics() const { return m_diagnostics; }
     void clearDiagnostics();
     const SmdDiagnostic* diagnosticAt(int line, int col) const;
 
@@ -49,6 +51,9 @@ public:
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth() const;
+
+signals:
+    void diagnosticsToggleRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -78,6 +83,7 @@ private:
     SignatureHelpManager *m_signatureHelpManager = nullptr;
     LineNumberArea *m_lineNumberArea;
     QString m_languageId;
+    QString m_documentUri;
     int m_indentWidth = 4;
     QColor m_cachedLnBg;
     QColor m_cachedLnFg;
@@ -90,6 +96,7 @@ private:
     QKeySequence m_indentRight;
     QKeySequence m_indentLeft;
     QKeySequence m_toggleComment;
+    QKeySequence m_toggleDiagnostics;
 
     void handleAutoIndent();
     bool handleBracketCompletion(QKeyEvent *event);

@@ -256,7 +256,8 @@ void SmdEditor::reloadShortcuts()
     m_cellTerminate     = QKeySequence(sm.value("shortcuts.cell_terminate", "Ctrl+C").toString());
     m_cellClearOutput   = QKeySequence(sm.value("shortcuts.cell_clear_output", "Ctrl+Shift+Z").toString());
     m_cellSplit         = QKeySequence(sm.value("shortcuts.cell_split", "Ctrl+Shift+-").toString());
-    m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics", "Ctrl+E").toString());
+    m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics",
+        ConfigManager::instance().shortcut("toggle_diagnostics", "Ctrl+D")).toString());
     m_cellInsertAbove   = QKeySequence(sm.value("shortcuts.cell_insert_above", "A").toString());
     m_cellInsertBelow   = QKeySequence(sm.value("shortcuts.cell_insert_below", "B").toString());
     m_cellDelete        = QKeySequence(sm.value("shortcuts.cell_delete", "Delete").toString());
@@ -1581,7 +1582,17 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
     }
 
     // ── Keyboard shortcuts ──
+    // Only process shortcuts for widgets within this SmdEditor's hierarchy.
+    // The QApplication-level event filter (line 222) would otherwise steal
+    // shortcuts (e.g. Ctrl+D) from CodeEditor and other widgets.
     if (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) {
+        if (obj != this) {
+            QWidget *w = qobject_cast<QWidget*>(obj);
+            while (w && w != this)
+                w = w->parentWidget();
+            if (!w) // not a descendant of this SmdEditor
+                return false;
+        }
         QKeyEvent *key = static_cast<QKeyEvent*>(event);
 
         auto matchShortcut = [&](const QKeySequence &seq) -> bool {

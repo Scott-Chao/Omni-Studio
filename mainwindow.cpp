@@ -14,6 +14,9 @@
 #include "rightpanelcontainer.h"
 #include "processrunner.h"
 #include "outputpanel.h"
+#include "bottompanel.h"
+#include "codeeditor.h"
+#include "debuglog.h"
 #include "judgepanel.h"
 #include "openjudgewindow.h"
 #include "submissionpanel.h"
@@ -238,23 +241,29 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // ----- 输出面板 -----
-    m_outputPanel = new OutputPanel(this);
-    m_outputPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
-    m_outputPanel->hide();
+    // ----- 底部统一面板（输出 + 诊断）-----
+    m_bottomPanel = new BottomPanel(this);
+    m_bottomPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
+    m_bottomPanel->hide();
 
-    connect(m_outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
-    connect(m_outputPanel, &OutputPanel::hideRequested, this, [this]() {
+    OutputPanel *outputPanel = m_bottomPanel->outputPanel();
+    connect(outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
+    connect(m_bottomPanel, &BottomPanel::closeRequested, this, [this]() {
         if (m_processRunner->isRunning())
             onStopProcess();
-        m_outputPanel->hide();
+        m_bottomPanel->hide();
+    });
+    connect(m_bottomPanel, &BottomPanel::diagnosticsLineClicked, this, [this](int line) {
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (editor && editor->isCodeEdit())
+            editor->navigateEditorToLine(line);
     });
 
     // ----- 编译运行管理器 -----
     m_processRunner = new ProcessRunner(this);
-    connect(m_outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
-    connect(m_outputPanel, &OutputPanel::sendRawInput, m_processRunner, &ProcessRunner::writeRaw);
-    connect(m_processRunner, &ProcessRunner::outputReceived, m_outputPanel, &OutputPanel::appendOutput);
+    connect(outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
+    connect(outputPanel, &OutputPanel::sendRawInput, m_processRunner, &ProcessRunner::writeRaw);
+    connect(m_processRunner, &ProcessRunner::outputReceived, outputPanel, &OutputPanel::appendOutput);
     connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
     connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);
     connect(m_processRunner, &ProcessRunner::processStarted, this, [this]() {
@@ -263,21 +272,21 @@ MainWindow::MainWindow(QWidget *parent)
         m_runAction->setEnabled(false);
         m_compileRunAction->setEnabled(false);
         if (m_runToolAction) m_runToolAction->setEnabled(false);
-        // 编译阶段禁止交互（无光标、不可选），运行阶段延迟启用输入
+        OutputPanel *op = m_bottomPanel->outputPanel();
         if (m_processRunner->isAcceptingInput()) {
-            QTimer::singleShot(50, this, [this]() {
+            QTimer::singleShot(50, this, [this, op]() {
                 if (m_processRunner->isRunning())
-                    m_outputPanel->setRunning(true);
+                    op->setRunning(true);
             });
         } else {
-            m_outputPanel->enableTextSelection(false);
+            op->enableTextSelection(false);
         }
     });
     connect(m_processRunner, &ProcessRunner::processStopped, this, [this]() {
         m_stopAction->setEnabled(false);
-        m_outputPanel->setRunning(false);
-        // 恢复文本选择，将焦点移至编辑器，下次运行需手动点击终端
-        m_outputPanel->enableTextSelection(true);
+        OutputPanel *op = m_bottomPanel->outputPanel();
+        op->setRunning(false);
+        op->enableTextSelection(true);
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor)
             editor->setFocus();
@@ -480,9 +489,10 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(m_settingsAction);
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
 
-    // 导出 PDF（快捷键 Ctrl+E，不在工具栏中）
+    // 导出 PDF（快捷键 Ctrl+E）
     m_exportPdfAction = new QAction(tr("导出PDF"), this);
-    m_exportPdfAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
+    m_exportPdfAction->setShortcut(
+        QKeySequence(ConfigManager::instance().shortcut("export_pdf", "Ctrl+E")));
     addAction(m_exportPdfAction);
     connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::onExportPdf);
 
@@ -668,7 +678,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 右侧垂直分割线：编辑器在上，输出面板在下
     m_rightSplitter = new QSplitter(Qt::Vertical, this);
     m_rightSplitter->addWidget(m_tabManager);
-    m_rightSplitter->addWidget(m_outputPanel);
+    m_rightSplitter->addWidget(m_bottomPanel);
     m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
@@ -685,6 +695,12 @@ MainWindow::MainWindow(QWidget *parent)
         updateZoomLabel();
         connectCurrentEditorZoomSignal();
         syncFileTreeSelection();
+        // 连接当前编辑器的诊断面板切换信号
+        if (EditorWidget *ed = m_tabManager->currentEditor()) {
+            connect(ed, &EditorWidget::diagnosticsToggleRequested,
+                    this, &MainWindow::toggleDiagnosticsInCodeEditor,
+                    Qt::UniqueConnection);
+        }
         refreshBacklinks();
         refreshTags();
         refreshOutline();
@@ -702,11 +718,34 @@ MainWindow::MainWindow(QWidget *parent)
             m_runToolAction->setEnabled(isCode && !running);
         }
 
-        // 导出PDF按钮仅对 .md 文件可见
+        // 导出PDF 仅对 .md 文件启用（按钮可见 + 快捷键生效）
         bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
-        m_exportPdfAction->setVisible(isMd);
         m_exportPdfAction->setEnabled(isMd);
+        m_exportPdfAction->setVisible(isMd);
         m_activityBar->setExportPdfVisible(isMd);
+
+        // 代码编辑器诊断连接
+        if (editor && editor->isCodeEdit()) {
+            CodeEditor *ce = qobject_cast<CodeEditor*>(
+                editor->findChild<CodeEditor*>());
+            bool hasProvider = ce && ce->completionProvider();
+            debugLog(QString("MainWindow: CodeEdit tab, CodeEditor=%1, hasProvider=%2")
+                .arg((quintptr)ce).arg(hasProvider));
+            if (ce && hasProvider) {
+                // Switch provider connection to the new editor.
+                m_bottomPanel->setCurrentEditor(ce);
+                disconnect(m_diagnosticsProviderConnection);
+                m_diagnosticsProviderConnection = connect(
+                    ce->completionProvider(),
+                    &CompletionProvider::diagnosticsUpdated,
+                    m_bottomPanel, &BottomPanel::setDiagnostics);
+                // Apply cached diagnostics immediately (the provider won't
+                // re-emit unless the file changes).
+                m_bottomPanel->setDiagnostics(ce->diagnostics());
+            }
+        } else {
+            m_bottomPanel->hide();
+        }
     });
 
     // ActivityBar 信号连接
@@ -795,6 +834,7 @@ MainWindow::MainWindow(QWidget *parent)
                 hider->manage(area);
         }
     });
+
 }
 
 MainWindow::~MainWindow()
@@ -1112,11 +1152,11 @@ void MainWindow::onOutputPanelSettingChanged(const QString &key, const QVariant 
     m_settings->setSettingOverride(key, value);
 
     if (key == "output_panel.font.size") {
-        QFont font = m_outputPanel->font();
+        QFont font = m_bottomPanel->outputPanel()->font();
         font.setPointSize(value.toInt());
-        m_outputPanel->setOutputFont(font);
+        m_bottomPanel->outputPanel()->setOutputFont(font);
     } else if (key == "output_panel.max_blocks") {
-        m_outputPanel->setMaxBlocks(value.toInt());
+        m_bottomPanel->outputPanel()->setMaxBlocks(value.toInt());
     }
 }
 
@@ -1170,8 +1210,8 @@ void MainWindow::onShortcutChanged(const QString &actionKey, const QString &keyS
                 se->reloadShortcuts();
         }
     }
-    if (m_outputPanel)
-        m_outputPanel->reloadShortcuts();
+    if (m_bottomPanel)
+        m_bottomPanel->outputPanel()->reloadShortcuts();
     if (m_explorer)
         m_explorer->reloadShortcuts();
 }
@@ -1409,11 +1449,12 @@ void MainWindow::onResetToDefaults()
         m_explorer->reloadShortcuts();
 
     // Reset output panel
-    QFont opFont = m_outputPanel->font();
+    OutputPanel *op = m_bottomPanel->outputPanel();
+    QFont opFont = op->font();
     opFont.setPointSize(cfg.outputPanelFontSize());
-    m_outputPanel->setOutputFont(opFont);
-    m_outputPanel->setMaxBlocks(cfg.outputPanelMaxBlocks());
-    m_outputPanel->reloadShortcuts();
+    op->setOutputFont(opFont);
+    op->setMaxBlocks(cfg.outputPanelMaxBlocks());
+    op->reloadShortcuts();
 
     // Reset preview settings on current editor
     if (auto *editor = m_tabManager->currentEditor()) {
@@ -2063,6 +2104,7 @@ bool MainWindow::event(QEvent *event)
             }
         }
     }
+
     return QMainWindow::event(event);
 }
 
@@ -2235,16 +2277,16 @@ void MainWindow::onCompile()
     if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
         showOutputPanel();
 
-        m_outputPanel->clearOutput();
-        m_outputPanel->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
-        m_outputPanel->setStatus(tr("提示"), false);
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
+        m_bottomPanel->outputPanel()->setStatus(tr("提示"), false);
         return;
     }
 
     showOutputPanel();
 
-    m_outputPanel->clearOutput();
-    m_outputPanel->setStatus(tr("编译中..."));
+    m_bottomPanel->outputPanel()->clearOutput();
+    m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
     m_processRunner->startCompile(filePath);
 }
 
@@ -2265,8 +2307,8 @@ void MainWindow::onRun()
             }
             showOutputPanel();
     
-            m_outputPanel->clearOutput();
-            m_outputPanel->setStatus(tr("运行中..."));
+            m_bottomPanel->outputPanel()->clearOutput();
+            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
             m_processRunner->startRunPython(filePath);
             return;
         }
@@ -2280,8 +2322,8 @@ void MainWindow::onRun()
 
     showOutputPanel();
 
-    m_outputPanel->clearOutput();
-    m_outputPanel->setStatus(tr("运行中..."));
+    m_bottomPanel->outputPanel()->clearOutput();
+    m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
     m_processRunner->startRun(m_processRunner->lastExecutable());
 }
 
@@ -2302,40 +2344,40 @@ void MainWindow::onCompileAndRun()
     if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
         showOutputPanel();
 
-        m_outputPanel->clearOutput();
-        m_outputPanel->setStatus(tr("运行中..."));
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
         m_processRunner->startRunPython(filePath);
         return;
     }
 
     showOutputPanel();
 
-    m_outputPanel->clearOutput();
-    m_outputPanel->setStatus(tr("编译中..."));
+    m_bottomPanel->outputPanel()->clearOutput();
+    m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
     m_processRunner->startCompileAndRun(filePath);
 }
 
 void MainWindow::onStopProcess()
 {
     m_processRunner->stop();
-    m_outputPanel->appendOutput(QStringLiteral("\n--- ") + tr("已终止") + QStringLiteral(" ---\n"), false);
-    m_outputPanel->setStatus(tr("已终止"), true);
+    m_bottomPanel->outputPanel()->appendOutput(QStringLiteral("\n--- ") + tr("已终止") + QStringLiteral(" ---\n"), false);
+    m_bottomPanel->outputPanel()->setStatus(tr("已终止"), true);
 }
 
 void MainWindow::onCompileFinished(bool success)
 {
     if (success) {
-        m_outputPanel->setStatus(tr("编译成功"));
+        m_bottomPanel->outputPanel()->setStatus(tr("编译成功"));
     } else {
-        m_outputPanel->setStatus(tr("编译失败"), true);
+        m_bottomPanel->outputPanel()->setStatus(tr("编译失败"), true);
     }
 }
 
 void MainWindow::onRunFinished(int exitCode)
 {
-    m_outputPanel->appendOutput(
+    m_bottomPanel->outputPanel()->appendOutput(
         QStringLiteral("\n--- ") + tr("进程退出 (代码: %1)").arg(exitCode) + QStringLiteral(" ---\n"), false);
-    m_outputPanel->setStatus(
+    m_bottomPanel->outputPanel()->setStatus(
         tr("完成 (代码: %1)").arg(exitCode), exitCode != 0);
 }
 
@@ -2479,13 +2521,13 @@ void MainWindow::onSubmitToOpenJudge()
 void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
 {
     // Hide the output panel if it's visible
-    m_outputPanel->hide();
+    m_bottomPanel->hide();
 
     // Create the submit result panel on first use
     if (!m_submitResultPanel) {
         m_submitResultPanel = new SubmitResultPanel(this);
         // Insert it into the right splitter, positioned where output panel is
-        int outputIdx = m_rightSplitter->indexOf(m_outputPanel);
+        int outputIdx = m_rightSplitter->indexOf(m_bottomPanel);
         m_rightSplitter->insertWidget(outputIdx, m_submitResultPanel);
         connect(m_submitResultPanel, &SubmitResultPanel::hideRequested, this, [this]() {
             m_submitResultPanel->hide();
@@ -2559,7 +2601,8 @@ QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
 
 void MainWindow::showOutputPanel()
 {
-    m_outputPanel->setVisible(true);
+    m_bottomPanel->setVisible(true);
+    m_bottomPanel->showRunTab();
     double ratio = ConfigManager::instance().outputPanelDefaultHeightRatio();
     int total = m_rightSplitter->height();
     if (total > 0) {
@@ -2569,7 +2612,7 @@ void MainWindow::showOutputPanel()
         sizes.reserve(m_rightSplitter->count());
         for (int i = 0; i < m_rightSplitter->count(); ++i) {
             QWidget *w = m_rightSplitter->widget(i);
-            if (w == m_outputPanel)
+            if (w == m_bottomPanel)
                 sizes.append(outputH);
             else if (w == m_tabManager)
                 sizes.append(editorH);
@@ -2577,6 +2620,21 @@ void MainWindow::showOutputPanel()
                 sizes.append(0);
         }
         m_rightSplitter->setSizes(sizes);
+    }
+}
+
+void MainWindow::toggleDiagnosticsInCodeEditor()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || !editor->isCodeEdit())
+        return;
+
+    if (!m_bottomPanel->isVisible()
+        || m_bottomPanel->currentTab() != BottomPanel::DiagnosticsTab) {
+        showOutputPanel();
+        m_bottomPanel->showDiagnosticsTab();
+    } else {
+        m_bottomPanel->hide();
     }
 }
 
@@ -2794,35 +2852,35 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
 
     if (normalizedLang.isEmpty()) {
         showOutputPanel();
-        m_outputPanel->clearOutput();
-        m_outputPanel->appendOutput(
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->appendOutput(
             tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
-        m_outputPanel->setStatus(tr("错误"), true);
+        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
         return;
     }
 
     const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
     if (filePath.isEmpty()) {
         showOutputPanel();
-        m_outputPanel->clearOutput();
-        m_outputPanel->appendOutput(
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->appendOutput(
             tr("错误: 无法创建临时文件。\n"), true);
-        m_outputPanel->setStatus(tr("错误"), true);
+        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
         return;
     }
 
     showOutputPanel();
-    m_outputPanel->clearOutput();
+    m_bottomPanel->outputPanel()->clearOutput();
 
     if (normalizedLang == QStringLiteral("python")) {
-        m_outputPanel->appendOutput(
+        m_bottomPanel->outputPanel()->appendOutput(
             QStringLiteral("--- ") + tr("运行 Python 代码块 ---\n"), false);
-        m_outputPanel->setStatus(tr("运行中..."));
+        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
         m_processRunner->startRunPython(filePath);
     } else if (normalizedLang == QStringLiteral("cpp")) {
-        m_outputPanel->appendOutput(
+        m_bottomPanel->outputPanel()->appendOutput(
             QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
-        m_outputPanel->setStatus(tr("编译中..."));
+        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
         m_processRunner->startCompileAndRun(filePath);
     }
 }

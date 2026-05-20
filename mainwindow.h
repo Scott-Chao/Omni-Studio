@@ -27,6 +27,7 @@ class RightPanelContainer;
 class BacklinkIndex;
 class SearchPanel;
 class ProcessRunner;
+class BottomPanel;
 class OutputPanel;
 class JudgePanel;
 class OpenJudgeWindow;
@@ -137,13 +138,14 @@ private:
     ProcessRunner *m_processRunner;
     QAction *m_runToolAction = nullptr;
     QMenu *m_runMenu = nullptr;
-    OutputPanel *m_outputPanel;
+    BottomPanel *m_bottomPanel;
     QSplitter *m_rightSplitter;
     QAction *m_compileAction;
     QAction *m_runAction;
     QAction *m_compileRunAction;
     QAction *m_stopAction;
 
+    QMetaObject::Connection m_diagnosticsProviderConnection;
     QMetaObject::Connection m_codeBlockConnection;
     int m_codeBlockCounter = 0;
 
@@ -224,6 +226,7 @@ private:
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();
+    void toggleDiagnosticsInCodeEditor();
     void convertMdToSmd(EditorWidget *editor, const QFileInfo &fi);
     void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
 
