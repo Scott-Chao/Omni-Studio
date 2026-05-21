@@ -8,6 +8,7 @@
     "titleBar.foreground": "#333333",
     "activityBar.background": "#E8E8E8",
     "activityBar.activeBorder": "#0078D4",
+    "activityBar.hoverBackground": "#D6D6D6",
     "activityBar.foreground": "#555555",
     "sideBar.background": "#EAEAEA",
     "sideBar.foreground": "#333333",

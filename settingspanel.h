@@ -139,6 +139,9 @@ private:
     QSpinBox *m_searchTotalSpin = nullptr;
     QSpinBox *m_searchSnippetSpin = nullptr;
 
+    // Appearance page controls
+    QComboBox *m_themeCombo = nullptr;
+
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;
 

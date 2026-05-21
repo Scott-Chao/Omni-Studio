@@ -42,6 +42,7 @@ bool ThemeManager::loadTheme(const QString &name)
                 return false;
 
             m_currentTheme = data;
+            loadQss();
             emit themeChanged();
             return true;
         }

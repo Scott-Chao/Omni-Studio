@@ -1,6 +1,7 @@
 #include "settingspanel.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
+#include "thememanager.h"
 
 #include <QLabel>
 #include <QListWidget>
@@ -563,6 +564,49 @@ QWidget *SettingsPanel::createAppearancePage()
     auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(24, 16, 24, 16);
     layout->setSpacing(8);
+
+    layout->addWidget(createSectionLabel(tr("主题")));
+
+    // ---- 主题选择 ----
+    auto *themeRow = new QHBoxLayout;
+    auto *themeLabel = new QLabel(tr("主题"));
+    themeLabel->setStyleSheet(kLabelStyle);
+    m_themeCombo = new QComboBox;
+    m_themeCombo->setStyleSheet(kInputStyle);
+    m_themeCombo->setFixedWidth(200);
+
+    auto &tm = ThemeManager::instance();
+    m_themeCombo->addItems(tm.availableThemes());
+    m_themeCombo->setCurrentText(tm.currentThemeName());
+
+    connect(m_themeCombo, &QComboBox::currentTextChanged, this, [this](const QString &name) {
+        ThemeManager::instance().loadTheme(name);
+    });
+    connect(&tm, &ThemeManager::themeChanged, this, [this]() {
+        m_themeCombo->setCurrentText(ThemeManager::instance().currentThemeName());
+    });
+
+    auto *resetThemeBtn = new QPushButton(tr("恢复主题默认值"));
+    resetThemeBtn->setStyleSheet(
+        "QPushButton {"
+        "  background: #3c3c3c; color: #cccccc; border: 1px solid #555;"
+        "  padding: 4px 12px; border-radius: 3px; font-size: 12px;"
+        "}"
+        "QPushButton:hover { background: #4c4c4c; }"
+    );
+    connect(resetThemeBtn, &QPushButton::clicked, this, [this]() {
+        auto &tm = ThemeManager::instance();
+        tm.clearOverrides();
+        tm.loadTheme(tm.currentThemeName());
+    });
+
+    themeRow->addWidget(themeLabel);
+    themeRow->addStretch();
+    themeRow->addWidget(m_themeCombo);
+    themeRow->addWidget(resetThemeBtn);
+    layout->addLayout(themeRow);
+
+    layout->addSpacing(12);
 
     layout->addWidget(createSectionLabel(tr("编辑器颜色")));
 

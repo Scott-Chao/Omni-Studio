@@ -28,12 +28,17 @@ private:
     QPushButton *createButton(const QIcon &icon, const QString &tooltip);
     void updateButtonStyle(QPushButton *btn, bool active);
     QString buttonStyleSheet(bool active) const;
+    void refreshStyle();
 
     QPushButton *m_searchBtn;
     QPushButton *m_aiBtn;
     QPushButton *m_settingsBtn;
     QPushButton *m_exportPdfBtn;
     QPushButton *m_judgeBtn;
+
+    bool m_searchActive = false;
+    bool m_aiActive = false;
+    bool m_judgeActive = false;
 };
 
 #endif // ACTIVITYBAR_H
