@@ -56,4 +56,7 @@
     <file alias="dark-vscode.json">themes/dark-vscode.json</file>
     <file alias="light-obsidian.json">themes/light-obsidian.json</file>
   </qresource>
+  <qresource prefix="/styles">
+    <file alias="global.qss">styles/global.qss</file>
+  </qresource>
 </RCC>

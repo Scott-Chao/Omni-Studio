@@ -1,0 +1,80 @@
+/* ===== Scrollbar: Vertical ===== */
+QScrollBar:vertical {
+    width: 10px;
+    background: transparent;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: %%scrollbarSlider.background%%;
+    border-radius: 5px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+    background: %%scrollbarSlider.hoverBackground%%;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* ===== Scrollbar: Horizontal ===== */
+QScrollBar:horizontal {
+    height: 10px;
+    background: transparent;
+    margin: 0;
+}
+QScrollBar::handle:horizontal {
+    background: %%scrollbarSlider.background%%;
+    border-radius: 5px;
+    min-width: 30px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: %%scrollbarSlider.hoverBackground%%;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ===== Menu ===== */
+QMenu {
+    background: %%menu.background%%;
+    border: 1px solid %%menu.separatorColor%%;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 24px;
+    color: %%menu.foreground%%;
+}
+QMenu::item:selected {
+    background: %%menu.selectionBackground%%;
+    color: %%menu.foreground%%;
+}
+QMenu::separator {
+    height: 1px;
+    background: %%menu.separatorColor%%;
+    margin: 4px 8px;
+}
+
+/* ===== ToolTip ===== */
+QToolTip {
+    background: %%menu.background%%;
+    color: %%menu.foreground%%;
+    border: 1px solid %%menu.separatorColor%%;
+    padding: 4px 8px;
+}
+
+/* ===== Splitter ===== */
+QSplitter::handle {
+    background: %%panel.border%%;
+}
+QSplitter::handle:horizontal {
+    width: 1px;
+}
+QSplitter::handle:vertical {
+    height: 1px;
+}
