@@ -1,4 +1,5 @@
 #include "judgepanel.h"
+#include "thememanager.h"
 #include "judgeengine.h"
 #include "configmanager.h"
 #include "ai/errorjournal.h"
@@ -15,7 +16,6 @@
 JudgePanel::JudgePanel(QWidget *parent)
     : QWidget(parent)
 {
-    setStyleSheet("JudgePanel { background-color: #1E1E1E; }");
     m_engine = new JudgeEngine(this);
 
     connect(m_engine, &JudgeEngine::testStarted,
@@ -32,6 +32,10 @@ JudgePanel::JudgePanel(QWidget *parent)
             this, &JudgePanel::onJudgeStopped);
 
     setupUi();
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &JudgePanel::refreshStyle);
+    refreshStyle();
 }
 
 void JudgePanel::setupUi()
@@ -39,9 +43,6 @@ void JudgePanel::setupUi()
     // ---- Folder selector ----
     m_folderEdit = new QLineEdit(this);
     m_folderEdit->setPlaceholderText(tr("选择评测用例文件夹..."));
-    m_folderEdit->setStyleSheet(
-        "QLineEdit { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
-        "  border-radius: 3px; padding: 3px 6px; }");
 
     m_browseBtn = new QPushButton(tr("浏览..."), this);
     m_browseBtn->setFixedWidth(ConfigManager::instance().judgeBrowseButtonWidth());
@@ -49,16 +50,6 @@ void JudgePanel::setupUi()
     m_openJudgeBtn = new QPushButton(tr("从OpenJudge获取"), this);
 
     m_submitOJBtn = new QPushButton(tr("提交到OpenJudge"), this);
-
-    const QString btnStyle = QStringLiteral(
-        "QPushButton { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
-        "  border-radius: 3px; padding: 4px 12px; }"
-        "QPushButton:hover { background: #505050; }"
-        "QPushButton:disabled { color: #666; background: #2d2d2d; }"
-    );
-    m_browseBtn->setStyleSheet(btnStyle);
-    m_openJudgeBtn->setStyleSheet(btnStyle);
-    m_submitOJBtn->setStyleSheet(btnStyle);
 
     QVBoxLayout *folderLayout = new QVBoxLayout;
     folderLayout->setContentsMargins(4, 4, 4, 0);
@@ -102,45 +93,6 @@ void JudgePanel::setupUi()
     m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     m_table->setMinimumHeight(ConfigManager::instance().judgeTableMinHeight());
-    m_table->setStyleSheet(
-        "QTableWidget { background: #1E1E1E; color: #D4D4D4; border: 1px solid #3c3c3c;"
-        "  gridline-color: #3c3c3c; }"
-        "QTableWidget::item { padding: 2px 4px; }"
-        "QHeaderView::section { background: #252525; color: #D4D4D4;"
-        "  border: none; border-bottom: 1px solid #3c3c3c; padding: 4px; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}");
 
     connect(m_table, &QTableWidget::cellClicked,
             this, &JudgePanel::onTableItemClicked);
@@ -154,46 +106,6 @@ void JudgePanel::setupUi()
     QFont monoFont(QStringLiteral("Consolas"), 10);
     monoFont.setStyleHint(QFont::Monospace);
     m_detailEdit->setFont(monoFont);
-    m_detailEdit->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit {"
-        "  background-color: #1E1E1E;"
-        "  color: #D4D4D4;"
-        "  selection-background-color: #264F78;"
-        "  border: 1px solid #3c3c3c;"
-        "}"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"));
     m_detailEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_detailEdit->setPlaceholderText(tr("点击失败的测试用例查看对比详情"));
 
@@ -203,14 +115,6 @@ void JudgePanel::setupUi()
     m_runAllBtn = new QPushButton(tr("运行全部"), this);
     m_stopBtn = new QPushButton(tr("停止"), this);
     m_stopBtn->setEnabled(false);
-    const QString runStyle = QStringLiteral(
-        "QPushButton { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
-        "  border-radius: 3px; padding: 4px 12px; }"
-        "QPushButton:hover { background: #505050; }"
-        "QPushButton:disabled { color: #666; background: #2d2d2d; }"
-    );
-    m_runAllBtn->setStyleSheet(runStyle);
-    m_stopBtn->setStyleSheet(runStyle);
 
     QHBoxLayout *buttonLayout = new QHBoxLayout;
     buttonLayout->setContentsMargins(4, 2, 4, 4);
@@ -239,6 +143,65 @@ void JudgePanel::setupUi()
             this, &JudgePanel::onRunAllClicked);
     connect(m_stopBtn, &QPushButton::clicked,
             this, &JudgePanel::onStopClicked);
+}
+
+void JudgePanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QString("JudgePanel { background-color: %1; }")
+        .arg(tm.color("sideBar.background").name()));
+
+    m_folderEdit->setStyleSheet(QString(
+        "QLineEdit { background: %1; color: %2; border: 1px solid %3;"
+        "  border-radius: 3px; padding: 3px 6px; }")
+        .arg(tm.color("input.background").name(),
+             tm.color("input.foreground").name(),
+             tm.color("input.border").name()));
+
+    const QString btnStyle = QString(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3;"
+        "  border-radius: 3px; padding: 4px 12px; }"
+        "QPushButton:hover { background: %4; }"
+        "QPushButton:disabled { color: %5; background: %6; }"
+    ).arg(tm.color("input.background").name(),
+          tm.color("input.foreground").name(),
+          tm.color("input.border").name(),
+          tm.color("scrollbarSlider.hoverBackground").name(),
+          tm.color("tab.inactiveForeground").name(),
+          tm.color("tab.inactiveBackground").name());
+
+    m_browseBtn->setStyleSheet(btnStyle);
+    m_openJudgeBtn->setStyleSheet(btnStyle);
+    m_submitOJBtn->setStyleSheet(btnStyle);
+    m_runAllBtn->setStyleSheet(btnStyle);
+    m_stopBtn->setStyleSheet(btnStyle);
+
+    m_table->setStyleSheet(QString(
+        "QTableWidget { background: %1; color: %2; border: 1px solid %3;"
+        "  gridline-color: %3; }"
+        "QTableWidget::item { padding: 2px 4px; }"
+        "QHeaderView::section { background: %4; color: %2;"
+        "  border: none; border-bottom: 1px solid %3; padding: 4px; }")
+        .arg(tm.color("sideBar.background").name(),
+             tm.color("sideBar.foreground").name(),
+             tm.color("sideBar.border").name(),
+             tm.color("editorLineNumber.background").name()));
+
+    m_detailEdit->setStyleSheet(QString(
+        "QPlainTextEdit {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  selection-background-color: %3;"
+        "  border: 1px solid %4;"
+        "}")
+        .arg(tm.color("output.background").name(),
+             tm.color("output.foreground").name(),
+             tm.color("output.selectionBackground").name(),
+             tm.color("sideBar.border").name()));
+
+    m_summaryLabel->setStyleSheet(QString("color: %1; padding: 4px 8px; font-size: 12px;")
+        .arg(tm.color("sideBar.foreground").name()));
 }
 
 QString JudgePanel::testFolder() const

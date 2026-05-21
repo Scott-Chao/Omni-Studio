@@ -1,4 +1,5 @@
 #include "fileexplorerwidget.h"
+#include "thememanager.h"
 #include "settingsmanager.h"
 #include <QFileDialog>
 #include <QDir>
@@ -172,9 +173,6 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 面包屑路径栏
     m_breadcrumb = new QWidget(this);
-    m_breadcrumb->setStyleSheet(QStringLiteral(
-        "background-color: #252525; border-bottom: 1px solid #3c3c3c;"
-    ));
     m_breadcrumbLayout = new FlowLayout(m_breadcrumb, -1, 1, 1);
     m_breadcrumbLayout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(m_breadcrumb);
@@ -194,42 +192,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     // 视图绑定代理模型
     m_treeView->setModel(m_sortProxy);
 
-    // 配置树视图外观
-    m_treeView->setStyleSheet(
-        "QTreeView::item { height: 24px; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
-    );
+    // 配置树视图外观（主题颜色在 refreshStyle 中设置）
     m_treeView->header()->hide(); // 隐藏表头
     m_treeView->setIndentation(17); // 调整缩进
     m_treeView->setUniformRowHeights(true); // 所有行高度一致（样式表已固定24px），避免逐行查询高度
@@ -270,6 +233,10 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_dropTargetIndex = QModelIndex();
 
     reloadShortcuts();
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &FileExplorerWidget::refreshStyle);
+    refreshStyle();
 }
 
 void FileExplorerWidget::reloadShortcuts()
@@ -370,6 +337,25 @@ QString FileExplorerWidget::rootPath() const
     return m_fileModel->rootPath();
 }
 
+void FileExplorerWidget::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    m_breadcrumb->setStyleSheet(QStringLiteral(
+        "background-color: %1; border-bottom: 1px solid %2;"
+    ).arg(tm.color("editorLineNumber.background").name(),
+          tm.color("sideBar.border").name()));
+
+    m_treeView->setStyleSheet(QString(
+        "QTreeView::item { height: 28px; }"
+        "QTreeView::item:hover { background: %1; }"
+        "QTreeView::item:selected { background: %2; }"
+    ).arg(tm.color("list.hoverBackground").name(),
+          tm.color("list.activeBackground").name()));
+
+    updateBreadcrumb();
+}
+
 void FileExplorerWidget::updateBreadcrumb()
 {
     // 清除旧的面包屑按钮
@@ -406,7 +392,8 @@ void FileExplorerWidget::updateBreadcrumb()
     for (int i = 0; i < count; ++i) {
         if (i > 0) {
             QLabel *sep = new QLabel(QStringLiteral(">"));
-            sep->setStyleSheet(QStringLiteral("color: #858585; background: transparent; border: none;"));
+            sep->setStyleSheet(QStringLiteral("color: %1; background: transparent; border: none;")
+                .arg(ThemeManager::instance().color("editorLineNumber.foreground").name()));
             sep->setFixedWidth(16);
             sep->setAlignment(Qt::AlignCenter);
             m_breadcrumbLayout->addWidget(sep);
@@ -424,19 +411,24 @@ void FileExplorerWidget::updateBreadcrumb()
         QPushButton *btn = new QPushButton(segments[i]);
         btn->setFlat(true);
         btn->setCursor(isLast ? Qt::ArrowCursor : Qt::PointingHandCursor);
-        btn->setStyleSheet(QStringLiteral(
-            "QPushButton {"
-            "  background: transparent;"
-            "  border: none;"
-            "  color: %1;"
-            "  padding: 2px 6px;"
-            "  border-radius: 3px;"
-            "  font-size: 12px;"
-            "}"
-            "QPushButton:hover {"
-            "  background: #3c3c3c;"
-            "}"
-        ).arg(isLast ? QStringLiteral("#ffffff") : QStringLiteral("#b0b0b0")));
+        {
+            auto &tm = ThemeManager::instance();
+            QString fg = isLast ? tm.color("sideBar.foreground").name()
+                                : tm.color("tab.inactiveForeground").name();
+            btn->setStyleSheet(QStringLiteral(
+                "QPushButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  color: %1;"
+                "  padding: 2px 6px;"
+                "  border-radius: 3px;"
+                "  font-size: 12px;"
+                "}"
+                "QPushButton:hover {"
+                "  background: %2;"
+                "}"
+            ).arg(fg, tm.color("list.hoverBackground").name()));
+        }
 
         if (!isLast) {
             QString targetPath = QDir::cleanPath(accumulated);

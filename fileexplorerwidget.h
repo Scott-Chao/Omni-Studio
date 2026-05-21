@@ -75,6 +75,7 @@ private:
     QWidget *m_breadcrumb;
     FlowLayout *m_breadcrumbLayout;
     void updateBreadcrumb();
+    void refreshStyle();
 
     // Configurable shortcuts
     QKeySequence m_deleteShortcut;
