@@ -52,4 +52,8 @@
   <qresource prefix="/help">
     <file alias="content">help-content.html</file>
   </qresource>
+  <qresource prefix="/themes">
+    <file alias="dark-vscode.json">themes/dark-vscode.json</file>
+    <file alias="light-obsidian.json">themes/light-obsidian.json</file>
+  </qresource>
 </RCC>

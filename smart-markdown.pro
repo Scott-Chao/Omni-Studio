@@ -14,6 +14,7 @@ win32: LIBS += -luser32
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    thememanager.cpp \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
@@ -74,6 +75,7 @@ SOURCES += \
     tabmanager.cpp
 
 HEADERS += \
+    thememanager.h \
     ai/actionbar.h \
     ai/aicontextmanager.h \
     ai/aipanel.h \

@@ -1,0 +1,166 @@
+#include "thememanager.h"
+
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QApplication>
+#include <QDebug>
+#include <QRegularExpression>
+
+ThemeManager &ThemeManager::instance()
+{
+    static ThemeManager inst;
+    return inst;
+}
+
+ThemeManager::ThemeManager()
+{
+    initBuiltinThemes();
+
+    // Load first built-in theme as default
+    if (!m_builtinThemes.isEmpty()) {
+        loadTheme(m_builtinThemes.first().name);
+    }
+}
+
+void ThemeManager::initBuiltinThemes()
+{
+    m_builtinThemes = {
+        { QStringLiteral("VS Code Dark+"),  Dark,
+          QStringLiteral(":/themes/dark-vscode.json") },
+        { QStringLiteral("Obsidian Light"), Light,
+          QStringLiteral(":/themes/light-obsidian.json") },
+    };
+}
+
+bool ThemeManager::loadTheme(const QString &name)
+{
+    for (const auto &entry : m_builtinThemes) {
+        if (entry.name == name) {
+            ThemeData data;
+            if (!loadThemeFromFile(entry.filePath, data))
+                return false;
+
+            m_currentTheme = data;
+            emit themeChanged();
+            return true;
+        }
+    }
+
+    qWarning() << "[ThemeManager] Unknown theme:" << name;
+    return false;
+}
+
+bool ThemeManager::loadThemeFromFile(const QString &path, ThemeData &out)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "[ThemeManager] Cannot open theme file:" << path;
+        return false;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+    if (error.error != QJsonParseError::NoError) {
+        qWarning() << "[ThemeManager] JSON parse error in" << path << ":" << error.errorString();
+        return false;
+    }
+
+    QJsonObject root = doc.object();
+    out.name = root.value(QStringLiteral("name")).toString();
+    QString typeStr = root.value(QStringLiteral("type")).toString().toLower();
+    out.type = (typeStr == QStringLiteral("light")) ? Light : Dark;
+
+    QJsonObject colorsObj = root.value(QStringLiteral("colors")).toObject();
+    out.colors.clear();
+    for (auto it = colorsObj.begin(); it != colorsObj.end(); ++it) {
+        QColor c(it.value().toString());
+        if (c.isValid()) {
+            out.colors.insert(it.key(), c);
+        } else {
+            qWarning() << "[ThemeManager] Invalid color for token" << it.key()
+                       << ":" << it.value().toString();
+        }
+    }
+
+    return true;
+}
+
+QColor ThemeManager::color(const QString &token) const
+{
+    // 1. Check user overrides
+    auto overrideIt = m_overrides.find(token);
+    if (overrideIt != m_overrides.end())
+        return overrideIt.value();
+
+    // 2. Check current theme
+    auto themeIt = m_currentTheme.colors.find(token);
+    if (themeIt != m_currentTheme.colors.end())
+        return themeIt.value();
+
+    // 3. Fallback
+    return QColor();
+}
+
+void ThemeManager::setOverride(const QString &token, const QColor &color)
+{
+    m_overrides[token] = color;
+}
+
+void ThemeManager::clearOverrides()
+{
+    m_overrides.clear();
+}
+
+QStringList ThemeManager::availableThemes() const
+{
+    QStringList names;
+    for (const auto &entry : m_builtinThemes)
+        names.append(entry.name);
+    return names;
+}
+
+QString ThemeManager::currentThemeName() const
+{
+    return m_currentTheme.name;
+}
+
+ThemeManager::ThemeType ThemeManager::currentThemeType() const
+{
+    return m_currentTheme.type;
+}
+
+void ThemeManager::loadQss()
+{
+    QFile file(QStringLiteral(":/styles/global.qss"));
+    if (!file.exists())
+        return;
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "[ThemeManager] Cannot open global.qss";
+        return;
+    }
+
+    QString qss = QString::fromUtf8(file.readAll());
+    file.close();
+
+    // Replace %%token.name%% placeholders with resolved colors
+    static const QRegularExpression tokenRx(QStringLiteral("%%([a-zA-Z0-9.]+)%%"));
+    QString result;
+    int lastPos = 0;
+    auto it = tokenRx.globalMatch(qss);
+    while (it.hasNext()) {
+        auto match = it.next();
+        result += qss.mid(lastPos, match.capturedStart() - lastPos);
+        QString token = match.captured(1);
+        QColor c = color(token);
+        result += c.isValid() ? c.name() : QStringLiteral("#000000");
+        lastPos = match.capturedEnd();
+    }
+    result += qss.mid(lastPos);
+
+    qApp->setStyleSheet(result);
+}
