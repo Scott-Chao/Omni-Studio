@@ -13,6 +13,8 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QLabel>
+#include <QHBoxLayout>
+#include <QResizeEvent>
 #include <QFileIconProvider>
 
 class NoGhostDelegate : public QStyledItemDelegate
@@ -179,6 +181,46 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_breadcrumbLayout->setContentsMargins(4, 2, 4, 2);
     layout->addWidget(m_breadcrumb);
 
+    // 文件树工具栏
+    m_toolbar = new QWidget(this);
+    m_toolbar->setStyleSheet(QStringLiteral(
+        "background-color: #252525; border-bottom: 1px solid #3c3c3c;"
+    ));
+    QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
+    toolbarLayout->setContentsMargins(8, 1, 4, 1);
+    toolbarLayout->setSpacing(4);
+
+    m_folderLabel = new QLabel(this);
+    m_folderLabel->setStyleSheet(QStringLiteral(
+        "color: #cccccc; background: transparent; border: none; font-size: 12px;"
+    ));
+    m_folderLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    toolbarLayout->addWidget(m_folderLabel, 1);
+
+    toolbarLayout->addStretch();
+
+    m_refreshBtn = new QPushButton(this);
+    m_refreshBtn->setIcon(QIcon(QStringLiteral(":/icons/refresh")));
+    m_refreshBtn->setIconSize(QSize(14, 14));
+    m_refreshBtn->setFixedSize(26, 26);
+    m_refreshBtn->setFlat(true);
+    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+    m_refreshBtn->setToolTip(tr("刷新文件树"));
+    m_refreshBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  border: none;"
+        "  border-radius: 3px;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #3c3c3c;"
+        "}"
+    ));
+    m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    toolbarLayout->addWidget(m_refreshBtn);
+
+    layout->addWidget(m_toolbar);
+
     layout->addWidget(m_treeView);
     setLayout(layout);
 
@@ -268,6 +310,8 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_treeView->viewport()->installEventFilter(this);
 
     m_dropTargetIndex = QModelIndex();
+
+    connect(m_refreshBtn, &QPushButton::clicked, this, &FileExplorerWidget::refreshTree);
 
     reloadShortcuts();
 }
@@ -362,6 +406,7 @@ void FileExplorerWidget::setRootPath(const QString &path)
         m_treeView->setUpdatesEnabled(true);
     }
     updateBreadcrumb();
+    updateFolderLabel();
 }
 
 QString FileExplorerWidget::rootPath() const
@@ -792,4 +837,54 @@ bool FileExplorerWidget::isDropTargetFolder(const QModelIndex &proxyIndex) const
         return false;
     QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIndex);
     return m_fileModel->isDir(srcIdx);
+}
+
+void FileExplorerWidget::refreshTree()
+{
+    QString path = rootPath();
+    if (!path.isEmpty()) {
+        m_fileModel->setRootPath(path);
+        QModelIndex sourceRoot = m_fileModel->index(path);
+        m_sortProxy->invalidate();
+        m_sortProxy->sort(0, Qt::AscendingOrder);
+        QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
+        m_treeView->setRootIndex(proxyRoot);
+    }
+}
+
+void FileExplorerWidget::updateFolderLabel()
+{
+    QString path = rootPath();
+    if (path.isEmpty()) {
+        m_folderFullName.clear();
+        m_folderLabel->setText(QString());
+        return;
+    }
+    QDir dir(path);
+    m_folderFullName = dir.isRoot() ? QDir::toNativeSeparators(dir.absolutePath()) : dir.dirName();
+
+    if (m_toolbar->width() <= 0) {
+        m_folderLabel->setText(m_folderFullName);
+        return;
+    }
+
+    int btnWidth = m_refreshBtn->width();
+    QHBoxLayout *lay = qobject_cast<QHBoxLayout*>(m_toolbar->layout());
+    int margins = lay ? lay->contentsMargins().left() + lay->contentsMargins().right() : 0;
+    int spacing = lay ? lay->spacing() : 0;
+    int availableWidth = m_toolbar->width() - btnWidth - margins - spacing;
+
+    if (availableWidth < 40) {
+        m_folderLabel->setText(QString());
+        return;
+    }
+
+    QFontMetrics fm(m_folderLabel->font());
+    m_folderLabel->setText(fm.elidedText(m_folderFullName, Qt::ElideMiddle, availableWidth));
+}
+
+void FileExplorerWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateFolderLabel();
 }

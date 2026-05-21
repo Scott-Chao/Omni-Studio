@@ -8,6 +8,7 @@
 #include <QString>
 #include <QSortFilterProxyModel>
 #include <QPushButton>
+#include <QLabel>
 #include "flowlayout.h"
 
 class FileSortProxyModel : public QSortFilterProxyModel
@@ -42,6 +43,7 @@ public:
     void selectFile(const QString &filePath); // 选中并展开到指定文件
     bool isDropTargetFolder(const QModelIndex &proxyIndex) const; // 判断某个代理索引是否当前拖拽悬停的文件夹
     void reloadShortcuts();
+    void refreshTree();
 
 signals:
     void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
@@ -76,11 +78,19 @@ private:
     FlowLayout *m_breadcrumbLayout;
     void updateBreadcrumb();
 
+    // 文件树工具栏
+    QWidget *m_toolbar;
+    QLabel *m_folderLabel;
+    QPushButton *m_refreshBtn;
+    QString m_folderFullName;
+    void updateFolderLabel();
+
     // Configurable shortcuts
     QKeySequence m_deleteShortcut;
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 };
 
 #endif // FILEEXPLORERWIDGET_H
