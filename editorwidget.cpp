@@ -7,6 +7,7 @@
 #include <memory>
 #include "fileutils.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include "settingsmanager.h"
 #include "debuglog.h"
 #include <QFile>
@@ -142,7 +143,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_previewContainer->installEventFilter(this);
     m_previewContainer->setStyleSheet(
         QString("background-color: %1;")
-            .arg(ConfigManager::instance().previewContainerBackground().name()));
+            .arg(ThemeManager::instance().color("preview.containerBackground").name()));
     QVBoxLayout *containerLayout = new QVBoxLayout(m_previewContainer);
     containerLayout->setContentsMargins(0, 0, 0, 0);
     containerLayout->addWidget(m_previewView);
@@ -160,39 +161,8 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
     m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
     m_pdfView->setStyleSheet(
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
-    );
+        QStringLiteral("background-color: %1;")
+            .arg(ThemeManager::instance().color("editor.background").name()));
     m_pdfView->installEventFilter(this);
     if (auto *vp = m_pdfView->viewport())
         vp->installEventFilter(this);
@@ -223,44 +193,12 @@ EditorWidget::EditorWidget(QWidget *parent)
         codeFont.setStyleHint(QFont::Monospace);
         m_codeEditor->setFont(codeFont);
 
-        QString bg = sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString();
-        QString fg = sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString();
-        QString sel = sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString();
+        auto &tm = ThemeManager::instance();
         m_textEdit->setStyleSheet(QString(
             "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-            "QScrollBar:vertical {"
-            "  background-color: #1E1E1E;"
-            "  width: 10px;"
-            "  margin: 0;"
-            "}"
-            "QScrollBar::handle:vertical {"
-            "  background-color: #555555;"
-            "  min-height: 30px;"
-            "  border-radius: 5px;"
-            "}"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-            "  height: 0;"
-            "}"
-            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-            "  background: none;"
-            "}"
-            "QScrollBar:horizontal {"
-            "  background-color: #1E1E1E;"
-            "  height: 10px;"
-            "  margin: 0;"
-            "}"
-            "QScrollBar::handle:horizontal {"
-            "  background-color: #555555;"
-            "  min-width: 30px;"
-            "  border-radius: 5px;"
-            "}"
-            "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-            "  width: 0;"
-            "}"
-            "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-            "  background: none;"
-            "}"
-        ).arg(bg, fg, sel));
+        ).arg(tm.color("editor.background").name(),
+              tm.color("editor.foreground").name(),
+              tm.color("editor.selectionBackground").name()));
     }
 
     // 当编辑区内容改变时，更新修改标志并刷新预览
@@ -305,6 +243,9 @@ EditorWidget::EditorWidget(QWidget *parent)
             m_contentCheckTimer.start();
     });
     m_originalContent = normalizeTrailingNewlines(toPlainText()); // 记录当前内容，用于内容比较
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &EditorWidget::reloadEditorColors);
 }
 
 void EditorWidget::setPreviewMode(bool preview)
@@ -325,7 +266,7 @@ void EditorWidget::setPreviewMode(bool preview)
         if (!m_previewReady) {
             // 首次预览：加载完整模板（setHtml），延迟到 loadFinished 再切换
             m_previewView->page()->setBackgroundColor(
-                ConfigManager::instance().previewWebEngineBackground());
+                ThemeManager::instance().color("preview.webEngineBackground"));
 
             QFile tmplFile(QStringLiteral(":/preview/template.html"));
             if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1314,46 +1255,12 @@ void EditorWidget::reloadEditorColors()
     if (m_smdEditor)
         m_smdEditor->reloadColors();
 
-    const auto &cfg = ConfigManager::instance();
-    auto &sm = SettingsManager::instance();
-    QString bg = sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString();
-    QString fg = sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString();
-    QString sel = sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString();
+    auto &tm = ThemeManager::instance();
     m_textEdit->setStyleSheet(QString(
         "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
-    ).arg(bg, fg, sel));
+    ).arg(tm.color("editor.background").name(),
+          tm.color("editor.foreground").name(),
+          tm.color("editor.selectionBackground").name()));
 }
 
 void EditorWidget::applyZoom()
@@ -1633,8 +1540,8 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
                 break;
 
             QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
-            sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
+            sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
+            sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
             sel.cursor = found;
             selections.append(sel);
 
@@ -1706,8 +1613,8 @@ void EditorWidget::navigateEditorToLine(int lineNumber)
     }
 
     QTextEdit::ExtraSelection sel;
-    sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
-    sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
+    sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
+    sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
     sel.format.setProperty(QTextFormat::FullWidthSelection, true);
     sel.cursor = cursor;
     sel.cursor.clearSelection();
@@ -1816,7 +1723,7 @@ void EditorWidget::setSplitPreviewMode(bool split)
             m_splitPreviewView->winId();
 
             m_splitPreviewView->page()->setBackgroundColor(
-                ConfigManager::instance().previewWebEngineBackground());
+                ThemeManager::instance().color("preview.webEngineBackground"));
 
             QFile tmplFile(QStringLiteral(":/preview/template.html"));
             if (tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {

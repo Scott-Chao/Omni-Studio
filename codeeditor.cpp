@@ -9,6 +9,7 @@
 #include "signaturehelpmanager.h"
 #include "languageutils.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
@@ -89,49 +90,18 @@ void LineNumberArea::paintEvent(QPaintEvent *event)
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
+    const auto &tm = ThemeManager::instance();
     const auto &cfg = ConfigManager::instance();
     auto &sm = SettingsManager::instance();
 
-    // Dark code editor theme (with override support)
+    // Editor theme colors (updated on theme change)
     setStyleSheet(QString(
         "QPlainTextEdit { background-color: %1; color: %2; "
         "selection-background-color: %3; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
     )
-        .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
-        .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
-        .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));
+        .arg(tm.color("editor.background").name())
+        .arg(tm.color("editor.foreground").name())
+        .arg(tm.color("editor.selectionBackground").name()));
 
     QString fontFamily = sm.value("editor.font.family", cfg.editorFontFamily()).toString();
     int fontSize = sm.value("editor.font.size", cfg.editorFontSize()).toInt();
@@ -140,10 +110,10 @@ CodeEditor::CodeEditor(QWidget *parent)
     setFont(font);
     setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
 
-    // Cache paint-time colors to avoid QSettings reads on every repaint
-    m_cachedLnBg = QColor(sm.value("appearance.colors.line_number.background", cfg.lineNumberBackground().name()).toString());
-    m_cachedLnFg = QColor(sm.value("appearance.colors.line_number.foreground", cfg.lineNumberForeground().name()).toString());
-    m_cachedCurrentLine = QColor(sm.value("appearance.colors.current_line.highlight", cfg.currentLineHighlight().name()).toString());
+    // Cache paint-time colors from ThemeManager
+    m_cachedLnBg = tm.color("editorLineNumber.background");
+    m_cachedLnFg = tm.color("editorLineNumber.foreground");
+    m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
 
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
@@ -179,6 +149,9 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     // Also intercept ShortcutOverride on this widget (not just viewport)
     installEventFilter(this);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &CodeEditor::reloadColors);
 }
 
 void CodeEditor::reloadShortcuts()
@@ -202,52 +175,19 @@ void CodeEditor::setIndentWidth(int width)
 
 void CodeEditor::reloadColors()
 {
-    const auto &cfg = ConfigManager::instance();
-    auto &sm = SettingsManager::instance();
+    auto &tm = ThemeManager::instance();
 
     setStyleSheet(QString(
         "QPlainTextEdit { background-color: %1; color: %2; "
         "selection-background-color: %3; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
     )
-        .arg(sm.value("appearance.colors.editor.background", cfg.editorBackground().name()).toString())
-        .arg(sm.value("appearance.colors.editor.foreground", cfg.editorForeground().name()).toString())
-        .arg(sm.value("appearance.colors.editor.selection", cfg.editorSelection().name()).toString()));
+        .arg(tm.color("editor.background").name())
+        .arg(tm.color("editor.foreground").name())
+        .arg(tm.color("editor.selectionBackground").name()));
 
-    m_cachedLnBg = QColor(sm.value("appearance.colors.line_number.background", cfg.lineNumberBackground().name()).toString());
-    m_cachedLnFg = QColor(sm.value("appearance.colors.line_number.foreground", cfg.lineNumberForeground().name()).toString());
-    m_cachedCurrentLine = QColor(sm.value("appearance.colors.current_line.highlight", cfg.currentLineHighlight().name()).toString());
+    m_cachedLnBg = tm.color("editorLineNumber.background");
+    m_cachedLnFg = tm.color("editorLineNumber.foreground");
+    m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
 
     highlightCurrentLine();
     m_lineNumberArea->update();
@@ -534,8 +474,9 @@ void CodeEditor::updateExtraSelectionsWithDiagnostics()
         QTextEdit::ExtraSelection sel;
         QTextCharFormat fmt;
         fmt.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-        fmt.setUnderlineColor(diag.severity == 1 ? QColor(QStringLiteral("#F44747"))
-                                                  : QColor(QStringLiteral("#CCA700")));
+        auto &tm = ThemeManager::instance();
+        fmt.setUnderlineColor(diag.severity == 1 ? tm.color("diagnostics.error")
+                                                  : tm.color("diagnostics.warning"));
         fmt.setToolTip(diag.message);
         sel.format = fmt;
 
@@ -1302,8 +1243,8 @@ void CodeEditor::setSearchHighlights(const QString &searchText)
             break;
 
         QTextEdit::ExtraSelection sel;
-        sel.format.setBackground(ConfigManager::instance().searchHighlightBackground());
-        sel.format.setForeground(ConfigManager::instance().searchHighlightForeground());
+        sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
+        sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
         sel.cursor = found;
         m_searchHighlights.append(sel);
 
