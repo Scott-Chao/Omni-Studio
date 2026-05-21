@@ -44,6 +44,9 @@ WikiLinkTextEdit::WikiLinkTextEdit(QWidget *parent)
     m_completer->setCaseSensitivity(Qt::CaseInsensitive);
     m_completer->setFilterMode(Qt::MatchStartsWith);
 
+    QFontMetrics fm(font());
+    setTabStopDistance(fm.horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
+
     connect(this, &QTextEdit::cursorPositionChanged,
             this, &WikiLinkTextEdit::updateCompleter);
 }
@@ -60,7 +63,9 @@ void WikiLinkTextEdit::setTagNames(const QStringList &names)
 
 void WikiLinkTextEdit::keyPressEvent(QKeyEvent *event)
 {
-    if (m_completer && m_completer->popup()->isVisible()) {
+    bool completerVisible = m_completer && m_completer->popup()->isVisible();
+
+    if (completerVisible) {
         switch (event->key()) {
         case Qt::Key_Tab:
         {
@@ -90,10 +95,30 @@ void WikiLinkTextEdit::keyPressEvent(QKeyEvent *event)
         case Qt::Key_Enter:
         case Qt::Key_Return:
             m_completer->popup()->hide();
+            // fall through to auto-indent below
             break;
         default:
             break;
         }
+    }
+
+    // Tab → spaces-based indent (only when completer is not visible)
+    if (event->key() == Qt::Key_Tab && !completerVisible) {
+        handleTabKey();
+        return;
+    }
+
+    // Backspace in leading whitespace → smart dedent
+    if (event->key() == Qt::Key_Backspace && !textCursor().hasSelection()) {
+        if (handleBackspaceIndent())
+            return;
+    }
+
+    // Enter → auto-indent (preserve leading whitespace)
+    if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+        && !completerVisible) {
+        handleAutoIndentOnReturn();
+        return;
     }
 
     QTextEdit::keyPressEvent(event);
@@ -218,5 +243,92 @@ void WikiLinkTextEdit::insertTagCompletion(const QString &completion)
     cursor.insertText(completion);
 
     cursor.setPosition(selStart + completion.length());
+    setTextCursor(cursor);
+}
+
+void WikiLinkTextEdit::setIndentWidth(int width)
+{
+    m_indentWidth = width;
+    QFontMetrics fm(font());
+    setTabStopDistance(fm.horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
+}
+
+QString WikiLinkTextEdit::indentString() const
+{
+    return QString(m_indentWidth, QLatin1Char(' '));
+}
+
+bool WikiLinkTextEdit::handleTabKey()
+{
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection()) {
+        QTextDocument *doc = document();
+        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
+        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
+
+        cursor.beginEditBlock();
+        for (int i = startBlock; i <= endBlock; ++i) {
+            QTextBlock block = doc->findBlockByNumber(i);
+            QTextCursor blockCursor(block);
+            blockCursor.insertText(indentString());
+        }
+        cursor.endEditBlock();
+    } else {
+        cursor.insertText(indentString());
+    }
+    return true;
+}
+
+bool WikiLinkTextEdit::handleBackspaceIndent()
+{
+    QTextCursor cursor = textCursor();
+
+    if (cursor.hasSelection())
+        return false;
+
+    int pos = cursor.position();
+    if (pos == 0)
+        return false;
+
+    QTextBlock block = cursor.block();
+    int posInBlock = cursor.positionInBlock();
+    if (posInBlock == 0)
+        return false;
+
+    // Only in leading whitespace
+    QString textBeforeCursor = block.text().left(posInBlock);
+    if (!textBeforeCursor.trimmed().isEmpty())
+        return false;
+
+    // Delete spaces back to previous tab stop
+    int spaceCount = posInBlock % m_indentWidth;
+    if (spaceCount == 0)
+        spaceCount = m_indentWidth;
+
+    cursor.beginEditBlock();
+    for (int j = 0; j < spaceCount; ++j)
+        cursor.deletePreviousChar();
+    cursor.endEditBlock();
+    return true;
+}
+
+void WikiLinkTextEdit::handleAutoIndentOnReturn()
+{
+    QTextCursor cursor = textCursor();
+    QTextBlock block = cursor.block();
+    QString blockText = block.text();
+
+    // Extract leading whitespace from current line
+    int i = 0;
+    while (i < blockText.length() && (blockText.at(i) == QLatin1Char(' ') ||
+                                      blockText.at(i) == QLatin1Char('\t'))) {
+        ++i;
+    }
+    QString indent = blockText.left(i);
+
+    cursor.beginEditBlock();
+    cursor.insertText(QStringLiteral("\n") + indent);
+    cursor.endEditBlock();
     setTextCursor(cursor);
 }

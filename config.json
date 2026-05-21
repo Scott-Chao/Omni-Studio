@@ -5,6 +5,7 @@
   "editor": {
     "base_font_size": 14,
     "indent_width": 4,
+    "markdown_indent_width": 2,
     "content_check_timer_ms": 300,
     "font": {
       "family": "Consolas",

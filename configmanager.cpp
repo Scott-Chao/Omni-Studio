@@ -198,6 +198,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     QJsonObject editor;
     editor["base_font_size"] = 14;
     editor["indent_width"] = 4;
+    editor["markdown_indent_width"] = 2;
     editor["content_check_timer_ms"] = 300;
     QJsonObject editorFont;
     editorFont["family"] = "Consolas";
@@ -549,6 +550,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
 // ---- Editor ----
 int ConfigManager::editorBaseFontSize() const { return intValue("editor.base_font_size", 14); }
 int ConfigManager::editorIndentWidth() const { return intValue("editor.indent_width", 4); }
+int ConfigManager::editorMarkdownIndentWidth() const { return intValue("editor.markdown_indent_width", 2); }
 int ConfigManager::editorLineNumberRightPadding() const { return intValue("editor.line_number_area.right_padding", 4); }
 QString ConfigManager::editorFontFamily() const { return stringValue("editor.font.family", "Consolas"); }
 int ConfigManager::editorFontSize() const { return intValue("editor.font.size", 12); }

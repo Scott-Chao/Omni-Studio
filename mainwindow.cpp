@@ -1168,8 +1168,14 @@ void MainWindow::onEditorSettingChanged(const QString &key, const QVariant &valu
         int width = value.toInt();
         for (int i = 0; i < m_tabManager->count(); ++i) {
             if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                if (editor->isCodeEdit())
-                    editor->setCodeIndentWidth(width);
+                editor->setCodeIndentWidth(width);
+            }
+        }
+    } else if (key == "editor.markdown_indent_width") {
+        int width = value.toInt();
+        for (int i = 0; i < m_tabManager->count(); ++i) {
+            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
+                editor->setMarkdownIndentWidth(width);
             }
         }
     } else if (key == "editor.font.family") {

@@ -475,6 +475,25 @@ QWidget *SettingsPanel::createEditorPage()
         emit editorSettingChanged("editor.indent_width", val);
     });
 
+    // ---- Markdown 缩进宽度 ----
+    int mdIndentDef = cfg.editorMarkdownIndentWidth();
+    auto *mdIndentRow = new QHBoxLayout;
+    auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
+    mdIndentLabel->setStyleSheet(kLabelStyle);
+    m_markdownIndentWidthSpin = new QSpinBox;
+    m_markdownIndentWidthSpin->setRange(1, 8);
+    m_markdownIndentWidthSpin->setValue(mdIndentDef);
+    m_markdownIndentWidthSpin->setFixedWidth(80);
+    m_markdownIndentWidthSpin->setStyleSheet(kInputStyle);
+    mdIndentRow->addWidget(mdIndentLabel);
+    mdIndentRow->addStretch();
+    mdIndentRow->addWidget(m_markdownIndentWidthSpin);
+    layout->addLayout(mdIndentRow);
+
+    connect(m_markdownIndentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.markdown_indent_width", val);
+    });
+
     // ---- 编辑器字体 ----
     auto *fontRow = new QHBoxLayout;
     auto *fontLabel = new QLabel(tr("编辑器字体"));
@@ -1322,6 +1341,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
     if (m_indentWidthSpin) {
         m_indentWidthSpin->setValue(sm.value("editor.indent_width", cfg.editorIndentWidth()).toInt());
+    }
+    if (m_markdownIndentWidthSpin) {
+        m_markdownIndentWidthSpin->setValue(sm.value("editor.markdown_indent_width", cfg.editorMarkdownIndentWidth()).toInt());
     }
     if (m_autoSaveToggle) {
         m_autoSaveToggle->setChecked(sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool());

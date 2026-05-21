@@ -125,6 +125,7 @@ private:
     QComboBox *m_fontFamilyCombo = nullptr;
     QSpinBox *m_fontSizeSpin = nullptr;
     QSpinBox *m_indentWidthSpin = nullptr;
+    QSpinBox *m_markdownIndentWidthSpin = nullptr;
     ToggleSwitch *m_autoSaveToggle = nullptr;
 
     // Output panel controls

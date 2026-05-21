@@ -68,6 +68,7 @@ public:
     // 编辑器字体设置
     void setEditorFont(const QString &family, int size);
     void setCodeIndentWidth(int width);
+    void setMarkdownIndentWidth(int width);
     void setSplitPreviewDebounceMs(int ms);
     void applySplitPreviewRatio();
 

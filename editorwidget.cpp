@@ -266,6 +266,12 @@ EditorWidget::EditorWidget(QWidget *parent)
         ).arg(bg, fg, sel));
     }
 
+    // 应用缩进宽度设置（代码和 Markdown 独立）
+    int codeIndent = sm.value("editor.indent_width", cfg.editorIndentWidth()).toInt();
+    int mdIndent = sm.value("editor.markdown_indent_width", cfg.editorMarkdownIndentWidth()).toInt();
+    m_codeEditor->setIndentWidth(codeIndent);
+    m_textEdit->setIndentWidth(mdIndent);
+
     // 当编辑区内容改变时，更新修改标志并刷新预览
     connect(m_textEdit, &QTextEdit::textChanged, this, &EditorWidget::onTextChanged);
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::onTextChanged);
@@ -1353,6 +1359,11 @@ void EditorWidget::setEditorFont(const QString &family, int size)
 void EditorWidget::setCodeIndentWidth(int width)
 {
     m_codeEditor->setIndentWidth(width);
+}
+
+void EditorWidget::setMarkdownIndentWidth(int width)
+{
+    m_textEdit->setIndentWidth(width);
 }
 
 void EditorWidget::setSplitPreviewDebounceMs(int ms)
