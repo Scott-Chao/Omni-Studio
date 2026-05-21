@@ -801,6 +801,10 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
             QString blockHtml;
             blockHtml += QStringLiteral("<div class=\"code-block-wrapper\" data-block-index=\"%1\">").arg(blockIndex);
 
+            // Always show header when lang is specified
+            blockHtml += QStringLiteral("<div class=\"code-block-header\">");
+            blockHtml += QStringLiteral("<span class=\"code-lang-label\">%1</span>").arg(lang);
+
             if (showRun && !code.isEmpty()) {
                 // HTML-escape code for data-code attribute
                 QString escapedCode = code;
@@ -810,13 +814,12 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
                 escapedCode.replace(QStringLiteral("<"),  QStringLiteral("&lt;"));
                 escapedCode.replace(QStringLiteral(">"),  QStringLiteral("&gt;"));
 
-                blockHtml += QStringLiteral("<div class=\"code-block-header\">");
-                blockHtml += QStringLiteral("<span class=\"code-lang-label\">%1</span>").arg(lang);
                 blockHtml += QStringLiteral("<a class=\"run-code-btn\" href=\"runblock:execute\""
                                             " data-lang=\"%1\" data-code=\"%2\" data-block-index=\"%3\">▶ Run</a>")
                                 .arg(langLower, escapedCode).arg(blockIndex);
-                blockHtml += QStringLiteral("</div>");
             }
+
+            blockHtml += QStringLiteral("</div>");
 
             // Highlighted code
             QString highlighted = highlightCodeBlock(code, langId);

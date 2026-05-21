@@ -204,12 +204,14 @@
       var escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       var showRun = runnableLangs.indexOf(lang) !== -1;
       var header = '';
-      if (showRun) {
-        var attrCode = escapedCode.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      if (token.lang) {
         header = '<div class="code-block-header">'
-          + '<span class="code-lang-label">' + (token.lang || 'code') + '</span>'
-          + '<a class="run-code-btn" href="runblock:execute" data-lang="' + lang + '" data-code="' + attrCode + '">▶ Run</a>'
-          + '</div>';
+          + '<span class="code-lang-label">' + token.lang + '</span>';
+        if (showRun) {
+          var attrCode = escapedCode.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+          header += '<a class="run-code-btn" href="runblock:execute" data-lang="' + lang + '" data-code="' + attrCode + '">▶ Run</a>';
+        }
+        header += '</div>';
       }
       return '<div class="code-block-wrapper">' + header
         + '<pre><code class="language-' + (token.lang || '') + '">' + escapedCode + '</code></pre>'
