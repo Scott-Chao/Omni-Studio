@@ -37,6 +37,7 @@ class TagIndex;
 class SettingsPanel;
 class HelpPanel;
 class AiPanel;
+class TitleBarButton;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -195,9 +196,9 @@ private:
     QMap<QString, QAction*> m_shortcutActions;
 
     // 自定义标题栏控件
-    QPushButton *m_minimizeBtn = nullptr;
-    QPushButton *m_maximizeBtn = nullptr;
-    QPushButton *m_closeBtn = nullptr;
+    TitleBarButton *m_minimizeBtn = nullptr;
+    TitleBarButton *m_maximizeBtn = nullptr;
+    TitleBarButton *m_closeBtn = nullptr;
     QWidget *m_toolbarSpacer = nullptr;
     void setupCustomTitleBar();
 

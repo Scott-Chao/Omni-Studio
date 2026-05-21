@@ -15,6 +15,7 @@ win32: LIBS += -luser32
 
 SOURCES += \
     thememanager.cpp \
+    titlebarbutton.cpp \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
@@ -76,6 +77,7 @@ SOURCES += \
 
 HEADERS += \
     thememanager.h \
+    titlebarbutton.h \
     ai/actionbar.h \
     ai/aicontextmanager.h \
     ai/aipanel.h \

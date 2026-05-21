@@ -2009,51 +2009,9 @@ void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
 }
 
 // ============================================================
-// 自定义标题栏 — 自绘按钮，内嵌系统原生图标
+// 自定义标题栏 — 自绘 TitleBarButton
 // ============================================================
-namespace {
-class CaptionBtn : public QPushButton
-{
-public:
-    CaptionBtn(QStyle::StandardPixmap iconId, bool closeBtn, QWidget *parent)
-        : QPushButton(parent), m_iconId(iconId), m_closeBtn(closeBtn)
-    {
-        setFixedSize(46, 32);
-        setFlat(true);
-        setCursor(Qt::ArrowCursor);
-        setStyleSheet("QPushButton { border: none; background: transparent; }");
-        setIconSize(QSize(18, 18));
-        setIcon(style()->standardIcon(m_iconId));
-        setMouseTracking(true);
-    }
-
-    void setIconType(QStyle::StandardPixmap id) {
-        m_iconId = id;
-        setIcon(style()->standardIcon(id));
-    }
-
-protected:
-    void enterEvent(QEnterEvent *) override { m_hovered = true; repaint(); }
-    void leaveEvent(QEvent *) override       { m_hovered = false; repaint(); }
-
-    void paintEvent(QPaintEvent *event) override
-    {
-        QPainter p(this);
-        // hover 背景
-        if (m_hovered) {
-            p.fillRect(rect(), m_closeBtn ? QColor("#c42b1c") : QColor(0x3a, 0x3a, 0x3a));
-        }
-        p.end();
-        // 让 QPushButton 负责图标居中绘制
-        QPushButton::paintEvent(event);
-    }
-
-private:
-    QStyle::StandardPixmap m_iconId;
-    bool m_closeBtn;
-    bool m_hovered = false;
-};
-} // anonymous namespace
+#include "titlebarbutton.h"
 
 void MainWindow::setupCustomTitleBar()
 {
@@ -2063,22 +2021,19 @@ void MainWindow::setupCustomTitleBar()
     // Spacer is already created and added before the call
     m_toolbarSpacer->installEventFilter(this);
 
-    m_minimizeBtn = new CaptionBtn(QStyle::SP_TitleBarMinButton, false, this);
-    m_minimizeBtn->setIconSize(QSize(28, 28));  // 横线图标视觉偏小，单独放大
+    m_minimizeBtn = new TitleBarButton(TitleBarButton::Minimize, this);
     m_minimizeBtn->setToolTip(tr("最小化"));
     connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
     tb->addWidget(m_minimizeBtn);
 
-    m_maximizeBtn = new CaptionBtn(QStyle::SP_TitleBarMaxButton, false, this);
-    m_maximizeBtn->setIconSize(QSize(16, 16));
+    m_maximizeBtn = new TitleBarButton(TitleBarButton::Maximize, this);
     m_maximizeBtn->setToolTip(tr("最大化"));
     connect(m_maximizeBtn, &QPushButton::clicked, this, [this]() {
         if (isMaximized()) showNormal(); else showMaximized();
     });
     tb->addWidget(m_maximizeBtn);
 
-    m_closeBtn = new CaptionBtn(QStyle::SP_TitleBarCloseButton, true, this);
-    m_closeBtn->setIconSize(QSize(16, 16));
+    m_closeBtn = new TitleBarButton(TitleBarButton::Close, this);
     m_closeBtn->setToolTip(tr("关闭"));
     connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
     tb->addWidget(m_closeBtn);
@@ -2160,13 +2115,12 @@ void MainWindow::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::WindowStateChange) {
         if (m_maximizeBtn) {
-            auto *cb = static_cast<CaptionBtn*>(m_maximizeBtn);
             if (isMaximized()) {
-                cb->setIconType(QStyle::SP_TitleBarNormalButton);
-                cb->setToolTip(tr("还原"));
+                m_maximizeBtn->setType(TitleBarButton::Restore);
+                m_maximizeBtn->setToolTip(tr("还原"));
             } else {
-                cb->setIconType(QStyle::SP_TitleBarMaxButton);
-                cb->setToolTip(tr("最大化"));
+                m_maximizeBtn->setType(TitleBarButton::Maximize);
+                m_maximizeBtn->setToolTip(tr("最大化"));
             }
         }
     }
