@@ -661,37 +661,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // ----- 界面布局 -----
-    // 设置 TabManager 的样式（原有样式保留，可进一步调整）
-    {
-        const auto &cfg = ConfigManager::instance();
-        m_tabManager->setStyleSheet(
-            QString(
-                "QTabBar::tab {"
-                "   height: %1px;"
-                "   margin-right: %2px;"
-                "   padding: %3px %4px;"
-                "   border-top-left-radius: %5px;"
-                "   border-top-right-radius: %5px;"
-                "}"
-                "QTabBar::tab:selected {"
-                "   background: %6;"
-                "   color: %7;"
-                "}"
-                "QTabBar::tab:hover:!selected {"
-                "   background: %8;"
-                "}"
-            )
-            .arg(22) // height
-            .arg(2)  // margin-right
-            .arg(4)  // padding top/bottom
-            .arg(12) // padding left/right
-            .arg(4)  // border-radius
-            .arg(cfg.previewContainerBackground().name()) // selected bg (#2d2d2d)
-            .arg("#ffffff")                               // selected text
-            .arg("#4a4a4a")                               // hover bg
-        );
-    }
-
     // 左侧活动栏（搜索/设置/导出PDF/评测）
     m_activityBar = new ActivityBar(this);
 

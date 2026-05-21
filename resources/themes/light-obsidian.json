@@ -17,6 +17,7 @@
     "tab.activeForeground": "#1A1A1A",
     "tab.inactiveBackground": "#E0E0E0",
     "tab.inactiveForeground": "#888888",
+    "tab.hoverBackground": "#D6D6D6",
     "tab.border": "#D0D0D0",
     "input.background": "#FFFFFF",
     "input.foreground": "#333333",

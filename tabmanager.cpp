@@ -10,6 +10,8 @@ TabManager::TabManager(QWidget *parent)
     setTabBar(new CustomTabBar(this)); // 使用自定义标签栏，提供拖拽边界限制的功能
     setTabsClosable(true);
     connect(this, &QTabWidget::tabCloseRequested, this, &TabManager::onTabCloseRequested);
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &TabManager::refreshStyle);
+    refreshStyle();
 }
 
 EditorWidget* TabManager::openFile(const QString &filePath)
@@ -341,4 +343,48 @@ void TabManager::updatePathsAfterMove(const QString &oldBase, const QString &new
         // 更新编辑器内部路径（会触发 filePathChanged 信号，从而更新标签标题等）
         editor->setFilePath(newPath);
     }
+}
+
+void TabManager::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    setStyleSheet(QString(
+        "QTabWidget::pane {"
+        "   border: none;"
+        "}"
+        "QTabBar {"
+        "   background: %1;"
+        "}"
+        "QTabBar::tab {"
+        "   height: 32px;"
+        "   margin-right: 2px;"
+        "   padding: 4px 12px;"
+        "   border-top-left-radius: 8px;"
+        "   border-top-right-radius: 8px;"
+        "   background: %1;"
+        "   color: %2;"
+        "   border: none;"
+        "}"
+        "QTabBar::tab:selected {"
+        "   background: %3;"
+        "   color: %4;"
+        "}"
+        "QTabBar::tab:hover:!selected {"
+        "   background: %5;"
+        "}"
+        "QTabBar::close-button {"
+        "   image: url(:/icons/close);"
+        "   subcontrol-position: right;"
+        "   margin: 2px;"
+        "}"
+        "QTabBar::close-button:hover {"
+        "   background: %6;"
+        "}"
+    )
+    .arg(tm.color("tab.inactiveBackground").name())   // %1 bg / inactive bg
+    .arg(tm.color("tab.inactiveForeground").name())   // %2 inactive fg
+    .arg(tm.color("tab.activeBackground").name())     // %3 selected bg
+    .arg(tm.color("tab.activeForeground").name())     // %4 selected fg
+    .arg(tm.color("tab.hoverBackground").name())      // %5 hover bg
+    .arg(tm.color("titleBar.buttonCloseHover").name())); // %6 close hover bg
 }
