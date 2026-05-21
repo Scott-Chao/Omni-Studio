@@ -1,6 +1,7 @@
 #include "smddiagnosticspanel.h"
 #include "smdeditor.h"
 #include "smdlspmanager.h"
+#include "thememanager.h"
 
 #include <QApplication>
 
@@ -22,10 +23,6 @@ DiagnosticSection::DiagnosticSection(const QString &title, const QString &border
     m_headerLabel = new QLabel(this);
     m_headerLabel->setCursor(Qt::PointingHandCursor);
     m_headerLabel->setTextFormat(Qt::RichText);
-    m_headerLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: #e0e0e0; font-size: 11px; font-weight: bold; "
-        "padding: 4px 8px; border-bottom: 1px solid #3c3c3c; }"
-    ));
 
     m_contentWidget = new QWidget(this);
     m_contentLayout = new QVBoxLayout(m_contentWidget);
@@ -39,7 +36,18 @@ DiagnosticSection::DiagnosticSection(const QString &title, const QString &border
         setExpanded(!m_expanded);
     });
 
+    refreshStyle();
     setExpanded(true);
+}
+
+void DiagnosticSection::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    m_headerLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: %1; font-size: 11px; font-weight: bold; "
+        "padding: 4px 8px; border-bottom: 1px solid %2; }"
+    ).arg(tm.color("cell.foreground").name(),
+          tm.color("panel.border").name()));
 }
 
 void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic> &diags)
@@ -67,19 +75,26 @@ void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic>
                   return a.startLine < b.startLine;
               });
 
+    auto &tm = ThemeManager::instance();
+    QString lineFg = tm.color("editorLineNumber.foreground").name();
+    QString msgFg = tm.color("editor.foreground").name();
+    QString entryBg = tm.color("sideBar.background").name();
+
     for (const auto &d : filtered) {
-        QString entryText = QStringLiteral("<span style=\"color:#858585;\">行 %1:</span> "
-                                           "<span style=\"color:#D4D4D4;\">%2</span>")
+        QString entryText = QStringLiteral("<span style=\"color:%1;\">行 %2:</span> "
+                                           "<span style=\"color:%3;\">%4</span>")
+                                .arg(lineFg)
                                 .arg(d.startLine + 1)
+                                .arg(msgFg)
                                 .arg(d.message.toHtmlEscaped());
 
         auto *entry = new QLabel(entryText, m_contentWidget);
         entry->setWordWrap(true);
         entry->setCursor(Qt::PointingHandCursor);
         entry->setStyleSheet(QStringLiteral(
-            "QLabel { color: #D4D4D4; font-size: 11px; padding: 3px 8px 3px 12px; "
-            "border-left: 2px solid %1; background: #252526; }")
-            .arg(m_borderColor));
+            "QLabel { color: %1; font-size: 11px; padding: 3px 8px 3px 12px; "
+            "border-left: 2px solid %2; background: %3; }")
+            .arg(msgFg, m_borderColor, entryBg));
         entry->setTextFormat(Qt::RichText);
 
         int line = d.startLine;
@@ -116,9 +131,10 @@ void DiagnosticSection::setExpanded(bool expanded)
     QString indicator = expanded ? QStringLiteral("▾")
                                  : QStringLiteral("▸");
     m_headerLabel->setText(QStringLiteral(
-        "<a href=\"toggle\" style=\"color:#e0e0e0;text-decoration:none;"
-        "font-weight:bold;\">%1 %2 (%3)</a>")
-        .arg(indicator, m_title)
+        "<a href=\"toggle\" style=\"color:%1;text-decoration:none;"
+        "font-weight:bold;\">%2 %3 (%4)</a>")
+        .arg(ThemeManager::instance().color("cell.foreground").name(),
+             indicator, m_title)
         .arg(m_count));
 }
 
@@ -130,11 +146,18 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     : QFrame(parent)
     , m_editor(editor)
 {
+    auto &tm = ThemeManager::instance();
+    QString editorBg = tm.color("editor.background").name();
+    QString cellFg = tm.color("cell.foreground").name();
+    QString panelBorder = tm.color("panel.border").name();
+    QString lineFg = tm.color("editorLineNumber.foreground").name();
+    QString menuBg = tm.color("menu.background").name();
+
     setObjectName(QStringLiteral("smdDiagnosticsPanel"));
     setFrameStyle(QFrame::NoFrame);
     setStyleSheet(QStringLiteral(
-        "#smdDiagnosticsPanel { background-color: #1E1E1E; }"
-    ));
+        "#smdDiagnosticsPanel { background-color: %1; }"
+    ).arg(editorBg));
     // Height is controlled by the QSplitter in SmdEditor.
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
@@ -144,19 +167,21 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
 
     // Header bar
     auto *headerBar = new QWidget(this);
+    headerBar->setObjectName(QStringLiteral("diagnosticsHeaderBar"));
     headerBar->setFixedHeight(28);
     headerBar->setStyleSheet(QStringLiteral(
-        "background: #2d2d2d; border-bottom: 1px solid #3c3c3c;"
-    ));
+        "#diagnosticsHeaderBar { background: %1; border-bottom: 1px solid %2; }"
+    ).arg(menuBg, panelBorder));
     auto *headerLayout = new QHBoxLayout(headerBar);
     headerLayout->setContentsMargins(8, 0, 4, 0);
     headerLayout->setSpacing(0);
 
     auto *titleLabel = new QLabel(QStringLiteral("诊断"), headerBar);
+    titleLabel->setObjectName(QStringLiteral("diagnosticsTitleLabel"));
     titleLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: #e0e0e0; font-size: 11px; font-weight: bold; "
+        "#diagnosticsTitleLabel { color: %1; font-size: 11px; font-weight: bold; "
         "background: transparent; border: none; }"
-    ));
+    ).arg(cellFg));
     headerLayout->addWidget(titleLabel);
     headerLayout->addStretch();
 
@@ -164,10 +189,10 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     m_closeBtn->setFixedSize(20, 20);
     m_closeBtn->setFlat(true);
     m_closeBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: transparent; border: none; color: #858585; "
+        "QPushButton { background: transparent; border: none; color: %1; "
         "font-size: 12px; }"
-        "QPushButton:hover { color: #e0e0e0; background: #3c3c3c; border-radius: 2px; }"
-    ));
+        "QPushButton:hover { color: %2; background: %3; border-radius: 2px; }"
+    ).arg(lineFg, cellFg, panelBorder));
     connect(m_closeBtn, &QPushButton::clicked, this, [this]() {
         setVisible(false);
     });
@@ -180,24 +205,8 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     contentArea->setWidgetResizable(true);
     contentArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     contentArea->setStyleSheet(QStringLiteral(
-        "QScrollArea { background: #1E1E1E; border: none; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-    ));
+        "QScrollArea { background: %1; border: none; }"
+    ).arg(editorBg));
 
     auto *contentWidget = new QWidget(contentArea);
     auto *contentLayout = new QVBoxLayout(contentWidget);
@@ -205,14 +214,14 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     contentLayout->setSpacing(0);
 
     m_errorSection = new DiagnosticSection(QStringLiteral("错误"),
-                                           QStringLiteral("#F44747"), 1, contentWidget);
+                                           tm.color("diagnostics.error").name(), 1, contentWidget);
     m_warningSection = new DiagnosticSection(QStringLiteral("警告"),
-                                             QStringLiteral("#CCA700"), 2, contentWidget);
+                                             tm.color("diagnostics.warning").name(), 2, contentWidget);
 
     m_emptyLabel = new QLabel(QStringLiteral("无诊断信息"), contentWidget);
     m_emptyLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: #858585; font-size: 11px; padding: 8px; }"
-    ));
+        "QLabel { color: %1; font-size: 11px; padding: 8px; }"
+    ).arg(ThemeManager::instance().color("editorLineNumber.foreground").name()));
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setVisible(false);
 
@@ -234,6 +243,9 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     m_refreshTimer->setSingleShot(true);
     m_refreshTimer->setInterval(500);
     connect(m_refreshTimer, &QTimer::timeout, this, &SmdDiagnosticsPanel::refresh);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SmdDiagnosticsPanel::refreshStyle);
 }
 
 void SmdDiagnosticsPanel::refresh()
@@ -276,6 +288,38 @@ void SmdDiagnosticsPanel::clear()
     m_errorSection->setVisible(false);
     m_warningSection->setVisible(false);
     m_emptyLabel->setVisible(true);
+}
+
+void SmdDiagnosticsPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    QString editorBg = tm.color("editor.background").name();
+    QString cellFg = tm.color("cell.foreground").name();
+    QString panelBorder = tm.color("panel.border").name();
+    QString lineFg = tm.color("editorLineNumber.foreground").name();
+    QString menuBg = tm.color("menu.background").name();
+
+    setStyleSheet(QStringLiteral(
+        "#smdDiagnosticsPanel { background-color: %1; }"
+        "#diagnosticsHeaderBar { background: %2; border-bottom: 1px solid %3; }"
+        "#diagnosticsTitleLabel { color: %4; font-size: 11px; font-weight: bold; "
+        "background: transparent; border: none; }"
+    ).arg(editorBg, menuBg, panelBorder, cellFg));
+
+    m_closeBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: transparent; border: none; color: %1; "
+        "font-size: 12px; }"
+        "QPushButton:hover { color: %2; background: %3; border-radius: 2px; }"
+    ).arg(lineFg, cellFg, panelBorder));
+
+    m_emptyLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: %1; font-size: 11px; padding: 8px; }"
+    ).arg(lineFg));
+
+    m_errorSection->refreshStyle();
+    m_warningSection->refreshStyle();
+
+    scheduleRefresh();
 }
 
 void SmdDiagnosticsPanel::onLineClicked(int cellIndex, int line)

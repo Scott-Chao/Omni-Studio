@@ -23,6 +23,8 @@ public:
     static constexpr int kMaxOutputLines = 1000;
     static constexpr int kMaxVisibleLines = 15;
 
+    void refreshStyle();
+
 private slots:
     void updateHeight();
 

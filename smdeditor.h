@@ -40,6 +40,7 @@ public:
     void applyZoom(qreal factor, int baseFontSize);
     void setEditorFont(const QString &family, int size);
     void reloadColors();
+    void refreshStyle();
 
     QString toPlainTextContentOnly() const;
 

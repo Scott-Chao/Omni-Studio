@@ -25,6 +25,7 @@ public:
 
     void setDiagnostics(int cellIndex, const QList<SmdDiagnostic> &diags);
     void clear();
+    void refreshStyle();
     int count() const { return m_count; }
     void setExpanded(bool expanded);
     bool isExpanded() const { return m_expanded; }
@@ -56,6 +57,7 @@ public:
     void refresh();
     void scheduleRefresh();
     void clear();
+    void refreshStyle();
 
 private:
     SmdEditor *m_editor;

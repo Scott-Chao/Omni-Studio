@@ -5,6 +5,7 @@
 #include "languageutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
+#include "thememanager.h"
 #include <QTimer>
 #include <QTextBlock>
 #include <QTextLayout>
@@ -142,17 +143,11 @@ void SmdCell::setupUi(CellType type)
     headerLayout->setSpacing(6);
 
     m_typeLabel = new QLabel(m_headerBar);
-    m_typeLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: #e0e0e0; font-size: 10px; padding: 1px 6px; "
-        "border-radius: 3px; background: %1; }"
-    ).arg(m_type == Markdown ? QStringLiteral("#3a6ea5")
-          : m_type == Cpp ? QStringLiteral("#2d8a56") : QStringLiteral("#b8952e")));
     headerLayout->addWidget(m_typeLabel);
 
     headerLayout->addStretch();
 
     m_executeHint = new QLabel(m_headerBar);
-    m_executeHint->setStyleSheet(QStringLiteral("color: #858585; font-size: 10px;"));
     m_executeHint->setVisible(false);
     headerLayout->addWidget(m_executeHint);
 
@@ -172,7 +167,6 @@ void SmdCell::setupUi(CellType type)
 
     // Page 1: QWidget that paints the pixmap (no native HWND, no sizeHint pollution)
     m_renderImage = new RenderPixmapWidget(this);
-    m_renderImage->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
     m_renderImage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_renderImage->installEventFilter(this);
     m_editorStack->addWidget(m_renderImage);          // page 1
@@ -188,6 +182,11 @@ void SmdCell::setupUi(CellType type)
     updateTypeLabel();
     updateBorderStyle();
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SmdCell::refreshStyle);
+    refreshStyle();
+
     // Catch Move events on self to repaint QWebEngineView during scroll
     installEventFilter(this);
 }
@@ -206,10 +205,6 @@ void SmdCell::setupMarkdownEditor()
     QFont f(family, size);
     f.setStyleHint(QFont::Monospace);
     m_markdownEditor->setFont(f);
-    m_markdownEditor->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: #2d2d2d; color: #D4D4D4; "
-        "selection-background-color: #264F78; border: none; padding: 8px; }"
-    ));
     m_markdownEditor->setTabChangesFocus(false);
 
     connect(m_markdownEditor->document(), &QTextDocument::blockCountChanged,
@@ -411,7 +406,8 @@ void SmdCell::ensureRenderView()
     m_renderView->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
     m_renderView->setAttribute(Qt::WA_ShowWithoutActivating, true);
     m_renderView->setAttribute(Qt::WA_NoSystemBackground, true);
-    m_renderView->page()->setBackgroundColor(QColor(QStringLiteral("#2d2d2d")));
+    m_renderView->page()->setBackgroundColor(
+        ThemeManager::instance().color("preview.webEngineBackground"));
     m_renderView->settings()->setAttribute(QWebEngineSettings::ShowScrollBars, false);
     m_renderView->setVisible(false);
     connect(m_renderView->page(), &QWebEnginePage::loadFinished,
@@ -468,7 +464,8 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
     if (isInitialRender) {
         if (!m_renderOverlay) {
             m_renderOverlay = new QWidget(this);
-            m_renderOverlay->setStyleSheet(QStringLiteral("background-color: #2d2d2d;"));
+            m_renderOverlay->setStyleSheet(QStringLiteral("background-color: %1;")
+                .arg(ThemeManager::instance().color("preview.containerBackground").name()));
         }
         m_renderOverlay->setGeometry(m_editorStack->geometry());
         m_renderOverlay->setVisible(true);
@@ -1034,20 +1031,21 @@ void SmdCell::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
 
 void SmdCell::updateTypeLabel()
 {
+    auto &tm = ThemeManager::instance();
     QString text;
-    QString color;
+    QString badgeToken;
     switch (m_type) {
     case Markdown:
         text = QStringLiteral("MD");
-        color = QStringLiteral("#3a6ea5");
+        badgeToken = QStringLiteral("cell.badge.markdown");
         break;
     case Cpp:
         text = QStringLiteral("C++");
-        color = QStringLiteral("#2d8a56");
+        badgeToken = QStringLiteral("cell.badge.cpp");
         break;
     case Python:
         text = QStringLiteral("Python");
-        color = QStringLiteral("#b8952e");
+        badgeToken = QStringLiteral("cell.badge.python");
         break;
     }
 
@@ -1063,39 +1061,69 @@ void SmdCell::updateTypeLabel()
         if (warnings > 0) parts.append(tr("%1 warnings").arg(warnings));
         text += QStringLiteral(" (") + parts.join(QStringLiteral(", ")) + QStringLiteral(")");
         if (errors > 0)
-            color = QStringLiteral("#d43838");
+            badgeToken = QStringLiteral("cell.badge.error");
     }
 
     m_typeLabel->setText(text);
     m_typeLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: #e0e0e0; font-size: 10px; padding: 1px 6px; "
-        "border-radius: 3px; background: %1; }"
-    ).arg(color));
+        "QLabel { color: %1; font-size: 10px; padding: 1px 6px; "
+        "border-radius: 3px; background: %2; }"
+    ).arg(tm.color("cell.foreground").name(),
+          tm.color(badgeToken).name()));
 }
 
 void SmdCell::updateBorderStyle()
 {
+    auto &tm = ThemeManager::instance();
     if (m_active && m_commandMode) {
         setStyleSheet(QStringLiteral(
-            "SmdCell { border: 2px solid #C586C0; "
-            "background-color: #252526; }"
-        ));
+            "SmdCell { border: 2px solid %1; "
+            "background-color: %2; }"
+        ).arg(tm.color("cell.border.activeCommand").name(),
+              tm.color("sideBar.background").name()));
     } else if (m_active) {
         setStyleSheet(QStringLiteral(
-            "SmdCell { border: 2px solid #0078d4; "
-            "background-color: #252526; }"
-        ));
+            "SmdCell { border: 2px solid %1; "
+            "background-color: %2; }"
+        ).arg(tm.color("activityBar.activeBorder").name(),
+              tm.color("sideBar.background").name()));
     } else if (m_commandMode) {
         setStyleSheet(QStringLiteral(
-            "SmdCell { border: 2px solid #3c3c3c; "
-            "background-color: #1E1E1E; }"
-        ));
+            "SmdCell { border: 2px solid %1; "
+            "background-color: %2; }"
+        ).arg(tm.color("panel.border").name(),
+              tm.color("editor.background").name()));
     } else {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid transparent; "
-            "background-color: #1E1E1E; }"
-        ));
+            "background-color: %1; }"
+        ).arg(tm.color("editor.background").name()));
     }
+}
+
+void SmdCell::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    m_executeHint->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 10px;")
+        .arg(tm.color("editorLineNumber.foreground").name()));
+
+    m_renderImage->setStyleSheet(QStringLiteral(
+        "background-color: %1;")
+        .arg(tm.color("preview.containerBackground").name()));
+
+    if (m_markdownEditor) {
+        m_markdownEditor->setStyleSheet(QStringLiteral(
+            "QPlainTextEdit { background-color: %1; color: %2; "
+            "selection-background-color: %3; border: none; padding: 8px; }")
+            .arg(tm.color("preview.containerBackground").name(),
+                 tm.color("editor.foreground").name(),
+                 tm.color("editor.selectionBackground").name()));
+    }
+
+    updateTypeLabel();
+    updateBorderStyle();
 }
 
 SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)

@@ -75,6 +75,7 @@ private:
     void setupUi(CellType type);
     void setupMarkdownEditor();
     void setupCodeEditor(const QString &langId);
+    void refreshStyle();
     void updateTypeLabel();
     void updateBorderStyle();
     void ensureRenderView();
