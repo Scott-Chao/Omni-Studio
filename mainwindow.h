@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include <QList>
+#include <QMap>
+#include "smddiagnostic.h"
 #include "ai/aiprovider.h"
 #include "ai/prompttemplates.h"
 #include <QTabWidget>
@@ -150,6 +152,17 @@ private:
     QMetaObject::Connection m_codeBlockConnection;
     int m_codeBlockCounter = 0;
 
+    // MD code block diagnostics
+    QMap<QString, QMap<int, QList<SmdDiagnostic>>> m_mdDiagnostics;
+    QMap<QString, int> m_lastRunBlockIndexMd;
+    bool m_isRunningCodeBlock = false;
+    bool m_processManuallyStopped = false;
+    int m_currentBlockIndexMd = -1;
+    QString m_currentMdFilePath;
+    QString m_currentBlockLanguage;
+    QString m_mdStderrBuffer;
+    QMetaObject::Connection m_stderrBufferConnection;
+
     // 本地评测
     JudgePanel *m_judgePanel;
     QDockWidget *m_dockJudge;
@@ -210,13 +223,15 @@ private:
     void onJudgeRunAll();
     void onOpenJudgeRequested();
     void onOpenJudgeSampleSelected(const QString &folderPath);
-    void onCodeBlockRequested(const QString &language, const QString &code);
+    void onCodeBlockRequested(const QString &language, const QString &code, int blockIndex);
     void onSubmitToOpenJudge();
     void onConvertMdSmd();
     void onSubmissionResultReady(const SubmissionResult &result);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
     void toggleHelp();
+    void parseAndShowBlockDiagnostics();
+    void loadMdDiagnosticsForCurrentTab();
     void onDefaultZoomChanged(qreal zoom);
     void onEditorSettingChanged(const QString &key, const QVariant &value);
     void onAppearanceSettingChanged(const QString &key, const QVariant &value);

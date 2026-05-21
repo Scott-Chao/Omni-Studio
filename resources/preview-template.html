@@ -144,6 +144,15 @@
   .task-list-item input[type="checkbox"] {
     margin-right: 0.5em;
   }
+  /* Diagnostic line highlights for code blocks */
+  .code-line.diagnostic-error-line {
+    text-decoration: underline wavy #F44747;
+    text-underline-offset: 2px;
+  }
+  .code-line.diagnostic-warning-line {
+    text-decoration: underline wavy #CCA700;
+    text-underline-offset: 2px;
+  }
 </style>
 </head>
 <body>
@@ -284,14 +293,56 @@
       e.preventDefault();
       var lang = btn.getAttribute('data-lang');
       var code = btn.getAttribute('data-code');
+      var blockIndex = parseInt(btn.getAttribute('data-block-index') || '0');
       // Decode HTML entities back to raw code
       var ta = document.createElement('textarea');
       ta.innerHTML = code;
       code = ta.value;
-      window._runCodeData = JSON.stringify({lang: lang, code: code});
+      window._runCodeData = JSON.stringify({lang: lang, code: code, blockIndex: blockIndex});
       window.location.href = 'runblock:execute';
     }
   });
+
+  // Apply diagnostic underlines to code blocks in the preview.
+  // blockDiagnostics: { "0": [{startLine, endLine, message, severity}, ...], "1": [...] }
+  window.applyBlockDiagnostics = function(blockDiagnostics) {
+    window.clearBlockDiagnostics();
+    if (!blockDiagnostics || Object.keys(blockDiagnostics).length === 0) return;
+
+    Object.keys(blockDiagnostics).forEach(function(blockIdx) {
+      var wrapper = document.querySelector('.code-block-wrapper[data-block-index="' + blockIdx + '"]');
+      if (!wrapper) return;
+      var codeEl = wrapper.querySelector('pre code');
+      if (!codeEl) return;
+
+      // Wrap lines in <span class="code-line" data-line="N"> if not already done
+      if (!codeEl.querySelector('.code-line')) {
+        var lines = codeEl.innerHTML.split('\n');
+        codeEl.innerHTML = lines.map(function(lineHtml, i) {
+          return '<span class="code-line" data-line="' + i + '">' + lineHtml + '</span>';
+        }).join('\n');
+      }
+
+      // Apply diagnostic classes
+      var diags = blockDiagnostics[blockIdx] || [];
+      diags.forEach(function(d) {
+        var lineEl = codeEl.querySelector('.code-line[data-line="' + d.startLine + '"]');
+        if (lineEl) {
+          var cls = d.severity === 1 ? 'diagnostic-error-line' : 'diagnostic-warning-line';
+          lineEl.classList.add(cls);
+          lineEl.title = d.message;
+        }
+      });
+    });
+  };
+
+  window.clearBlockDiagnostics = function() {
+    document.querySelectorAll('.code-line.diagnostic-error-line, .code-line.diagnostic-warning-line')
+      .forEach(function(el) {
+        el.classList.remove('diagnostic-error-line', 'diagnostic-warning-line');
+        el.removeAttribute('title');
+      });
+  };
 
   // Initial render on page load
   window.renderMarkdown(document.getElementById('markdown-content').textContent);

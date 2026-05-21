@@ -11,7 +11,10 @@
 #include <QTimer>
 #include <QSplitter>
 #include <QPageLayout>
+#include <QMap>
+#include <QList>
 #include <functional>
+#include "smddiagnostic.h"
 
 class WikiLinkTextEdit;
 class CodeEditor;
@@ -68,6 +71,10 @@ public:
     void setSplitPreviewDebounceMs(int ms);
     void applySplitPreviewRatio();
 
+    // Block-level diagnostics for MD code blocks (injects JS squiggly lines into preview)
+    void applyBlockDiagnostics(const QMap<int, QList<SmdDiagnostic>> &diagByBlock);
+    void clearBlockDiagnostics();
+
     void reloadEditorColors();
 
     void setFilePath(const QString &newPath);  // 更新文件路径（用于重命名后）
@@ -112,7 +119,7 @@ signals:
     void filePathChanged(const QString &oldPath, const QString &newPath);
 
     void wikiLinkClicked(const QString &fileName); // 点击 [[文件名]] 时发出
-    void runCodeBlockRequested(const QString &language, const QString &code); // 转发代码块运行请求
+    void runCodeBlockRequested(const QString &language, const QString &code, int blockIndex); // 转发代码块运行请求
     void diagnosticsToggleRequested(); // Ctrl+E 切换诊断面板
     void tagClicked(const QString &tag); // 点击 #tag 时发出
     void pdfExportCompleted(const QString &filePath, bool success); // PDF 导出完成
@@ -135,6 +142,10 @@ private:
     QString m_filePath;
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板
+
+    // Block diagnostics for MD code blocks (re-applied on preview refresh)
+    QMap<int, QList<SmdDiagnostic>> m_blockDiagnostics;
+    QMap<int, QString> m_blockDiagnosticCode; // snapshot of code content per block
 
     // PDF 视图
     QPdfView *m_pdfView = nullptr;
@@ -159,6 +170,7 @@ private:
     QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色
     QString injectHeadingAnchors(const QString &markdown); // 为标题注入 <a id="hl-N"> 锚点，供预览导航用
     QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
+    QMap<int, QString> extractCodeBlockContents(const QString &markdown) const; // 提取围栏代码块内容，key=blockIndex
     QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
     void createSplitPreviewWidgets();
     void updateSplitPreviewContentNow();

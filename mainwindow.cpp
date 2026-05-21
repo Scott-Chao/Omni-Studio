@@ -13,6 +13,7 @@
 #include "activitybar.h"
 #include "rightpanelcontainer.h"
 #include "processrunner.h"
+#include "compilererrorparser.h"
 #include "outputpanel.h"
 #include "bottompanel.h"
 #include "codeeditor.h"
@@ -267,6 +268,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_processRunner, &ProcessRunner::outputReceived, outputPanel, &OutputPanel::appendOutput);
     connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
     connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);
+    // Buffer stderr for MD code block diagnostics
+    m_stderrBufferConnection = connect(m_processRunner, &ProcessRunner::outputReceived,
+        this, [this](const QString &text, bool isStderr) {
+            if (m_isRunningCodeBlock && isStderr)
+                m_mdStderrBuffer += text;
+        });
     connect(m_processRunner, &ProcessRunner::processStarted, this, [this]() {
         m_stopAction->setEnabled(true);
         m_compileAction->setEnabled(false);
@@ -298,6 +305,12 @@ MainWindow::MainWindow(QWidget *parent)
         m_compileRunAction->setEnabled(isCode);
         if (m_runToolAction)
             m_runToolAction->setEnabled(isCode);
+        // Clear MD code block state if stopped mid-run
+        if (m_isRunningCodeBlock) {
+            m_isRunningCodeBlock = false;
+            m_mdStderrBuffer.clear();
+        }
+        m_processManuallyStopped = false;
     });
 
     // ----- 本地评测面板 -----
@@ -763,6 +776,9 @@ MainWindow::MainWindow(QWidget *parent)
                 // re-emit unless the file changes).
                 m_bottomPanel->setDiagnostics(ce->diagnostics());
             }
+        } else if (editor && editor->currentFilePath().toLower().endsWith(QStringLiteral(".md"))) {
+            // MD file: load cached code block diagnostics
+            loadMdDiagnosticsForCurrentTab();
         } else {
             m_bottomPanel->hide();
         }
@@ -2421,6 +2437,7 @@ void MainWindow::onCompileAndRun()
 
 void MainWindow::onStopProcess()
 {
+    m_processManuallyStopped = true;
     m_processRunner->stop();
     m_bottomPanel->outputPanel()->appendOutput(QStringLiteral("\n--- ") + tr("已终止") + QStringLiteral(" ---\n"), false);
     m_bottomPanel->outputPanel()->setStatus(tr("已终止"), true);
@@ -2433,6 +2450,11 @@ void MainWindow::onCompileFinished(bool success)
     } else {
         m_bottomPanel->outputPanel()->setStatus(tr("编译失败"), true);
     }
+
+    // For MD code blocks: parse compile errors on failure
+    if (m_isRunningCodeBlock && !success) {
+        parseAndShowBlockDiagnostics();
+    }
 }
 
 void MainWindow::onRunFinished(int exitCode)
@@ -2441,6 +2463,11 @@ void MainWindow::onRunFinished(int exitCode)
         QStringLiteral("\n--- ") + tr("进程退出 (代码: %1)").arg(exitCode) + QStringLiteral(" ---\n"), false);
     m_bottomPanel->outputPanel()->setStatus(
         tr("完成 (代码: %1)").arg(exitCode), exitCode != 0);
+
+    // For MD code blocks: parse runtime errors (Python traceback / C++ runtime stderr)
+    if (m_isRunningCodeBlock) {
+        parseAndShowBlockDiagnostics();
+    }
 }
 
 void MainWindow::onJudgeRunAll()
@@ -2908,11 +2935,29 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
     editor->setModified(sourceWasModified);
 }
 
-void MainWindow::onCodeBlockRequested(const QString &language, const QString &code)
+void MainWindow::onCodeBlockRequested(const QString &language, const QString &code, int blockIndex)
 {
     const QString normalizedLang = LanguageUtils::normalizeCodeFenceLanguage(language);
 
+    // Track MD code block state
+    EditorWidget *editor = m_tabManager->currentEditor();
+    m_currentMdFilePath = editor ? editor->currentFilePath() : QString();
+    m_currentBlockIndexMd = blockIndex;
+    m_currentBlockLanguage = normalizedLang;
+    m_isRunningCodeBlock = true;
+    m_mdStderrBuffer.clear();
+
+    // Clear previous diagnostics for this block and preview highlights immediately
+    if (!m_currentMdFilePath.isEmpty()) {
+        m_mdDiagnostics[m_currentMdFilePath].remove(blockIndex);
+        m_lastRunBlockIndexMd[m_currentMdFilePath] = blockIndex;
+    }
+    if (editor)
+        editor->clearBlockDiagnostics();
+    m_bottomPanel->clearDiagnostics();
+
     if (normalizedLang.isEmpty()) {
+        m_isRunningCodeBlock = false;
         showOutputPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
@@ -2923,6 +2968,7 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
 
     const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
     if (filePath.isEmpty()) {
+        m_isRunningCodeBlock = false;
         showOutputPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
@@ -2944,6 +2990,63 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
             QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
         m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
         m_processRunner->startCompileAndRun(filePath);
+    }
+}
+
+void MainWindow::parseAndShowBlockDiagnostics()
+{
+    m_isRunningCodeBlock = false;
+
+    // Skip diagnostics when the process was manually stopped
+    if (m_processManuallyStopped) {
+        m_processManuallyStopped = false;
+        return;
+    }
+
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor || editor->currentFilePath() != m_currentMdFilePath)
+        return;
+
+    QList<SmdDiagnostic> diags;
+    if (m_currentBlockLanguage == QStringLiteral("cpp")) {
+        diags = CompilerErrorParser::parseCompileErrors(m_mdStderrBuffer, m_currentBlockIndexMd);
+    } else if (m_currentBlockLanguage == QStringLiteral("python")) {
+        diags = CompilerErrorParser::parsePythonTraceback(m_mdStderrBuffer, m_currentBlockIndexMd);
+    }
+
+    // Store diagnostics per file per block
+    m_mdDiagnostics[m_currentMdFilePath][m_currentBlockIndexMd] = diags;
+
+    // Update bottom panel
+    m_bottomPanel->setDiagnostics(diags);
+
+    // Update preview highlights
+    QMap<int, QList<SmdDiagnostic>> blockMap;
+    blockMap[m_currentBlockIndexMd] = diags;
+    editor->applyBlockDiagnostics(blockMap);
+}
+
+void MainWindow::loadMdDiagnosticsForCurrentTab()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) return;
+    QString filePath = editor->currentFilePath();
+
+    disconnect(m_diagnosticsProviderConnection);
+    m_bottomPanel->setCurrentEditor(nullptr);
+
+    int lastBlock = m_lastRunBlockIndexMd.value(filePath, -1);
+    if (lastBlock >= 0 && m_mdDiagnostics.contains(filePath)
+        && m_mdDiagnostics[filePath].contains(lastBlock)) {
+        QList<SmdDiagnostic> diags = m_mdDiagnostics[filePath][lastBlock];
+        m_bottomPanel->setDiagnostics(diags);
+
+        QMap<int, QList<SmdDiagnostic>> blockMap;
+        blockMap[lastBlock] = diags;
+        editor->applyBlockDiagnostics(blockMap);
+    } else {
+        m_bottomPanel->hide();
+        editor->clearBlockDiagnostics();
     }
 }
 

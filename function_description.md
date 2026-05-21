@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.5）
+## 功能说明文档（v0.10.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -57,11 +57,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.5
-文件树滚动性能优化
-- 开启 `QTreeView::setUniformRowHeights(true)`：样式表已固定行高 24px，开启后 Qt 跳过逐行 `indexRowSizeHint()` 查询，直接以乘法计算行位置，消除滚动时的主要性能瓶颈
-- `FileSortProxyModel` 图标校验优化：单次 `pixmap(QSize(16,16))` 替代 `availableSizes()` 遍历检测空心图标；`QFileIconProvider` 改为成员变量（构造一次复用，避免 Windows 每次 fallback 调用 SHGetFileInfo）；folder/file 兜底图标惰性缓存，仅在首次遇到失效图标时创建
-- `NoGhostDelegate::paint()` 中 `isDropTargetFolder()` 已有充分短路逻辑，非拖拽状态下零开销，无需额外优化
+### 新增 v0.10.6
+Markdown 预览模式诊断支持
+- 在 Markdown 预览模式运行代码块，在底部面板中可以切换诊断面板，查看当前代码块的问题
+- 诊断内容支持显示到预览界面上，表现为波浪线
+- 运行其他代码块，诊断内容及时更新
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -786,7 +786,7 @@
   - `clearDiagnostics()`：清空所有诊断。
   - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
   - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
-- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到非代码文件时自动 `hide()`。
+- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到 `.md` 文件时加载该文件缓存代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）；切换到其他非代码文件时自动 `hide()`。
 
 **信号**：
 - `closeRequested()`：标题栏关闭按钮点击。
@@ -1408,6 +1408,74 @@
 - 全局事件过滤器：点击遮罩层外部区域自动关闭帮助面板。
 
 
+### 33. `CompilerErrorParser` — 编译器/Python 错误解析器
+
+**文件**：`compilererrorparser.h`
+
+**职责**：
+- 头文件（header-only）工具命名空间 `CompilerErrorParser`，将编译器 stderr 输出和 Python traceback 解析为 `QList<SmdDiagnostic>` 结构化诊断数据。
+- 解析完成后 `cellIndex` 设为 `blockIndex`（对应 MD 文件中代码块的序号），`startLine` 为 0-based。
+
+**接口**：
+- `QList<SmdDiagnostic> parseCompileErrors(const QString &stderrText, int blockIndex)`：解析 g++ 格式（`file:line:col: error: message`）和 MSVC 格式（`file(line,col): error Cxxxx: message`）。跳过 `note:` 补充行。severity: 1=Error, 2=Warning。
+- `QList<SmdDiagnostic> parsePythonTraceback(const QString &stderrText, int blockIndex)`：提取最后一个 `File "...", line N` 位置和最终的异常类型+消息。无结构化行信息时使用第 0 行 + 全文消息。
+
+**协作关系**：
+- 被 `MainWindow::parseAndShowBlockDiagnostics()` 调用，根据 `m_currentBlockLanguage`（`"cpp"` / `"python"`）选择对应的解析函数。
+
+
+### 34. MD 代码块诊断（Preview Code Block Diagnostics）
+
+**概述**：
+- MD 文件预览模式下，点击代码块的 ▶ Run 按钮运行代码后，底部面板诊断标签页显示当前代码块的编译器/运行时错误诊断。预览中的代码块对应行通过 JS 注入红色/黄色波浪线（与 `CodeEditor` 的 `WaveUnderline` 样式一致）。
+- 诊断信息来源于 `CompilerErrorParser` 对 stderr 的解析。每次运行新代码块时立即清空旧诊断，运行结束后（编译失败或运行结束）重新解析并显示。
+- 用户手动终止（Ctrl+C / Stop 按钮）时跳过诊断解析，避免 "进程异常退出" 等进程级消息被错误识别为代码错误。
+
+**数据流**：
+```
+用户点击 ▶ Run
+  → JS: _runCodeData = {lang, code, blockIndex}
+  → PreviewPage::acceptNavigationRequest("runblock:")
+  → EditorWidget::runCodeBlockRequested(lang, code, blockIndex)
+  → MainWindow::onCodeBlockRequested(lang, code, blockIndex)
+    ├─ 记录 m_currentMdFilePath / m_currentBlockIndexMd / m_currentBlockLanguage
+    ├─ 立即: clearBlockDiagnostics() + BottomPanel::clearDiagnostics()
+    ├─ 保存临时文件 → ProcessRunner 编译/运行
+    └─ 缓冲 stderr (m_stderrBufferConnection: outputReceived → m_mdStderrBuffer)
+  → onCompileFinished(false) 或 onRunFinished(exitCode)
+    → parseAndShowBlockDiagnostics()
+      ├─ 跳过: 若 m_processManuallyStopped == true（手动终止）
+      ├─ CompilerErrorParser 解析 m_mdStderrBuffer
+      ├─ 存储: m_mdDiagnostics[filePath][blockIndex] = diags
+      ├─ m_bottomPanel->setDiagnostics(diags)
+      └─ editor->applyBlockDiagnostics({blockIndex: diags})
+        → JS: window.applyBlockDiagnostics(blockDiagnostics)
+        → 查找 .code-block-wrapper[data-block-index="N"]
+        → 按换行拆分 <code> 为 <span class="code-line" data-line="N">
+        → 匹配行添加 .diagnostic-error-line / .diagnostic-warning-line + title
+```
+
+**预览刷新时的诊断保持**：
+- `EditorWidget` 在 `applyBlockDiagnostics()` 时通过 `extractCodeBlockContents()` 快照各代码块的当前文本内容（`m_blockDiagnosticCode`）。
+- 预览因编辑而刷新时（`updatePreviewContent()` / `updateSplitPreviewContentNow()` 回调），提取新的代码块内容，仅对内容未变的代码块重新注入诊断波浪线。内容已变的代码块的诊断自动清除，避免波浪线错位到错误行号。
+- 用户可重新点击 Run 获取基于最新代码内容的诊断。
+
+**blockIndex 机制**：
+- `preHighlightCodeBlocks()` 在处理围栏代码块时为每个已知语言代码块的 `.code-block-wrapper` 添加 `data-block-index="N"` 属性（N 从 0 递增，只计已知语言/可运行代码块）。
+- Run 按钮同时携带 `data-block-index="N"`，通过 JS click 事件提取并传入 `_runCodeData`。
+
+**底部面板行为**：
+- **MD 文件内**：运行代码块时自动显示底部面板（Output 标签），用户可手动切换到诊断标签页查看诊断。无快捷键支持（`toggleDiagnosticsInCodeEditor()` 仅对 `isCodeEdit()` 生效）。
+- **切换到其他文件**：`currentChanged` 中若新文件非代码文件且非 `.md`，自动隐藏底部面板；若为 `.md` 文件，调用 `loadMdDiagnosticsForCurrentTab()` 加载该文件上次运行的代码块诊断（或清除）。
+- **诊断存储**：`MainWindow::m_mdDiagnostics[filePath][blockIndex]` 按文件路径和代码块索引存储，`m_lastRunBlockIndexMd[filePath]` 追踪每文件最后运行的代码块。
+
+**相关文件**：
+- `compilererrorparser.h`（新增）：编译器/Python 错误解析器
+- `preview-template.html`（修改）：CSS 波浪线样式 + JS `applyBlockDiagnostics`/`clearBlockDiagnostics` + blockIndex 传递
+- `mainwindow.h/.cpp`（修改）：`m_mdDiagnostics`/`m_isRunningCodeBlock`/`m_processManuallyStopped` 等状态，`parseAndShowBlockDiagnostics()`/`loadMdDiagnosticsForCurrentTab()` 方法，`currentChanged` 标签切换 MD 逻辑
+- `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
+
+
 ### 配置存储说明
 
 采用双配置系统，职责分离：
@@ -1442,7 +1510,7 @@
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **大纲面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+O`）。打开 `.md` 文件时自动解析并展示所有标题（`#` ~ `######`），按层级缩进显示，h1 最亮 h6 逐级变暗。点击标题跳转到编辑器对应行。跳过围栏代码块。切换标签页和保存文件时自动刷新。非 Markdown 文件时面板清空。点击面板外部自动隐藏。
-- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接，切换到非代码文件时自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。
+- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。

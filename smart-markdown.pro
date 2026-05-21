@@ -93,6 +93,7 @@ HEADERS += \
     codeeditor.h \
     completionpopup.h \
     completionprovider.h \
+    compilererrorparser.h \
     compilerutils.h \
     cppcompletionprovider.h \
     cppsyntaxhighlighter.h \
