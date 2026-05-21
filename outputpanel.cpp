@@ -1,6 +1,7 @@
 #include "outputpanel.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -28,50 +29,6 @@ OutputPanel::OutputPanel(QWidget *parent)
                    sm.value("output_panel.font.size", cfg.outputPanelFontSize()).toInt());
     monoFont.setStyleHint(QFont::Monospace);
     m_outputEdit->setFont(monoFont);
-
-    m_outputEdit->setStyleSheet(QString(
-        "QPlainTextEdit {"
-        "  background-color: %1;"
-        "  color: %2;"
-        "  selection-background-color: %3;"
-        "  border: none;"
-        "}"
-        "QScrollBar:vertical {"
-        "  background-color: %1;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: %1;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}")
-        .arg(cfg.outputPanelBackground().name())
-        .arg(cfg.outputPanelForeground().name())
-        .arg(cfg.outputPanelSelection().name()));
 
     m_outputEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_outputEdit->setFrameShape(QFrame::NoFrame);
@@ -121,7 +78,25 @@ OutputPanel::OutputPanel(QWidget *parent)
     connect(m_stopBtn, &QPushButton::clicked, this, &OutputPanel::stopRequested);
     connect(m_clearBtn, &QPushButton::clicked, this, &OutputPanel::clearOutput);
 
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &OutputPanel::refreshStyle);
+    refreshStyle();
     reloadShortcuts();
+}
+
+void OutputPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    m_outputEdit->setStyleSheet(QString(
+        "QPlainTextEdit {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  selection-background-color: %3;"
+        "  border: none;"
+        "}")
+        .arg(tm.color("output.background").name())
+        .arg(tm.color("output.foreground").name())
+        .arg(tm.color("output.selectionBackground").name()));
 }
 
 void OutputPanel::reloadShortcuts()
@@ -142,10 +117,10 @@ void OutputPanel::appendOutput(const QString &text, bool isStderr)
     if (isStderr) {
         cursor.insertHtml(
             QStringLiteral("<span style=\"color:%1;\">%2</span><br>")
-                .arg(ConfigManager::instance().outputStderr().name(), text.toHtmlEscaped()));
+                .arg(ThemeManager::instance().color("output.stderr").name(), text.toHtmlEscaped()));
     } else {
         // Output program text exactly as produced — no artificial newlines.
-        // Programs that don't output \\n (e.g. cout << i << "---") render
+        // Programs that don't output \n (e.g. cout << i << "---") render
         // contiguously, matching raw terminal behavior.
         cursor.insertText(text);
     }
@@ -172,12 +147,11 @@ void OutputPanel::setMaxBlocks(int max)
 
 void OutputPanel::setStatus(const QString &status, bool isError)
 {
-    const auto &cfg = ConfigManager::instance();
     m_statusLabel->setText(status);
     m_statusLabel->setStyleSheet(
         QString("color: %1; font-weight: bold; padding: 2px 4px;")
-            .arg(isError ? cfg.outputErrorStatus().name()
-                         : cfg.outputSuccessStatus().name()));
+            .arg(isError ? ThemeManager::instance().color("output.errorStatus").name()
+                         : ThemeManager::instance().color("output.successStatus").name()));
 }
 
 void OutputPanel::setRunning(bool running)

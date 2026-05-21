@@ -40,6 +40,7 @@ private:
     QPushButton *m_stopBtn;
     QPushButton *m_clearBtn;
 
+    void refreshStyle();
     void pasteToInput();
     void sendNextPasteLine();
 
