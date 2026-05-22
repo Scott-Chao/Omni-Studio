@@ -447,12 +447,12 @@ QWidget *SettingsPanel::createEditorPage()
     int mdIndentDef = cfg.editorMarkdownIndentWidth();
     auto *mdIndentRow = new QHBoxLayout;
     auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
-    mdIndentLabel->setStyleSheet(kLabelStyle);
+    mdIndentLabel->setStyleSheet(labelStyle());
     m_markdownIndentWidthSpin = new QSpinBox;
     m_markdownIndentWidthSpin->setRange(1, 8);
     m_markdownIndentWidthSpin->setValue(mdIndentDef);
     m_markdownIndentWidthSpin->setFixedWidth(80);
-    m_markdownIndentWidthSpin->setStyleSheet(kInputStyle);
+    m_markdownIndentWidthSpin->setStyleSheet(inputStyle());
     mdIndentRow->addWidget(mdIndentLabel);
     mdIndentRow->addStretch();
     mdIndentRow->addWidget(m_markdownIndentWidthSpin);
