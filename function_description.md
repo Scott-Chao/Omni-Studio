@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.5）
+## 功能说明文档（v0.11.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -19,9 +19,10 @@
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**和 **诊断波浪线**（错误/警告）。`.py` 文件通过 Jedi helper 进程的 `diagnostics` action 获取语法诊断，`.cpp` 文件通过 clangd 的 `textDocument/publishDiagnostics` 获取诊断。诊断信息通过 `Ctrl+D` 切换底部 `BottomPanel` 的诊断标签页查看。
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
+- 文件树预览标签页：单击文件以临时标签页（斜体标题）预览，多次单击复用同一标签页；双击永久打开；编辑临时标签页内容后自动提升为永久标签页。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
-- 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。
+- 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
 - 异步索引构建：切换到大目录时，文件索引、反向链接扫描与标签索引扫描在后台线程依次执行（Phase 1/2/3），UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
@@ -57,11 +58,12 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.5
-文件树滚动性能优化
-- 开启 `QTreeView::setUniformRowHeights(true)`：样式表已固定行高 24px，开启后 Qt 跳过逐行 `indexRowSizeHint()` 查询，直接以乘法计算行位置，消除滚动时的主要性能瓶颈
-- `FileSortProxyModel` 图标校验优化：单次 `pixmap(QSize(16,16))` 替代 `availableSizes()` 遍历检测空心图标；`QFileIconProvider` 改为成员变量（构造一次复用，避免 Windows 每次 fallback 调用 SHGetFileInfo）；folder/file 兜底图标惰性缓存，仅在首次遇到失效图标时创建
-- `NoGhostDelegate::paint()` 中 `isDropTargetFolder()` 已有充分短路逻辑，非拖拽状态下零开销，无需额外优化
+### 新增 v0.11.0
+文件树预览标签页改进
+- 单击文件以预览模式（临时标签页）打开，多次单击不同文件会复用同一个临时标签页
+- 双击文件永久打开
+- 编辑临时标签页内容后自动提升为永久标签页
+- 临时标签页以斜体标题区分。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -71,7 +73,7 @@
 - 作为应用程序的主窗口，负责整体布局与用户交互。
 - 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter` 等子组件。
 - 加载与保存应用程序的全局配置（通过 `SettingsManager`），包括窗口几何、分割条状态、上次访问的目录（打开目录和另存为分别记忆）。
-- 协调文件树与标签管理器的双向联动：当用户在文件树中点击文件时，通知 `TabManager` 打开或切换到对应文件；当用户切换标签页时，文件树自动选中对应文件并展开父级目录。
+- 协调文件树与标签管理器的双向联动：用户**单击**文件树中的文件时，以预览模式（临时标签页）打开，多次单击复用同一标签页；**双击**文件时永久打开（或提升已有预览标签页）；编辑预览标签页内容后自动提升为永久。切换标签页时文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
 - 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
@@ -106,7 +108,8 @@
 - `.md` ↔ `.smd` 双向转换：通过 `m_convertMdSmdAction`（快捷键 `Ctrl+T`）触发 `onConvertMdSmd()`。对当前 `.md` 或 `.smd` 文件调用 `convertMdToSmd()` / `convertSmdToMd()`，生成对应格式文件并写入磁盘（目标未打开时）或直接更新内存内容（目标已打开时）。转换使用 `SmdFormat::fromMarkdownWithMapping()` / `toMarkdownWithMapping()`，保留光标位置（通过行→单元格映射），源文件修改状态保持不变。
 
 **主要接口（槽函数）**：
-- `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
+- `void onFileSelected(const QString &filePath)`：单击文件树 → 转发给 `TabManager::openPreview`（预览模式打开）。
+- `void onFileDoubleClicked(const QString &filePath)`：双击文件树 → 若目标文件在预览标签页中则调用 `promotePreviewToPermanent()`，否则调用 `openFile()` 永久打开。
 - `void newFile()`：转发给 `TabManager::newFile`。
 - `void saveFile()`：若当前文件无路径则调用 `onSaveFileAs()`（使用记忆路径），否则直接调用编辑器的 `saveFile()`。
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
@@ -171,14 +174,18 @@
 - 监听每个编辑器的 `modificationChanged` 和 `fileSaved` 信号，自动更新对应标签标题（修改时添加 `*` 号）。
 - 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字"保存"、"不保存"、"取消"）。
 - 提供 `closeAllTabs()` 方法，用于主窗口关闭时逐个尝试关闭所有标签页，若任一用户取消则返回 `false` 阻止退出。
-- 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制而不影响原有布局。
+- 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制。`CustomTabBar` 覆盖 `paintEvent` 和 `tabSizeHint`：对预览标签页使用斜体字体渲染并为斜体文字预留额外宽度（+8px），避免右侧裁剪。
 
 **主要接口**：
-- `EditorWidget* openFile(const QString &filePath)`：若文件已在某标签中打开则切换到该标签，否则新建标签并加载文件。
+- `EditorWidget* openFile(const QString &filePath)`：若文件已在某标签中打开则切换到该标签并自动提升预览标签页（若适用），否则新建标签并加载文件。
+- `EditorWidget* openPreview(const QString &filePath)`：以预览模式打开文件。若文件已在永久标签页中则切换；若已在预览标签页中则仅切换；若预览标签页已有其他文件则替换内容（调用 `loadFile`）；若无预览标签页则新建。预览标签页标题以斜体显示。
+- `void promotePreviewToPermanent()`：将当前预览标签页提升为永久标签页（清除预览标记，恢复正常字体）。
+- `bool isPreviewEditor(EditorWidget* editor) const`：检查指定编辑器是否为当前预览编辑器。
+- `EditorWidget* previewEditor() const`：返回当前预览编辑器指针，若无则返回 `nullptr`。
 - `EditorWidget* newFile()`：创建一个未命名的空白编辑器，添加为新标签。
 - `EditorWidget* currentEditor() const`：返回当前活动标签下的编辑器。
 - `void saveCurrentFile()`：保存当前编辑器的内容（无路径时自动调用另存为）。
-- `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。
+- `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。关闭预览标签页时自动清理 `m_previewEditor` 指针。
 - `bool closeAllTabs()`：依次关闭所有标签页，若任何一次 `closeTab` 返回 `false` 则立即停止并返回 `false`。
 - `EditorWidget* findEditorByPath(const QString &filePath) const`：根据文件路径查找已打开的编辑器实例（大小写不敏感）。
 - `bool closeTabByPath(const QString &filePath, bool askSave)`：关闭指定路径的标签页，`askSave` 为 `true` 时弹出保存提示，为 `false` 时强制丢弃修改。
@@ -188,10 +195,14 @@
 
 **信号**：
 - `void tabCountChanged(int count)`：当标签数量变化时发出（供外部如窗口标题更新使用）。
+- `void previewTabPromoted(EditorWidget *editor)`：预览标签页提升为永久时发出。
+
+**自动提升机制**：在 `connectEditorSignals` 中，若编辑器是预览标签页，额外连接 `modificationChanged` 信号——当内容被修改（`modified == true`）且 `m_previewEditor` 仍指向该编辑器时，自动调用 `promotePreviewToPermanent()`。`openFile` 中若发现文件已在预览标签页中也会触发提升。
 
 **协作关系**：
 - 被 `MainWindow` 持有，主窗口将文件打开、新建、保存等操作直接转发给 `TabManager`。
-- 内部创建和持有 `EditorWidget`，并连接其状态信号以更新标签标题。
+- 内部创建和持有 `EditorWidget`，并连接其状态信号以更新标签标题和自动提升。
+- `CustomTabBar` 通过 `qobject_cast<const TabManager*>(parent())` 获取 TabManager 引用，查询 `isPreviewEditor` 以决定斜体渲染。
 - 与 `QMessageBox` 交互，提供自定义的文件保存提示对话框。
 
 ---
@@ -253,7 +264,7 @@
 - `void zoomFactorChanged(qreal factor)`：当缩放因子改变时发出，供主窗口更新百分比标签。
 - `void filePathChanged(const QString &oldPath, const QString &newPath)`：当文件路径被 `setFilePath` 修改时发出，供标签管理器更新路径关联。
 - `void wikiLinkClicked(const QString &fileName)`：当预览模式下的 WikiLink 被点击时发出。
-- `void runCodeBlockRequested(const QString &language, const QString &code)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码并转发。
+- `void runCodeBlockRequested(const QString &language, const QString &code, int blockIndex)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码和 blockIndex 并转发。
 - `void tagClicked(const QString &tag)`：预览模式下点击 `#tag` 链接时发出，由 PreviewPage 拦截 `tag:` scheme 后转发。
 - `void pdfExportCompleted(const QString &filePath, bool success)`：PDF 导出完成时发出，供主窗口显示状态信息。
 
@@ -286,11 +297,12 @@
 - 重写 `eventFilter`，监听 `Delete` 键，在非编辑状态下直接对选中项发起删除请求。
 - 右键菜单中使用 `DeleteKeyFilter` 事件过滤器，支持在菜单弹出时按 `Delete` 键触发删除。
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
-- 发出 `fileClicked` 信号，携带被选中文件的绝对路径。
+- 发出 `fileClicked` 信号（单击）和 `fileDoubleClicked` 信号（双击），分别携带被选中文件的绝对路径。单击以预览模式打开文件，双击永久打开。
 - 提供 `selectFolder` 公共槽，弹出目录选择对话框并更新根目录。支持传入初始目录参数，以便对话框从上次记忆的路径开始浏览。
 - 支持拖拽移动文件或文件夹（在该树视图内），通过事件过滤器拦截 DragEnter、DragMove、Drop 事件，在符合条件时执行文件系统移动并发送 `fileRenamed` 信号。
 - 拖拽时对目标文件夹提供视觉反馈：通过自定义委托 `NoGhostDelegate` 在悬停文件夹底部绘制蓝色横条。
 - 在构造函数中创建顶部面包屑路径栏（`m_breadcrumb`），使用 `FlowLayout` 布局实现路径过长时的自动换行。`setRootPath()` 调用时自动更新面包屑。`updateBreadcrumb()` 方法从叶到根收集路径段，反转后依次创建 `QPushButton`，当前目录白色不可点击，祖先目录灰色可点击跳转，段之间用灰色 `>` 标签分隔。
+- 面包屑下方创建文件树工具栏（`m_toolbar`），通过 `QHBoxLayout` 左对齐显示文件夹名称（`m_folderLabel`，`QSizePolicy::Preferred`），右对齐放置操作按钮（收起所有文件夹、刷新）。`updateFolderLabel()` 在窗口大小变化时通过 `QFontMetrics::elidedText` 自动省略标题文字，保证按钮不被挤压。`resizeEvent()` 中调用 `updateFolderLabel()` 实时更新。`collapseAll()` 方法调用 `m_treeView->collapseAll()` 一键收起所有已展开的文件夹。`refreshTree()` 方法重新设置 `QFileSystemModel` 根路径并刷新排序代理，实现手动刷新文件树。
 
 **主要接口**：
 - `void setRootPath(const QString &path)`：设置文件树显示的根目录。
@@ -301,14 +313,15 @@
 - `bool isDropTargetFolder(const QModelIndex &proxyIndex) const`：供自定义委托查询当前索引是否为拖拽目标文件夹。
 
 **信号**：
-- `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录）时发出。
+- `void fileClicked(const QString &filePath)`：当用户单击文件树中的有效文件（非目录）时发出，以预览模式打开。
+- `void fileDoubleClicked(const QString &filePath)`：当用户双击文件树中的有效文件时发出，永久打开（或提升预览标签页）。
 - `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
 - `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。路径使用 `QDir::absoluteFilePath` 规范化（统一 `/` 分隔符），确保与 `BacklinkIndex` 存储的路径格式一致。
 - `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
 - `void itemDeleted(const QString &path)`：在成功删除文件/文件夹后发出。
 
 **协作关系**：
-- 被 `MainWindow` 使用，其 `fileClicked` 信号连接到主窗口的 `onFileSelected` 槽，最终转发给 `TabManager`。
+- 被 `MainWindow` 使用，`fileClicked` 信号连接到 `onFileSelected`（调用 `openPreview`），`fileDoubleClicked` 信号连接到 `onFileDoubleClicked`（调用 `openFile` 或 `promotePreviewToPermanent`）。
 - `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。
 - 内部使用 NoGhostDelegate 附加到 QTreeView，无需外部干预。
 - 事件过滤器同时安装于 `m_treeView->viewport()`，确保拖放事件能正确捕获。
@@ -786,7 +799,7 @@
   - `clearDiagnostics()`：清空所有诊断。
   - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
   - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
-- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到非代码文件时自动 `hide()`。
+- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到 `.md` 文件时加载该文件缓存代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）；切换到其他非代码文件时自动 `hide()`。
 
 **信号**：
 - `closeRequested()`：标题栏关闭按钮点击。
@@ -964,8 +977,8 @@
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
-- **6 个分类页面**：
-  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
+- **7 个分类页面**：
+  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
   - **外观**：6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
   - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
   - **预览**：分屏防抖延迟微调框（100-2000ms，百分号移出框外使用独立 `%` 标签）、分屏比例微调框（30-70）。
@@ -1408,6 +1421,103 @@
 - 全局事件过滤器：点击遮罩层外部区域自动关闭帮助面板。
 
 
+### 33. `ThemeManager` — 主题管理器
+
+**文件**：`thememanager.h` / `thememanager.cpp`
+
+**职责**：
+- 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
+- 主题枚举：`Dark=0, Light=1, System=2`。`setTheme(System)` 自动检测系统主题：优先读取 Windows 注册表 `AppsUseLightTheme`，兜底根据当前时间（6:00-18:00 → Light，其余 → Dark）判断。
+- System 模式下 5 分钟 `QTimer` 自动刷新系统主题检测。
+- `themeChanged(Theme)` 信号在主题实际变化时发出；`applyCurrentTheme()` 重新发射信号强制所有组件刷新。
+- 语义化颜色访问：`color("editor.background")` 返回 `QColor`，`hex("panel.border")` 返回 `"#RRGGBB"` 字符串。缺失 key 返回品红色 `#FF00FF` 方便开发时发现遗漏。
+
+**主要接口**：
+- `static ThemeManager &instance()`：单例访问。
+- `void setTheme(Theme theme)`：切换主题，System 模式自动检测。
+- `Theme currentTheme() const` / `Theme requestedTheme() const`：当前生效主题和用户请求模式。
+- `void refreshSystemTheme()`：System 模式下重新检测。
+- `QColor color(const QString &key) const` / `QString hex(const QString &key) const`：语义化颜色查询。
+- `bool applyCurrentTheme()`：重新发射 `themeChanged` 信号。
+
+**信号**：
+- `themeChanged(ThemeManager::Theme newTheme)`：主题变更时发出，各组件在槽中重新应用 QSS/Palette。
+
+**协作关系**：
+- 由 `MainWindow` 在构造时调用 `ThemeManager::instance().setTheme(...)` 初始化。
+- `MainWindow::onAppearanceSettingChanged("theme", val)` 中调用 `setTheme(static_cast<Theme>(val))`。
+- `ConfigManager` 提供 `theme` 默认值（0=Dark）。
+- 各 widget 的 `setupStyles()`/`reloadColors()` 连接 `themeChanged` 信号实现响应。
+
+
+### 34. `CompilerErrorParser` — 编译器/Python 错误解析器
+
+**文件**：`compilererrorparser.h`
+
+**职责**：
+- 头文件（header-only）工具命名空间 `CompilerErrorParser`，将编译器 stderr 输出和 Python traceback 解析为 `QList<SmdDiagnostic>` 结构化诊断数据。
+- 解析完成后 `cellIndex` 设为 `blockIndex`（对应 MD 文件中代码块的序号），`startLine` 为 0-based。
+
+**接口**：
+- `QList<SmdDiagnostic> parseCompileErrors(const QString &stderrText, int blockIndex)`：解析 g++ 格式（`file:line:col: error: message`）和 MSVC 格式（`file(line,col): error Cxxxx: message`）。跳过 `note:` 补充行。severity: 1=Error, 2=Warning。
+- `QList<SmdDiagnostic> parsePythonTraceback(const QString &stderrText, int blockIndex)`：提取最后一个 `File "...", line N` 位置和最终的异常类型+消息。无结构化行信息时使用第 0 行 + 全文消息。
+
+**协作关系**：
+- 被 `MainWindow::parseAndShowBlockDiagnostics()` 调用，根据 `m_currentBlockLanguage`（`"cpp"` / `"python"`）选择对应的解析函数。
+
+
+### 35. MD 代码块诊断（Preview Code Block Diagnostics）
+
+**概述**：
+- MD 文件预览模式下，点击代码块的 ▶ Run 按钮运行代码后，底部面板诊断标签页显示当前代码块的编译器/运行时错误诊断。预览中的代码块对应行通过 JS 注入红色/黄色波浪线（与 `CodeEditor` 的 `WaveUnderline` 样式一致）。
+- 诊断信息来源于 `CompilerErrorParser` 对 stderr 的解析。每次运行新代码块时立即清空旧诊断，运行结束后（编译失败或运行结束）重新解析并显示。
+- 用户手动终止（Ctrl+C / Stop 按钮）时跳过诊断解析，避免"进程异常退出"等进程级消息被错误识别为代码错误。
+
+**数据流**：
+```
+用户点击 ▶ Run
+  → JS: _runCodeData = {lang, code, blockIndex}
+  → PreviewPage::acceptNavigationRequest("runblock:")
+  → EditorWidget::runCodeBlockRequested(lang, code, blockIndex)
+  → MainWindow::onCodeBlockRequested(lang, code, blockIndex)
+    ├─ 记录 m_currentMdFilePath / m_currentBlockIndexMd / m_currentBlockLanguage
+    ├─ 立即: clearBlockDiagnostics() + BottomPanel::clearDiagnostics()
+    ├─ 保存临时文件 → ProcessRunner 编译/运行
+    └─ 缓冲 stderr (m_stderrBufferConnection: outputReceived → m_mdStderrBuffer)
+  → onCompileFinished(false) 或 onRunFinished(exitCode)
+    → parseAndShowBlockDiagnostics()
+      ├─ 跳过: 若 m_processManuallyStopped == true（手动终止）
+      ├─ CompilerErrorParser 解析 m_mdStderrBuffer
+      ├─ 存储: m_mdDiagnostics[filePath][blockIndex] = diags
+      ├─ m_bottomPanel->setDiagnostics(diags)
+      └─ editor->applyBlockDiagnostics({blockIndex: diags})
+        → JS: window.applyBlockDiagnostics(blockDiagnostics)
+        → 查找 .code-block-wrapper[data-block-index="N"]
+        → 按换行拆分 <code> 为 <span class="code-line" data-line="N">
+        → 匹配行添加 .diagnostic-error-line / .diagnostic-warning-line + title
+```
+
+**预览刷新时的诊断保持**：
+- `EditorWidget` 在 `applyBlockDiagnostics()` 时通过 `extractCodeBlockContents()` 快照各代码块的当前文本内容（`m_blockDiagnosticCode`）。
+- 预览因编辑而刷新时（`updatePreviewContent()` / `updateSplitPreviewContentNow()` 回调），提取新的代码块内容，仅对内容未变的代码块重新注入诊断波浪线。内容已变的代码块的诊断自动清除，避免波浪线错位到错误行号。
+- 用户可重新点击 Run 获取基于最新代码内容的诊断。
+
+**blockIndex 机制**：
+- `preHighlightCodeBlocks()` 在处理围栏代码块时为每个已知语言代码块的 `.code-block-wrapper` 添加 `data-block-index="N"` 属性（N 从 0 递增，只计已知语言/可运行代码块）。
+- Run 按钮同时携带 `data-block-index="N"`，通过 JS click 事件提取并传入 `_runCodeData`。
+
+**底部面板行为**：
+- **MD 文件内**：运行代码块时自动显示底部面板（Output 标签），用户可手动切换到诊断标签页查看诊断。无快捷键支持（`toggleDiagnosticsInCodeEditor()` 仅对 `isCodeEdit()` 生效）。
+- **切换到其他文件**：`currentChanged` 中若新文件非代码文件且非 `.md`，自动隐藏底部面板；若为 `.md` 文件，调用 `loadMdDiagnosticsForCurrentTab()` 加载该文件上次运行的代码块诊断（或清除）。
+- **诊断存储**：`MainWindow::m_mdDiagnostics[filePath][blockIndex]` 按文件路径和代码块索引存储，`m_lastRunBlockIndexMd[filePath]` 追踪每文件最后运行的代码块。
+
+**相关文件**：
+- `compilererrorparser.h`（新增）：编译器/Python 错误解析器
+- `preview-template.html`（修改）：CSS 波浪线样式 + JS `applyBlockDiagnostics`/`clearBlockDiagnostics` + blockIndex 传递
+- `mainwindow.h/.cpp`（修改）：`m_mdDiagnostics`/`m_isRunningCodeBlock`/`m_processManuallyStopped` 等状态，`parseAndShowBlockDiagnostics()`/`loadMdDiagnosticsForCurrentTab()` 方法，`currentChanged` 标签切换 MD 逻辑
+- `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
+
+
 ### 配置存储说明
 
 采用双配置系统，职责分离：
@@ -1433,6 +1543,8 @@
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。重置按钮和 `Ctrl+0` 快捷键将缩放恢复至设置面板中配置的默认缩放比例（通过 `SettingsManager::editorDefaultZoom()` 获取），而非固定 100%。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
 - **面包屑路径栏**：位于文件树顶部，深色背景（`#252525`），底部有 1px 分割线（`#3c3c3c`）。按钮扁平无边框，当前目录白色、祖先目录灰色（`#b0b0b0`），悬停时背景变为 `#3c3c3c`。段之间用灰色 `>` 标签（`#858585`）分隔。使用 `FlowLayout` 实现自动换行。
+- **文件树工具栏**：面包屑下方，左侧显示当前文件夹名称（过长时自动省略），右侧放置收起所有文件夹按钮（方框内减号图标）和刷新按钮。收起按钮调用 `collapseAll()` 一键收起所有已展开的目录；刷新按钮调用 `refreshTree()` 重新加载文件树。
+- **预览标签页**：单击文件树中的文件以预览模式打开（临时标签页，斜体标题）。多次单击不同文件复用同一标签页（通过 `loadFile` 替换内容）。双击文件永久打开（调用 `openFile`，若文件已在预览标签页中则自动提升）。编辑预览标签页内容后 `modificationChanged(true)` 信号触发 `promotePreviewToPermanent()` 自动提升为永久标签页。`CustomTabBar::paintEvent` 为预览标签页应用斜体字体，`tabSizeHint` 为斜体文字预留额外 8px 宽度避免裁剪。
 - **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。`FileSortProxyModel` 内聚图标有效性检测与兜底修复（成员 `QFileIconProvider` 缓存 + 惰性图标），避免 Windows 空心图标和重复 SHGetFileInfo 调用。
 - **滚动性能**：`setUniformRowHeights(true)` 配合固定行高样式表，Qt 以 O(1) 乘法计算行位置替代 O(n) 逐行高度查询。
 - **文件树选中同步**：切换标签页时，文件树自动选中当前编辑的文件，并逐级展开折叠的父目录；新建未保存文件或文件不在当前根目录时，文件树选中状态保持不变。
@@ -1442,7 +1554,7 @@
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **大纲面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+O`）。打开 `.md` 文件时自动解析并展示所有标题（`#` ~ `######`），按层级缩进显示，h1 最亮 h6 逐级变暗。点击标题跳转到编辑器对应行。跳过围栏代码块。切换标签页和保存文件时自动刷新。非 Markdown 文件时面板清空。点击面板外部自动隐藏。
-- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接，切换到非代码文件时自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。
+- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。

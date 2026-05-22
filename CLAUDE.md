@@ -25,8 +25,11 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full component map, data flows, and c
 ```
 main.cpp                     → QApplication + MainWindow bootstrap
 MainWindow                   → frameless orchestrator, owns all widgets
-  ├── ActivityBar            → 48px left vertical bar with SVG icon buttons: Search, AI, Settings, Export PDF, Judge
+  ├── ThemeManager           → singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect
+  ├── ActivityBar            → 48px left vertical bar with SVG icon buttons: Search, AI, Settings, Export PDF (hidden by default), Judge
   ├── FileExplorerWidget     → QTreeView + QFileSystemModel, file tree (left, in splitter)
+  │   ├── Breadcrumb bar     → FlowLayout path segments, click-to-navigate
+  │   └── Toolbar            → folder label (elided), collapse-all + refresh buttons
   ├── TabManager             → QTabWidget, owns EditorWidget tabs (center)
   │   └── EditorWidget       → QStackedWidget, 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
   │       ├── SmdEditor (in SmdEdit mode)
@@ -59,8 +62,9 @@ MainWindow                   → frameless orchestrator, owns all widgets
   ├── OpenJudgeWindow        → separate QMainWindow for OpenJudge browsing + submission
   ├── BottomPanel            → unified bottom panel (Output + Diagnostics tabs), replaces standalone OutputPanel
   │   ├── OutputPanel        → terminal-style stdout/stderr (tab 0)
-  │   └── DiagnosticsTab     → error/warning list (tab 1), per-file via CodeEditor diagnostics cache
-  ├── SettingsPanel          → floating overlay settings panel (includes AI Service page)
+  │   └── DiagnosticsTab     → error/warning list (tab 1), per-file via CodeEditor / MD block diagnostics
+  ├── CompilerErrorParser    → header-only, parse g++/MSVC/Python stderr → SmdDiagnostic (MD block diagnostics)
+  ├── SettingsPanel          → floating overlay settings panel (includes AI Service page + Markdown indent)
   ├── HelpPanel             → floating overlay help panel, category list + QTextBrowser, F1 toggle
   └── ProcessRunner         → compile→run QProcess pipeline
 ```
@@ -68,9 +72,11 @@ MainWindow                   → frameless orchestrator, owns all widgets
 ### Key Conventions (not obvious from source)
 
 - **Toolbar = title bar**: Single QToolBar serves as frameless title bar. Layout: [文件▼] | drag area | [帮助][面板][预览][分屏][运行▼] | [min][max][close]
-- **ActivityBar**: Always-visible 48px left bar. Search/AI top group, Settings/Export PDF/Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files.
+- **ActivityBar**: Always-visible 48px left bar. Search/AI top group, Settings/Export PDF/Judge bottom. Active panel = left border highlight (#0078D4). Export PDF only visible for .md files, **hidden by default** (`setVisible(false)` in constructor, shown by MainWindow on .md file open).
 - **Right panel tabs**: History/Outline/Tags/Backlinks in a single QDockWidget with QStackedWidget. Toggled via toolbar [面板] button. Click-outside auto-hides.
 - **Left dock tabbing**: Search and Judge share the left dock area via tabifyDockWidget. Mutually exclusive — showing one hides the other.
+- **Preview tabs**: Single-click in file tree opens file in a temporary preview tab (italic title via `CustomTabBar::paintEvent`). Subsequent single-clicks reuse the same tab (`TabManager::openPreview` → `loadFile` replace). Double-click promotes to permanent (`promotePreviewToPermanent`) or opens normally. Editing preview content auto-promotes via `modificationChanged` → `promotePreviewToPermanent()`.
+- **File explorer toolbar**: Below breadcrumb, shows folder name (auto-elided via `QFontMetrics::elidedText`) with collapse-all and refresh buttons on the right.
 
 - **File → mode mapping**: `.pdf` → PdfView, `.smd` → SmdEditor (cell-based), code extensions (`.cpp`/`.py` etc.) → CodeEditor with syntax highlighting, everything else → MarkdownEdit (WikiLinkTextEdit with `[[wikilink]]` autocomplete).
 - **SMD cells**: Jupyter-like dual mode (edit/command). `---smd:markdown|cpp|python` delimiters. Each cell auto-heights, code cells compile/run via temp files. Active cell border: blue (`#0078d4`) in edit mode, purple (`#C586C0`) in command mode. C++ cells auto-group by `main()` boundaries for per-group compilation; Python cells use a persistent process with shared namespace across the same file. `Ctrl+D` toggles the `SmdDiagnosticsPanel` for error/warning inspection.
@@ -82,10 +88,13 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **Local Judge**: Compile → warmup → per-test-case execution with 1s timeout + 64MB memory limit. Line-by-line trimmed output comparison.
 - **OpenJudge**: Crawler-based HTTP (cxsjsx.openjudge.cn) for homework browsing, auto-login, sample extraction, code submission with 30s status polling.
 - **stdin in BottomPanel**: Terminal-mode event filter captures keystrokes via OutputPanel (now a child tab of BottomPanel), buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
+- **Theme system**: `ThemeManager` singleton manages VS Code 2026 Dark/Light palettes via `QMap<QString, QColor>`. `setTheme(Dark|Light|System)`. System mode reads Windows registry `AppsUseLightTheme`, falls back to time-based (6:00–18:00 → Light). 5-min auto-refresh timer. `themeChanged(Theme)` signal re-applies QSS/Palette across all widgets. Semantic color keys like `"editor.background"`, `"panel.border"`, `"activitybar.background"`, accessed via `color(key)` / `hex(key)`.
 - **Compile & Run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++ or MSVC for C/C++, python for .py).
 - **Code Completion & Diagnostics**: Ctrl+I (IME-safe alternative to Ctrl+Space) triggers completion manually. Auto-trigger on `.`, `::`, `->`. C++ clangd via LspClient (JSON-RPC over QProcess), Python via Jedi helper script. Fallback to keyword + document-words when server unavailable. `EscNativeFilter` catches VK_ESCAPE at Windows message level to close popups when Qt::Tool window HWND routing interferes. All `CompletionProvider` subclasses emit `diagnosticsUpdated(QList<SmdDiagnostic>)` — C++ via clangd `textDocument/publishDiagnostics`, Python via Jedi `diagnostics` action (base64-encoded, 500ms debounce). `SmdDiagnostic` struct lives in standalone `smddiagnostic.h`, shared by `CodeEditor` (squiggly lines), `BottomPanel` (diagnostics tab), and `SmdDiagnosticsPanel` (SMD diagnostics).
 - **Custom Shortcuts**: SettingsPanel Shortcuts page (index 5) uses interactive KeyRecorder widgets with click-to-record, conflict detection dialog (overwrite/cancel), and runtime QAction rebinding via SettingsManager overrides. Persisted to config.ini [settings_overrides]. Includes all 25+ actions. `toggle_diagnostics` (default `Ctrl+D`) toggles BottomPanel diagnostics tab in code editors / SmdDiagnosticsPanel in SMD editor.
 - **Diagnostics Architecture**: Two diagnostic panels coexist: (1) `SmdDiagnosticsPanel` for SMD cells (cell-granularity, embedded in SmdEditor splitter), (2) `BottomPanel` DiagnosticsTab for standalone `.cpp`/`.py` files (flat-file, shown in bottom splitter). `SmdEditor::eventFilter` has a widget-hierarchy guard to prevent its QApplication-level filter from stealing shortcuts (e.g. Ctrl+D) meant for CodeEditor.
+- **MD code block diagnostics**: Preview ▶ Run triggers `CompilerErrorParser` (header-only, `compilererrorparser.h`) to parse g++/MSVC/Python stderr into `SmdDiagnostic`. Results shown in `BottomPanel` diagnostics tab + wave underlines injected via JS (`window.applyBlockDiagnostics`) in preview `QWebEngineView`. Block index tracked through `data-block-index` attribute on `<div class="code-block-wrapper">`. Manual stop (Ctrl+C) skips diagnostics.
+- **Markdown indent**: Separate from code indent. `WikiLinkTextEdit` supports Tab→spaces, auto-indent on Enter, smart Backspace dedent. Configurable via `editor.markdown_indent_width` in settings panel (default 2, vs code indent default 4).
 
 ## Coding Standards
 - **Qt Logic**: Always use the **new signal/slot syntax**: `connect(sender, &Sender::signal, receiver, &Receiver::slot)`.
