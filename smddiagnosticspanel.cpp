@@ -48,6 +48,14 @@ void DiagnosticSection::refreshStyle()
         "padding: 4px 8px; border-bottom: 1px solid %2; }"
     ).arg(tm.color("cell.foreground").name(),
           tm.color("panel.border").name()));
+
+    // Re-read border color from current theme so newly created entries use the
+    // correct color after a theme switch. The severity→token mapping mirrors
+    // the values passed at construction (bottompanel.cpp:78-81).
+    if (m_severity == 1)
+        m_borderColor = tm.color(QStringLiteral("diagnostics.error")).name();
+    else if (m_severity == 2)
+        m_borderColor = tm.color(QStringLiteral("diagnostics.warning")).name();
 }
 
 void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic> &diags)

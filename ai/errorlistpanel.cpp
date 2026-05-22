@@ -41,16 +41,13 @@ static QString statusLabel(const QString &code)
 
 static QWidget *createSectionHeader(const QString &title)
 {
-    auto &tm = ThemeManager::instance();
     auto *w = new QWidget;
-    w->setStyleSheet(QStringLiteral("background-color: %1;")
-                     .arg(tm.color("list.hoverBackground").name()));
+    w->setObjectName(QStringLiteral("sectionHeader"));
     auto *lay = new QHBoxLayout(w);
     lay->setContentsMargins(10, 4, 10, 4);
 
     auto *label = new QLabel(title);
-    label->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; font-weight: bold;")
-                         .arg(tm.color("editorLineNumber.foreground").name()));
+    label->setObjectName(QStringLiteral("sectionHeaderLabel"));
     lay->addWidget(label);
     return w;
 }
@@ -59,32 +56,19 @@ static QWidget *createSectionHeader(const QString &title)
 
 static QWidget *createOutputBlock(const QString &title, const QString &content)
 {
-    auto &tm = ThemeManager::instance();
     auto *w = new QWidget;
+    w->setObjectName(QStringLiteral("outputBlock"));
     auto *lay = new QVBoxLayout(w);
     lay->setContentsMargins(10, 2, 10, 2);
     lay->setSpacing(2);
 
     auto *titleLbl = new QLabel(title);
-    titleLbl->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;")
-                            .arg(tm.color("editorLineNumber.foreground").name()));
+    titleLbl->setObjectName(QStringLiteral("outputBlockTitle"));
 
     auto *tb = new QTextBrowser;
+    tb->setObjectName(QStringLiteral("outputBlockContent"));
     tb->setPlainText(content);
     tb->setMaximumHeight(120);
-    tb->setStyleSheet(QStringLiteral(
-        "QTextBrowser {"
-        "  background-color: %1;"
-        "  color: %2;"
-        "  border: 1px solid %3;"
-        "  border-radius: 3px;"
-        "  font-family: 'Consolas', 'Courier New', monospace;"
-        "  font-size: 11px;"
-        "  padding: 4px;"
-        "}"
-    ).arg(tm.color("editor.background").name(),
-          tm.color("editor.foreground").name(),
-          tm.color("panel.border").name()));
 
     lay->addWidget(titleLbl);
     lay->addWidget(tb);
@@ -413,12 +397,24 @@ void ErrorDetailWidget::refreshStyles()
         "#detailBtnBar { background-color: %2; }"
         "#detailStatusLbl { color: %3; font-size: 12px; }"
         "#detailTimeLbl, #detailMemLbl { color: %3; font-size: 11px; }"
-        "#detailFileLbl { color: %5; font-size: 11px; }"
+        "#detailFileLbl { color: %4; font-size: 11px; }"
+        "#sectionHeader { background-color: %2; }"
+        "#sectionHeaderLabel { color: %5; font-size: 10px; font-weight: bold; }"
+        "#outputBlockTitle { color: %5; font-size: 11px; }"
+        "#outputBlockContent {"
+        "  background-color: %6; color: %7;"
+        "  border: 1px solid %8; border-radius: 3px;"
+        "  font-family: 'Consolas', 'Courier New', monospace;"
+        "  font-size: 11px; padding: 4px;"
+        "}"
     ).arg(tm.color("editorLineNumber.background").name(),      // %1
           tm.color("list.hoverBackground").name(),              // %2
           tm.color("workbench.foreground").name(),              // %3
-          tm.color("editorLineNumber.foreground").name(),       // %4 (unused now)
-          tm.color("tab.inactiveForeground").name()));          // %5
+          tm.color("tab.inactiveForeground").name(),            // %4
+          tm.color("editorLineNumber.foreground").name(),       // %5
+          tm.color("editor.background").name(),                 // %6
+          tm.color("editor.foreground").name(),                 // %7
+          tm.color("panel.border").name()));                    // %8
 
     m_aiAnalysisLabel->setStyleSheet(QStringLiteral(
         "color: %1; font-size: 12px; padding: 8px 12px;"

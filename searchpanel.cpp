@@ -68,8 +68,8 @@ void SearchPanel::refreshStyle()
         "QListWidget { background: %1; color: %2; border: none; }"
         "QListWidget::item { padding: 2px 0; }"
         "QListWidget::item:hover { background: %3; }")
-        .arg(tm.color("input.background").name(),
-             tm.color("input.foreground").name(),
+        .arg(tm.color("sideBar.background").name(),
+             tm.color("sideBar.foreground").name(),
              tm.color("list.hoverBackground").name()));
 
     m_statusLabel->setStyleSheet(QString("color: %1; padding: 4px 8px; font-size: 12px;")

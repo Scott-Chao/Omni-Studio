@@ -42,7 +42,7 @@ void ActionBar::refreshStyle()
 
     setStyleSheet(QStringLiteral(
         "background-color: %1;"
-    ).arg(tm.color("aiAssistant.bubbleAssistant").name()));
+    ).arg(tm.color("sideBar.background").name()));
 
     m_separator->setStyleSheet(QStringLiteral(
         "QFrame { color: %1; margin: 4px 0 0 0; }"

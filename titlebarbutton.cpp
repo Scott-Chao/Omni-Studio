@@ -11,6 +11,9 @@ TitleBarButton::TitleBarButton(Type type, QWidget *parent)
     setCursor(Qt::ArrowCursor);
     setStyleSheet(QStringLiteral("QPushButton { border: none; background: transparent; }"));
     setMouseTracking(true);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() { update(); });
 }
 
 void TitleBarButton::setType(Type type)

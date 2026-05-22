@@ -184,7 +184,7 @@ void BottomPanel::refreshStyle()
         "QPushButton:hover { color: %2; background: %3; border-radius: 2px; }"
     ).arg(tm.color("editorLineNumber.foreground").name(),
           tm.color("workbench.foreground").name(),
-          tm.color("titleBar.background").name()));
+          tm.color("list.hoverBackground").name()));
 
     m_diagnosticsPage->setStyleSheet(QStringLiteral(
         "background-color: %1;"
@@ -197,6 +197,12 @@ void BottomPanel::refreshStyle()
     m_emptyLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 11px; padding: 8px; }"
     ).arg(tm.color("editorLineNumber.foreground").name()));
+
+    // Refresh diagnostic section headers + border color, then rebuild entry
+    // widgets so existing entries pick up the new theme colors.
+    m_errorSection->refreshStyle();
+    m_warningSection->refreshStyle();
+    rebuildDiagnostics();
 
     updateTabButtonStyles();
 }
@@ -218,7 +224,7 @@ void BottomPanel::updateTabButtonStyles()
         "color: %1; font-size: 11px; padding: 2px 10px; }"
         "QPushButton:hover { background: %2; color: %3; }"
     ).arg(tm.color("editorLineNumber.foreground").name(),
-          tm.color("titleBar.background").name(),
+          tm.color("list.hoverBackground").name(),
           tm.color("workbench.foreground").name());
 
     m_runTabBtn->setStyleSheet(m_currentTab == RunTab ? activeStyle : inactiveStyle);
