@@ -122,15 +122,11 @@ static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int siz
     QPixmap srcPm = src.pixmap(size, size);
     if (srcPm.isNull())
         return src;
-    QImage img = srcPm.toImage();
-    QRgb themeRgb = color.rgb();
-    for (int y = 0; y < img.height(); ++y) {
-        for (int x = 0; x < img.width(); ++x) {
-            int alpha = qAlpha(img.pixel(x, y));
-            if (alpha > 0)
-                img.setPixel(x, y, qRgba(qRed(themeRgb), qGreen(themeRgb), qBlue(themeRgb), alpha));
-        }
-    }
+    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
+    QPainter p(&img);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(img.rect(), color);
+    p.end();
     return QIcon(QPixmap::fromImage(img));
 }
 
@@ -419,6 +415,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolBar = addToolBar("文件工具栏");
     m_toolBar->setMovable(false);
     m_toolBar->setFloatable(false);
+    m_toolBar->setIconSize(QSize(24, 24));
     m_toolBar->installEventFilter(this);
 
     // 左侧：[文件 ▼] 下拉菜单
