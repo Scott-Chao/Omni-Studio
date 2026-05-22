@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QColor>
+#include <QPalette>
 #include <QMap>
 #include <QStringList>
 
@@ -24,6 +25,8 @@ public:
     ThemeType currentThemeType() const;
 
     void loadQss();
+
+    void applyPalette();
 
 signals:
     void themeChanged();

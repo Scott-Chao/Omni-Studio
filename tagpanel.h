@@ -19,11 +19,8 @@ signals:
     void fileClicked(const QString &filePath);
     void tagClicked(const QString &tag);
 
-private slots:
-    void onItemClicked(QListWidgetItem *item);
-
 private:
-    void refreshStyle();
+    void onItemClicked(QListWidgetItem *item);
     QListWidget *m_listWidget;
 
     bool m_showingFiles = false;

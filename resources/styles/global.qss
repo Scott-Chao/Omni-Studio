@@ -103,3 +103,70 @@ QSplitter::handle:horizontal {
 QSplitter::handle:vertical {
     height: 1px;
 }
+
+/* ===== Tab Bar (replaces per-widget TabManager QSS) ===== */
+QTabBar {
+    background: %%tab.inactiveBackground%%;
+    border: none;
+}
+QTabBar::tab {
+    height: 32px;
+    margin-right: 2px;
+    padding: 4px 12px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    background: %%tab.inactiveBackground%%;
+    color: %%tab.inactiveForeground%%;
+    border: none;
+}
+QTabBar::tab:selected {
+    background: %%tab.activeBackground%%;
+    color: %%tab.activeForeground%%;
+}
+QTabBar::tab:hover:!selected {
+    background: %%tab.hoverBackground%%;
+}
+QTabBar::close-button {
+    image: url(:/icons/close);
+    subcontrol-position: right;
+    margin: 2px;
+}
+QTabBar::close-button:hover {
+    background: %%titleBar.buttonCloseHover%%;
+}
+
+/* ===== Tree View (FileExplorer) ===== */
+QTreeView {
+    background: %%sideBar.background%%;
+    color: %%sideBar.foreground%%;
+    border: none;
+    outline: none;
+}
+QTreeView::item {
+    height: 28px;
+    padding: 2px 4px;
+}
+QTreeView::item:hover {
+    background: %%list.hoverBackground%%;
+}
+QTreeView::item:selected {
+    background: %%list.activeBackground%%;
+    color: %%sideBar.foreground%%;
+}
+
+/* ===== Line Edit (background/foreground from QPalette) ===== */
+QLineEdit {
+    border: 1px solid %%input.border%%;
+    border-radius: 3px;
+    padding: 3px 6px;
+}
+
+/* ===== Plain Text / Rich Text (bg/fg from QPalette Base/Text) ===== */
+QPlainTextEdit {
+    selection-background-color: %%editor.selectionBackground%%;
+    border: none;
+}
+QTextEdit {
+    selection-background-color: %%editor.selectionBackground%%;
+    border: none;
+}

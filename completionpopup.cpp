@@ -120,13 +120,9 @@ void CompletionPopup::refreshStyle()
         "QListWidget { background: %1; border: 1px solid %2; }"
         "QListWidget::item { border: none; }"
         "QListWidget::item:selected { background: transparent; }"
-        "QScrollBar:vertical { width: 10px; background: %1; margin: 0; }"
-        "QScrollBar::handle:vertical { background: %3; border-radius: 5px; min-height: 30px; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
         )
         .arg(tm.color("sideBar.background").name(),
-             tm.color("panel.border").name(),
-             tm.color("scrollbarSlider.hoverBackground").name()));
+             tm.color("panel.border").name()));
     m_hintLabel->setStyleSheet(QStringLiteral(
         "QLabel { background: %1; color: %2; font-size: 11px; padding: 2px 8px; }")
         .arg(tm.color("editor.background").name(),

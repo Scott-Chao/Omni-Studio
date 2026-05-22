@@ -32,24 +32,7 @@ void ChatArea::refreshStyle()
 
     setStyleSheet(QStringLiteral(
         "QScrollArea { background-color: %1; border: none; }"
-        "QScrollBar:vertical {"
-        "  background-color: %1;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: %2;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-    ).arg(tm.color("editor.background").name(),
-          tm.color("scrollbarSlider.background").name()));
+    ).arg(tm.color("editor.background").name()));
 
     m_container->setStyleSheet(QStringLiteral(
         "background-color: %1;"

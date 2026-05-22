@@ -349,16 +349,6 @@ void FileExplorerWidget::refreshStyle()
     ).arg(tm.color("editorLineNumber.background").name(),
           tm.color("sideBar.border").name()));
 
-    m_treeView->setStyleSheet(QString(
-        "QTreeView { background: %1; color: %4; border: none; }"
-        "QTreeView::item { height: 28px; color: %4; }"
-        "QTreeView::item:hover { background: %2; }"
-        "QTreeView::item:selected { background: %3; color: %4; }"
-    ).arg(tm.color("sideBar.background").name(),
-          tm.color("list.hoverBackground").name(),
-          tm.color("list.activeBackground").name(),
-          tm.color("sideBar.foreground").name()));
-
     updateBreadcrumb();
 }
 

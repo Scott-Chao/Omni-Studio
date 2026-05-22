@@ -78,25 +78,7 @@ OutputPanel::OutputPanel(QWidget *parent)
     connect(m_stopBtn, &QPushButton::clicked, this, &OutputPanel::stopRequested);
     connect(m_clearBtn, &QPushButton::clicked, this, &OutputPanel::clearOutput);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &OutputPanel::refreshStyle);
-    refreshStyle();
     reloadShortcuts();
-}
-
-void OutputPanel::refreshStyle()
-{
-    auto &tm = ThemeManager::instance();
-    m_outputEdit->setStyleSheet(QString(
-        "QPlainTextEdit {"
-        "  background-color: %1;"
-        "  color: %2;"
-        "  selection-background-color: %3;"
-        "  border: none;"
-        "}")
-        .arg(tm.color("output.background").name())
-        .arg(tm.color("output.foreground").name())
-        .arg(tm.color("output.selectionBackground").name()));
 }
 
 void OutputPanel::reloadShortcuts()

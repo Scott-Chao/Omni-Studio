@@ -41,46 +41,10 @@ void SmdOutputWidget::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
     m_outputEdit->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: %1; color: %2; "
-        "selection-background-color: %3; border: none; "
-        "border-top: 1px solid %4; padding: 2px 8px; }"
-        "QScrollBar:vertical {"
-        "  background-color: %1;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: %5;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: %1;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: %5;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
-    ).arg(tm.color("output.background").name(),
-          tm.color("output.foreground").name(),
-          tm.color("output.selectionBackground").name(),
-          tm.color("panel.border").name(),
-          tm.color("scrollbarSlider.hoverBackground").name()));
+        "QPlainTextEdit { selection-background-color: %1; border: none; "
+        "border-top: 1px solid %2; padding: 2px 8px; }"
+    ).arg(tm.color("output.selectionBackground").name(),
+          tm.color("panel.border").name()));
 }
 
 void SmdOutputWidget::setOutput(const QString &text)

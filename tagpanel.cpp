@@ -18,14 +18,6 @@ TagPanel::TagPanel(QWidget *parent)
     m_listWidget->setSelectionMode(QAbstractItemView::NoSelection);
     connect(m_listWidget, &QListWidget::itemClicked, this, &TagPanel::onItemClicked);
     mainLayout->addWidget(m_listWidget);
-
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &TagPanel::refreshStyle);
-    refreshStyle();
-}
-
-void TagPanel::refreshStyle()
-{
-    // No header widgets to style — uses RightPanelContainer's theme
 }
 
 void TagPanel::showAllTags(const QStringList &tags)

@@ -42,6 +42,7 @@ bool ThemeManager::loadTheme(const QString &name)
                 return false;
 
             m_currentTheme = data;
+            applyPalette();
             loadQss();
             emit themeChanged();
             return true;
@@ -178,4 +179,44 @@ void ThemeManager::loadQss()
     result += qss.mid(lastPos);
 
     qApp->setStyleSheet(result);
+}
+
+void ThemeManager::applyPalette()
+{
+    QPalette pal;
+
+    // Core application colors
+    pal.setColor(QPalette::Window, color(QStringLiteral("workbench.background")));
+    pal.setColor(QPalette::WindowText, color(QStringLiteral("workbench.foreground")));
+
+    // Editor / input area colors
+    pal.setColor(QPalette::Base, color(QStringLiteral("editor.background")));
+    pal.setColor(QPalette::Text, color(QStringLiteral("editor.foreground")));
+
+    // Button colors
+    pal.setColor(QPalette::Button, color(QStringLiteral("button.background")));
+    pal.setColor(QPalette::ButtonText, color(QStringLiteral("button.foreground")));
+
+    // Selection colors
+    pal.setColor(QPalette::Highlight, color(QStringLiteral("list.activeBackground")));
+    pal.setColor(QPalette::HighlightedText, color(QStringLiteral("badge.foreground")));
+
+    // Tooltip colors (fallback to menu if tooltip tokens absent)
+    pal.setColor(QPalette::ToolTipBase, color(QStringLiteral("menu.background")));
+    pal.setColor(QPalette::ToolTipText, color(QStringLiteral("menu.foreground")));
+
+    // Link colors
+    pal.setColor(QPalette::Link, color(QStringLiteral("textLink.foreground")));
+    pal.setColor(QPalette::LinkVisited, color(QStringLiteral("textLink.activeForeground")));
+
+    // Placeholder text
+    pal.setColor(QPalette::PlaceholderText, color(QStringLiteral("editorLineNumber.foreground")));
+
+    // Disabled state
+    QColor dimmed = color(QStringLiteral("tab.inactiveForeground"));
+    pal.setColor(QPalette::Disabled, QPalette::WindowText, dimmed);
+    pal.setColor(QPalette::Disabled, QPalette::Text, dimmed);
+    pal.setColor(QPalette::Disabled, QPalette::ButtonText, dimmed);
+
+    QApplication::setPalette(pal);
 }

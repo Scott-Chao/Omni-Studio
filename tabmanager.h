@@ -3,7 +3,6 @@
 
 #include <QTabWidget>
 #include "editorwidget.h"
-#include "thememanager.h"
 #include <QTabBar>
 #include <QMouseEvent>
 #include <QApplication>
@@ -71,7 +70,6 @@ private slots:
 private:
     void connectEditorSignals(EditorWidget *editor);
     void updateTabTitle(EditorWidget *editor);
-    void refreshStyle();
 };
 
 #endif // TABMANAGER_H
