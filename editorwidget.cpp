@@ -846,6 +846,25 @@ QString EditorWidget::previewThemeJs()
           hex("panel.border"));
 }
 
+void EditorWidget::refreshPreviewTheme()
+{
+    // 更新 web engine 背景色（跟随当前主题）
+    auto &tm = ThemeManager::instance();
+    m_previewView->page()->setBackgroundColor(
+        tm.color("preview.webEngineBackground"));
+    if (m_splitPreviewView) {
+        m_splitPreviewView->page()->setBackgroundColor(
+            tm.color("preview.webEngineBackground"));
+    }
+    // 同步 CSS 变量到预览页面
+    if (m_previewReady && m_previewView->page()) {
+        m_previewView->page()->runJavaScript(previewThemeJs());
+    }
+    if (m_splitPreviewReady && m_splitPreviewView) {
+        m_splitPreviewView->page()->runJavaScript(previewThemeJs());
+    }
+}
+
 QMap<int, QString> EditorWidget::extractCodeBlockContents(const QString &markdown) const
 {
     QMap<int, QString> blocks;

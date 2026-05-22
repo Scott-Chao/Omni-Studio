@@ -1,6 +1,31 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <dwmapi.h>
+#include <QPainter>
+
+namespace {
+
+// 顶层半透明覆盖层，用于设置/帮助面板的背景变暗效果
+// 必须是顶层窗口（Qt::Tool），防止 Qt 裁剪下方 QWebEngineView 的原生 HWND → 黑屏
+class OverlayWidget : public QWidget
+{
+public:
+    explicit OverlayWidget(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_ShowWithoutActivating, true);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), QColor(0, 0, 0, 128));
+    }
+};
+
+} // namespace
 #include "fileexplorerwidget.h"
 #include "editorwidget.h"
 #include "settingsmanager.h"
@@ -638,11 +663,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // ----- 设置面板（悬浮遮罩 + 面板）-----
-    m_settingsOverlay = new QWidget(this);
-    m_settingsOverlay->setObjectName("settingsOverlay");
-    m_settingsOverlay->setStyleSheet(
-        "#settingsOverlay { background-color: rgba(0, 0, 0, 128); }"
-    );
+    // 使用 OverlayWidget（顶层 Tool 窗口）避免 Qt 裁剪 QWebEngineView
+    // 的原生 HWND（子 widget 覆盖原生 child 时 Qt 通过 SetWindowRgn 裁剪，导致 Chromium 黑屏）
+    m_settingsOverlay = new OverlayWidget();
+    m_settingsOverlay->installEventFilter(this);
     m_settingsOverlay->hide();
 
     m_settingsPanel = new SettingsPanel(m_settingsOverlay);
@@ -663,11 +687,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_explorer->setItemHeight(treeItemHeight);
 
     // ----- 帮助面板（悬浮遮罩 + 面板）-----
-    m_helpOverlay = new QWidget(this);
-    m_helpOverlay->setObjectName("helpOverlay");
-    m_helpOverlay->setStyleSheet(
-        "#helpOverlay { background-color: rgba(0, 0, 0, 128); }"
-    );
+    m_helpOverlay = new OverlayWidget();
+    m_helpOverlay->installEventFilter(this);
     m_helpOverlay->hide();
 
     m_helpPanel = new HelpPanel(m_helpOverlay);
@@ -1138,22 +1159,36 @@ void MainWindow::loadSettings()
     }
 }
 
+static void positionOverlay(QWidget *overlay, QWidget *panel, const QMainWindow *mainWindow)
+{
+    QPoint topLeft = mainWindow->mapToGlobal(QPoint(0, 0));
+    overlay->setGeometry(topLeft.x(), topLeft.y(), mainWindow->width(), mainWindow->height());
+    int panelW = panel->width();
+    int panelH = panel->height();
+    int x = (mainWindow->width() - panelW) / 2;
+    int y = (mainWindow->height() - panelH) / 2;
+    panel->move(qMax(0, x), qMax(0, y));
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
+    if (m_settingsOverlay && m_settingsOverlay->isVisible())
+        positionOverlay(m_settingsOverlay, m_settingsPanel, this);
+    if (m_helpOverlay && m_helpOverlay->isVisible())
+        positionOverlay(m_helpOverlay, m_helpPanel, this);
+}
+
+void MainWindow::moveEvent(QMoveEvent *event)
+{
+    QMainWindow::moveEvent(event);
     if (m_settingsOverlay && m_settingsOverlay->isVisible()) {
-        m_settingsOverlay->setGeometry(this->rect());
-        QPoint panelPos = m_settingsPanel->pos();
-        panelPos.setX(qBound(0, panelPos.x(), m_settingsOverlay->width() - m_settingsPanel->width()));
-        panelPos.setY(qBound(0, panelPos.y(), m_settingsOverlay->height() - m_settingsPanel->height()));
-        m_settingsPanel->move(panelPos);
+        QPoint topLeft = mapToGlobal(QPoint(0, 0));
+        m_settingsOverlay->move(topLeft);
     }
     if (m_helpOverlay && m_helpOverlay->isVisible()) {
-        m_helpOverlay->setGeometry(this->rect());
-        QPoint panelPos = m_helpPanel->pos();
-        panelPos.setX(qBound(0, panelPos.x(), m_helpOverlay->width() - m_helpPanel->width()));
-        panelPos.setY(qBound(0, panelPos.y(), m_helpOverlay->height() - m_helpPanel->height()));
-        m_helpPanel->move(panelPos);
+        QPoint topLeft = mapToGlobal(QPoint(0, 0));
+        m_helpOverlay->move(topLeft);
     }
 }
 
@@ -1164,20 +1199,12 @@ void MainWindow::toggleSettings()
 
     if (m_settingsOverlay->isVisible()) {
         m_settingsOverlay->hide();
+        if (auto *editor = m_tabManager->currentEditor())
+            editor->refreshPreviewTheme();
     } else {
-        m_settingsOverlay->setGeometry(this->rect());
-        m_settingsOverlay->raise();
-
         m_settingsPanel->setDefaultZoom(m_settings->editorDefaultZoom());
         m_settingsPanel->syncFromSettings(*m_settings);
-
-        int panelW = m_settingsPanel->width();
-        int panelH = m_settingsPanel->height();
-        int x = (m_settingsOverlay->width() - panelW) / 2;
-        int y = (m_settingsOverlay->height() - panelH) / 2;
-        m_settingsPanel->move(qMax(0, x), qMax(0, y));
-        m_settingsPanel->raise();
-
+        positionOverlay(m_settingsOverlay, m_settingsPanel, this);
         m_settingsOverlay->show();
     }
 }
@@ -1190,16 +1217,7 @@ void MainWindow::toggleHelp()
     if (m_helpOverlay->isVisible()) {
         m_helpOverlay->hide();
     } else {
-        m_helpOverlay->setGeometry(this->rect());
-        m_helpOverlay->raise();
-
-        int panelW = m_helpPanel->width();
-        int panelH = m_helpPanel->height();
-        int x = (m_helpOverlay->width() - panelW) / 2;
-        int y = (m_helpOverlay->height() - panelH) / 2;
-        m_helpPanel->move(qMax(0, x), qMax(0, y));
-        m_helpPanel->raise();
-
+        positionOverlay(m_helpOverlay, m_helpPanel, this);
         m_helpOverlay->show();
     }
 }
@@ -2309,6 +2327,13 @@ void MainWindow::changeEvent(QEvent *event)
                 m_maximizeBtn->setToolTip(tr("最大化"));
             }
         }
+        // 最小化时隐藏顶层 overlay，恢复时重新显示
+        if (isMinimized()) {
+            if (m_settingsOverlay && m_settingsOverlay->isVisible())
+                m_settingsOverlay->hide();
+            if (m_helpOverlay && m_helpOverlay->isVisible())
+                m_helpOverlay->hide();
+        }
     }
     QMainWindow::changeEvent(event);
 }
@@ -2362,32 +2387,21 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 m_dockRightPanel->hide();
         }
 
-        // Close settings panel when clicking overlay background
-        if (m_settingsOverlay && m_settingsOverlay->isVisible()) {
-            if (btn && btn->defaultAction() == m_settingsAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (m_settingsPanel->isAncestorOf(clickedWidget))
-                return QMainWindow::eventFilter(watched, event);
-            // 点击活动栏（设置按钮所在处）时不关闭
-            if (m_activityBar && m_activityBar->isAncestorOf(clickedWidget))
-                return QMainWindow::eventFilter(watched, event);
-            if (m_settingsOverlay->isAncestorOf(clickedWidget) &&
-                !m_settingsPanel->isAncestorOf(clickedWidget)) {
+        // Close settings/help overlays when clicking overlay background
+        // (Overlays are now top-level Tool windows; clicks on the dimmed area
+        //  outside the panel widget close the overlay.)
+        if (watched == m_settingsOverlay && m_settingsOverlay->isVisible()) {
+            auto *me = static_cast<QMouseEvent*>(event);
+            if (!m_settingsPanel->geometry().contains(me->pos())) {
                 toggleSettings();
+                return true;
             }
         }
-
-        // Close help panel when clicking overlay background
-        if (m_helpOverlay && m_helpOverlay->isVisible()) {
-            if (btn && btn->defaultAction() == m_helpAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (m_helpPanel->isAncestorOf(clickedWidget))
-                return QMainWindow::eventFilter(watched, event);
-            if (m_activityBar && m_activityBar->isAncestorOf(clickedWidget))
-                return QMainWindow::eventFilter(watched, event);
-            if (m_helpOverlay->isAncestorOf(clickedWidget) &&
-                !m_helpPanel->isAncestorOf(clickedWidget)) {
+        if (watched == m_helpOverlay && m_helpOverlay->isVisible()) {
+            auto *me = static_cast<QMouseEvent*>(event);
+            if (!m_helpPanel->geometry().contains(me->pos())) {
                 toggleHelp();
+                return true;
             }
         }
     }

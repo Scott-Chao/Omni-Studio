@@ -86,6 +86,7 @@ CMakeLists.txt.user*
 /debug/
 
 # Build helper scripts (user-specific paths)
+build.bat
 build_msvc.bat
 deploy_msvc.bat
 

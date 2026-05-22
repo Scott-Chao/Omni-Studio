@@ -52,6 +52,7 @@ public:
     void setPreviewMode(bool preview);
     bool isPreviewMode() const { return m_editorMode != SmdEdit && m_editorMode == MarkdownEdit && m_previewMode; }
     void refreshPreview(); // 手动刷新预览（如内容改变后调用）
+    void refreshPreviewTheme(); // 刷新预览页面的主题颜色（设置面板关闭时调用）
     void updatePreviewContent(std::function<void()> onFinished); // 异步更新预览，完成后回调
 
     // 分屏预览模式

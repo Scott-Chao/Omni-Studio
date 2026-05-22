@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.7）
+## 功能说明文档（v0.11.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,8 +58,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.7
-- 帮助面板顶部栏变为不透明、圆角，且颜色随主题调整
+### 修复 v0.11.8
+- 修复打开设置面板/帮助面板时，Markdown 预览/分屏预览区域内容消失变为纯黑色的问题。根因：非原生子 widget 覆盖层（`m_settingsOverlay` / `m_helpOverlay`）遮挡原生 QWebEngineView 时，Qt 通过 `SetWindowRgn` 裁剪 QWebEngineView 的 HWND 区域为空，导致 Chromium 检测到窗口隐藏并暂停 GPU 合成器。修复方案：将两个覆盖层改为独立顶层 `Qt::Tool` 窗口（`OverlayWidget` 类），由 Windows DWM 合成半透明背景（`WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)`），不再参与 MainWindow 的 widget 层级，从而避免 Qt 裁剪原生子窗口。关闭设置面板后自动通过 `refreshPreviewTheme()` 同步预览主题颜色。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -97,7 +97,7 @@
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时自动管理诊断 provider 连接：切换到代码文件时清空旧诊断、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
-- 管理帮助面板（`HelpPanel` + `m_helpOverlay`）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层覆盖整个主窗口，面板居中显示，通过全局事件过滤器实现点击遮罩层外部区域关闭面板。`resizeEvent()` 中同步遮罩层尺寸和面板位置。
+- 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
@@ -240,6 +240,7 @@
 - `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
 - `void clearExtraSelections()`：清除搜索高亮。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
+- `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM。设置面板关闭时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
 - `void updatePreviewContent(std::function<void()> onFinished)`：调用 `preparePreviewContent()` 获取预处理内容 → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
 - `QString preparePreviewContent(const QString &rawMarkdown)`：统一预处理管线——`preHighlightCodeBlocks()` → `processWikiLinks()` → `TagIndex::processTagsForPreview()` → `</script>` 转义。被 `setPreviewMode()` 和 `updatePreviewContent()` 共同使用。
 - `QString preHighlightCodeBlocks(const QString &markdown)`：使用正则匹配所有 fenced 代码块，对可识别语言（C/C++、Python）调用 `highlightCodeBlock()` 生成内联样式 HTML，经 Base64 编码后替换为 `highlighted` 自定义围栏块。
@@ -969,7 +970,7 @@
 
 **职责**：
 - 悬浮式设置面板 `QWidget`，以半透明遮罩层 + 居中面板的方式覆盖在主窗口上方。
-- 遮罩层（`m_settingsOverlay`）由 `MainWindow` 创建并管理，半透明黑色背景（`rgba(0, 0, 0, 128)`），覆盖整个主窗口客户区。
+- 遮罩层（`m_settingsOverlay`，`OverlayWidget` 类）由 `MainWindow` 创建并管理，是独立的顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)` 半透明黑色背景），由 Windows DWM 逐像素 alpha 合成，覆盖整个主窗口。顶层窗口方案避免了非原生子 widget 覆盖原生 QWebEngineView 时 Qt 裁剪 HWND 导致的黑屏问题。
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
@@ -994,9 +995,10 @@
 - `void resetToDefaultsRequested()`：点击"恢复默认设置"并确认后发出，由 `MainWindow::onResetToDefaults()` 响应。
 
 **协作关系**：
-- 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为遮罩层 `m_settingsOverlay`。
-- 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。
-- `MainWindow::resizeEvent()` 中处理遮罩层尺寸同步和面板位置约束。
+- 由 `MainWindow` 创建并持有（`m_settingsPanel`），父控件为顶层遮罩层 `m_settingsOverlay`（`OverlayWidget`）。
+- 工具栏"设置"按钮和 `Ctrl+,` 快捷键统一调用 `MainWindow::toggleSettings()` 切换显示/隐藏。显示时通过 `positionOverlay()` 定位 overlay 覆盖 MainWindow 并居中面板，隐藏时调用 `refreshPreviewTheme()` 刷新预览主题。
+- `MainWindow::resizeEvent()` 和 `moveEvent()` 中跟踪 overlay 位置同步（`mapToGlobal` 定位），`changeEvent` 中最小化时自动隐藏 overlay。
+- 点击 overlay 背景区域（设置面板外部）通过 `eventFilter` 监听 `MouseButtonPress` 自动关闭面板。
 - `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
 
 ---
@@ -1555,5 +1557,5 @@
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
 - **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
-- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层覆盖整个主窗口，半透明黑色背景（`rgba(0, 0, 0, 128)`）实现背景变暗效果。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。八方向边缘缩放已禁用（`kEdgeMargin = 0`）。
-- **帮助面板**：通过工具栏帮助按钮或快捷键 `F1` 打开/关闭。与设置面板相同的悬浮式 overlay 模式，半透明遮罩层覆盖全窗口。左侧 14 个分类的 `QListWidget` 导航列表，右侧 `QTextBrowser` 加载 HTML 资源文档。滚动时左侧分类自动同步高亮，点击分类名跳转到对应章节。仅支持标题栏拖拽移动，不可缩放。
+- **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层为独立顶层 `Qt::Tool` 窗口（`OverlayWidget`），通过 `WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)` 实现半透明背景变暗效果，由 Windows DWM 逐像素 alpha 合成。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 6 个分类（编辑器/外观/输出面板/预览/搜索/快捷键）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。八方向边缘缩放已禁用（`kEdgeMargin = 0`）。关闭后通过 `refreshPreviewTheme()` 刷新预览主题。
+- **帮助面板**：通过工具栏帮助按钮或快捷键 `F1` 打开/关闭。与设置面板相同，使用 `OverlayWidget` 顶层遮罩层 + 居中面板模式。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置，点击 overlay 背景自动关闭，仅支持标题栏拖拽移动，不可缩放。

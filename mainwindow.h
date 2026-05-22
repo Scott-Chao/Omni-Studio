@@ -95,6 +95,7 @@ private slots:
 protected:
     void closeEvent(QCloseEvent *event) override; // 当用户关闭窗口时自动保存
     void resizeEvent(QResizeEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
     void changeEvent(QEvent *event) override;
     bool event(QEvent *event) override;
     bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
