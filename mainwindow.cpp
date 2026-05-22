@@ -77,6 +77,7 @@
 #include <QMenu>
 #include <utility>
 #include <QDockWidget>
+#include <QStackedWidget>
 #include <QDirIterator>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -141,6 +142,10 @@ MainWindow::MainWindow(QWidget *parent)
     , m_zoomLabel(nullptr)
 {
     ui->setupUi(this);
+
+    // 左侧面板栈（VS Code 风格覆盖：搜索/评测替换文件浏览器）
+    m_leftStack = new QStackedWidget(this);
+    m_leftStack->addWidget(m_explorer); // index 0: 文件浏览器
 
     // Restore saved theme
     QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
@@ -247,26 +252,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_searchPanel, &SearchPanel::resultClicked,
             this, &MainWindow::onSearchResultClicked);
 
-    m_dockSearch = new QDockWidget(tr("搜索"), this);
-    m_dockSearch->setWidget(m_searchPanel);
-    m_dockSearch->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::LeftDockWidgetArea, m_dockSearch);
-    m_dockSearch->hide();
-
-    toggleSearchAction = m_dockSearch->toggleViewAction();
-    toggleSearchAction->setToolTip(tr("显示/隐藏搜索"));
+    toggleSearchAction = new QAction(tr("显示/隐藏搜索"), this);
     toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
-    addAction(toggleSearchAction);
-
-    connect(m_dockSearch, &QDockWidget::visibilityChanged,
-            this, [this](bool visible) {
-        if (visible) {
+    connect(toggleSearchAction, &QAction::triggered, this, [this]() {
+        if (m_leftStack->currentIndex() == 1)
+            showLeftPanel(0);
+        else
+            showLeftPanel(1);
+        if (m_leftStack->currentIndex() == 1)
             m_searchPanel->focusSearchInput();
-            // 隐藏所有右侧面板
-            m_dockRightPanel->hide();
-            m_dockJudge->hide();
-        }
     });
+    addAction(toggleSearchAction);
 
     // ----- 底部统一面板（输出 + 诊断）-----
     m_bottomPanel = new BottomPanel(this);
@@ -328,21 +324,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 本地评测面板 -----
     m_judgePanel = new JudgePanel(this);
-    m_dockJudge = new QDockWidget(tr("代码评测"), this);
-    m_dockJudge->setWidget(m_judgePanel);
-    m_dockJudge->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::LeftDockWidgetArea, m_dockJudge);
-    tabifyDockWidget(m_dockSearch, m_dockJudge);
-    m_dockSearch->raise();
-    m_dockJudge->hide();
 
-    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
-    });
-
-    m_toggleJudgeAction = m_dockJudge->toggleViewAction();
-    m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
+    m_toggleJudgeAction = new QAction(tr("显示/隐藏代码评测"), this);
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
+    connect(m_toggleJudgeAction, &QAction::triggered, this, [this]() {
+        if (m_leftStack->currentIndex() == 2)
+            showLeftPanel(0);
+        else
+            showLeftPanel(2);
+    });
     addAction(m_toggleJudgeAction);
 
     connect(m_judgePanel, &JudgePanel::runAllRequested,
@@ -351,6 +341,58 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onOpenJudgeRequested);
     connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
             this, &MainWindow::onSubmitToOpenJudge);
+
+    // 搜索包装页（标题栏 + 关闭按钮）
+    {
+        QWidget *page = new QWidget;
+        QVBoxLayout *layout = new QVBoxLayout(page);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        QWidget *header = new QWidget;
+        header->setObjectName("leftPanelHeader");
+        QHBoxLayout *hdrLayout = new QHBoxLayout(header);
+        hdrLayout->setContentsMargins(8, 4, 4, 4);
+        QLabel *title = new QLabel(tr("搜索"));
+        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        closeBtn->setFixedSize(22, 22);
+        closeBtn->setFlat(true);
+        closeBtn->setCursor(Qt::PointingHandCursor);
+        connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
+        hdrLayout->addWidget(title);
+        hdrLayout->addStretch();
+        hdrLayout->addWidget(closeBtn);
+        layout->addWidget(header);
+        layout->addWidget(m_searchPanel);
+
+        m_leftStack->addWidget(page); // index 1: 搜索
+    }
+
+    // 评测包装页
+    {
+        QWidget *page = new QWidget;
+        QVBoxLayout *layout = new QVBoxLayout(page);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        QWidget *header = new QWidget;
+        header->setObjectName("leftPanelHeader");
+        QHBoxLayout *hdrLayout = new QHBoxLayout(header);
+        hdrLayout->setContentsMargins(8, 4, 4, 4);
+        QLabel *title = new QLabel(tr("代码评测"));
+        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        closeBtn->setFixedSize(22, 22);
+        closeBtn->setFlat(true);
+        closeBtn->setCursor(Qt::PointingHandCursor);
+        connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
+        hdrLayout->addWidget(title);
+        hdrLayout->addStretch();
+        hdrLayout->addWidget(closeBtn);
+        layout->addWidget(header);
+        layout->addWidget(m_judgePanel);
+
+        m_leftStack->addWidget(page); // index 2: 评测
+    }
 
     // 标签索引已随 m_backlinkIndex 在上方创建
     // 标签/大纲面板已集成到 m_rightPanel 中
@@ -685,7 +727,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
     m_splitter->addWidget(m_activityBar);
-    m_splitter->addWidget(m_explorer);
+    m_splitter->addWidget(m_leftStack);
     m_splitter->addWidget(m_rightSplitter);
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 0);
@@ -752,23 +794,20 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ActivityBar 信号连接
     connect(m_activityBar, &ActivityBar::searchClicked, this, [this]() {
-        if (m_dockSearch->isVisible()) {
-            m_dockSearch->hide();
-        } else {
-            m_dockSearch->show();
-            m_dockSearch->raise();
+        if (m_leftStack->currentIndex() == 1)
+            showLeftPanel(0);
+        else
+            showLeftPanel(1);
+        if (m_leftStack->currentIndex() == 1)
             m_searchPanel->focusSearchInput();
-        }
     });
     connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
     connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
     connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
-        if (m_dockJudge->isVisible()) {
-            m_dockJudge->hide();
-        } else {
-            m_dockJudge->show();
-            m_dockJudge->raise();
-        }
+        if (m_leftStack->currentIndex() == 2)
+            showLeftPanel(0);
+        else
+            showLeftPanel(2);
     });
     connect(m_activityBar, &ActivityBar::aiClicked, this, [this]() {
         if (m_dockAi->isVisible()) {
@@ -782,12 +821,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 同步 ActivityBar 激活状态与面板可见性
-    connect(m_dockSearch, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        m_activityBar->setSearchActive(visible);
-    });
-    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        m_activityBar->setJudgeActive(visible);
-    });
     connect(m_dockAi, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         m_activityBar->setAiActive(visible);
         m_toggleAiAction->setChecked(visible);
@@ -1252,6 +1285,16 @@ void MainWindow::showRightPanel(int panelIndex)
     m_dockRightPanel->show();
     m_dockRightPanel->raise();
     m_rightPanel->setActivePanel(panelIndex);
+}
+
+void MainWindow::showLeftPanel(int index)
+{
+    m_leftStack->setCurrentIndex(index);
+    m_activityBar->setSearchActive(index == 1);
+    m_activityBar->setJudgeActive(index == 2);
+    // 打开左侧面板时隐藏右侧面板
+    if (index > 0)
+        m_dockRightPanel->hide();
 }
 
 void MainWindow::updateAiActionBar()
@@ -2463,10 +2506,7 @@ void MainWindow::onJudgeRunAll()
         return;
     }
 
-    // Show and raise the judge dock
-    m_dockJudge->show();
-    m_dockJudge->raise();
-
+    showLeftPanel(2);
     m_judgePanel->runJudge(filePath);
 }
 
@@ -2505,8 +2545,7 @@ void MainWindow::onOpenJudgeRequested()
 void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
 {
     m_judgePanel->setTestFolder(folderPath);
-    m_dockJudge->show();
-    m_dockJudge->raise();
+    showLeftPanel(2);
 }
 
 void MainWindow::onSubmitToOpenJudge()
@@ -2572,8 +2611,7 @@ void MainWindow::onSubmitToOpenJudge()
     m_openJudgeWindow->submitCurrentProblem(code, langId);
 
     // 5. Show a brief status message in the judge panel
-    m_dockJudge->show();
-    m_dockJudge->raise();
+    showLeftPanel(2);
 }
 
 void MainWindow::onSubmissionResultReady(const SubmissionResult &result)

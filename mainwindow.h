@@ -34,6 +34,7 @@ class OpenJudgeWindow;
 class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
+class QStackedWidget;
 class SettingsPanel;
 class HelpPanel;
 class AiPanel;
@@ -133,7 +134,6 @@ private:
     BacklinkIndex *m_backlinkIndex;
     // 搜索面板
     SearchPanel *m_searchPanel;
-    QDockWidget *m_dockSearch;
     QAction *toggleSearchAction;
 
     // 编译运行
@@ -153,8 +153,11 @@ private:
 
     // 本地评测
     JudgePanel *m_judgePanel;
-    QDockWidget *m_dockJudge;
     QAction *m_toggleJudgeAction;
+
+    // 左侧面板栈（文件夹/搜索/评测 VS Code 风格覆盖）
+    QStackedWidget *m_leftStack;
+    void showLeftPanel(int index);
 
     // OpenJudge 窗口（单例）
     QPointer<OpenJudgeWindow> m_openJudgeWindow;
