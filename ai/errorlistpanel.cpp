@@ -568,7 +568,7 @@ void ErrorListPanel::refreshStyle()
     auto &tm = ThemeManager::instance();
 
     setStyleSheet(QStringLiteral(
-        "background-color: %1;"
+        "ErrorListPanel { background-color: %1; }"
         "#errorFilterBar { background-color: %2; }"
         "#errorBottomBar { background-color: %2; }"
     ).arg(tm.color("editor.background").name(),

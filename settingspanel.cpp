@@ -65,7 +65,7 @@ static QString inputStyle() {
         "QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; border-left: 1px solid %3; border-bottom-right-radius: 3px; }"
         "QSpinBox::up-arrow { image: url(:/preview/spin-up.svg); width: 10px; height: 7px; }"
         "QSpinBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; }"
-        "}").arg(bg, fg, border, accent);
+    ).arg(bg, fg, border, accent);
 }
 
 
