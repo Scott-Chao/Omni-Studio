@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <dwmapi.h>
 #include "fileexplorerwidget.h"
 #include "editorwidget.h"
 #include "settingsmanager.h"
@@ -159,10 +160,14 @@ MainWindow::MainWindow(QWidget *parent)
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint);
 
     // 强制创建原生窗口句柄，添加 WS_THICKFRAME 以启用边缘缩放和 Aero Snap
+    // 并向 DWM 请求圆角（Windows 11 系统级窗口圆角）
 #ifdef Q_OS_WIN
     HWND hwnd = reinterpret_cast<HWND>(winId());
     SetWindowLongPtr(hwnd, GWL_STYLE,
                      GetWindowLongPtr(hwnd, GWL_STYLE) | WS_THICKFRAME);
+    DWORD corner = DWMWCP_ROUND;
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                           &corner, sizeof(corner));
 #endif
 
     // 创建反向链接索引与标签索引（独立于面板）

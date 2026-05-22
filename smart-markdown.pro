@@ -7,7 +7,7 @@ CONFIG += c++17
 # Enable UTF-8 source file handling for MSVC
 win32-msvc*: QMAKE_CXXFLAGS += /utf-8
 
-win32: LIBS += -luser32
+win32: LIBS += -luser32 -ldwmapi
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
