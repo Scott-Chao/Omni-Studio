@@ -99,11 +99,21 @@ QPushButton *ActivityBar::createButton(const QIcon &icon, const QString &tooltip
     return btn;
 }
 
+namespace {
+QString toStyleColor(const QColor &c)
+{
+    if (c.alpha() < 255)
+        return QStringLiteral("rgba(%1,%2,%3,%4)")
+            .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alphaF(), 0, 'f', 2);
+    return c.name();
+}
+}
+
 QString ActivityBar::buttonStyleSheet(bool active) const
 {
     auto &tm = ThemeManager::instance();
-    QString hoverBg = tm.color("activityBar.hoverBackground").name();
-    QString borderColor = tm.color("activityBar.activeBorder").name();
+    QString hoverBg = toStyleColor(tm.color("activityBar.hoverBackground"));
+    QString borderColor = toStyleColor(tm.color("activityBar.activeBorder"));
 
     if (active) {
         return QStringLiteral(
