@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.6）
+## 功能说明文档（v0.11.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,8 +58,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.6
-- 修复深色模式下多处鼠标悬停高亮显示为白色的统一问题：根因是 `QColor::name()` 会丢弃 alpha 通道，导致 `#FFFFFF0D`（5% 不透明白色）→ `#FFFFFF`（纯白）。将 `dark-vscode.json` 中 `list.hoverBackground` / `activityBar.hoverBackground` 从 `#FFFFFF0D` 改为 `#2A2D2E`，`aiAssistant.actionButtonHoverBackground` / `titleBar.buttonHover` 从 `#FFFFFF18` 改为 `#3C3C3C`；`light-vscode.json` 中对应 token 同步改为 `#E8E8E8` / `#E0E0E0` 等纯色灰。影响范围：设置面板左侧栏、帮助面板左侧栏、右侧面板列表（历史/大纲/标签/反链）、搜索结果列表、底部面板标签/按钮、ActionBar 按钮、错误列表面板、活动栏按钮和标题栏按钮的悬停高亮（`resources/themes/dark-vscode.json` + `resources/themes/light-vscode.json`）
+### 修复 v0.11.7
+- 帮助面板顶部栏变为不透明、圆角，且颜色随主题调整
 
 ### 1. `MainWindow` - 主窗口控制器
 

@@ -136,6 +136,16 @@ void HelpPanel::refreshStyle()
         .arg(tm.color("menu.background").name(),
              tm.color("panel.border").name()));
 
+    if (auto *titleBar = findChild<QWidget*>("helpTitleBar")) {
+        titleBar->setStyleSheet(QStringLiteral(
+            "#helpTitleBar {"
+            "  background-color: %1;"
+            "  border-top-left-radius: 8px;"
+            "  border-top-right-radius: 8px;"
+            "}")
+            .arg(tm.color("activityBar.background").name()));
+    }
+
     m_titleLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px; font-weight: bold;")
                                 .arg(tm.color("titleBar.foreground").name()));
 
