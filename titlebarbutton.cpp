@@ -6,7 +6,7 @@
 TitleBarButton::TitleBarButton(Type type, QWidget *parent)
     : QPushButton(parent), m_type(type)
 {
-    setFixedSize(46, 32);
+    setFixedSize(42, 28);
     setFlat(true);
     setCursor(Qt::ArrowCursor);
     setStyleSheet(QStringLiteral("QPushButton { border: none; background: transparent; }"));
@@ -64,38 +64,42 @@ void TitleBarButton::paintIcon(QPainter &p, const QRect &r, const QColor &fg)
 
 void TitleBarButton::paintMinimize(QPainter &p, const QRect &r, const QColor &fg)
 {
-    QPen pen(fg, 1.5);
+    QPen pen(fg, 1.0);
     p.setPen(pen);
-    qreal y = r.center().y() + 0.5;
-    p.drawLine(QPointF(r.left() + 13, y), QPointF(r.right() - 13, y));
+    qreal cx = r.center().x();
+    qreal cy = r.center().y();
+    p.drawLine(QPointF(cx - 5.5, cy + 0.5), QPointF(cx + 5.5, cy + 0.5));
 }
 
 void TitleBarButton::paintMaximize(QPainter &p, const QRect &r, const QColor &fg)
 {
-    QPen pen(fg, 1.5);
+    QPen pen(fg, 1.0);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(QRectF(r.left() + 13, r.top() + 8, 20, 16), 2, 2);
+    qreal cx = r.center().x();
+    qreal cy = r.center().y();
+    p.drawRect(QRectF(cx - 5.5, cy - 5.0, 11, 10));
 }
 
 void TitleBarButton::paintRestore(QPainter &p, const QRect &r, const QColor &fg)
 {
-    QPen pen(fg, 1.5);
+    QPen pen(fg, 1.0);
     p.setPen(pen);
     p.setBrush(Qt::NoBrush);
-
+    qreal cx = r.center().x();
+    qreal cy = r.center().y();
     // Back square (upper-left)
-    p.drawRoundedRect(QRectF(r.left() + 11, r.top() + 6, 14, 11), 1.5, 1.5);
+    p.drawRect(QRectF(cx - 5.0, cy - 5.0, 8, 7));
     // Front square (lower-right)
-    p.drawRoundedRect(QRectF(r.left() + 16, r.top() + 11, 14, 11), 1.5, 1.5);
+    p.drawRect(QRectF(cx - 2.0, cy - 2.0, 8, 7));
 }
 
 void TitleBarButton::paintClose(QPainter &p, const QRect &r, const QColor &fg)
 {
-    QPen pen(fg, 1.8);
+    QPen pen(fg, 1.2);
     p.setPen(pen);
     qreal cx = r.center().x();
     qreal cy = r.center().y();
-    p.drawLine(QPointF(cx - 6, cy - 6), QPointF(cx + 6, cy + 6));
-    p.drawLine(QPointF(cx + 6, cy - 6), QPointF(cx - 6, cy + 6));
+    p.drawLine(QPointF(cx - 4.5, cy - 4.5), QPointF(cx + 4.5, cy + 4.5));
+    p.drawLine(QPointF(cx + 4.5, cy - 4.5), QPointF(cx - 4.5, cy + 4.5));
 }

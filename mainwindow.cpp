@@ -417,13 +417,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolBar->setFloatable(false);
     m_toolBar->setIconSize(QSize(24, 24));
     m_toolBar->installEventFilter(this);
+    m_toolBar->setIconSize(QSize(18, 18));
 
     // 左侧：[文件 ▼] 下拉菜单
     m_fileMenuBtn = new QToolButton(m_toolBar);
-    m_fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
-    m_fileMenuBtn->setIconSize(QSize(10, 10));
     m_fileMenuBtn->setText(tr("文件"));
-    m_fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     m_fileMenuBtn->setToolTip(tr("文件操作"));
     m_fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     m_fileMenuBtn->setFixedHeight(32);
@@ -2141,7 +2139,14 @@ void MainWindow::refreshTitleBarStyle()
     // Toolbar background and text color
     m_toolBar->setStyleSheet(QStringLiteral(
         "QToolBar { background: %1; border: none; spacing: 0; padding: 0; }"
-    ).arg(tm.color("titleBar.background").name()));
+        "QToolBar QToolButton {"
+        "  background: transparent; border: none; padding: 4px 8px;"
+        "}"
+        "QToolBar QToolButton:hover {"
+        "  background: %2;"
+        "}"
+    ).arg(tm.color("titleBar.background").name(),
+          tm.color("titleBar.buttonHover").name()));
 
     // File menu button
     m_fileMenuBtn->setStyleSheet(QStringLiteral(
@@ -2150,7 +2155,9 @@ void MainWindow::refreshTitleBarStyle()
         "  font-size: 12px;"
         "}"
         "QToolButton:hover { background: %2; }"
-        "QToolButton::menu-indicator { image: none; }"
+        "QToolButton::menu-indicator {"
+        "  subcontrol-position: right center;"
+        "}"
     ).arg(tm.color("titleBar.foreground").name(),
           tm.color("titleBar.buttonHover").name()));
 
@@ -2204,19 +2211,16 @@ void MainWindow::setupCustomTitleBar()
     m_toolbarSpacer->installEventFilter(this);
 
     m_minimizeBtn = new TitleBarButton(TitleBarButton::Minimize, this);
-    m_minimizeBtn->setToolTip(tr("最小化"));
     connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
     tb->addWidget(m_minimizeBtn);
 
     m_maximizeBtn = new TitleBarButton(TitleBarButton::Maximize, this);
-    m_maximizeBtn->setToolTip(tr("最大化"));
     connect(m_maximizeBtn, &QPushButton::clicked, this, [this]() {
         if (isMaximized()) showNormal(); else showMaximized();
     });
     tb->addWidget(m_maximizeBtn);
 
     m_closeBtn = new TitleBarButton(TitleBarButton::Close, this);
-    m_closeBtn->setToolTip(tr("关闭"));
     connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
     tb->addWidget(m_closeBtn);
 }

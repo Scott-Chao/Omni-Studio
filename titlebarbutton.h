@@ -14,7 +14,7 @@ public:
     void setType(Type type);
     Type buttonType() const { return m_type; }
 
-    QSize sizeHint() const override { return QSize(46, 32); }
+    QSize sizeHint() const override { return QSize(42, 28); }
 
 protected:
     void enterEvent(QEnterEvent *event) override;

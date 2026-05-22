@@ -487,6 +487,22 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         QString safeContent = content();
         safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
         tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+        {
+            auto &tm = ThemeManager::instance();
+            auto hex = [&](const QString &t) {
+                QColor c = tm.color(t);
+                return c.isValid() ? c.name() : QStringLiteral("#000000");
+            };
+            tmpl.replace(QStringLiteral("{{PREVIEW_BG}}"),        hex("preview.containerBackground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_FG}}"),        hex("editor.foreground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_CODE_BG}}"),   hex("preview.codeBackground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_BORDER}}"),    hex("panel.border"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_LINK}}"),      hex("textLink.foreground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_HEADING}}"),   hex("editor.foreground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),hex("tab.inactiveForeground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     hex("list.hoverBackground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        hex("panel.border"));
+        }
         tmpl.replace(QStringLiteral("padding: 24px 32px;"),
                      QStringLiteral("padding: 8px 12px;"));
         tmpl.replace(QStringLiteral("max-width: 960px;"),
@@ -1124,6 +1140,29 @@ void SmdCell::refreshStyle()
 
     updateTypeLabel();
     updateBorderStyle();
+
+    // Update preview HTML CSS variables if render view is loaded
+    if (m_renderView && m_renderView->page()) {
+        auto hex = [&](const QString &token) -> QString {
+            QColor c = tm.color(token);
+            return c.isValid() ? c.name() : QStringLiteral("#000000");
+        };
+        QString js = QStringLiteral(
+            "window.updateTheme({"
+            "  bg: '%1', fg: '%2', codeBg: '%3', border: '%4',"
+            "  link: '%5', heading: '%6', blockquote: '%7', thBg: '%8', hr: '%9'"
+            "});"
+        ).arg(hex("preview.containerBackground"),
+              hex("editor.foreground"),
+              hex("preview.codeBackground"),
+              hex("panel.border"),
+              hex("textLink.foreground"),
+              hex("editor.foreground"),
+              hex("tab.inactiveForeground"),
+              hex("list.hoverBackground"),
+              hex("panel.border"));
+        m_renderView->page()->runJavaScript(js);
+    }
 }
 
 SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)

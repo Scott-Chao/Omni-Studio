@@ -60,6 +60,7 @@
     "search.highlightForeground": "#000000",
     "preview.containerBackground": "#F5F5F5",
     "preview.webEngineBackground": "#FFFFFF",
+    "preview.codeBackground": "#e8e8e8",
     "cell.foreground": "#202020",
     "cell.badge.markdown": "#0069CC",
     "cell.badge.cpp": "#388A34",

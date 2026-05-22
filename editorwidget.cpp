@@ -286,6 +286,7 @@ void EditorWidget::setPreviewMode(bool preview)
 
             QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
             tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+            applyPreviewTheme(tmpl);
 
             // 关键修复：QStackedWidget 不会更新隐藏页面的子控件尺寸，
             // 导致 QWebEngineView 停留在默认小尺寸 (100x30)，
@@ -804,6 +805,47 @@ QString EditorWidget::preparePreviewContent(const QString &rawMarkdown)
     return content;
 }
 
+void EditorWidget::applyPreviewTheme(QString &tmpl)
+{
+    auto &tm = ThemeManager::instance();
+    auto hex = [&](const QString &token) {
+        QColor c = tm.color(token);
+        return c.isValid() ? c.name() : QStringLiteral("#000000");
+    };
+    tmpl.replace(QStringLiteral("{{PREVIEW_BG}}"),        hex("preview.containerBackground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_FG}}"),        hex("editor.foreground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_BG}}"),   hex("preview.codeBackground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_BORDER}}"),    hex("panel.border"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_LINK}}"),      hex("textLink.foreground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_HEADING}}"),   hex("editor.foreground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),hex("tab.inactiveForeground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     hex("list.hoverBackground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        hex("panel.border"));
+}
+
+QString EditorWidget::previewThemeJs()
+{
+    auto &tm = ThemeManager::instance();
+    auto hex = [&](const QString &token) {
+        QColor c = tm.color(token);
+        return c.isValid() ? c.name() : QStringLiteral("#000000");
+    };
+    return QStringLiteral(
+        "window.updateTheme({"
+        "  bg: '%1', fg: '%2', codeBg: '%3', border: '%4',"
+        "  link: '%5', heading: '%6', blockquote: '%7', thBg: '%8', hr: '%9'"
+        "});"
+    ).arg(hex("preview.containerBackground"),
+          hex("editor.foreground"),
+          hex("preview.codeBackground"),
+          hex("panel.border"),
+          hex("textLink.foreground"),
+          hex("editor.foreground"),
+          hex("tab.inactiveForeground"),
+          hex("list.hoverBackground"),
+          hex("panel.border"));
+}
+
 QMap<int, QString> EditorWidget::extractCodeBlockContents(const QString &markdown) const
 {
     QMap<int, QString> blocks;
@@ -840,15 +882,15 @@ void EditorWidget::exportToPdf(const QString &filePath, const QPageLayout &layou
     tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), processedContent);
 
     // 4. Override CSS variables to light/print-friendly theme (PDF needs white bg, dark text)
-    tmpl.replace(QStringLiteral("--bg: #2d2d2d;"),     QStringLiteral("--bg: #ffffff;"));
-    tmpl.replace(QStringLiteral("--fg: #e0e0e0;"),     QStringLiteral("--fg: #1e1e1e;"));
-    tmpl.replace(QStringLiteral("--code-bg: #1e1e1e;"),QStringLiteral("--code-bg: #f5f5f5;"));
-    tmpl.replace(QStringLiteral("--border: #555;"),     QStringLiteral("--border: #ddd;"));
-    tmpl.replace(QStringLiteral("--link: #569cd6;"),    QStringLiteral("--link: #1a73e8;"));
-    tmpl.replace(QStringLiteral("--heading: #ffffff;"), QStringLiteral("--heading: #000000;"));
-    tmpl.replace(QStringLiteral("--blockquote: #aaa;"), QStringLiteral("--blockquote: #666;"));
-    tmpl.replace(QStringLiteral("--th-bg: #3c3c3c;"),   QStringLiteral("--th-bg: #f0f0f0;"));
-    tmpl.replace(QStringLiteral("--hr: #444;"),          QStringLiteral("--hr: #ccc;"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_BG}}"),        QStringLiteral("#ffffff"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_FG}}"),        QStringLiteral("#1e1e1e"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_BG}}"),   QStringLiteral("#f5f5f5"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_BORDER}}"),    QStringLiteral("#dddddd"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_LINK}}"),      QStringLiteral("#1a73e8"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_HEADING}}"),   QStringLiteral("#000000"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),QStringLiteral("#666666"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     QStringLiteral("#f0f0f0"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        QStringLiteral("#cccccc"));
 
     // 5. Create a hidden, off-screen WebEngine view for rendering
     QWebEngineView *pdfView = new QWebEngineView();
@@ -1383,6 +1425,30 @@ void EditorWidget::reloadEditorColors()
     ).arg(tm.color("editor.background").name(),
           tm.color("editor.foreground").name(),
           tm.color("editor.selectionBackground").name()));
+
+    // Update preview container background
+    m_previewContainer->setStyleSheet(
+        QString("background-color: %1;")
+            .arg(tm.color("preview.containerBackground").name()));
+
+    // Update web engine background
+    m_previewView->page()->setBackgroundColor(
+        tm.color("preview.webEngineBackground"));
+
+    // Update split preview background if active
+    if (m_splitPreviewView) {
+        m_splitPreviewView->page()->setBackgroundColor(
+            tm.color("preview.webEngineBackground"));
+    }
+
+    // Push CSS variable updates to preview HTML via JavaScript
+    QString js = previewThemeJs();
+    if (m_previewReady && m_previewView->page()) {
+        m_previewView->page()->runJavaScript(js);
+    }
+    if (m_splitPreviewReady && m_splitPreviewView) {
+        m_splitPreviewView->page()->runJavaScript(js);
+    }
 }
 
 void EditorWidget::applyZoom()
@@ -1854,6 +1920,7 @@ void EditorWidget::setSplitPreviewMode(bool split)
 
                 QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
                 tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
+                applyPreviewTheme(tmpl);
                 m_splitPreviewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 
                 connect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this,

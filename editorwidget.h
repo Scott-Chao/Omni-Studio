@@ -173,6 +173,8 @@ private:
     QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
     QMap<int, QString> extractCodeBlockContents(const QString &markdown) const; // 提取围栏代码块内容，key=blockIndex
     QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
+    void applyPreviewTheme(QString &tmpl); // 替换模板中的 {{PREVIEW_*}} 为当前主题颜色
+    QString previewThemeJs(); // 返回更新 CSS 变量的 JavaScript 代码
     void createSplitPreviewWidgets();
     void updateSplitPreviewContentNow();
     qreal m_zoomFactor = 1.0;
