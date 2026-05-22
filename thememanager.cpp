@@ -26,10 +26,10 @@ ThemeManager::ThemeManager()
 void ThemeManager::initBuiltinThemes()
 {
     m_builtinThemes = {
-        { QStringLiteral("VS Code Dark+"),  Dark,
+        { QStringLiteral("2026 Dark"),  Dark,
           QStringLiteral(":/themes/dark-vscode.json") },
-        { QStringLiteral("Obsidian Light"), Light,
-          QStringLiteral(":/themes/light-obsidian.json") },
+        { QStringLiteral("2026 Light"), Light,
+          QStringLiteral(":/themes/light-vscode.json") },
     };
 }
 
@@ -78,7 +78,12 @@ bool ThemeManager::loadThemeFromFile(const QString &path, ThemeData &out)
     QJsonObject colorsObj = root.value(QStringLiteral("colors")).toObject();
     out.colors.clear();
     for (auto it = colorsObj.begin(); it != colorsObj.end(); ++it) {
-        QColor c(it.value().toString());
+        QString colorStr = it.value().toString();
+        // VS Code uses #RRGGBBAA format; Qt expects #AARRGGBB
+        if (colorStr.length() == 9 && colorStr.startsWith(QLatin1Char('#'))) {
+            colorStr = QLatin1Char('#') + colorStr.mid(7, 2) + colorStr.mid(1, 6);
+        }
+        QColor c(colorStr);
         if (c.isValid()) {
             out.colors.insert(it.key(), c);
         } else {
@@ -158,7 +163,16 @@ void ThemeManager::loadQss()
         result += qss.mid(lastPos, match.capturedStart() - lastPos);
         QString token = match.captured(1);
         QColor c = color(token);
-        result += c.isValid() ? c.name() : QStringLiteral("#000000");
+        if (c.isValid()) {
+            if (c.alpha() < 255)
+                result += QStringLiteral("rgba(%1,%2,%3,%4)")
+                    .arg(c.red()).arg(c.green()).arg(c.blue())
+                    .arg(c.alphaF(), 0, 'f', 2);
+            else
+                result += c.name();
+        } else {
+            result += QStringLiteral("#000000");
+        }
         lastPos = match.capturedEnd();
     }
     result += qss.mid(lastPos);
