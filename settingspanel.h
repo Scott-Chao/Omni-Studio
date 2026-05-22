@@ -144,6 +144,7 @@ private:
 
     // Appearance page controls
     QComboBox *m_themeCombo = nullptr;
+    QSpinBox *m_fileTreeItemHeightSpin = nullptr;
 
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;

@@ -878,6 +878,12 @@ void FileExplorerWidget::collapseAll()
     m_treeView->collapseAll();
 }
 
+void FileExplorerWidget::setItemHeight(int height)
+{
+    m_treeView->setStyleSheet(
+        QStringLiteral("QTreeView::item { height: %1px; }").arg(height));
+}
+
 void FileExplorerWidget::updateFolderLabel()
 {
     QString path = rootPath();

@@ -45,6 +45,7 @@ public:
     void reloadShortcuts();
     void refreshTree();
     void collapseAll();
+    void setItemHeight(int height);
 
 signals:
     void fileClicked(const QString &filePath); // 单击文件 → 以预览模式打开

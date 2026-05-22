@@ -551,6 +551,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
 int ConfigManager::editorBaseFontSize() const { return intValue("editor.base_font_size", 14); }
 int ConfigManager::editorIndentWidth() const { return intValue("editor.indent_width", 4); }
 int ConfigManager::editorMarkdownIndentWidth() const { return intValue("editor.markdown_indent_width", 2); }
+int ConfigManager::editorFileTreeItemHeight() const { return intValue("editor.file_tree_item_height", 28); }
 int ConfigManager::editorLineNumberRightPadding() const { return intValue("editor.line_number_area.right_padding", 4); }
 QString ConfigManager::editorFontFamily() const { return stringValue("editor.font.family", "Consolas"); }
 int ConfigManager::editorFontSize() const { return intValue("editor.font.size", 12); }

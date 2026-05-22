@@ -581,7 +581,28 @@ QWidget *SettingsPanel::createAppearancePage()
 
     layout->addSpacing(12);
 
-    layout->addWidget(createSectionLabel(tr("编辑器颜色")));
+    layout->addWidget(createSectionLabel(tr("文件树")));
+
+    // ---- 文件树条目高度 ----
+    auto *treeItemHeightRow = new QHBoxLayout;
+    auto *treeItemHeightLabel = new QLabel(tr("条目行高"));
+    treeItemHeightLabel->setStyleSheet(labelStyle());
+    m_fileTreeItemHeightSpin = new QSpinBox;
+    m_fileTreeItemHeightSpin->setRange(24, 32);
+    m_fileTreeItemHeightSpin->setValue(cfg.editorFileTreeItemHeight());
+    m_fileTreeItemHeightSpin->setFixedWidth(80);
+    m_fileTreeItemHeightSpin->setSuffix(" px");
+    m_fileTreeItemHeightSpin->setStyleSheet(inputStyle());
+    treeItemHeightRow->addWidget(treeItemHeightLabel);
+    treeItemHeightRow->addStretch();
+    treeItemHeightRow->addWidget(m_fileTreeItemHeightSpin);
+    layout->addLayout(treeItemHeightRow);
+
+    connect(m_fileTreeItemHeightSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit appearanceSettingChanged("editor.file_tree_item_height", val);
+    });
+
+    layout->addStretch();
 
     struct ColorItem {
         QString label;
@@ -1265,6 +1286,11 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
     if (m_autoSaveToggle) {
         m_autoSaveToggle->setChecked(sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool());
+    }
+
+    // Appearance page
+    if (m_fileTreeItemHeightSpin) {
+        m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
     }
 
     // Output panel page

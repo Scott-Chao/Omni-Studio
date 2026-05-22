@@ -662,6 +662,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
     connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
 
+    // 应用保存的文件树条目高度
+    int treeItemHeight = m_settings->value("editor.file_tree_item_height",
+                                           ConfigManager::instance().editorFileTreeItemHeight()).toInt();
+    m_explorer->setItemHeight(treeItemHeight);
+
     // ----- 帮助面板（悬浮遮罩 + 面板）-----
     m_helpOverlay = new QWidget(this);
     m_helpOverlay->setObjectName("helpOverlay");
@@ -1266,6 +1271,10 @@ void MainWindow::onEditorSettingChanged(const QString &key, const QVariant &valu
 void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &value)
 {
     m_settings->setSettingOverride(key, value);
+
+    if (key == "editor.file_tree_item_height") {
+        m_explorer->setItemHeight(value.toInt());
+    }
 
     for (int i = 0; i < m_tabManager->count(); ++i) {
         if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {

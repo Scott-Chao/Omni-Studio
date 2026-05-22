@@ -36,6 +36,7 @@ public:
     int editorBaseFontSize() const;
     int editorIndentWidth() const;
     int editorMarkdownIndentWidth() const;
+    int editorFileTreeItemHeight() const;
     int editorLineNumberRightPadding() const;
     QString editorFontFamily() const;
     int editorFontSize() const;
