@@ -1,5 +1,6 @@
 #include "actionbar.h"
 #include "flowlayout.h"
+#include "thememanager.h"
 
 #include <QPushButton>
 #include <QFrame>
@@ -9,8 +10,6 @@
 ActionBar::ActionBar(QWidget *parent)
     : QWidget(parent)
 {
-    setStyleSheet("background-color: #2d2d2d;");
-
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(6, 4, 6, 0);
     mainLayout->setSpacing(0);
@@ -30,10 +29,24 @@ ActionBar::ActionBar(QWidget *parent)
     // Separator line
     m_separator = new QFrame(this);
     m_separator->setFrameShape(QFrame::HLine);
-    m_separator->setStyleSheet(
-        "QFrame { color: #3c3c3c; margin: 4px 0 0 0; }"
-    );
     mainLayout->addWidget(m_separator);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &ActionBar::refreshStyle);
+    refreshStyle();
+}
+
+void ActionBar::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+    ).arg(tm.color("aiAssistant.bubbleAssistant").name()));
+
+    m_separator->setStyleSheet(QStringLiteral(
+        "QFrame { color: %1; margin: 4px 0 0 0; }"
+    ).arg(tm.color("panel.border").name()));
 }
 
 void ActionBar::setActions(const QVector<AiAction> &actions)
@@ -59,6 +72,8 @@ void ActionBar::rebuildButtons()
         delete item;
     }
 
+    auto &tm = ThemeManager::instance();
+
     for (AiAction action : m_currentActions) {
         const ActionInfo *info = findActionInfo(action);
         if (!info)
@@ -68,25 +83,30 @@ void ActionBar::rebuildButtons()
         btn->setToolTip(info->tooltip ? QString::fromUtf8(info->tooltip) : QString());
         btn->setCursor(Qt::PointingHandCursor);
         btn->setFixedHeight(26);
-        btn->setStyleSheet(
+        btn->setStyleSheet(QStringLiteral(
             "QPushButton {"
-            "  background-color: #3c3c3c;"
-            "  color: #cccccc;"
-            "  border: 1px solid #555555;"
+            "  background-color: %1;"
+            "  color: %2;"
+            "  border: 1px solid %3;"
             "  border-radius: 4px;"
             "  padding: 2px 10px;"
             "  font-size: 11px;"
             "}"
             "QPushButton:hover {"
-            "  background-color: #4c4c4c;"
-            "  border-color: #0078d4;"
-            "  color: #ffffff;"
+            "  background-color: %4;"
+            "  border-color: %5;"
+            "  color: %2;"
             "}"
             "QPushButton:pressed {"
-            "  background-color: #0078d4;"
-            "  color: #ffffff;"
+            "  background-color: %5;"
+            "  color: %6;"
             "}"
-        );
+        ).arg(tm.color("aiAssistant.actionButtonBackground").name(),
+              tm.color("workbench.foreground").name(),
+              tm.color("input.border").name(),
+              tm.color("aiAssistant.actionButtonHoverBackground").name(),
+              tm.color("activityBar.activeBorder").name(),
+              tm.color("button.foreground").name()));
 
         connect(btn, &QPushButton::clicked, this, [this, action]() {
             emit actionTriggered(action);

@@ -3,6 +3,7 @@
 #include "actionbar.h"
 #include "errorlistpanel.h"
 #include "errorjournal.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -10,35 +11,6 @@
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QLabel>
-
-// ── Shared tab button style ───────────────────────────────────────────
-
-static const char *kInactiveTabStyle = R"(
-    QPushButton {
-        background: transparent;
-        color: #777;
-        border: none;
-        border-bottom: 2px solid transparent;
-        font-size: 12px;
-        font-weight: normal;
-        padding: 0 10px;
-    }
-    QPushButton:hover {
-        color: #aaa;
-    }
-)";
-
-static const char *kActiveTabStyle = R"(
-    QPushButton {
-        background: transparent;
-        color: #cccccc;
-        border: none;
-        border-bottom: 2px solid #0078d4;
-        font-size: 12px;
-        font-weight: bold;
-        padding: 0 10px;
-    }
-)";
 
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -52,11 +24,10 @@ AiPanel::AiPanel(QWidget *parent)
     mainLayout->setSpacing(0);
 
     // ── Title bar with tab buttons ──
-    auto *titleBar = new QWidget(this);
-    titleBar->setFixedHeight(36);
-    titleBar->setStyleSheet("background-color: #252525;");
+    m_titleBar = new QWidget(this);
+    m_titleBar->setFixedHeight(36);
 
-    auto *titleLayout = new QHBoxLayout(titleBar);
+    auto *titleLayout = new QHBoxLayout(m_titleBar);
     titleLayout->setContentsMargins(4, 0, 6, 0);
     titleLayout->setSpacing(2);
 
@@ -71,20 +42,6 @@ AiPanel::AiPanel(QWidget *parent)
     m_clearBtn = new QPushButton(tr("清空对话"));
     m_clearBtn->setFixedHeight(24);
     m_clearBtn->setCursor(Qt::PointingHandCursor);
-    m_clearBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: transparent;"
-        "  border: 1px solid #555;"
-        "  border-radius: 4px;"
-        "  color: #999;"
-        "  font-size: 11px;"
-        "  padding: 0 8px;"
-        "}"
-        "QPushButton:hover {"
-        "  color: #fff;"
-        "  border-color: #888;"
-        "}"
-    );
 
     titleLayout->addWidget(m_aiTabBtn);
     titleLayout->addWidget(m_errorTabBtn);
@@ -105,59 +62,28 @@ AiPanel::AiPanel(QWidget *parent)
 
     // ── Input bar (only shown on chat tab) ──
     m_inputBar = new QWidget(this);
-    m_inputBar->setStyleSheet("background-color: #252525;");
     auto *inputLayout = new QHBoxLayout(m_inputBar);
     inputLayout->setContentsMargins(6, 6, 6, 6);
     inputLayout->setSpacing(6);
 
     m_inputEdit = new QLineEdit;
     m_inputEdit->setPlaceholderText(tr("输入消息..."));
-    m_inputEdit->setStyleSheet(
-        "QLineEdit {"
-        "  background-color: #3c3c3c;"
-        "  color: #cccccc;"
-        "  border: 1px solid #555555;"
-        "  border-radius: 4px;"
-        "  padding: 6px 8px;"
-        "  font-size: 12px;"
-        "}"
-        "QLineEdit:focus {"
-        "  border-color: #0078d4;"
-        "}"
-    );
 
     m_sendBtn = new QPushButton(tr("发送"));
     m_sendBtn->setFixedSize(50, 28);
     m_sendBtn->setCursor(Qt::PointingHandCursor);
     m_sendBtn->setEnabled(false);
-    m_sendBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #0078d4;"
-        "  color: #ffffff;"
-        "  border: none;"
-        "  border-radius: 4px;"
-        "  font-size: 12px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: #1a8ad4;"
-        "}"
-        "QPushButton:disabled {"
-        "  background-color: #555555;"
-        "  color: #888888;"
-        "}"
-    );
 
     inputLayout->addWidget(m_inputEdit, 1);
     inputLayout->addWidget(m_sendBtn);
 
     // ── Assemble main layout ──
-    mainLayout->addWidget(titleBar);
+    mainLayout->addWidget(m_titleBar);
     mainLayout->addWidget(m_actionBar);
     mainLayout->addWidget(m_stackedWidget, 1);
     mainLayout->addWidget(m_inputBar);
 
     // ── Start on chat tab ──
-    updateTabButtonStyle();
     m_stackedWidget->setCurrentIndex(ChatTab);
 
     // ── Connections ──
@@ -216,6 +142,11 @@ AiPanel::AiPanel(QWidget *parent)
 
     // Show initial badge count
     updateErrorBadge();
+
+    // ── Theme support ──
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &AiPanel::refreshStyle);
+    refreshStyle();
 }
 
 void AiPanel::onTabSwitch(int index)
@@ -241,8 +172,109 @@ void AiPanel::onTabSwitch(int index)
 
 void AiPanel::updateTabButtonStyle()
 {
-    m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? kActiveTabStyle : kInactiveTabStyle);
-    m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? kActiveTabStyle : kInactiveTabStyle);
+    auto &tm = ThemeManager::instance();
+    auto inactiveStyle = QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  color: %1;"
+        "  border: none;"
+        "  border-bottom: 2px solid transparent;"
+        "  font-size: 12px;"
+        "  font-weight: normal;"
+        "  padding: 0 10px;"
+        "}"
+        "QPushButton:hover {"
+        "  color: %2;"
+        "}"
+    ).arg(tm.color("tab.inactiveForeground").name(),
+          tm.color("editorLineNumber.foreground").name());
+
+    auto activeStyle = QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  color: %1;"
+        "  border: none;"
+        "  border-bottom: 2px solid %2;"
+        "  font-size: 12px;"
+        "  font-weight: bold;"
+        "  padding: 0 10px;"
+        "}"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("activityBar.activeBorder").name());
+
+    m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? activeStyle : inactiveStyle);
+    m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? activeStyle : inactiveStyle);
+}
+
+void AiPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    m_titleBar->setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+    ).arg(tm.color("editorLineNumber.background").name()));
+
+    m_clearBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  border: 1px solid %1;"
+        "  border-radius: 4px;"
+        "  color: %2;"
+        "  font-size: 11px;"
+        "  padding: 0 8px;"
+        "}"
+        "QPushButton:hover {"
+        "  color: %3;"
+        "  border-color: %4;"
+        "}"
+    ).arg(tm.color("input.border").name(),
+          tm.color("editorLineNumber.foreground").name(),
+          tm.color("workbench.foreground").name(),
+          tm.color("input.foreground").name()));
+
+    m_inputBar->setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+    ).arg(tm.color("editorLineNumber.background").name()));
+
+    m_inputEdit->setStyleSheet(QStringLiteral(
+        "QLineEdit {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
+        "  border-radius: 4px;"
+        "  padding: 6px 8px;"
+        "  font-size: 12px;"
+        "}"
+        "QLineEdit:focus {"
+        "  border-color: %4;"
+        "}"
+    ).arg(tm.color("input.background").name(),
+          tm.color("input.foreground").name(),
+          tm.color("input.border").name(),
+          tm.color("activityBar.activeBorder").name()));
+
+    m_sendBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "  font-size: 12px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: %3;"
+        "}"
+        "QPushButton:disabled {"
+        "  background-color: %4;"
+        "  color: %5;"
+        "}"
+    ).arg(tm.color("button.background").name(),
+          tm.color("button.foreground").name(),
+          tm.color("button.hoverBackground").name(),
+          tm.color("input.background").name(),
+          tm.color("editorLineNumber.foreground").name()));
+
+    updateTabButtonStyle();
 }
 
 void AiPanel::updateErrorBadge()

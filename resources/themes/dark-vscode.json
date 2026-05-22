@@ -82,6 +82,17 @@
     "judge.pe": "#E67E22",
     "judge.ole": "#FF6B6B",
     "judge.ce": "#F39C12",
+    "aiAssistant.foreground": "#D4D4D4",
+    "aiAssistant.codeBackground": "#3C3C3C",
+    "aiAssistant.codeForeground": "#CE9178",
+    "aiAssistant.roleUser": "#4DA3FF",
+    "aiAssistant.roleAssistant": "#6A9955",
+    "aiAssistant.bubbleUser": "#1A3A5C",
+    "aiAssistant.bubbleAssistant": "#2D2D2D",
+    "aiAssistant.linkColor": "#4DA3FF",
+    "aiAssistant.selectionBackground": "#264F78",
+    "aiAssistant.actionButtonBackground": "#3C3C3C",
+    "aiAssistant.actionButtonHoverBackground": "#4C4C4C",
     "foreground": "#CCCCCC",
     "background": "#1E1E1E"
   }

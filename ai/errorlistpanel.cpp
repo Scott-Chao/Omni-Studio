@@ -13,6 +13,7 @@
 #include <QTextBrowser>
 #include <QRegularExpression>
 #include <QSet>
+#include "thememanager.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Helpers
@@ -40,13 +41,16 @@ static QString statusLabel(const QString &code)
 
 static QWidget *createSectionHeader(const QString &title)
 {
+    auto &tm = ThemeManager::instance();
     auto *w = new QWidget;
-    w->setStyleSheet("background-color: #2a2a2a;");
+    w->setStyleSheet(QStringLiteral("background-color: %1;")
+                     .arg(tm.color("list.hoverBackground").name()));
     auto *lay = new QHBoxLayout(w);
     lay->setContentsMargins(10, 4, 10, 4);
 
     auto *label = new QLabel(title);
-    label->setStyleSheet("color: #999; font-size: 10px; font-weight: bold;");
+    label->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; font-weight: bold;")
+                         .arg(tm.color("editorLineNumber.foreground").name()));
     lay->addWidget(label);
     return w;
 }
@@ -55,28 +59,32 @@ static QWidget *createSectionHeader(const QString &title)
 
 static QWidget *createOutputBlock(const QString &title, const QString &content)
 {
+    auto &tm = ThemeManager::instance();
     auto *w = new QWidget;
     auto *lay = new QVBoxLayout(w);
     lay->setContentsMargins(10, 2, 10, 2);
     lay->setSpacing(2);
 
     auto *titleLbl = new QLabel(title);
-    titleLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    titleLbl->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;")
+                            .arg(tm.color("editorLineNumber.foreground").name()));
 
     auto *tb = new QTextBrowser;
     tb->setPlainText(content);
     tb->setMaximumHeight(120);
-    tb->setStyleSheet(
+    tb->setStyleSheet(QStringLiteral(
         "QTextBrowser {"
-        "  background-color: #1a1a1a;"
-        "  color: #cccccc;"
-        "  border: 1px solid #3c3c3c;"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
         "  border-radius: 3px;"
         "  font-family: 'Consolas', 'Courier New', monospace;"
         "  font-size: 11px;"
         "  padding: 4px;"
         "}"
-    );
+    ).arg(tm.color("editor.background").name(),
+          tm.color("editor.foreground").name(),
+          tm.color("panel.border").name()));
 
     lay->addWidget(titleLbl);
     lay->addWidget(tb);
@@ -110,12 +118,12 @@ ErrorListItem::ErrorListItem(const ErrorRecord &record, QWidget *parent)
                 " font-weight: bold; border-radius: 3px;").arg(badgeColor));
 
     auto *nameLabel = new QLabel(m_record.problemName);
-    nameLabel->setStyleSheet("color: #D4D4D4; font-size: 12px; font-weight: bold;");
+    nameLabel->setObjectName(QStringLiteral("errorItemName"));
     nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     nameLabel->setTextFormat(Qt::PlainText);
 
     auto *arrow = new QLabel(">");
-    arrow->setStyleSheet("color: #555; font-size: 14px;");
+    arrow->setObjectName(QStringLiteral("errorItemArrow"));
     arrow->setFixedWidth(12);
 
     row1->addWidget(badge);
@@ -127,10 +135,10 @@ ErrorListItem::ErrorListItem(const ErrorRecord &record, QWidget *parent)
     row2->setSpacing(12);
 
     auto *fileLabel = new QLabel(m_record.sourceFile.section('\\', -1).section('/', -1));
-    fileLabel->setStyleSheet("color: #888; font-size: 10px;");
+    fileLabel->setObjectName(QStringLiteral("errorItemFile"));
 
     auto *timeLabel = new QLabel(m_record.timestamp.toString("yyyy-MM-dd HH:mm"));
-    timeLabel->setStyleSheet("color: #666; font-size: 10px;");
+    timeLabel->setObjectName(QStringLiteral("errorItemTime"));
 
     row2->addWidget(fileLabel);
     row2->addWidget(timeLabel);
@@ -140,13 +148,38 @@ ErrorListItem::ErrorListItem(const ErrorRecord &record, QWidget *parent)
     QLabel *tagsLabel = nullptr;
     if (!m_record.tags.isEmpty()) {
         tagsLabel = new QLabel(m_record.tags.join("  "));
-        tagsLabel->setStyleSheet("color: #0078d4; font-size: 10px;");
+        tagsLabel->setObjectName(QStringLiteral("errorItemTags"));
     }
 
     layout->addLayout(row1);
     layout->addLayout(row2);
     if (tagsLabel)
         layout->addWidget(tagsLabel);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() { refreshStyle(); });
+    refreshStyle();
+}
+
+void ErrorListItem::refreshStyle()
+{
+    m_hoverBg = ThemeManager::instance().color("list.hoverBackground");
+    m_borderColor = ThemeManager::instance().color("panel.border");
+
+    auto &tm = ThemeManager::instance();
+    setStyleSheet(QStringLiteral(
+        "#errorItemName { color: %1; font-size: 12px; font-weight: bold; }"
+        "#errorItemArrow { color: %2; font-size: 14px; }"
+        "#errorItemFile { color: %3; font-size: 10px; }"
+        "#errorItemTime { color: %4; font-size: 10px; }"
+        "#errorItemTags { color: %5; font-size: 10px; }"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("editorLineNumber.foreground").name(),
+          tm.color("editorLineNumber.foreground").name(),
+          tm.color("tab.inactiveForeground").name(),
+          tm.color("activityBar.activeBorder").name()));
+
+    update();
 }
 
 void ErrorListItem::mousePressEvent(QMouseEvent *event)
@@ -181,10 +214,10 @@ void ErrorListItem::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing);
 
     if (m_hovered)
-        painter.fillRect(rect(), QColor("#2d2d2d"));
+        painter.fillRect(rect(), m_hoverBg);
 
     // Bottom border line
-    painter.setPen(QPen(QColor("#3c3c3c"), 1));
+    painter.setPen(QPen(m_borderColor, 1));
     painter.drawLine(0, height() - 1, width(), height() - 1);
 }
 
@@ -196,6 +229,12 @@ static QString renderMarkdown(const QString &md)
 {
     if (md.isEmpty())
         return {};
+
+    auto &tm = ThemeManager::instance();
+    QString codeBg = tm.color("aiAssistant.codeBackground").name();
+    QString codeFg = tm.color("aiAssistant.codeForeground").name();
+    QString headingFg = tm.color("workbench.foreground").name();
+    QString subheadingFg = tm.color("editorLineNumber.foreground").name();
 
     // Must HTML-escape FIRST so code content (e.g. <iostream>, a < b) isn't
     // misinterpreted as HTML tags by Qt's rich text renderer.
@@ -211,8 +250,9 @@ static QString renderMarkdown(const QString &md)
     // contaminating code with heading / bold / etc. replacements.
     // Opening: ```lang\n → <pre>
     html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
-                 QStringLiteral("<pre style='background:#1a1a1a;padding:8px;"
-                                "border-radius:3px;font-size:11px;color:#ccc'>"));
+                 QStringLiteral("<pre style='background:%1;padding:8px;"
+                                "border-radius:3px;font-size:11px;color:%2'>")
+                 .arg(codeBg, codeFg));
     // Closing: remaining ``` → </pre>
     html.replace(QStringLiteral("```"), QStringLiteral("</pre>"));
 
@@ -220,11 +260,11 @@ static QString renderMarkdown(const QString &md)
     html.replace(
         QRegularExpression(QStringLiteral("^### (.+)$"),
                            QRegularExpression::MultilineOption),
-        QStringLiteral("<h4 style='color:#aaa;margin:8px 0 4px'>\\1</h4>"));
+        QStringLiteral("<h4 style='color:%1;margin:8px 0 4px'>\\1</h4>").arg(subheadingFg));
     html.replace(
         QRegularExpression(QStringLiteral("^## (.+)$"),
                            QRegularExpression::MultilineOption),
-        QStringLiteral("<h3 style='color:#0078d4;margin:10px 0 4px'>\\1</h3>"));
+        QStringLiteral("<h3 style='color:%1;margin:10px 0 4px'>\\1</h3>").arg(headingFg));
 
     // Bold **text**
     html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
@@ -232,9 +272,9 @@ static QString renderMarkdown(const QString &md)
 
     // Inline code `code`
     html.replace(QRegularExpression(QStringLiteral("`([^`]+)`")),
-                 QStringLiteral("<code style='background:#2d2d2d;color:#ce9178;"
+                 QStringLiteral("<code style='background:%1;color:%2;"
                                 "padding:1px 5px;border-radius:2px;font-size:11px'>"
-                                "\\1</code>"));
+                                "\\1</code>").arg(codeBg, codeFg));
 
     // Newlines → <br>
     html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
@@ -253,15 +293,13 @@ static QString renderMarkdown(const QString &md)
 ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     : QWidget(parent), m_record(record)
 {
-    setStyleSheet("background-color: #252525;");
-
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
     // ── Header: metadata row ──
     auto *header = new QWidget;
-    header->setStyleSheet("background-color: #2a2a2a;");
+    header->setObjectName(QStringLiteral("detailHeader"));
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(12, 8, 12, 8);
     headerLayout->setSpacing(16);
@@ -271,18 +309,18 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
             .arg(statusColor(m_record.statusCode),
                  m_record.statusCode,
                  statusLabel(m_record.statusCode)));
-    statusLbl->setStyleSheet("color: #ccc; font-size: 12px;");
+    statusLbl->setObjectName(QStringLiteral("detailStatusLbl"));
 
     auto *timeLbl = new QLabel(
         QStringLiteral("⏱ %1 ms").arg(m_record.elapsedMs));
-    timeLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    timeLbl->setObjectName(QStringLiteral("detailTimeLbl"));
 
     auto *memLbl = new QLabel(
         QStringLiteral("💾 %1 KB").arg(m_record.memoryKb));
-    memLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    memLbl->setObjectName(QStringLiteral("detailMemLbl"));
 
     auto *fileLbl = new QLabel(m_record.sourceFile);
-    fileLbl->setStyleSheet("color: #888; font-size: 11px;");
+    fileLbl->setObjectName(QStringLiteral("detailFileLbl"));
     fileLbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     headerLayout->addWidget(statusLbl);
@@ -304,12 +342,10 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     layout->addWidget(createSectionHeader(tr("AI 分析")));
 
     m_aiAnalysisLabel = new QLabel;
+    m_aiAnalysisLabel->setObjectName(QStringLiteral("detailAiAnalysis"));
     m_aiAnalysisLabel->setTextFormat(Qt::RichText);
     m_aiAnalysisLabel->setWordWrap(true);
     m_aiAnalysisLabel->setOpenExternalLinks(true);
-    m_aiAnalysisLabel->setStyleSheet(
-        "color: #cccccc; font-size: 12px; padding: 8px 12px;"
-        "background-color: #1e1e1e;");
     m_aiAnalysisLabel->setMinimumHeight(40);
 
     if (!m_record.aiAnalysis.isEmpty()) {
@@ -317,7 +353,7 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
         m_aiAnalysisLabel->setText(html);
     } else {
         m_aiAnalysisLabel->setText(QStringLiteral(
-            "<span style='color:#666;'>"
+            "<span>"
             "尚未进行 AI 分析，点击下方「重新分析」按钮开始分析。</span>"));
     }
 
@@ -325,7 +361,7 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
 
     // ── Action buttons ──
     auto *btnBar = new QWidget;
-    btnBar->setStyleSheet("background-color: #2a2a2a;");
+    btnBar->setObjectName(QStringLiteral("detailBtnBar"));
     auto *btnLayout = new QHBoxLayout(btnBar);
     btnLayout->setContentsMargins(12, 6, 12, 6);
     btnLayout->setSpacing(8);
@@ -333,38 +369,14 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     m_reanalyzeBtn = new QPushButton(tr("🔄 分析"));
     m_reanalyzeBtn->setFixedHeight(26);
     m_reanalyzeBtn->setCursor(Qt::PointingHandCursor);
-    m_reanalyzeBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #0078d4; color: #fff; border: none;"
-        "  border-radius: 4px; font-size: 11px; padding: 0 12px;"
-        "}"
-        "QPushButton:hover { background-color: #1a8ad4; }");
 
     m_deleteBtn = new QPushButton(tr("🗑 删除"));
     m_deleteBtn->setFixedHeight(26);
     m_deleteBtn->setCursor(Qt::PointingHandCursor);
-    m_deleteBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: transparent; color: #e74c3c;"
-        "  border: 1px solid #555; border-radius: 4px;"
-        "  font-size: 11px; padding: 0 12px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: #3c1e1e; border-color: #e74c3c;"
-        "}");
 
     m_reviewBtn = new QPushButton(m_record.reviewed ? tr("✅ 已阅") : tr("标记已阅"));
     m_reviewBtn->setFixedHeight(26);
     m_reviewBtn->setCursor(Qt::PointingHandCursor);
-    m_reviewBtn->setStyleSheet(
-        "QPushButton {"
-        "  background: transparent; color: #4ec9b0;"
-        "  border: 1px solid #555; border-radius: 4px;"
-        "  font-size: 11px; padding: 0 12px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: #1e3c3c; border-color: #4ec9b0;"
-        "}");
 
     btnLayout->addWidget(m_reanalyzeBtn);
     btnLayout->addWidget(m_deleteBtn);
@@ -385,6 +397,71 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
         m_reviewBtn->setText(m_record.reviewed ? tr("✅ 已阅") : tr("标记已阅"));
         emit markReviewed(m_record.id, m_record.reviewed);
     });
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() { refreshStyles(); });
+    refreshStyles();
+}
+
+void ErrorDetailWidget::refreshStyles()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+        "#detailHeader { background-color: %2; }"
+        "#detailBtnBar { background-color: %2; }"
+        "#detailStatusLbl { color: %3; font-size: 12px; }"
+        "#detailTimeLbl, #detailMemLbl { color: %4; font-size: 11px; }"
+        "#detailFileLbl { color: %5; font-size: 11px; }"
+    ).arg(tm.color("editorLineNumber.background").name(),      // #252525
+          tm.color("list.hoverBackground").name(),              // #2A2D2E (replaces #2a2a2a)
+          tm.color("workbench.foreground").name(),              // #CCCCCC (replaces #ccc)
+          tm.color("editorLineNumber.foreground").name(),       // #858585 (replaces #aaa/#888)
+          tm.color("tab.inactiveForeground").name()));          // #969696 (replaces #888)
+
+    m_aiAnalysisLabel->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 12px; padding: 8px 12px;"
+        "background-color: %2;"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("editor.background").name()));
+
+    // Buttons
+    m_reanalyzeBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background-color: %1; color: %2; border: none;"
+        "  border-radius: 4px; font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover { background-color: %3; }"
+    ).arg(tm.color("button.background").name(),
+          tm.color("button.foreground").name(),
+          tm.color("button.hoverBackground").name()));
+
+    m_deleteBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent; color: %1;"
+        "  border: 1px solid %2; border-radius: 4px;"
+        "  font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: %3; border-color: %1;"
+        "}"
+    ).arg(tm.color("diagnostics.error").name(),
+          tm.color("input.border").name(),
+          tm.color("cell.badge.error").name()));
+
+    m_reviewBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent; color: %1;"
+        "  border: 1px solid %2; border-radius: 4px;"
+        "  font-size: 11px; padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: %3; border-color: %1;"
+        "}"
+    ).arg(tm.color("syntax.types").name(),      // #4EC9B0
+          tm.color("input.border").name(),
+          QStringLiteral("#1E3C3C")));
 }
 
 void ErrorDetailWidget::setAnalysis(const QString &analysis)
@@ -392,7 +469,7 @@ void ErrorDetailWidget::setAnalysis(const QString &analysis)
     m_record.aiAnalysis = analysis;
     if (analysis.isEmpty()) {
         m_aiAnalysisLabel->setText(QStringLiteral(
-            "<span style='color:#666;'>正在分析中...</span>"));
+            "<span>正在分析中...</span>"));
         return;
     }
 
@@ -413,16 +490,14 @@ void ErrorDetailWidget::setReviewed(bool reviewed)
 ErrorListPanel::ErrorListPanel(QWidget *parent)
     : QWidget(parent)
 {
-    setStyleSheet("background-color: #1E1E1E;");
-
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
     // ── Filter bar ──
-    auto *filterBar = new QWidget(this);
-    filterBar->setStyleSheet("background-color: #252525;");
-    auto *filterLayout = new QVBoxLayout(filterBar);
+    m_filterBar = new QWidget(this);
+    m_filterBar->setObjectName(QStringLiteral("errorFilterBar"));
+    auto *filterLayout = new QVBoxLayout(m_filterBar);
     filterLayout->setContentsMargins(8, 6, 8, 6);
     filterLayout->setSpacing(6);
 
@@ -432,11 +507,78 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
     m_statusFilter->addItem("RE", "RE");
     m_statusFilter->addItem("TLE", "TLE");
     m_statusFilter->addItem("MLE", "MLE");
-    m_statusFilter->setStyleSheet(
+
+    m_searchEdit = new QLineEdit;
+    m_searchEdit->setPlaceholderText(tr("搜索错题..."));
+
+    filterLayout->addWidget(m_statusFilter);
+    filterLayout->addWidget(m_searchEdit);
+
+    // ── Scroll area for error list ──
+    m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    m_listContainer = new QWidget;
+    m_listLayout = new QVBoxLayout(m_listContainer);
+    m_listLayout->setContentsMargins(4, 4, 4, 4);
+    m_listLayout->setSpacing(2);
+    m_listLayout->addStretch();
+
+    m_scrollArea->setWidget(m_listContainer);
+
+    // ── Bottom bar ──
+    m_bottomBar = new QWidget(this);
+    m_bottomBar->setFixedHeight(32);
+    m_bottomBar->setObjectName(QStringLiteral("errorBottomBar"));
+    auto *bottomLayout = new QHBoxLayout(m_bottomBar);
+    bottomLayout->setContentsMargins(8, 0, 8, 0);
+
+    m_deleteAllBtn = new QPushButton(tr("全部删除"));
+    m_deleteAllBtn->setFixedHeight(22);
+    m_deleteAllBtn->setCursor(Qt::PointingHandCursor);
+
+    m_countLabel = new QLabel(tr("共 0 条记录"));
+
+    bottomLayout->addWidget(m_deleteAllBtn);
+    bottomLayout->addStretch();
+    bottomLayout->addWidget(m_countLabel);
+
+    // ── Assemble main layout ──
+    mainLayout->addWidget(m_filterBar);
+    mainLayout->addWidget(m_scrollArea, 1);
+    mainLayout->addWidget(m_bottomBar);
+
+    // ── Connections ──
+    connect(m_statusFilter, &QComboBox::currentIndexChanged,
+            this, &ErrorListPanel::onFilterChanged);
+    connect(m_searchEdit, &QLineEdit::textChanged,
+            this, &ErrorListPanel::onSearchTextChanged);
+    connect(m_deleteAllBtn, &QPushButton::clicked,
+            this, &ErrorListPanel::deleteAllRequested);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &ErrorListPanel::refreshStyle);
+    refreshStyle();
+}
+
+void ErrorListPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+        "#errorFilterBar { background-color: %2; }"
+        "#errorBottomBar { background-color: %2; }"
+    ).arg(tm.color("editor.background").name(),
+          tm.color("editorLineNumber.background").name()));
+
+    m_statusFilter->setStyleSheet(QStringLiteral(
         "QComboBox {"
-        "  background-color: #3c3c3c;"
-        "  color: #cccccc;"
-        "  border: 1px solid #555;"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
         "  border-radius: 4px;"
         "  padding: 4px 8px;"
         "  font-size: 12px;"
@@ -449,57 +591,57 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
         "  image: none;"
         "  border-left: 4px solid transparent;"
         "  border-right: 4px solid transparent;"
-        "  border-top: 6px solid #888;"
+        "  border-top: 6px solid %4;"
         "  margin-right: 4px;"
         "}"
         "QComboBox:hover {"
-        "  border-color: #0078d4;"
+        "  border-color: %5;"
         "}"
         "QComboBox QAbstractItemView {"
-        "  background-color: #2d2d2d;"
-        "  color: #cccccc;"
-        "  border: 1px solid #555;"
-        "  selection-background-color: #094771;"
+        "  background-color: %6;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
+        "  selection-background-color: %7;"
         "  font-size: 12px;"
         "}"
-    );
+    ).arg(tm.color("dropdown.background").name(),
+          tm.color("menu.foreground").name(),
+          tm.color("dropdown.border").name(),
+          tm.color("editorLineNumber.foreground").name(),
+          tm.color("activityBar.activeBorder").name(),
+          tm.color("menu.background").name(),
+          tm.color("menu.selectionBackground").name()));
 
-    m_searchEdit = new QLineEdit;
-    m_searchEdit->setPlaceholderText(tr("搜索错题..."));
-    m_searchEdit->setStyleSheet(
+    m_searchEdit->setStyleSheet(QStringLiteral(
         "QLineEdit {"
-        "  background-color: #3c3c3c;"
-        "  color: #cccccc;"
-        "  border: 1px solid #555;"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
         "  border-radius: 4px;"
         "  padding: 4px 8px;"
         "  font-size: 12px;"
         "}"
         "QLineEdit:focus {"
-        "  border-color: #0078d4;"
+        "  border-color: %4;"
         "}"
         "QLineEdit::placeholder {"
-        "  color: #666;"
+        "  color: %5;"
         "}"
-    );
+    ).arg(tm.color("input.background").name(),
+          tm.color("input.foreground").name(),
+          tm.color("input.border").name(),
+          tm.color("activityBar.activeBorder").name(),
+          tm.color("editorLineNumber.foreground").name()));
 
-    filterLayout->addWidget(m_statusFilter);
-    filterLayout->addWidget(m_searchEdit);
-
-    // ── Scroll area for error list ──
-    m_scrollArea = new QScrollArea(this);
-    m_scrollArea->setWidgetResizable(true);
-    m_scrollArea->setFrameShape(QFrame::NoFrame);
-    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_scrollArea->setStyleSheet(
-        "QScrollArea { background-color: #1E1E1E; border: none; }"
+    m_scrollArea->setStyleSheet(QStringLiteral(
+        "QScrollArea { background-color: %1; border: none; }"
         "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
+        "  background-color: %1;"
         "  width: 10px;"
         "  margin: 0;"
         "}"
         "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
+        "  background-color: %2;"
         "  min-height: 30px;"
         "  border-radius: 5px;"
         "}"
@@ -509,61 +651,33 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
         "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
         "  background: none;"
         "}"
-    );
+    ).arg(tm.color("editor.background").name(),
+          tm.color("scrollbarSlider.background").name()));
 
-    m_listContainer = new QWidget;
-    m_listContainer->setStyleSheet("background-color: #1E1E1E;");
-    m_listLayout = new QVBoxLayout(m_listContainer);
-    m_listLayout->setContentsMargins(4, 4, 4, 4);
-    m_listLayout->setSpacing(2);
-    m_listLayout->addStretch();
+    m_listContainer->setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+    ).arg(tm.color("editor.background").name()));
 
-    m_scrollArea->setWidget(m_listContainer);
-
-    // ── Bottom bar ──
-    auto *bottomBar = new QWidget(this);
-    bottomBar->setFixedHeight(32);
-    bottomBar->setStyleSheet("background-color: #252525;");
-    auto *bottomLayout = new QHBoxLayout(bottomBar);
-    bottomLayout->setContentsMargins(8, 0, 8, 0);
-
-    m_deleteAllBtn = new QPushButton(tr("全部删除"));
-    m_deleteAllBtn->setFixedHeight(22);
-    m_deleteAllBtn->setCursor(Qt::PointingHandCursor);
-    m_deleteAllBtn->setStyleSheet(
+    m_deleteAllBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"
         "  background: transparent;"
-        "  border: 1px solid #555;"
+        "  border: 1px solid %1;"
         "  border-radius: 4px;"
-        "  color: #e74c3c;"
+        "  color: %2;"
         "  font-size: 11px;"
         "  padding: 0 8px;"
         "}"
         "QPushButton:hover {"
-        "  background-color: #3c1e1e;"
-        "  border-color: #e74c3c;"
+        "  background-color: %3;"
+        "  border-color: %2;"
         "}"
-    );
+    ).arg(tm.color("input.border").name(),
+          tm.color("diagnostics.error").name(),
+          tm.color("cell.badge.error").name()));
 
-    m_countLabel = new QLabel(tr("共 0 条记录"));
-    m_countLabel->setStyleSheet("color: #888; font-size: 11px;");
-
-    bottomLayout->addWidget(m_deleteAllBtn);
-    bottomLayout->addStretch();
-    bottomLayout->addWidget(m_countLabel);
-
-    // ── Assemble main layout ──
-    mainLayout->addWidget(filterBar);
-    mainLayout->addWidget(m_scrollArea, 1);
-    mainLayout->addWidget(bottomBar);
-
-    // ── Connections ──
-    connect(m_statusFilter, &QComboBox::currentIndexChanged,
-            this, &ErrorListPanel::onFilterChanged);
-    connect(m_searchEdit, &QLineEdit::textChanged,
-            this, &ErrorListPanel::onSearchTextChanged);
-    connect(m_deleteAllBtn, &QPushButton::clicked,
-            this, &ErrorListPanel::deleteAllRequested);
+    m_countLabel->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 11px;"
+    ).arg(tm.color("editorLineNumber.foreground").name()));
 }
 
 // ── Data loading ─────────────────────────────────────────────────

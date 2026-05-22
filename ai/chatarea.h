@@ -23,6 +23,7 @@ public:
 
 private:
     void scrollToBottom();
+    void refreshStyle();
 
     QWidget *m_container;
     QVBoxLayout *m_layout;

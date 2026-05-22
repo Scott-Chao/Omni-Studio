@@ -23,6 +23,7 @@ signals:
 
 private:
     void rebuildButtons();
+    void refreshStyle();
 
     FlowLayout *m_layout;
     QFrame *m_separator;
