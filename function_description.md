@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.5）
+## 功能说明文档（v0.11.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -36,7 +36,7 @@
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
 - 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
-- **快捷键自定义**：设置面板快捷键页面支持交互式录制。点击快捷键区域进入录制状态，按下目标组合键完成设置，Delete/Backspace 清除，Escape 取消。冲突检测弹窗提示覆盖或取消，覆盖时自动清空冲突操作的快捷键。所有修改实时生效，自动持久化至 `config.ini`，支持"恢复默认"一键重置。
+- 快捷键自定义：设置面板快捷键页面支持交互式录制。点击快捷键区域进入录制状态，按下目标组合键完成设置，Delete/Backspace 清除，Escape 取消。冲突检测弹窗提示覆盖或取消，覆盖时自动清空冲突操作的快捷键。所有修改实时生效，自动持久化至 `config.ini`，支持"恢复默认"一键重置。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
 - 大纲/标题导航面板：集成在右侧统一面板中，打开右侧面板即可切换至大纲 tab。自动解析当前文档中所有标题（`#` ~ `######`，跳过围栏代码块），按层级缩进显示，h1 最亮 h6 逐级变暗，h1/h2 加粗。点击标题可精准跳转。切换标签页、保存文件时自动刷新。非 `.md` 文件时面板清空。
 - .smd 文件格式：采用 `---smd:<type>` 分隔符的单元格分块格式，类似 Jupyter Notebook 的交互模式。编辑器自动识别 `.smd` 后缀切换为 SMD 编辑模式，保存/另存为对话框支持 `.smd` 格式。
@@ -58,9 +58,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.5
-- 修复文件树工具栏仅硬编码深色样式、切换浅色主题后仍显示暗色背景的问题：将工具栏（`m_toolbar`）、文件夹标签（`m_folderLabel`）及刷新/折叠按钮的样式表全部迁移至 `refreshStyle()`，分别使用 `editorLineNumber.background`（工具栏背景）、`sideBar.border`（底边框）、`sideBar.foreground`（文字）和 `list.hoverBackground`（按钮悬停）等主题 token，使深色/浅色主题自动适配（`fileexplorerwidget.cpp`）
-- 修复文件树工具栏刷新/折叠按钮图标在浅色模式下颜色不匹配的问题：引入 `coloredSvgIcon` 工具函数，在 `refreshStyle()` 中使用 `sideBar.foreground` 对图标进行重新着色——深色主题为浅灰 `#bfbfbf`，浅色主题为深灰 `#202020`（`fileexplorerwidget.cpp`）
+### 修复 v0.11.6
+- 修复深色模式下多处鼠标悬停高亮显示为白色的统一问题：根因是 `QColor::name()` 会丢弃 alpha 通道，导致 `#FFFFFF0D`（5% 不透明白色）→ `#FFFFFF`（纯白）。将 `dark-vscode.json` 中 `list.hoverBackground` / `activityBar.hoverBackground` 从 `#FFFFFF0D` 改为 `#2A2D2E`，`aiAssistant.actionButtonHoverBackground` / `titleBar.buttonHover` 从 `#FFFFFF18` 改为 `#3C3C3C`；`light-vscode.json` 中对应 token 同步改为 `#E8E8E8` / `#E0E0E0` 等纯色灰。影响范围：设置面板左侧栏、帮助面板左侧栏、右侧面板列表（历史/大纲/标签/反链）、搜索结果列表、底部面板标签/按钮、ActionBar 按钮、错误列表面板、活动栏按钮和标题栏按钮的悬停高亮（`resources/themes/dark-vscode.json` + `resources/themes/light-vscode.json`）
 
 ### 1. `MainWindow` - 主窗口控制器
 
