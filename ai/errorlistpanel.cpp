@@ -412,13 +412,13 @@ void ErrorDetailWidget::refreshStyles()
         "#detailHeader { background-color: %2; }"
         "#detailBtnBar { background-color: %2; }"
         "#detailStatusLbl { color: %3; font-size: 12px; }"
-        "#detailTimeLbl, #detailMemLbl { color: %4; font-size: 11px; }"
+        "#detailTimeLbl, #detailMemLbl { color: %3; font-size: 11px; }"
         "#detailFileLbl { color: %5; font-size: 11px; }"
-    ).arg(tm.color("editorLineNumber.background").name(),      // #252525
-          tm.color("list.hoverBackground").name(),              // #2A2D2E (replaces #2a2a2a)
-          tm.color("workbench.foreground").name(),              // #CCCCCC (replaces #ccc)
-          tm.color("editorLineNumber.foreground").name(),       // #858585 (replaces #aaa/#888)
-          tm.color("tab.inactiveForeground").name()));          // #969696 (replaces #888)
+    ).arg(tm.color("editorLineNumber.background").name(),      // %1
+          tm.color("list.hoverBackground").name(),              // %2
+          tm.color("workbench.foreground").name(),              // %3
+          tm.color("editorLineNumber.foreground").name(),       // %4 (unused now)
+          tm.color("tab.inactiveForeground").name()));          // %5
 
     m_aiAnalysisLabel->setStyleSheet(QStringLiteral(
         "color: %1; font-size: 12px; padding: 8px 12px;"
@@ -572,7 +572,7 @@ void ErrorListPanel::refreshStyle()
         "#errorFilterBar { background-color: %2; }"
         "#errorBottomBar { background-color: %2; }"
     ).arg(tm.color("editor.background").name(),
-          tm.color("editorLineNumber.background").name()));
+          tm.color("sideBar.background").name()));
 
     m_statusFilter->setStyleSheet(QStringLiteral(
         "QComboBox {"

@@ -200,7 +200,11 @@ private:
     TitleBarButton *m_maximizeBtn = nullptr;
     TitleBarButton *m_closeBtn = nullptr;
     QWidget *m_toolbarSpacer = nullptr;
+    QToolBar *m_toolBar = nullptr;
+    QToolButton *m_fileMenuBtn = nullptr;
+    QMenu *m_fileMenu = nullptr;
     void setupCustomTitleBar();
+    void refreshTitleBarStyle();
 
     void onCompile();
     void onRun();

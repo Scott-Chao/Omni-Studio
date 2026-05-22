@@ -2,7 +2,6 @@
 #include "configmanager.h"
 #include "thememanager.h"
 #include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QFileInfo>
 #include <QColor>
 
@@ -15,20 +14,6 @@ TagPanel::TagPanel(QWidget *parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // Header row: back button + title
-    QHBoxLayout *headerLayout = new QHBoxLayout;
-    headerLayout->setContentsMargins(4, 4, 4, 4);
-
-    m_backButton = new QPushButton(QStringLiteral("← ") + tr("返回"), this);
-    m_backButton->setFlat(true);
-    connect(m_backButton, &QPushButton::clicked, this, &TagPanel::onBackClicked);
-    headerLayout->addWidget(m_backButton);
-
-    m_titleLabel = new QLabel(tr("标签"), this);
-    headerLayout->addWidget(m_titleLabel, 1);
-
-    mainLayout->addLayout(headerLayout);
-
     m_listWidget = new QListWidget(this);
     m_listWidget->setSelectionMode(QAbstractItemView::NoSelection);
     connect(m_listWidget, &QListWidget::itemClicked, this, &TagPanel::onItemClicked);
@@ -40,15 +25,7 @@ TagPanel::TagPanel(QWidget *parent)
 
 void TagPanel::refreshStyle()
 {
-    auto &tm = ThemeManager::instance();
-    m_backButton->setStyleSheet(QStringLiteral(
-        "QPushButton { color: %1; text-align: left; padding: 2px 6px;"
-        "  background: transparent; border: none; }"
-        "QPushButton:hover { color: %2; }")
-        .arg(tm.color("syntax.keywords").name(),
-             tm.color("syntax.keywords").lighter(130).name()));
-    m_titleLabel->setStyleSheet(QString("color: %1; font-weight: bold; padding: 4px;")
-                                .arg(tm.color("editor.foreground").name()));
+    // No header widgets to style — uses RightPanelContainer's theme
 }
 
 void TagPanel::showAllTags(const QStringList &tags)
@@ -56,8 +33,6 @@ void TagPanel::showAllTags(const QStringList &tags)
     m_listWidget->clear();
     m_showingFiles = false;
     m_allTags = tags;
-    m_backButton->hide();
-    m_titleLabel->setText(tr("所有标签"));
 
     if (tags.isEmpty()) {
         QListWidgetItem *item = new QListWidgetItem(tr("未找到标签"));
@@ -78,8 +53,11 @@ void TagPanel::showFilesForTag(const QString &tag, const QStringList &files)
 {
     m_listWidget->clear();
     m_showingFiles = true;
-    m_backButton->show();
-    m_titleLabel->setText(QStringLiteral("#") + tag);
+
+    // Add a "back to all tags" item at the top
+    QListWidgetItem *backItem = new QListWidgetItem(QStringLiteral("← ") + tr("返回"));
+    backItem->setData(Qt::UserRole, QStringLiteral("__back__"));
+    m_listWidget->addItem(backItem);
 
     if (files.isEmpty()) {
         QListWidgetItem *item = new QListWidgetItem(tr("无文件包含此标签"));
@@ -99,18 +77,16 @@ void TagPanel::showFilesForTag(const QString &tag, const QStringList &files)
 
 void TagPanel::onItemClicked(QListWidgetItem *item)
 {
-    if (m_showingFiles) {
-        QString path = item->data(Qt::UserRole).toString();
-        if (!path.isEmpty())
-            emit fileClicked(path);
-    } else {
-        QString tag = item->data(Qt::UserRole).toString();
-        if (!tag.isEmpty())
-            emit tagClicked(tag);
+    QString data = item->data(Qt::UserRole).toString();
+    if (data == QStringLiteral("__back__")) {
+        showAllTags(m_allTags);
+        return;
     }
-}
-
-void TagPanel::onBackClicked()
-{
-    showAllTags(m_allTags);
+    if (m_showingFiles) {
+        if (!data.isEmpty())
+            emit fileClicked(data);
+    } else {
+        if (!data.isEmpty())
+            emit tagClicked(data);
+    }
 }

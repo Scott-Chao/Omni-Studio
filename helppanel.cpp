@@ -12,6 +12,7 @@
 #include <QShowEvent>
 #include <QFile>
 #include <QApplication>
+#include <QRegularExpression>
 #include <QTextDocument>
 #include <QTextBlock>
 #include <QAbstractTextDocumentLayout>
@@ -135,10 +136,6 @@ void HelpPanel::refreshStyle()
         .arg(tm.color("menu.background").name(),
              tm.color("panel.border").name()));
 
-    if (auto *titleBar = findChild<QWidget*>("helpTitleBar")) {
-        // Actually findChild returns QWidget*, need proper lookup
-    }
-
     m_titleLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px; font-weight: bold;")
                                 .arg(tm.color("titleBar.foreground").name()));
 
@@ -172,13 +169,54 @@ void HelpPanel::refreshStyle()
         "QTextBrowser { background-color: %1; color: %2; border: none; font-size: 14px; padding: 8px; }")
         .arg(tm.color("editor.background").name(),
              tm.color("editor.foreground").name()));
+
+    // Re-theme the HTML content with current theme colors
+    applyThemeToContent();
+}
+
+void HelpPanel::applyThemeToContent()
+{
+    auto &tm = ThemeManager::instance();
+    if (m_rawHelpContent.isEmpty())
+        return;
+
+    QString bg = tm.color("editor.background").name();
+    QString fg = tm.color("editor.foreground").name();
+    QString heading1 = tm.color("workbench.foreground").name();
+    QString heading2 = tm.color("syntax.keywords").name();
+    QString heading3 = tm.color("syntax.types").name();
+    QString codeBg = tm.color("aiAssistant.codeBackground").name();
+    QString codeFg = tm.color("aiAssistant.codeForeground").name();
+    QString border = tm.color("panel.border").name();
+    QString subtle = tm.color("editorLineNumber.foreground").name();
+    QString noteBg = tm.color("list.hoverBackground").name();
+
+    QString html = m_rawHelpContent;
+
+    // Replace hardcoded dark theme colors — longer matches first to avoid substring issues
+    html.replace(QRegularExpression("#1e1e1e\\b"), bg);
+    html.replace(QRegularExpression("#252526\\b"), codeBg);
+    html.replace(QRegularExpression("#2d2d2d\\b"), noteBg);
+    html.replace(QRegularExpression("#404040\\b"), border);
+    html.replace(QRegularExpression("#d4d4d4\\b"), fg);
+    html.replace(QRegularExpression("#e0e0e0\\b"), heading1);
+    html.replace(QRegularExpression("#569cd6\\b"), heading2);
+    html.replace(QRegularExpression("#4ec9b0\\b"), heading3);
+    html.replace(QRegularExpression("#ce9178\\b"), codeFg);
+    html.replace(QRegularExpression("#b0b0b0\\b"), subtle);
+    // 3-digit hex: replace after longer patterns to avoid substring conflicts
+    html.replace(QRegularExpression("#333\\b"), border);
+    html.replace(QRegularExpression("#555\\b"), border);
+
+    m_contentBrowser->setHtml(html);
 }
 
 void HelpPanel::loadContent()
 {
     QFile file(":/help/content");
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        m_contentBrowser->setHtml(QString::fromUtf8(file.readAll()));
+        m_rawHelpContent = QString::fromUtf8(file.readAll());
+        applyThemeToContent();
     } else {
         m_contentBrowser->setPlainText(tr("无法加载帮助内容"));
     }

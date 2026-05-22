@@ -1,5 +1,6 @@
 #include "signaturehelpmanager.h"
 #include "codeeditor.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -22,25 +23,17 @@ SignatureHelpPopup::SignatureHelpPopup(QWidget *parent)
     setAttribute(Qt::WA_ShowWithoutActivating, true);
     setAttribute(Qt::WA_TranslucentBackground, false);
 
-    setStyleSheet(QStringLiteral(
-        "SignatureHelpPopup { background: #252526; border: 1px solid #3C3C3C; }"
-    ));
-
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 6, 8, 6);
     layout->setSpacing(2);
 
     // Header: overload navigation
     m_headerLabel = new QLabel(this);
-    m_headerLabel->setStyleSheet(
-        QStringLiteral("QLabel { color: #888888; font-size: 11px; }"));
     m_headerLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     layout->addWidget(m_headerLabel);
 
     // Signature: rich text with active parameter highlighted
     m_sigLabel = new QLabel(this);
-    m_sigLabel->setStyleSheet(
-        QStringLiteral("QLabel { color: #D4D4D4; font-size: 12px; }"));
     m_sigLabel->setWordWrap(true);
     m_sigLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     m_sigLabel->setCursor(Qt::ArrowCursor);
@@ -48,14 +41,38 @@ SignatureHelpPopup::SignatureHelpPopup(QWidget *parent)
 
     // Documentation
     m_docLabel = new QLabel(this);
-    m_docLabel->setStyleSheet(
-        QStringLiteral("QLabel { color: #6A6A6A; font-size: 11px; }"));
     m_docLabel->setWordWrap(true);
     m_docLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     m_docLabel->setCursor(Qt::ArrowCursor);
     layout->addWidget(m_docLabel);
 
     setCursor(Qt::ArrowCursor);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SignatureHelpPopup::refreshStyle);
+    refreshStyle();
+}
+
+void SignatureHelpPopup::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "SignatureHelpPopup { background: %1; border: 1px solid %2; }"
+    ).arg(tm.color("editor.background").name(),
+          tm.color("panel.border").name()));
+
+    m_headerLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: %1; font-size: 11px; }"
+    ).arg(tm.color("editorLineNumber.foreground").name()));
+
+    m_sigLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: %1; font-size: 12px; }"
+    ).arg(tm.color("editor.foreground").name()));
+
+    m_docLabel->setStyleSheet(QStringLiteral(
+        "QLabel { color: %1; font-size: 11px; }"
+    ).arg(tm.color("tab.inactiveForeground").name()));
 }
 
 void SignatureHelpPopup::showSignatures(const QList<SignatureInfo> &signatures, int activeIndex)
@@ -106,6 +123,7 @@ void SignatureHelpPopup::updateContent()
     QString sigHtml;
     QString labelText = sig.label.toHtmlEscaped();
 
+    QColor activeParamColor = ThemeManager::instance().color("syntax.keywords");
     if (!sig.parameters.isEmpty() && sig.activeParameter >= 0
         && sig.activeParameter < sig.parameters.size())
     {
@@ -115,7 +133,7 @@ void SignatureHelpPopup::updateContent()
         int idx = labelText.indexOf(escapedParam);
         if (idx >= 0) {
             sigHtml = labelText.left(idx)
-                      + QStringLiteral("<b style=\"color:#569CD6;\">")
+                      + QStringLiteral("<b style=\"color:%1;\">")
                       + escapedParam
                       + QStringLiteral("</b>")
                       + labelText.mid(idx + escapedParam.length());

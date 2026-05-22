@@ -2,6 +2,27 @@
 #include "thememanager.h"
 #include <QFont>
 #include <QIcon>
+#include <QPainter>
+
+namespace {
+QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage();
+    QRgb themeRgb = color.rgb();
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            int alpha = qAlpha(img.pixel(x, y));
+            if (alpha > 0)
+                img.setPixel(x, y, qRgba(qRed(themeRgb), qGreen(themeRgb), qBlue(themeRgb), alpha));
+        }
+    }
+    return QIcon(QPixmap::fromImage(img));
+}
+} // anonymous namespace
 
 ActivityBar::ActivityBar(QWidget *parent)
     : QWidget(parent)
@@ -44,6 +65,14 @@ void ActivityBar::refreshStyle()
     QPalette pal = palette();
     pal.setColor(QPalette::Window, tm.color("activityBar.background"));
     setPalette(pal);
+
+    QColor fg = tm.color("activityBar.foreground");
+    const int iconSize = 22;
+    m_searchBtn->setIcon(coloredSvgIcon(":/icons/search", fg, iconSize));
+    m_aiBtn->setIcon(coloredSvgIcon(":/icons/ai", fg, iconSize));
+    m_settingsBtn->setIcon(coloredSvgIcon(":/icons/settings", fg, iconSize));
+    m_exportPdfBtn->setIcon(coloredSvgIcon(":/icons/pdf", fg, iconSize));
+    m_judgeBtn->setIcon(coloredSvgIcon(":/icons/judge", fg, iconSize));
 
     updateButtonStyle(m_searchBtn, m_searchActive);
     updateButtonStyle(m_aiBtn, m_aiActive);

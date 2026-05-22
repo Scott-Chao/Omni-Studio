@@ -150,7 +150,7 @@ void JudgePanel::refreshStyle()
     auto &tm = ThemeManager::instance();
 
     setStyleSheet(QString("JudgePanel { background-color: %1; }")
-        .arg(tm.color("sideBar.background").name()));
+        .arg(tm.color("editor.background").name()));
 
     m_folderEdit->setStyleSheet(QString(
         "QLineEdit { background: %1; color: %2; border: 1px solid %3;"
@@ -183,7 +183,7 @@ void JudgePanel::refreshStyle()
         "QTableWidget::item { padding: 2px 4px; }"
         "QHeaderView::section { background: %4; color: %2;"
         "  border: none; border-bottom: 1px solid %3; padding: 4px; }")
-        .arg(tm.color("sideBar.background").name(),
+        .arg(tm.color("editor.background").name(),
              tm.color("sideBar.foreground").name(),
              tm.color("sideBar.border").name(),
              tm.color("editorLineNumber.background").name()));

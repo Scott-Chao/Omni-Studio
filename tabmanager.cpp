@@ -349,11 +349,9 @@ void TabManager::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
     setStyleSheet(QString(
-        "QTabWidget::pane {"
-        "   border: none;"
-        "}"
+        "QTabWidget { background: %1; }"
         "QTabBar {"
-        "   background: %1;"
+        "   background: %2;"
         "}"
         "QTabBar::tab {"
         "   height: 32px;"
@@ -361,12 +359,12 @@ void TabManager::refreshStyle()
         "   padding: 4px 12px;"
         "   border-top-left-radius: 8px;"
         "   border-top-right-radius: 8px;"
-        "   background: %1;"
-        "   color: %2;"
+        "   background: %2;"
+        "   color: %3;"
         "   border: none;"
         "}"
         "QTabBar::tab:selected {"
-        "   background: %3;"
+        "   background: %1;"
         "   color: %4;"
         "}"
         "QTabBar::tab:hover:!selected {"
@@ -381,9 +379,9 @@ void TabManager::refreshStyle()
         "   background: %6;"
         "}"
     )
-    .arg(tm.color("tab.inactiveBackground").name())   // %1 bg / inactive bg
-    .arg(tm.color("tab.inactiveForeground").name())   // %2 inactive fg
-    .arg(tm.color("tab.activeBackground").name())     // %3 selected bg
+    .arg(tm.color("tab.activeBackground").name())     // %1 QTabWidget bg / selected tab bg
+    .arg(tm.color("tab.inactiveBackground").name())   // %2 tab bar / inactive tab bg
+    .arg(tm.color("tab.inactiveForeground").name())   // %3 inactive fg
     .arg(tm.color("tab.activeForeground").name())     // %4 selected fg
     .arg(tm.color("tab.hoverBackground").name())      // %5 hover bg
     .arg(tm.color("titleBar.buttonCloseHover").name())); // %6 close hover bg

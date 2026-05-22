@@ -68,6 +68,31 @@ QToolTip {
     padding: 4px 8px;
 }
 
+/* ===== MainWindow ===== */
+QMainWindow {
+    background: %%workbench.background%%;
+}
+
+/* ===== Dock Widget ===== */
+QDockWidget {
+    background: %%sideBar.background%%;
+}
+QDockWidget::title {
+    background: %%titleBar.background%%;
+    color: %%titleBar.foreground%%;
+    text-align: left;
+    padding-left: 8px;
+}
+
+/* ===== Tab Widget ===== */
+QTabWidget {
+    background: %%tab.activeBackground%%;
+}
+QTabWidget::pane {
+    background: %%tab.activeBackground%%;
+    border: none;
+}
+
 /* ===== Splitter ===== */
 QSplitter::handle {
     background: %%panel.border%%;

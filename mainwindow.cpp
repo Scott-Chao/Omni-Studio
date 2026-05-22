@@ -85,6 +85,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QAbstractScrollArea>
+#include <QPainter>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -110,6 +111,25 @@ QString replaceWikiLinkText(const QString &content, const QString &oldText, cons
     return result;
 }
 } // anonymous namespace
+
+// ── Helper: create themed icon from SVG ──────────────────────────
+static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 24)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage();
+    QRgb themeRgb = color.rgb();
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            int alpha = qAlpha(img.pixel(x, y));
+            if (alpha > 0)
+                img.setPixel(x, y, qRgba(qRed(themeRgb), qGreen(themeRgb), qBlue(themeRgb), alpha));
+        }
+    }
+    return QIcon(QPixmap::fromImage(img));
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -336,85 +356,72 @@ MainWindow::MainWindow(QWidget *parent)
     // 标签/大纲面板已集成到 m_rightPanel 中
 
     // ----- 工具栏（同时充当标题栏）-----
-    QToolBar *toolBar = addToolBar("文件工具栏");
-    toolBar->setMovable(false);
-    toolBar->setFloatable(false);
-    toolBar->installEventFilter(this);
+    m_toolBar = addToolBar("文件工具栏");
+    m_toolBar->setMovable(false);
+    m_toolBar->setFloatable(false);
+    m_toolBar->installEventFilter(this);
 
     // 左侧：[文件 ▼] 下拉菜单
-    QToolButton *fileMenuBtn = new QToolButton(toolBar);
-    fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
-    fileMenuBtn->setIconSize(QSize(10, 10));
-    fileMenuBtn->setText(tr("文件"));
-    fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    fileMenuBtn->setToolTip(tr("文件操作"));
-    fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
-    fileMenuBtn->setFixedHeight(32);
-    fileMenuBtn->setStyleSheet(
-        "QToolButton {"
-        "  color: #cccccc; background: transparent; border: none; padding: 0 8px;"
-        "  font-size: 12px;"
-        "}"
-        "QToolButton:hover { background: #3c3c3c; }"
-        "QToolButton::menu-indicator { image: none; }"
-    );
-    {
-        QMenu *fileMenu = new QMenu(fileMenuBtn);
-        fileMenu->setStyleSheet(
-            "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
-            "QMenu::item { padding: 6px 24px; color: #cccccc; }"
-            "QMenu::item:selected { background: #094771; color: #ffffff; }"
-            "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
-        );
+    m_fileMenuBtn = new QToolButton(m_toolBar);
+    m_fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    m_fileMenuBtn->setIconSize(QSize(10, 10));
+    m_fileMenuBtn->setText(tr("文件"));
+    m_fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_fileMenuBtn->setToolTip(tr("文件操作"));
+    m_fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    m_fileMenuBtn->setFixedHeight(32);
 
-        QAction *openDirAct = fileMenu->addAction(tr("打开目录"));
+    {
+        m_fileMenu = new QMenu(m_fileMenuBtn);
+
+        QAction *openDirAct = m_fileMenu->addAction(tr("打开目录"));
         connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
 
-        fileMenu->addSeparator();
+        m_fileMenu->addSeparator();
 
-        QAction *newAct = fileMenu->addAction(tr("新建文件"));
+        QAction *newAct = m_fileMenu->addAction(tr("新建文件"));
         newAct->setShortcut(QKeySequence::New);
         connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
         m_shortcutActions["new_file"] = newAct;
 
-        QAction *saveAct = fileMenu->addAction(tr("保存"));
+        QAction *saveAct = m_fileMenu->addAction(tr("保存"));
         saveAct->setShortcut(QKeySequence::Save);
         addAction(saveAct);
         connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
         m_shortcutActions["save"] = saveAct;
 
-        QAction *saveAsAct = fileMenu->addAction(tr("另存为"));
+        QAction *saveAsAct = m_fileMenu->addAction(tr("另存为"));
         saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
         addAction(saveAsAct);
         connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
         m_shortcutActions["save_as"] = saveAsAct;
 
-        fileMenuBtn->setMenu(fileMenu);
+        m_fileMenuBtn->setMenu(m_fileMenu);
     }
-    toolBar->addWidget(fileMenuBtn);
+    m_toolBar->addWidget(m_fileMenuBtn);
 
     // 中间可拖拽区域（Expanding spacer — 双击最大化/还原）
     m_toolbarSpacer = new QWidget;
     m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    toolBar->addWidget(m_toolbarSpacer);
+    m_toolBar->addWidget(m_toolbarSpacer);
 
     // 帮助按钮（置于侧栏按钮左侧）
     m_helpAction = new QAction(QIcon(":/icons/help"), tr("帮助"), this);
     m_helpAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_help", "F1")));
     addAction(m_helpAction);
-    toolBar->addAction(m_helpAction);
+    m_toolBar->addAction(m_helpAction);
     connect(m_helpAction, &QAction::triggered, this, &MainWindow::toggleHelp);
 
     // 右侧面板（历史/大纲/标签/反链）
     toggleRightPanelAction->setIcon(QIcon(":/icons/panel"));
-    toolBar->addAction(toggleRightPanelAction);
+    m_toolBar->addAction(toggleRightPanelAction);
 
     // 右侧：预览
     m_previewAction = new QAction(QIcon(":/icons/preview"), tr("预览"), this);
     m_previewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_preview", "Ctrl+Shift+P")));
     m_previewAction->setCheckable(true);
     addAction(m_previewAction);
-    toolBar->addAction(m_previewAction);
+    m_toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
@@ -435,7 +442,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitPreviewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_split_preview", "Ctrl+P")));
     m_splitPreviewAction->setCheckable(true);
     addAction(m_splitPreviewAction);
-    toolBar->addAction(m_splitPreviewAction);
+    m_toolBar->addAction(m_splitPreviewAction);
     connect(m_splitPreviewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
@@ -468,12 +475,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 工具栏运行按钮（带下拉菜单）
     m_runMenu = new QMenu(this);
-    m_runMenu->setStyleSheet(
-        "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
-        "QMenu::item { padding: 6px 24px; color: #ccc; }"
-        "QMenu::item:selected { background: #094771; color: #fff; }"
-        "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
-    );
+
     m_runMenu->addAction(m_compileAction);
     m_runMenu->addAction(m_runAction);
     m_runMenu->addSeparator();
@@ -484,7 +486,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_runToolAction->setMenu(m_runMenu);
     m_runToolAction->setToolTip(tr("运行 (编译/运行/编译运行)"));
     m_runToolAction->setVisible(false); // 只对代码文件显示
-    toolBar->addAction(m_runToolAction);
+    m_toolBar->addAction(m_runToolAction);
+
+    // Title bar uses ThemeManager colors, refresh on theme change
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &MainWindow::refreshTitleBarStyle);
+    refreshTitleBarStyle();
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
@@ -1981,6 +1988,66 @@ void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
         // 重建此文件的双向链接索引
         m_backlinkIndex->rebuildFile(srcPath, rootPath, m_fileIndex);
     }
+}
+
+// ============================================================
+// 标题栏样式刷新 — 响应主题切换
+// ============================================================
+
+void MainWindow::refreshTitleBarStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    // Toolbar background and text color
+    m_toolBar->setStyleSheet(QStringLiteral(
+        "QToolBar { background: %1; border: none; spacing: 0; padding: 0; }"
+    ).arg(tm.color("titleBar.background").name()));
+
+    // File menu button
+    m_fileMenuBtn->setStyleSheet(QStringLiteral(
+        "QToolButton {"
+        "  color: %1; background: transparent; border: none; padding: 0 8px;"
+        "  font-size: 12px;"
+        "}"
+        "QToolButton:hover { background: %2; }"
+        "QToolButton::menu-indicator { image: none; }"
+    ).arg(tm.color("titleBar.foreground").name(),
+          tm.color("titleBar.buttonHover").name()));
+
+    // File menu dropdown
+    m_fileMenu->setStyleSheet(QStringLiteral(
+        "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
+        "QMenu::item { padding: 6px 24px; color: %3; }"
+        "QMenu::item:selected { background: %4; color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(tm.color("menu.background").name(),
+          tm.color("panel.border").name(),
+          tm.color("menu.foreground").name(),
+          tm.color("menu.selectionBackground").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("menu.separatorColor").name()));
+
+    // Run menu dropdown
+    m_runMenu->setStyleSheet(QStringLiteral(
+        "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
+        "QMenu::item { padding: 6px 24px; color: %3; }"
+        "QMenu::item:selected { background: %4; color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(tm.color("menu.background").name(),
+          tm.color("panel.border").name(),
+          tm.color("menu.foreground").name(),
+          tm.color("menu.selectionBackground").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("menu.separatorColor").name()));
+
+    // Themed toolbar action icons
+    QColor titleFg = tm.color("titleBar.foreground");
+    m_helpAction->setIcon(coloredSvgIcon(":/icons/help", titleFg));
+    toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
+    m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
+    m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
+    if (m_runToolAction)
+        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", titleFg));
 }
 
 // ============================================================

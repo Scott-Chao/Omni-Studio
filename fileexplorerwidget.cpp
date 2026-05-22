@@ -341,17 +341,23 @@ void FileExplorerWidget::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
+    setStyleSheet(QString("FileExplorerWidget { background-color: %1; }")
+        .arg(tm.color("sideBar.background").name()));
+
     m_breadcrumb->setStyleSheet(QStringLiteral(
         "background-color: %1; border-bottom: 1px solid %2;"
     ).arg(tm.color("editorLineNumber.background").name(),
           tm.color("sideBar.border").name()));
 
     m_treeView->setStyleSheet(QString(
-        "QTreeView::item { height: 28px; }"
-        "QTreeView::item:hover { background: %1; }"
-        "QTreeView::item:selected { background: %2; }"
-    ).arg(tm.color("list.hoverBackground").name(),
-          tm.color("list.activeBackground").name()));
+        "QTreeView { background: %1; color: %4; border: none; }"
+        "QTreeView::item { height: 28px; color: %4; }"
+        "QTreeView::item:hover { background: %2; }"
+        "QTreeView::item:selected { background: %3; color: %4; }"
+    ).arg(tm.color("sideBar.background").name(),
+          tm.color("list.hoverBackground").name(),
+          tm.color("list.activeBackground").name(),
+          tm.color("sideBar.foreground").name()));
 
     updateBreadcrumb();
 }
