@@ -37,6 +37,8 @@ private:
     void loadContent();
     void computeSectionPositions();
     void onScrollChanged(int value);
+    void refreshStyle();
+    void applyThemeToContent();
 
     QLabel *m_titleLabel;
     QPushButton *m_closeButton;
@@ -52,6 +54,7 @@ private:
     QVector<SectionInfo> m_sectionInfo;
     QVector<qreal> m_sectionPositions;
     bool m_positionsComputed = false;
+    QString m_rawHelpContent;
 
     static constexpr int kTitleBarHeight = 36;
     static constexpr int kCategoryWidth = 170;

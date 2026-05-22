@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 #include "configmanager.h"
+#include "thememanager.h"
 
 #include <QApplication>
+#include <QStyleFactory>
 #include <QLocale>
 #include <QTranslator>
 
@@ -14,6 +16,12 @@ int main(int argc, char *argv[])
 
     QApplication a(argc, argv);
 
+    // Fusion style for consistent cross-platform rendering and proper dark-theme QSS support
+    a.setStyle(QStyleFactory::create("Fusion"));
+
+    // Initialize ThemeManager (loads default theme)
+    ThemeManager::instance();
+
     QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();
     for (const QString &locale : uiLanguages) {
@@ -24,6 +32,9 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    // Load global QSS with theme color tokens
+    ThemeManager::instance().loadQss();
+
     MainWindow w;
     w.show();
     return a.exec();

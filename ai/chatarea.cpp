@@ -1,5 +1,6 @@
 #include "chatarea.h"
 #include "chatbubble.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QScrollBar>
@@ -10,28 +11,8 @@ ChatArea::ChatArea(QWidget *parent)
     setWidgetResizable(true);
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setStyleSheet(
-        "QScrollArea { background-color: #1E1E1E; border: none; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-    );
 
     m_container = new QWidget(this);
-    m_container->setStyleSheet("background-color: #1E1E1E;");
 
     m_layout = new QVBoxLayout(m_container);
     m_layout->setContentsMargins(4, 8, 4, 8);
@@ -39,6 +20,23 @@ ChatArea::ChatArea(QWidget *parent)
     m_layout->addStretch(); // bottom stretch to keep messages top-aligned
 
     setWidget(m_container);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &ChatArea::refreshStyle);
+    refreshStyle();
+}
+
+void ChatArea::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "QScrollArea { background-color: %1; border: none; }"
+    ).arg(tm.color("editor.background").name()));
+
+    m_container->setStyleSheet(QStringLiteral(
+        "background-color: %1;"
+    ).arg(tm.color("editor.background").name()));
 }
 
 void ChatArea::addMessage(ChatBubble::Role role, const QString &text)

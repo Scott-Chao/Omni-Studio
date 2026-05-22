@@ -19,14 +19,9 @@ signals:
     void fileClicked(const QString &filePath);
     void tagClicked(const QString &tag);
 
-private slots:
-    void onItemClicked(QListWidgetItem *item);
-    void onBackClicked();
-
 private:
+    void onItemClicked(QListWidgetItem *item);
     QListWidget *m_listWidget;
-    QPushButton *m_backButton;
-    QLabel *m_titleLabel;
 
     bool m_showingFiles = false;
     QStringList m_allTags;

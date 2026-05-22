@@ -2,6 +2,7 @@
 #include "logindialog.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -39,7 +40,7 @@ public:
             return;
 
         painter->save();
-        painter->setPen(QColor(0x88, 0x88, 0x88));
+        painter->setPen(ThemeManager::instance().color("tab.inactiveForeground"));
         QFont f = painter->font();
         f.setPointSize(qMax(f.pointSize() - 1, 8));
         painter->setFont(f);
@@ -51,15 +52,16 @@ public:
     }
 };
 
-// ===== HTML wrapping helper (dark theme) =====
-static QString wrapHtml(const QString &body)
+// ===== HTML wrapping helper =====
+static QString wrapHtml(const QString &body, const QColor &bg, const QColor &fg,
+                        const QColor &preBg, const QColor &border, const QColor &link)
 {
     QString html = QStringLiteral(
         "<html><head><meta charset=\"utf-8\"><style>"
-        "body{background:#1E1E1E;color:#D4D4D4;font-family:'Microsoft YaHei',sans-serif;font-size:10pt;}"
-        "pre{background:#2D2D30;padding:12px;border:1px solid #555;font-family:Consolas,monospace;color:#D4D4D4;}"
-        "a{color:#569CD6;}"
-        "</style></head><body>");
+        "body{background:%1;color:%2;font-family:'Microsoft YaHei',sans-serif;font-size:10pt;}"
+        "pre{background:%3;padding:12px;border:1px solid %4;font-family:Consolas,monospace;color:%2;}"
+        "a{color:%5;}"
+        "</style></head><body>").arg(bg.name(), fg.name(), preBg.name(), border.name(), link.name());
     html += body;
     html += QStringLiteral("</body></html>");
     return html;
@@ -120,31 +122,45 @@ OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
     });
 
     // Login dialog is triggered by MainWindow::onOpenJudgeRequested after window is shown
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &OpenJudgeWindow::refreshStyle);
 }
 
 // ======================================================================
 // UI Construction — dark theme
 // ======================================================================
 
-static QString buttonStyle()
+static QString buttonStyle(const QColor &bg, const QColor &fg, const QColor &border,
+                           const QColor &hover, const QColor &disabledFg)
 {
     return QStringLiteral(
-        "QPushButton { background: #3E3E42; color: #D4D4D4; border: 1px solid #555; "
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
         "border-radius: 3px; padding: 4px 12px; } "
-        "QPushButton:hover { background: #505050; } "
-        "QPushButton:disabled { color: #666; }");
+        "QPushButton:hover { background: %4; } "
+        "QPushButton:disabled { color: %5; }")
+        .arg(bg.name(), fg.name(), border.name(), hover.name(), disabledFg.name());
 }
 
 void OpenJudgeWindow::setupUi()
 {
+    auto &tm = ThemeManager::instance();
+    auto btnBg = tm.color("input.background");
+    auto btnFg = tm.color("input.foreground");
+    auto btnBorder = tm.color("input.border");
+    auto btnHover = tm.color("aiAssistant.actionButtonHoverBackground");
+    auto disabledFg = tm.color("tab.inactiveForeground");
+
     setStyleSheet(QStringLiteral(
-        "QMainWindow { background: #2D2D30; }"
-        "QWidget { background: #2D2D30; color: #D4D4D4; }"
-    ));
+        "QMainWindow { background: %1; }"
+        "QWidget { background: %1; color: %2; }")
+        .arg(tm.color("menu.background").name(),
+             tm.color("editor.foreground").name()));
 
     // --- Top toolbar ---
     auto *toolbar = new QWidget;
-    toolbar->setStyleSheet(QStringLiteral("QWidget { background: #333337; }"));
+    toolbar->setStyleSheet(QStringLiteral("QWidget { background: %1; }")
+                           .arg(tm.color("activityBar.background").name()));
     auto *toolbarLayout = new QHBoxLayout(toolbar);
     toolbarLayout->setContentsMargins(12, 8, 12, 8);
 
@@ -153,23 +169,27 @@ void OpenJudgeWindow::setupUi()
     // Select button — wide, prominent, in toolbar
     m_selectBtn->setMinimumWidth(ConfigManager::instance().openJudgeSelectButtonMinWidth());
     m_selectBtn->setStyleSheet(
-        "QPushButton { background: #0078D4; color: white; font-weight: bold; "
+        QStringLiteral("QPushButton { background: %1; color: white; font-weight: bold; "
         "border: none; border-radius: 4px; padding: 6px 20px; } "
-        "QPushButton:hover { background: #1E90FF; } "
-        "QPushButton:disabled { background: #3E3E42; color: #666; }");
+        "QPushButton:hover { background: %2; } "
+        "QPushButton:disabled { background: %3; color: %4; }")
+        .arg(tm.color("badge.background").name(),
+             tm.color("button.hoverBackground").name(),
+             btnBg.name(), disabledFg.name()));
     m_selectBtn->setVisible(false);
 
-    m_refreshBtn->setStyleSheet(buttonStyle());
+    m_refreshBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     m_refreshBtn->setEnabled(false);
-    m_backBtn->setStyleSheet(buttonStyle());
+    m_backBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     m_backBtn->setVisible(false);
 
     m_userLabel = new QLabel;
     m_userLabel->setVisible(false);
-    m_userLabel->setStyleSheet(QStringLiteral("color: #52C41A; font-weight: bold; padding: 0 8px;"));
+    m_userLabel->setStyleSheet(QStringLiteral("color: %1; font-weight: bold; padding: 0 8px;")
+                               .arg(tm.color("judge.ac").name()));
 
     m_loginBtn = new QPushButton(QStringLiteral("登录"));
-    m_loginBtn->setStyleSheet(buttonStyle());
+    m_loginBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     connect(m_loginBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onLoginLogoutClicked);
 
     toolbarLayout->addWidget(m_selectBtn);
@@ -183,7 +203,7 @@ void OpenJudgeWindow::setupUi()
     auto *separator = new QFrame;
     separator->setFrameShape(QFrame::HLine);
     separator->setFrameShadow(QFrame::Sunken);
-    separator->setStyleSheet(QStringLiteral("QFrame { color: #555; }"));
+    separator->setStyleSheet(QStringLiteral("QFrame { color: %1; }").arg(tm.color("input.border").name()));
 
     // --- Setup stacked widget pages ---
     setupDetailPage();
@@ -201,10 +221,10 @@ void OpenJudgeWindow::setupUi()
         m_prevPageBtn = new QPushButton(QStringLiteral("上一页"));
         m_nextPageBtn = new QPushButton(QStringLiteral("下一页"));
         m_pageLabel = new QLabel(QStringLiteral("第 1 页"));
-        m_pageLabel->setStyleSheet(QStringLiteral("color: #D4D4D4;"));
+        m_pageLabel->setStyleSheet(QStringLiteral("color: %1;").arg(tm.color("editor.foreground").name()));
         m_pageLabel->setAlignment(Qt::AlignCenter);
-        m_prevPageBtn->setStyleSheet(buttonStyle());
-        m_nextPageBtn->setStyleSheet(buttonStyle());
+        m_prevPageBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
+        m_nextPageBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
         paginationLayout->addStretch();
         paginationLayout->addWidget(m_prevPageBtn);
         paginationLayout->addWidget(m_pageLabel);
@@ -233,16 +253,20 @@ void OpenJudgeWindow::setupUi()
     m_listWidget->setCursor(Qt::PointingHandCursor);
     m_listWidget->setAlternatingRowColors(false);
     m_listWidget->setItemDelegate(new HomeworkDelegate(m_listWidget));
-    m_listWidget->setStyleSheet(
-        "QListWidget { color: #D4D4D4; background: #252526; border: none; }"
+    m_listWidget->setStyleSheet(QStringLiteral(
+        "QListWidget { color: %1; background: %2; border: none; }"
         "QListWidget::item { padding: 6px 12px; }"
-        "QListWidget::item:hover { background: #2A2D2E; }"
-        "QListWidget::item:selected { background: #264F78; color: white; }"
-    );
+        "QListWidget::item:hover { background: %3; }"
+        "QListWidget::item:selected { background: %4; color: white; }")
+        .arg(tm.color("editor.foreground").name(),
+             tm.color("sideBar.background").name(),
+             tm.color("list.hoverBackground").name(),
+             tm.color("editor.selectionBackground").name()));
 }
 
 void OpenJudgeWindow::setupDetailPage()
 {
+    auto &tm = ThemeManager::instance();
     auto *layout = new QHBoxLayout(m_detailPage);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -254,24 +278,30 @@ void OpenJudgeWindow::setupDetailPage()
     m_sectionList->setCursor(Qt::PointingHandCursor);
     m_sectionList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_sectionList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_sectionList->setStyleSheet(
-        "QListWidget { color: #D4D4D4; background: #252526; border: none; }"
+    m_sectionList->setStyleSheet(QStringLiteral(
+        "QListWidget { color: %1; background: %2; border: none; }"
         "QListWidget::item { padding: 6px 8px; }"
-        "QListWidget::item:hover { background: #2A2D2E; }"
-        "QListWidget::item:selected { background: #264F78; color: white; }"
-    );
+        "QListWidget::item:hover { background: %3; }"
+        "QListWidget::item:selected { background: %4; color: white; }")
+        .arg(tm.color("editor.foreground").name(),
+             tm.color("sideBar.background").name(),
+             tm.color("list.hoverBackground").name(),
+             tm.color("editor.selectionBackground").name()));
 
     // Right: content browser
     m_sectionContent->setFont(QFont("Microsoft YaHei", 10));
     m_sectionContent->setOpenExternalLinks(true);
-    m_sectionContent->setStyleSheet(
-        "QTextBrowser { padding: 16px; background: #1E1E1E; border: none; color: #D4D4D4; }"
-    );
+    m_sectionContent->setStyleSheet(QStringLiteral(
+        "QTextBrowser { padding: 16px; background: %1; border: none; color: %2; }")
+        .arg(tm.color("editor.background").name(),
+             tm.color("editor.foreground").name()));
     m_sectionContent->document()->setDefaultStyleSheet(QStringLiteral(
-        "pre { background-color: #2D2D30; padding: 12px; "
-        "border: 1px solid #555; font-family: Consolas, monospace; color: #D4D4D4; }"
-        "body { color: #D4D4D4; }"
-    ));
+        "pre { background-color: %1; padding: 12px; "
+        "border: 1px solid %2; font-family: Consolas, monospace; color: %3; }"
+        "body { color: %3; }")
+        .arg(tm.color("menu.background").name(),
+             tm.color("input.border").name(),
+             tm.color("editor.foreground").name()));
 
     layout->addWidget(m_sectionList);
     layout->addWidget(m_sectionContent, 1);
@@ -301,7 +331,13 @@ void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
 
     if (!detail.sections.isEmpty()) {
         m_sectionList->setCurrentRow(0);
-        m_sectionContent->setHtml(wrapHtml(detail.sections.first().contentHtml));
+    {
+        auto &tm = ThemeManager::instance();
+        m_sectionContent->setHtml(wrapHtml(detail.sections.first().contentHtml,
+            tm.color("editor.background"), tm.color("editor.foreground"),
+            tm.color("menu.background"), tm.color("input.border"),
+            tm.color("syntax.keywords")));
+    }
     }
 
     m_stackedWidget->setCurrentIndex(1);
@@ -527,7 +563,7 @@ void OpenJudgeWindow::rebuildListView()
     if (!m_ongoingItems.isEmpty()) {
         auto *header = new QListWidgetItem(QStringLiteral("=== 进行中的作业 ==="));
         header->setFlags(header->flags() & ~Qt::ItemIsSelectable);
-        header->setForeground(QColor("#569CD6"));
+        header->setForeground(ThemeManager::instance().color("syntax.keywords"));
         QFont boldFont = m_listWidget->font();
         boldFont.setBold(true);
         header->setFont(boldFont);
@@ -554,7 +590,7 @@ void OpenJudgeWindow::rebuildListView()
 
         auto *header = new QListWidgetItem(QStringLiteral("=== 已结束的作业 ==="));
         header->setFlags(header->flags() & ~Qt::ItemIsSelectable);
-        header->setForeground(QColor("#569CD6"));
+        header->setForeground(ThemeManager::instance().color("syntax.keywords"));
         QFont boldFont = m_listWidget->font();
         boldFont.setBold(true);
         header->setFont(boldFont);
@@ -572,7 +608,7 @@ void OpenJudgeWindow::rebuildListView()
     if (m_ongoingItems.isEmpty() && m_pastItems.isEmpty()) {
         auto *emptyItem = new QListWidgetItem(QStringLiteral("(暂无作业条目)"));
         emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
-        emptyItem->setForeground(QColor("#888"));
+        emptyItem->setForeground(ThemeManager::instance().color("tab.inactiveForeground"));
         m_listWidget->addItem(emptyItem);
     }
 
@@ -604,7 +640,7 @@ void OpenJudgeWindow::onHomeworkProblemsReady(const QString &homeworkTitle,
     if (problems.isEmpty()) {
         auto *emptyItem = new QListWidgetItem(QStringLiteral("(该作业暂无题目)"));
         emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
-        emptyItem->setForeground(QColor("#888"));
+        emptyItem->setForeground(ThemeManager::instance().color("tab.inactiveForeground"));
         m_listWidget->addItem(emptyItem);
         return;
     }
@@ -635,11 +671,7 @@ void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
     m_selectBtn->setVisible(true);
     m_selectBtn->setEnabled(true);
     m_selectBtn->setText(QStringLiteral("选择此题目"));
-    m_selectBtn->setStyleSheet(
-        "QPushButton { background: #0078D4; color: white; font-weight: bold; "
-        "border: none; border-radius: 4px; padding: 6px 20px; } "
-        "QPushButton:hover { background: #1E90FF; } "
-        "QPushButton:disabled { background: #3E3E42; color: #666; }");
+    updateSelectButtonStyle(false);
 }
 
 void OpenJudgeWindow::onNetworkError(const QString &error)
@@ -688,7 +720,13 @@ void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
 void OpenJudgeWindow::onSectionClicked(QListWidgetItem *item)
 {
     QString content = item->data(Qt::UserRole).toString();
-    m_sectionContent->setHtml(wrapHtml(content));
+    {
+        auto &tm = ThemeManager::instance();
+        m_sectionContent->setHtml(wrapHtml(content,
+            tm.color("editor.background"), tm.color("editor.foreground"),
+            tm.color("menu.background"), tm.color("input.border"),
+            tm.color("syntax.keywords")));
+    }
 }
 
 // ======================================================================
@@ -815,11 +853,7 @@ void OpenJudgeWindow::onSelectClicked()
         // Deselect
         m_currentProblemSelected = false;
         m_selectBtn->setText(QStringLiteral("选择此题目"));
-        m_selectBtn->setStyleSheet(
-            "QPushButton { background: #0078D4; color: white; font-weight: bold; "
-            "border: none; border-radius: 4px; padding: 6px 20px; } "
-            "QPushButton:hover { background: #1E90FF; } "
-            "QPushButton:disabled { background: #3E3E42; color: #666; }");
+        updateSelectButtonStyle(false);
         return;
     }
 
@@ -834,11 +868,94 @@ void OpenJudgeWindow::onSelectClicked()
 
     m_currentProblemSelected = true;
     m_selectBtn->setText(QStringLiteral("已选择"));
-    m_selectBtn->setStyleSheet(
-        "QPushButton { background: #4A9BE0; color: white; font-weight: bold; "
-        "border: none; border-radius: 4px; padding: 6px 20px; } "
-        "QPushButton:hover { background: #5FADF0; } "
-        "QPushButton:disabled { background: #3E3E42; color: #666; }");
+    updateSelectButtonStyle(true);
+}
+
+void OpenJudgeWindow::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QStringLiteral(
+        "QMainWindow { background: %1; }"
+        "QWidget { background: %1; color: %2; }")
+        .arg(tm.color("menu.background").name(),
+             tm.color("editor.foreground").name()));
+
+    m_userLabel->setStyleSheet(QStringLiteral("color: %1; font-weight: bold; padding: 0 8px;")
+                               .arg(tm.color("judge.ac").name()));
+    m_pageLabel->setStyleSheet(QStringLiteral("color: %1;").arg(tm.color("editor.foreground").name()));
+
+    auto btnBg = tm.color("input.background");
+    auto btnFg = tm.color("input.foreground");
+    auto btnBorder = tm.color("input.border");
+    auto btnHover = tm.color("aiAssistant.actionButtonHoverBackground");
+    auto disabledFg = tm.color("tab.inactiveForeground");
+    auto btnQss = buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg);
+    m_refreshBtn->setStyleSheet(btnQss);
+    m_backBtn->setStyleSheet(btnQss);
+    m_loginBtn->setStyleSheet(btnQss);
+    m_prevPageBtn->setStyleSheet(btnQss);
+    m_nextPageBtn->setStyleSheet(btnQss);
+    updateSelectButtonStyle(m_currentProblemSelected);
+
+    m_listWidget->setStyleSheet(QStringLiteral(
+        "QListWidget { color: %1; background: %2; border: none; }"
+        "QListWidget::item { padding: 6px 12px; }"
+        "QListWidget::item:hover { background: %3; }"
+        "QListWidget::item:selected { background: %4; color: white; }")
+        .arg(tm.color("editor.foreground").name(),
+             tm.color("sideBar.background").name(),
+             tm.color("list.hoverBackground").name(),
+             tm.color("editor.selectionBackground").name()));
+
+    m_sectionList->setStyleSheet(QStringLiteral(
+        "QListWidget { color: %1; background: %2; border: none; }"
+        "QListWidget::item { padding: 6px 8px; }"
+        "QListWidget::item:hover { background: %3; }"
+        "QListWidget::item:selected { background: %4; color: white; }")
+        .arg(tm.color("editor.foreground").name(),
+             tm.color("sideBar.background").name(),
+             tm.color("list.hoverBackground").name(),
+             tm.color("editor.selectionBackground").name()));
+
+    m_sectionContent->setStyleSheet(QStringLiteral(
+        "QTextBrowser { padding: 16px; background: %1; border: none; color: %2; }")
+        .arg(tm.color("editor.background").name(),
+             tm.color("editor.foreground").name()));
+    m_sectionContent->document()->setDefaultStyleSheet(QStringLiteral(
+        "pre { background-color: %1; padding: 12px; "
+        "border: 1px solid %2; font-family: Consolas, monospace; color: %3; }"
+        "body { color: %3; }")
+        .arg(tm.color("menu.background").name(),
+             tm.color("input.border").name(),
+             tm.color("editor.foreground").name()));
+
+}
+
+void OpenJudgeWindow::updateSelectButtonStyle(bool selected)
+{
+    auto &tm = ThemeManager::instance();
+    if (selected) {
+        m_selectBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: %1; color: white; font-weight: bold; "
+            "border: none; border-radius: 4px; padding: 6px 20px; } "
+            "QPushButton:hover { background: %2; } "
+            "QPushButton:disabled { background: %3; color: %4; }")
+            .arg(tm.color("button.background").lighter(130).name(),
+                 tm.color("button.hoverBackground").lighter(130).name(),
+                 tm.color("input.background").name(),
+                 tm.color("tab.inactiveForeground").name()));
+    } else {
+        m_selectBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: %1; color: white; font-weight: bold; "
+            "border: none; border-radius: 4px; padding: 6px 20px; } "
+            "QPushButton:hover { background: %2; } "
+            "QPushButton:disabled { background: %3; color: %4; }")
+            .arg(tm.color("badge.background").name(),
+                 tm.color("button.hoverBackground").name(),
+                 tm.color("input.background").name(),
+                 tm.color("tab.inactiveForeground").name()));
+    }
 }
 
 void OpenJudgeWindow::submitCurrentProblem(const QString &sourceCode, int languageId)

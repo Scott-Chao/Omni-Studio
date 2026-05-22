@@ -25,6 +25,7 @@ class CompletionPopup : public QWidget
 
 public:
     explicit CompletionPopup(QWidget *parent = nullptr);
+    void refreshStyle();
 
     void showItems(const QList<CompletionItem> &items);
     void selectNext();

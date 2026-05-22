@@ -36,9 +36,11 @@ class OpenJudgeWindow;
 class SubmitResultPanel;
 struct SubmissionResult;
 class TagIndex;
+class QStackedWidget;
 class SettingsPanel;
 class HelpPanel;
 class AiPanel;
+class TitleBarButton;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -135,7 +137,6 @@ private:
     BacklinkIndex *m_backlinkIndex;
     // 搜索面板
     SearchPanel *m_searchPanel;
-    QDockWidget *m_dockSearch;
     QAction *toggleSearchAction;
 
     // 编译运行
@@ -166,8 +167,14 @@ private:
 
     // 本地评测
     JudgePanel *m_judgePanel;
-    QDockWidget *m_dockJudge;
     QAction *m_toggleJudgeAction;
+
+    // 左侧面板栈（文件夹/搜索/评测 VS Code 风格覆盖）
+    QStackedWidget *m_leftStack;
+    void showLeftPanel(int index);
+    void toggleLeftPanel();
+    int m_savedLeftPanelWidth = 220;
+    QAction *m_toggleExplorerAction = nullptr;
 
     // OpenJudge 窗口（单例）
     QPointer<OpenJudgeWindow> m_openJudgeWindow;
@@ -209,11 +216,15 @@ private:
     QMap<QString, QAction*> m_shortcutActions;
 
     // 自定义标题栏控件
-    QPushButton *m_minimizeBtn = nullptr;
-    QPushButton *m_maximizeBtn = nullptr;
-    QPushButton *m_closeBtn = nullptr;
+    TitleBarButton *m_minimizeBtn = nullptr;
+    TitleBarButton *m_maximizeBtn = nullptr;
+    TitleBarButton *m_closeBtn = nullptr;
     QWidget *m_toolbarSpacer = nullptr;
+    QToolBar *m_toolBar = nullptr;
+    QToolButton *m_fileMenuBtn = nullptr;
+    QMenu *m_fileMenu = nullptr;
     void setupCustomTitleBar();
+    void refreshTitleBarStyle();
 
     void onCompile();
     void onRun();

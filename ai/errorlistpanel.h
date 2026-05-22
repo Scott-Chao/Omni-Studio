@@ -1,6 +1,7 @@
 #ifndef ERRORLISTPANEL_H
 #define ERRORLISTPANEL_H
 
+#include <QColor>
 #include <QMap>
 #include <QVector>
 #include <QWidget>
@@ -37,6 +38,9 @@ protected:
 private:
     ErrorRecord m_record;
     bool m_hovered = false;
+    QColor m_hoverBg;
+    QColor m_borderColor;
+    void refreshStyle();
 };
 
 // ── Detail expansion widget ──────────────────────────────────────
@@ -50,6 +54,7 @@ public:
     void setAnalysis(const QString &analysis);
     QString recordId() const { return m_record.id; }
     void setReviewed(bool reviewed);
+    void refreshStyles();
 
 signals:
     void reanalyzeClicked(const QString &recordId);
@@ -93,6 +98,7 @@ private slots:
 private:
     void rebuildList();
     void applyFilter();
+    void refreshStyle();
     QVector<ErrorRecord> filteredRecords() const;
     ErrorDetailWidget *findDetail(const QString &recordId) const;
     void expandItem(const QString &recordId);
@@ -106,6 +112,8 @@ private:
     QVBoxLayout *m_listLayout;
     QLabel *m_countLabel;
     QPushButton *m_deleteAllBtn;
+    QWidget *m_filterBar;
+    QWidget *m_bottomBar;
 
     QVector<ErrorRecord> m_allRecords;
     QString m_expandedId;  // currently expanded detail record ID, empty if none

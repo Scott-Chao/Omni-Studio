@@ -47,6 +47,7 @@ private:
     void updateSummaryLabel();
     void showDetailForRow(int row);
     void setInteractive(bool enabled);
+    void refreshStyle();
 
     QLineEdit *m_folderEdit;
     QPushButton *m_browseBtn;

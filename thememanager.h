@@ -3,41 +3,33 @@
 
 #include <QObject>
 #include <QColor>
+#include <QPalette>
 #include <QMap>
-#include <QString>
-#include <QTimer>
+#include <QStringList>
 
 class ThemeManager : public QObject
 {
     Q_OBJECT
-
 public:
-    enum Theme { Dark = 0, Light = 1, System = 2 };
-    Q_ENUM(Theme)
+    enum ThemeType { Dark, Light };
 
     static ThemeManager &instance();
 
-    // Current effective theme (resolved: System → Dark/Light)
-    Theme currentTheme() const { return m_activeTheme; }
-    // Requested mode (could be System)
-    Theme requestedTheme() const { return m_requestedTheme; }
+    bool loadTheme(const QString &name);
+    QColor color(const QString &token) const;
+    void setOverride(const QString &token, const QColor &color);
+    void clearOverrides();
 
-    // Switch theme mode. If System, detects and applies automatically.
-    void setTheme(Theme theme);
+    QStringList availableThemes() const;
+    QString currentThemeName() const;
+    ThemeType currentThemeType() const;
 
-    // Re-detect when mode=System (e.g., on app focus or timer)
-    void refreshSystemTheme();
+    void loadQss();
 
-    // Look up a color by semantic key (e.g., "editor.background", "panel.border")
-    QColor color(const QString &key) const;
-    QString hex(const QString &key) const;  // "#RRGGBB"
-
-    // Convenience: re-apply UI from previously loaded palette
-    // Returns true if the theme actually changed
-    bool applyCurrentTheme();
+    void applyPalette();
 
 signals:
-    void themeChanged(ThemeManager::Theme newTheme);
+    void themeChanged();
 
 private:
     ThemeManager();
@@ -45,18 +37,24 @@ private:
     ThemeManager(const ThemeManager &) = delete;
     ThemeManager &operator=(const ThemeManager &) = delete;
 
-    Theme detectSystemTheme() const;  // Windows registry → fallback to time
-    void buildPalettes();
-    void startAutoRefresh();
+    struct ThemeData {
+        QString name;
+        ThemeType type = Dark;
+        QMap<QString, QColor> colors;
+    };
 
-    // Palette maps
-    QMap<QString, QColor> m_dark;
-    QMap<QString, QColor> m_light;
+    struct ThemeEntry {
+        QString name;
+        ThemeType type = Dark;
+        QString filePath;
+    };
 
-    Theme m_requestedTheme = System;
-    Theme m_activeTheme = Dark;
+    ThemeData m_currentTheme;
+    QMap<QString, QColor> m_overrides;
+    QList<ThemeEntry> m_builtinThemes;
 
-    QTimer *m_refreshTimer = nullptr;
+    bool loadThemeFromFile(const QString &path, ThemeData &out);
+    void initBuiltinThemes();
 };
 
 #endif // THEMEMANAGER_H

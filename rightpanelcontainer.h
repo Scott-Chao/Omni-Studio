@@ -36,6 +36,7 @@ signals:
 private:
     QPushButton *createTabButton(const QString &text, const QIcon &icon, int index);
     void updateTabStyles(int activeIndex);
+    void refreshStyle();
 
     QWidget *m_tabBar;
     QVector<QPushButton*> m_tabButtons;

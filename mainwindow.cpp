@@ -4,6 +4,7 @@
 #include "editorwidget.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include "tabmanager.h"
 #include "historypanel.h"
 #include "backlinkindex.h"
@@ -77,6 +78,7 @@
 #include <QMenu>
 #include <utility>
 #include <QDockWidget>
+#include <QStackedWidget>
 #include <QDirIterator>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -85,6 +87,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QAbstractScrollArea>
+#include <QPainter>
 
 namespace {
 QString replaceWikiLinkText(const QString &content, const QString &oldText, const QString &newText)
@@ -111,6 +114,25 @@ QString replaceWikiLinkText(const QString &content, const QString &oldText, cons
 }
 } // anonymous namespace
 
+// ── Helper: create themed icon from SVG ──────────────────────────
+static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 24)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage();
+    QRgb themeRgb = color.rgb();
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            int alpha = qAlpha(img.pixel(x, y));
+            if (alpha > 0)
+                img.setPixel(x, y, qRgba(qRed(themeRgb), qGreen(themeRgb), qBlue(themeRgb), alpha));
+        }
+    }
+    return QIcon(QPixmap::fromImage(img));
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -121,6 +143,15 @@ MainWindow::MainWindow(QWidget *parent)
     , m_zoomLabel(nullptr)
 {
     ui->setupUi(this);
+
+    // 左侧面板栈（VS Code 风格覆盖：搜索/评测替换文件浏览器）
+    m_leftStack = new QStackedWidget(this);
+    m_leftStack->addWidget(m_explorer); // index 0: 文件浏览器
+
+    // Restore saved theme
+    QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
+    if (!savedTheme.isEmpty())
+        ThemeManager::instance().loadTheme(savedTheme);
 
     // 设置窗口标题与无边框
     setWindowTitle(tr("Smart Markdown"));
@@ -222,26 +253,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_searchPanel, &SearchPanel::resultClicked,
             this, &MainWindow::onSearchResultClicked);
 
-    m_dockSearch = new QDockWidget(tr("搜索"), this);
-    m_dockSearch->setWidget(m_searchPanel);
-    m_dockSearch->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::LeftDockWidgetArea, m_dockSearch);
-    m_dockSearch->hide();
-
-    toggleSearchAction = m_dockSearch->toggleViewAction();
-    toggleSearchAction->setToolTip(tr("显示/隐藏搜索"));
+    toggleSearchAction = new QAction(tr("显示/隐藏搜索"), this);
     toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
-    addAction(toggleSearchAction);
-
-    connect(m_dockSearch, &QDockWidget::visibilityChanged,
-            this, [this](bool visible) {
-        if (visible) {
+    connect(toggleSearchAction, &QAction::triggered, this, [this]() {
+        if (m_leftStack->currentIndex() == 1)
+            showLeftPanel(0);
+        else
+            showLeftPanel(1);
+        if (m_leftStack->currentIndex() == 1)
             m_searchPanel->focusSearchInput();
-            // 隐藏所有右侧面板
-            m_dockRightPanel->hide();
-            m_dockJudge->hide();
-        }
     });
+    addAction(toggleSearchAction);
 
     // ----- 底部统一面板（输出 + 诊断）-----
     m_bottomPanel = new BottomPanel(this);
@@ -315,21 +337,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- 本地评测面板 -----
     m_judgePanel = new JudgePanel(this);
-    m_dockJudge = new QDockWidget(tr("代码评测"), this);
-    m_dockJudge->setWidget(m_judgePanel);
-    m_dockJudge->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-    addDockWidget(Qt::LeftDockWidgetArea, m_dockJudge);
-    tabifyDockWidget(m_dockSearch, m_dockJudge);
-    m_dockSearch->raise();
-    m_dockJudge->hide();
 
-    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        if (visible) m_dockSearch->hide();
-    });
-
-    m_toggleJudgeAction = m_dockJudge->toggleViewAction();
-    m_toggleJudgeAction->setToolTip(tr("显示/隐藏代码评测"));
+    m_toggleJudgeAction = new QAction(tr("显示/隐藏代码评测"), this);
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
+    connect(m_toggleJudgeAction, &QAction::triggered, this, [this]() {
+        if (m_leftStack->currentIndex() == 2)
+            showLeftPanel(0);
+        else
+            showLeftPanel(2);
+    });
     addAction(m_toggleJudgeAction);
 
     connect(m_judgePanel, &JudgePanel::runAllRequested,
@@ -339,89 +355,128 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
             this, &MainWindow::onSubmitToOpenJudge);
 
+    // 搜索包装页（标题栏 + 关闭按钮）
+    {
+        QWidget *page = new QWidget;
+        QVBoxLayout *layout = new QVBoxLayout(page);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        QWidget *header = new QWidget;
+        header->setObjectName("leftPanelHeader");
+        QHBoxLayout *hdrLayout = new QHBoxLayout(header);
+        hdrLayout->setContentsMargins(8, 4, 4, 4);
+        QLabel *title = new QLabel(tr("搜索"));
+        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        closeBtn->setFixedSize(22, 22);
+        closeBtn->setFlat(true);
+        closeBtn->setCursor(Qt::PointingHandCursor);
+        connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
+        hdrLayout->addWidget(title);
+        hdrLayout->addStretch();
+        hdrLayout->addWidget(closeBtn);
+        layout->addWidget(header);
+        layout->addWidget(m_searchPanel);
+
+        m_leftStack->addWidget(page); // index 1: 搜索
+    }
+
+    // 评测包装页
+    {
+        QWidget *page = new QWidget;
+        QVBoxLayout *layout = new QVBoxLayout(page);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        QWidget *header = new QWidget;
+        header->setObjectName("leftPanelHeader");
+        QHBoxLayout *hdrLayout = new QHBoxLayout(header);
+        hdrLayout->setContentsMargins(8, 4, 4, 4);
+        QLabel *title = new QLabel(tr("代码评测"));
+        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        closeBtn->setFixedSize(22, 22);
+        closeBtn->setFlat(true);
+        closeBtn->setCursor(Qt::PointingHandCursor);
+        connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
+        hdrLayout->addWidget(title);
+        hdrLayout->addStretch();
+        hdrLayout->addWidget(closeBtn);
+        layout->addWidget(header);
+        layout->addWidget(m_judgePanel);
+
+        m_leftStack->addWidget(page); // index 2: 评测
+    }
+
     // 标签索引已随 m_backlinkIndex 在上方创建
     // 标签/大纲面板已集成到 m_rightPanel 中
 
     // ----- 工具栏（同时充当标题栏）-----
-    QToolBar *toolBar = addToolBar("文件工具栏");
-    toolBar->setMovable(false);
-    toolBar->setFloatable(false);
-    toolBar->installEventFilter(this);
+    m_toolBar = addToolBar("文件工具栏");
+    m_toolBar->setMovable(false);
+    m_toolBar->setFloatable(false);
+    m_toolBar->installEventFilter(this);
 
     // 左侧：[文件 ▼] 下拉菜单
-    QToolButton *fileMenuBtn = new QToolButton(toolBar);
-    fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
-    fileMenuBtn->setIconSize(QSize(10, 10));
-    fileMenuBtn->setText(tr("文件"));
-    fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    fileMenuBtn->setToolTip(tr("文件操作"));
-    fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
-    fileMenuBtn->setFixedHeight(32);
-    fileMenuBtn->setStyleSheet(
-        "QToolButton {"
-        "  color: #cccccc; background: transparent; border: none; padding: 0 8px;"
-        "  font-size: 12px;"
-        "}"
-        "QToolButton:hover { background: #3c3c3c; }"
-        "QToolButton::menu-indicator { image: none; }"
-    );
-    {
-        QMenu *fileMenu = new QMenu(fileMenuBtn);
-        fileMenu->setStyleSheet(
-            "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
-            "QMenu::item { padding: 6px 24px; color: #cccccc; }"
-            "QMenu::item:selected { background: #094771; color: #ffffff; }"
-            "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
-        );
+    m_fileMenuBtn = new QToolButton(m_toolBar);
+    m_fileMenuBtn->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
+    m_fileMenuBtn->setIconSize(QSize(10, 10));
+    m_fileMenuBtn->setText(tr("文件"));
+    m_fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_fileMenuBtn->setToolTip(tr("文件操作"));
+    m_fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    m_fileMenuBtn->setFixedHeight(32);
 
-        QAction *openDirAct = fileMenu->addAction(tr("打开目录"));
+    {
+        m_fileMenu = new QMenu(m_fileMenuBtn);
+
+        QAction *openDirAct = m_fileMenu->addAction(tr("打开目录"));
         connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
 
-        fileMenu->addSeparator();
+        m_fileMenu->addSeparator();
 
-        QAction *newAct = fileMenu->addAction(tr("新建文件"));
+        QAction *newAct = m_fileMenu->addAction(tr("新建文件"));
         newAct->setShortcut(QKeySequence::New);
         connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
         m_shortcutActions["new_file"] = newAct;
 
-        QAction *saveAct = fileMenu->addAction(tr("保存"));
+        QAction *saveAct = m_fileMenu->addAction(tr("保存"));
         saveAct->setShortcut(QKeySequence::Save);
         addAction(saveAct);
         connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
         m_shortcutActions["save"] = saveAct;
 
-        QAction *saveAsAct = fileMenu->addAction(tr("另存为"));
+        QAction *saveAsAct = m_fileMenu->addAction(tr("另存为"));
         saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
         addAction(saveAsAct);
         connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
         m_shortcutActions["save_as"] = saveAsAct;
 
-        fileMenuBtn->setMenu(fileMenu);
+        m_fileMenuBtn->setMenu(m_fileMenu);
     }
-    toolBar->addWidget(fileMenuBtn);
+    m_toolBar->addWidget(m_fileMenuBtn);
 
     // 中间可拖拽区域（Expanding spacer — 双击最大化/还原）
     m_toolbarSpacer = new QWidget;
     m_toolbarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    toolBar->addWidget(m_toolbarSpacer);
+    m_toolBar->addWidget(m_toolbarSpacer);
 
     // 帮助按钮（置于侧栏按钮左侧）
     m_helpAction = new QAction(QIcon(":/icons/help"), tr("帮助"), this);
     m_helpAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_help", "F1")));
     addAction(m_helpAction);
-    toolBar->addAction(m_helpAction);
+    m_toolBar->addAction(m_helpAction);
     connect(m_helpAction, &QAction::triggered, this, &MainWindow::toggleHelp);
 
     // 右侧面板（历史/大纲/标签/反链）
     toggleRightPanelAction->setIcon(QIcon(":/icons/panel"));
-    toolBar->addAction(toggleRightPanelAction);
+    m_toolBar->addAction(toggleRightPanelAction);
 
     // 右侧：预览
     m_previewAction = new QAction(QIcon(":/icons/preview"), tr("预览"), this);
     m_previewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_preview", "Ctrl+Shift+P")));
     m_previewAction->setCheckable(true);
     addAction(m_previewAction);
-    toolBar->addAction(m_previewAction);
+    m_toolBar->addAction(m_previewAction);
     connect(m_previewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
@@ -442,7 +497,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitPreviewAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_split_preview", "Ctrl+P")));
     m_splitPreviewAction->setCheckable(true);
     addAction(m_splitPreviewAction);
-    toolBar->addAction(m_splitPreviewAction);
+    m_toolBar->addAction(m_splitPreviewAction);
     connect(m_splitPreviewAction, &QAction::toggled, this, [this](bool checked) {
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor) {
@@ -475,12 +530,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 工具栏运行按钮（带下拉菜单）
     m_runMenu = new QMenu(this);
-    m_runMenu->setStyleSheet(
-        "QMenu { background: #2d2d2d; border: 1px solid #555; padding: 4px; }"
-        "QMenu::item { padding: 6px 24px; color: #ccc; }"
-        "QMenu::item:selected { background: #094771; color: #fff; }"
-        "QMenu::separator { height: 1px; background: #555; margin: 4px 8px; }"
-    );
+
     m_runMenu->addAction(m_compileAction);
     m_runMenu->addAction(m_runAction);
     m_runMenu->addSeparator();
@@ -491,7 +541,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_runToolAction->setMenu(m_runMenu);
     m_runToolAction->setToolTip(tr("运行 (编译/运行/编译运行)"));
     m_runToolAction->setVisible(false); // 只对代码文件显示
-    toolBar->addAction(m_runToolAction);
+    m_toolBar->addAction(m_runToolAction);
+
+    // Title bar uses ThemeManager colors, refresh on theme change
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &MainWindow::refreshTitleBarStyle);
+    refreshTitleBarStyle();
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
@@ -645,6 +700,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutActions["toggle_tags"] = m_toggleTagsAction;
     m_shortcutActions["toggle_backlinks"] = m_toggleBacklinksAction;
     m_shortcutActions["toggle_search"] = toggleSearchAction;
+    m_shortcutActions["toggle_explorer"] = m_toggleExplorerAction;
     m_shortcutActions["toggle_judge"] = m_toggleJudgeAction;
     m_shortcutActions["toggle_preview"] = m_previewAction;
     m_shortcutActions["toggle_split_preview"] = m_splitPreviewAction;
@@ -674,37 +730,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // ----- 界面布局 -----
-    // 设置 TabManager 的样式（原有样式保留，可进一步调整）
-    {
-        const auto &cfg = ConfigManager::instance();
-        m_tabManager->setStyleSheet(
-            QString(
-                "QTabBar::tab {"
-                "   height: %1px;"
-                "   margin-right: %2px;"
-                "   padding: %3px %4px;"
-                "   border-top-left-radius: %5px;"
-                "   border-top-right-radius: %5px;"
-                "}"
-                "QTabBar::tab:selected {"
-                "   background: %6;"
-                "   color: %7;"
-                "}"
-                "QTabBar::tab:hover:!selected {"
-                "   background: %8;"
-                "}"
-            )
-            .arg(22) // height
-            .arg(2)  // margin-right
-            .arg(4)  // padding top/bottom
-            .arg(12) // padding left/right
-            .arg(4)  // border-radius
-            .arg(cfg.previewContainerBackground().name()) // selected bg (#2d2d2d)
-            .arg("#ffffff")                               // selected text
-            .arg("#4a4a4a")                               // hover bg
-        );
-    }
-
     // 左侧活动栏（搜索/设置/导出PDF/评测）
     m_activityBar = new ActivityBar(this);
 
@@ -716,7 +741,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
     m_splitter->addWidget(m_activityBar);
-    m_splitter->addWidget(m_explorer);
+    m_splitter->addWidget(m_leftStack);
     m_splitter->addWidget(m_rightSplitter);
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 0);
@@ -784,25 +809,34 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // 文件浏览面板折叠/展开
+    m_toggleExplorerAction = new QAction(tr("切换文件浏览"), this);
+    m_toggleExplorerAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_explorer", "Ctrl+B")));
+    connect(m_toggleExplorerAction, &QAction::triggered, this, &MainWindow::toggleLeftPanel);
+    addAction(m_toggleExplorerAction);
+
     // ActivityBar 信号连接
+    connect(m_activityBar, &ActivityBar::explorerClicked, this, [this]() {
+        if (m_leftStack->currentIndex() == 0 && !m_leftStack->isHidden())
+            toggleLeftPanel();
+        else
+            showLeftPanel(0);
+    });
     connect(m_activityBar, &ActivityBar::searchClicked, this, [this]() {
-        if (m_dockSearch->isVisible()) {
-            m_dockSearch->hide();
+        if (m_leftStack->currentIndex() == 1 && !m_leftStack->isHidden()) {
+            toggleLeftPanel();
         } else {
-            m_dockSearch->show();
-            m_dockSearch->raise();
+            showLeftPanel(1);
             m_searchPanel->focusSearchInput();
         }
     });
     connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
     connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
     connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
-        if (m_dockJudge->isVisible()) {
-            m_dockJudge->hide();
-        } else {
-            m_dockJudge->show();
-            m_dockJudge->raise();
-        }
+        if (m_leftStack->currentIndex() == 2 && !m_leftStack->isHidden())
+            toggleLeftPanel();
+        else
+            showLeftPanel(2);
     });
     connect(m_activityBar, &ActivityBar::aiClicked, this, [this]() {
         if (m_dockAi->isVisible()) {
@@ -816,12 +850,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 同步 ActivityBar 激活状态与面板可见性
-    connect(m_dockSearch, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        m_activityBar->setSearchActive(visible);
-    });
-    connect(m_dockJudge, &QDockWidget::visibilityChanged, this, [this](bool visible) {
-        m_activityBar->setJudgeActive(visible);
-    });
     connect(m_dockAi, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         m_activityBar->setAiActive(visible);
         m_toggleAiAction->setChecked(visible);
@@ -1316,6 +1344,43 @@ void MainWindow::showRightPanel(int panelIndex)
     m_dockRightPanel->show();
     m_dockRightPanel->raise();
     m_rightPanel->setActivePanel(panelIndex);
+}
+
+void MainWindow::showLeftPanel(int index)
+{
+    // 如果面板已折叠，先展开并恢复宽度
+    if (m_leftStack->isHidden()) {
+        m_leftStack->show();
+        QList<int> sizes = m_splitter->sizes();
+        if (sizes.size() == 3) {
+            int available = sizes[2] - m_savedLeftPanelWidth;
+            if (available < 100) available = 100;
+            sizes[1] = m_savedLeftPanelWidth;
+            sizes[2] = available;
+            m_splitter->setSizes(sizes);
+        }
+    }
+
+    m_leftStack->setCurrentIndex(index);
+    m_activityBar->setExplorerActive(index == 0);
+    m_activityBar->setSearchActive(index == 1);
+    m_activityBar->setJudgeActive(index == 2);
+    // 打开非文件浏览面板时隐藏右侧面板
+    if (index > 0)
+        m_dockRightPanel->hide();
+}
+
+void MainWindow::toggleLeftPanel()
+{
+    if (m_leftStack->isHidden()) {
+        showLeftPanel(m_leftStack->currentIndex());
+    } else {
+        m_savedLeftPanelWidth = m_leftStack->width();
+        m_leftStack->hide();
+        m_activityBar->setExplorerActive(false);
+        m_activityBar->setSearchActive(false);
+        m_activityBar->setJudgeActive(false);
+    }
 }
 
 void MainWindow::updateAiActionBar()
@@ -2055,51 +2120,69 @@ void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
 }
 
 // ============================================================
-// 自定义标题栏 — 自绘按钮，内嵌系统原生图标
+// 标题栏样式刷新 — 响应主题切换
 // ============================================================
-namespace {
-class CaptionBtn : public QPushButton
+
+void MainWindow::refreshTitleBarStyle()
 {
-public:
-    CaptionBtn(QStyle::StandardPixmap iconId, bool closeBtn, QWidget *parent)
-        : QPushButton(parent), m_iconId(iconId), m_closeBtn(closeBtn)
-    {
-        setFixedSize(46, 32);
-        setFlat(true);
-        setCursor(Qt::ArrowCursor);
-        setStyleSheet("QPushButton { border: none; background: transparent; }");
-        setIconSize(QSize(18, 18));
-        setIcon(style()->standardIcon(m_iconId));
-        setMouseTracking(true);
-    }
+    auto &tm = ThemeManager::instance();
 
-    void setIconType(QStyle::StandardPixmap id) {
-        m_iconId = id;
-        setIcon(style()->standardIcon(id));
-    }
+    // Toolbar background and text color
+    m_toolBar->setStyleSheet(QStringLiteral(
+        "QToolBar { background: %1; border: none; spacing: 0; padding: 0; }"
+    ).arg(tm.color("titleBar.background").name()));
 
-protected:
-    void enterEvent(QEnterEvent *) override { m_hovered = true; repaint(); }
-    void leaveEvent(QEvent *) override       { m_hovered = false; repaint(); }
+    // File menu button
+    m_fileMenuBtn->setStyleSheet(QStringLiteral(
+        "QToolButton {"
+        "  color: %1; background: transparent; border: none; padding: 0 8px;"
+        "  font-size: 12px;"
+        "}"
+        "QToolButton:hover { background: %2; }"
+        "QToolButton::menu-indicator { image: none; }"
+    ).arg(tm.color("titleBar.foreground").name(),
+          tm.color("titleBar.buttonHover").name()));
 
-    void paintEvent(QPaintEvent *event) override
-    {
-        QPainter p(this);
-        // hover 背景
-        if (m_hovered) {
-            p.fillRect(rect(), m_closeBtn ? QColor("#c42b1c") : QColor(0x3a, 0x3a, 0x3a));
-        }
-        p.end();
-        // 让 QPushButton 负责图标居中绘制
-        QPushButton::paintEvent(event);
-    }
+    // File menu dropdown
+    m_fileMenu->setStyleSheet(QStringLiteral(
+        "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
+        "QMenu::item { padding: 6px 24px; color: %3; }"
+        "QMenu::item:selected { background: %4; color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(tm.color("menu.background").name(),
+          tm.color("panel.border").name(),
+          tm.color("menu.foreground").name(),
+          tm.color("menu.selectionBackground").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("menu.separatorColor").name()));
 
-private:
-    QStyle::StandardPixmap m_iconId;
-    bool m_closeBtn;
-    bool m_hovered = false;
-};
-} // anonymous namespace
+    // Run menu dropdown
+    m_runMenu->setStyleSheet(QStringLiteral(
+        "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
+        "QMenu::item { padding: 6px 24px; color: %3; }"
+        "QMenu::item:selected { background: %4; color: %5; }"
+        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+    ).arg(tm.color("menu.background").name(),
+          tm.color("panel.border").name(),
+          tm.color("menu.foreground").name(),
+          tm.color("menu.selectionBackground").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("menu.separatorColor").name()));
+
+    // Themed toolbar action icons
+    QColor titleFg = tm.color("titleBar.foreground");
+    m_helpAction->setIcon(coloredSvgIcon(":/icons/help", titleFg));
+    toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
+    m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
+    m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
+    if (m_runToolAction)
+        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", titleFg));
+}
+
+// ============================================================
+// 自定义标题栏 — 自绘 TitleBarButton
+// ============================================================
+#include "titlebarbutton.h"
 
 void MainWindow::setupCustomTitleBar()
 {
@@ -2109,22 +2192,19 @@ void MainWindow::setupCustomTitleBar()
     // Spacer is already created and added before the call
     m_toolbarSpacer->installEventFilter(this);
 
-    m_minimizeBtn = new CaptionBtn(QStyle::SP_TitleBarMinButton, false, this);
-    m_minimizeBtn->setIconSize(QSize(28, 28));  // 横线图标视觉偏小，单独放大
+    m_minimizeBtn = new TitleBarButton(TitleBarButton::Minimize, this);
     m_minimizeBtn->setToolTip(tr("最小化"));
     connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
     tb->addWidget(m_minimizeBtn);
 
-    m_maximizeBtn = new CaptionBtn(QStyle::SP_TitleBarMaxButton, false, this);
-    m_maximizeBtn->setIconSize(QSize(16, 16));
+    m_maximizeBtn = new TitleBarButton(TitleBarButton::Maximize, this);
     m_maximizeBtn->setToolTip(tr("最大化"));
     connect(m_maximizeBtn, &QPushButton::clicked, this, [this]() {
         if (isMaximized()) showNormal(); else showMaximized();
     });
     tb->addWidget(m_maximizeBtn);
 
-    m_closeBtn = new CaptionBtn(QStyle::SP_TitleBarCloseButton, true, this);
-    m_closeBtn->setIconSize(QSize(16, 16));
+    m_closeBtn = new TitleBarButton(TitleBarButton::Close, this);
     m_closeBtn->setToolTip(tr("关闭"));
     connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
     tb->addWidget(m_closeBtn);
@@ -2206,13 +2286,12 @@ void MainWindow::changeEvent(QEvent *event)
 {
     if (event->type() == QEvent::WindowStateChange) {
         if (m_maximizeBtn) {
-            auto *cb = static_cast<CaptionBtn*>(m_maximizeBtn);
             if (isMaximized()) {
-                cb->setIconType(QStyle::SP_TitleBarNormalButton);
-                cb->setToolTip(tr("还原"));
+                m_maximizeBtn->setType(TitleBarButton::Restore);
+                m_maximizeBtn->setToolTip(tr("还原"));
             } else {
-                cb->setIconType(QStyle::SP_TitleBarMaxButton);
-                cb->setToolTip(tr("最大化"));
+                m_maximizeBtn->setType(TitleBarButton::Maximize);
+                m_maximizeBtn->setToolTip(tr("最大化"));
             }
         }
     }
@@ -2524,10 +2603,7 @@ void MainWindow::onJudgeRunAll()
         return;
     }
 
-    // Show and raise the judge dock
-    m_dockJudge->show();
-    m_dockJudge->raise();
-
+    showLeftPanel(2);
     m_judgePanel->runJudge(filePath);
 }
 
@@ -2566,8 +2642,7 @@ void MainWindow::onOpenJudgeRequested()
 void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
 {
     m_judgePanel->setTestFolder(folderPath);
-    m_dockJudge->show();
-    m_dockJudge->raise();
+    showLeftPanel(2);
 }
 
 void MainWindow::onSubmitToOpenJudge()
@@ -2633,8 +2708,7 @@ void MainWindow::onSubmitToOpenJudge()
     m_openJudgeWindow->submitCurrentProblem(code, langId);
 
     // 5. Show a brief status message in the judge panel
-    m_dockJudge->show();
-    m_dockJudge->raise();
+    showLeftPanel(2);
 }
 
 void MainWindow::onSubmissionResultReady(const SubmissionResult &result)

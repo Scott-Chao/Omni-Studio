@@ -1,4 +1,5 @@
 #include "chatbubble.h"
+#include "thememanager.h"
 
 #include <QLabel>
 #include <QTextBrowser>
@@ -10,7 +11,8 @@
 // ── Markdown → HTML converter (lightweight) ──────────────────────────
 
 // Process inline formatting: `code`, **bold**, *italic*
-static QString processInline(const QString &text)
+static QString processInline(const QString &text, const QColor &codeBg,
+                              const QColor &codeFg, const QColor &linkColor)
 {
     // Must escape HTML first, then apply inline markup
 
@@ -75,7 +77,8 @@ static QString processInline(const QString &text)
             QRegularExpressionMatch m = it.next();
             tmp += result.mid(last, m.capturedStart() - last);
             tmp += QStringLiteral("<a href=\"") + m.captured(2).toHtmlEscaped()
-                 + QStringLiteral("\" style=\"color:#4da3ff;\">")
+                 + QStringLiteral("\" style=\"color:") + linkColor.name()
+                 + QStringLiteral(";\">")
                  + m.captured(1).toHtmlEscaped() + QStringLiteral("</a>");
             last = m.capturedEnd();
         }
@@ -86,8 +89,9 @@ static QString processInline(const QString &text)
     // 5. Restore code placeholders
     for (int i = 0; i < codePlaceholders.size(); ++i) {
         result.replace(QStringLiteral("\x01CODE%1\x01").arg(i),
-                       QStringLiteral("<code style=\"background-color:#3c3c3c; color:#ce9178; "
+                       QStringLiteral("<code style=\"background-color:%1; color:%2; "
                                       "padding:1px 4px; border-radius:3px; font-size:12px;\">")
+                       .arg(codeBg.name(), codeFg.name())
                        + codePlaceholders[i]
                        + QStringLiteral("</code>"));
     }
@@ -95,8 +99,12 @@ static QString processInline(const QString &text)
     return result;
 }
 
-QString ChatBubble::markdownToHtml(const QString &md)
+QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
+                                    const QColor &codeBg, const QColor &codeFg,
+                                    const QColor &linkColor, const QColor &selectionBg,
+                                    const QColor &headingColor)
 {
+    Q_UNUSED(selectionBg)
     if (md.isEmpty())
         return QStringLiteral("<p></p>");
 
@@ -105,23 +113,22 @@ QString ChatBubble::markdownToHtml(const QString &md)
 
     bool inCodeBlock = false;
     QString codeBlockContent;
-    QString codeBlockLang;
 
     for (const QString &rawLine : lines) {
         QString line = rawLine;
 
         if (line.startsWith(QStringLiteral("```"))) {
             if (inCodeBlock) {
-                html += QStringLiteral("<pre style=\"background-color:#1e1e1e; color:#d4d4d4; "
+                html += QStringLiteral("<pre style=\"background-color:%1; color:%2; "
                                        "padding:8px; border-radius:4px; font-size:12px; "
                                        "overflow-x:auto;\"><code>")
+                      .arg(codeBg.name(), codeFg.name())
                       + codeBlockContent.toHtmlEscaped()
                       + QStringLiteral("</code></pre>\n");
                 codeBlockContent.clear();
                 inCodeBlock = false;
             } else {
                 inCodeBlock = true;
-                codeBlockLang = line.mid(3).trimmed();
                 codeBlockContent.clear();
             }
             continue;
@@ -143,9 +150,9 @@ QString ChatBubble::markdownToHtml(const QString &md)
         QRegularExpressionMatch hMatch = hRe.match(line);
         if (hMatch.hasMatch()) {
             int level = hMatch.captured(1).length();
-            QString headingText = processInline(hMatch.captured(2));
-            html += QStringLiteral("<h%1 style=\"color:#ffffff; margin:8px 0 4px 0;\">%2</h%1>\n")
-                        .arg(level).arg(headingText);
+            QString headingText = processInline(hMatch.captured(2), codeBg, codeFg, linkColor);
+            html += QStringLiteral("<h%1 style=\"color:%2; margin:8px 0 4px 0;\">%3</h%1>\n")
+                        .arg(level).arg(headingColor.name(), headingText);
             continue;
         }
 
@@ -153,8 +160,8 @@ QString ChatBubble::markdownToHtml(const QString &md)
         static const QRegularExpression ulRe(QStringLiteral("^[\\*\\-]\\s+(.+)$"));
         QRegularExpressionMatch ulMatch = ulRe.match(line);
         if (ulMatch.hasMatch()) {
-            html += QStringLiteral("<li style=\"color:#d4d4d4; margin:2px 0;\">%1</li>\n")
-                        .arg(processInline(ulMatch.captured(1)));
+            html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
+                        .arg(textColor.name(), processInline(ulMatch.captured(1), codeBg, codeFg, linkColor));
             continue;
         }
 
@@ -162,28 +169,30 @@ QString ChatBubble::markdownToHtml(const QString &md)
         static const QRegularExpression olRe(QStringLiteral("^\\d+\\.\\s+(.+)$"));
         QRegularExpressionMatch olMatch = olRe.match(line);
         if (olMatch.hasMatch()) {
-            html += QStringLiteral("<li style=\"color:#d4d4d4; margin:2px 0;\">%1</li>\n")
-                        .arg(processInline(olMatch.captured(1)));
+            html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
+                        .arg(textColor.name(), processInline(olMatch.captured(1), codeBg, codeFg, linkColor));
             continue;
         }
 
         // Horizontal rule ---
         static const QRegularExpression hrRe(QStringLiteral("^\\-{3,}\\s*$"));
         if (hrRe.match(line).hasMatch()) {
-            html += QStringLiteral("<hr style=\"border:0; border-top:1px solid #555; margin:8px 0;\">\n");
+            html += QStringLiteral("<hr style=\"border:0; border-top:1px solid %1; margin:8px 0;\">\n")
+                        .arg(codeBg.name());
             continue;
         }
 
         // Regular paragraph line
-        html += QStringLiteral("<p style=\"color:#d4d4d4; margin:4px 0;\">%1</p>\n")
-                    .arg(processInline(line));
+        html += QStringLiteral("<p style=\"color:%1; margin:4px 0;\">%2</p>\n")
+                    .arg(textColor.name(), processInline(line, codeBg, codeFg, linkColor));
     }
 
     // Close unclosed code block
     if (inCodeBlock) {
-        html += QStringLiteral("<pre style=\"background-color:#1e1e1e; color:#d4d4d4; "
+        html += QStringLiteral("<pre style=\"background-color:%1; color:%2; "
                                "padding:8px; border-radius:4px; font-size:12px; "
                                "overflow-x:auto;\"><code>")
+              .arg(codeBg.name(), codeFg.name())
               + codeBlockContent.toHtmlEscaped()
               + QStringLiteral("</code></pre>\n");
     }
@@ -206,10 +215,6 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
 
     // Role label
     m_roleLabel = new QLabel(role == User ? tr("你") : tr("AI 助手"));
-    m_roleLabel->setStyleSheet(
-        QStringLiteral("color: %1; font-size: 11px; font-weight: bold; padding: 0 4px;")
-            .arg(role == User ? "#4da3ff" : "#6a9955")
-    );
 
     // Content browser (QTextBrowser for HTML rendering)
     m_browser = new QTextBrowser(this);
@@ -217,7 +222,6 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     m_browser->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_browser->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_browser->setFrameShape(QFrame::NoFrame);
-    m_browser->setStyleSheet(messageStyleSheet());
     m_browser->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     m_browser->document()->setDocumentMargin(0);
 
@@ -233,15 +237,6 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     // Container for the actual bubble with background
     auto *bubbleInner = new QWidget;
     bubbleInner->setObjectName(QStringLiteral("bubbleInner"));
-    bubbleInner->setStyleSheet(
-        QStringLiteral(
-            "#bubbleInner {"
-            "  background-color: %1;"
-            "  border-radius: 8px;"
-            "  padding: 6px 10px;"
-            "}"
-        ).arg(role == User ? "#1a3a5c" : "#2d2d2d")
-    );
     auto *innerLayout = new QVBoxLayout(bubbleInner);
     innerLayout->setContentsMargins(8, 6, 8, 6);
     innerLayout->setSpacing(0);
@@ -259,15 +254,41 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
 
     outerLayout->addLayout(bubbleRow);
 
-    // Set initial content
-    updateContent();
-
     // Set a max width proportionally to parent
     if (parent) {
         int pw = parent->width();
         if (pw > 0)
             m_browser->setMaximumWidth(qMax(200, pw * 7 / 10));
     }
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &ChatBubble::refreshStyle);
+    refreshStyle();
+}
+
+void ChatBubble::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    QColor roleColor = tm.color(m_role == User ? "aiAssistant.roleUser" : "aiAssistant.roleAssistant");
+    QColor bubbleBg = tm.color(m_role == User ? "aiAssistant.bubbleUser" : "aiAssistant.bubbleAssistant");
+
+    m_roleLabel->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 11px; font-weight: bold; padding: 0 4px;"
+    ).arg(roleColor.name()));
+
+    // Use cascading QSS with object name to style the inner bubble container
+    setStyleSheet(QStringLiteral(
+        "#bubbleInner {"
+        "  background-color: %1;"
+        "  border-radius: 8px;"
+        "  padding: 6px 10px;"
+        "}"
+    ).arg(bubbleBg.name()));
+
+    m_browser->setStyleSheet(messageStyleSheet());
+
+    updateContent();
 }
 
 void ChatBubble::setText(const QString &text)
@@ -284,19 +305,28 @@ void ChatBubble::appendText(const QString &text)
 
 void ChatBubble::updateContent()
 {
+    auto &tm = ThemeManager::instance();
+    QColor textColor = tm.color("aiAssistant.foreground");
+    QColor codeBg = tm.color("aiAssistant.codeBackground");
+    QColor codeFg = tm.color("aiAssistant.codeForeground");
+    QColor linkColor = tm.color("aiAssistant.linkColor");
+    QColor selectionBg = tm.color("aiAssistant.selectionBackground");
+    QColor headingColor = textColor;
+
     if (m_role == Assistant) {
-        QString html = markdownToHtml(m_text);
+        QString html = markdownToHtml(m_text, textColor, codeBg, codeFg,
+                                       linkColor, selectionBg, headingColor);
         html = QStringLiteral(
-            "<div style=\"color:#d4d4d4; font-size:13px; line-height:1.5;\">%1</div>"
-        ).arg(html);
+            "<div style=\"color:%1; font-size:13px; line-height:1.5;\">%2</div>"
+        ).arg(textColor.name(), html);
         m_browser->setHtml(html);
     } else {
         QString escaped = m_text.toHtmlEscaped();
         escaped.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
         m_browser->setHtml(
             QStringLiteral(
-                "<div style=\"color:#d4d4d4; font-size:13px; line-height:1.5;\">%1</div>"
-            ).arg(escaped)
+                "<div style=\"color:%1; font-size:13px; line-height:1.5;\">%2</div>"
+            ).arg(textColor.name(), escaped)
         );
     }
 
@@ -319,15 +349,18 @@ void ChatBubble::resizeEvent(QResizeEvent *event)
 
 QString ChatBubble::messageStyleSheet() const
 {
+    auto &tm = ThemeManager::instance();
     return QStringLiteral(
         "QTextBrowser {"
         "  background: transparent;"
-        "  color: #d4d4d4;"
+        "  color: %1;"
         "  font-size: 13px;"
-        "  selection-background-color: #264F78;"
+        "  selection-background-color: %2;"
         "}"
         "QTextBrowser a {"
-        "  color: #4da3ff;"
+        "  color: %3;"
         "}"
-    );
+    ).arg(tm.color("aiAssistant.foreground").name(),
+          tm.color("aiAssistant.selectionBackground").name(),
+          tm.color("aiAssistant.linkColor").name());
 }

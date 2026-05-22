@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.14）
+## 功能说明文档（v0.11.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,11 +58,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.14
+### 新增 v0.11.0
 文件树预览标签页改进
 - 单击文件以预览模式（临时标签页）打开，多次单击不同文件会复用同一个临时标签页
 - 双击文件永久打开
-- 编辑临时标签页内容后自动提升为永久标签页。
+- 编辑临时标签页内容后自动提升为永久标签页
 - 临时标签页以斜体标题区分。
 
 ### 1. `MainWindow` - 主窗口控制器
@@ -264,7 +264,7 @@
 - `void zoomFactorChanged(qreal factor)`：当缩放因子改变时发出，供主窗口更新百分比标签。
 - `void filePathChanged(const QString &oldPath, const QString &newPath)`：当文件路径被 `setFilePath` 修改时发出，供标签管理器更新路径关联。
 - `void wikiLinkClicked(const QString &fileName)`：当预览模式下的 WikiLink 被点击时发出。
-- `void runCodeBlockRequested(const QString &language, const QString &code)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码并转发。
+- `void runCodeBlockRequested(const QString &language, const QString &code, int blockIndex)`：预览模式下点击代码块 ▶ Run 按钮时发出，由 PreviewPage::acceptNavigationRequest 拦截 `runblock:` scheme 后通过 `runJavaScript` 读取 JS 侧存储的代码和 blockIndex 并转发。
 - `void tagClicked(const QString &tag)`：预览模式下点击 `#tag` 链接时发出，由 PreviewPage 拦截 `tag:` scheme 后转发。
 - `void pdfExportCompleted(const QString &filePath, bool success)`：PDF 导出完成时发出，供主窗口显示状态信息。
 
@@ -977,8 +977,8 @@
 - 面板为无边框 `QWidget`，深色主题：背景 `#2b2b2b`、圆角 8px、边框 `#555555`。
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
-- **6 个分类页面**：
-  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、缩进宽度微调框（1-8）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
+- **7 个分类页面**：
+  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
   - **外观**：6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
   - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
   - **预览**：分屏防抖延迟微调框（100-2000ms，百分号移出框外使用独立 `%` 标签）、分屏比例微调框（30-70）。
@@ -1421,7 +1421,36 @@
 - 全局事件过滤器：点击遮罩层外部区域自动关闭帮助面板。
 
 
-### 33. `CompilerErrorParser` — 编译器/Python 错误解析器
+### 33. `ThemeManager` — 主题管理器
+
+**文件**：`thememanager.h` / `thememanager.cpp`
+
+**职责**：
+- 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
+- 主题枚举：`Dark=0, Light=1, System=2`。`setTheme(System)` 自动检测系统主题：优先读取 Windows 注册表 `AppsUseLightTheme`，兜底根据当前时间（6:00-18:00 → Light，其余 → Dark）判断。
+- System 模式下 5 分钟 `QTimer` 自动刷新系统主题检测。
+- `themeChanged(Theme)` 信号在主题实际变化时发出；`applyCurrentTheme()` 重新发射信号强制所有组件刷新。
+- 语义化颜色访问：`color("editor.background")` 返回 `QColor`，`hex("panel.border")` 返回 `"#RRGGBB"` 字符串。缺失 key 返回品红色 `#FF00FF` 方便开发时发现遗漏。
+
+**主要接口**：
+- `static ThemeManager &instance()`：单例访问。
+- `void setTheme(Theme theme)`：切换主题，System 模式自动检测。
+- `Theme currentTheme() const` / `Theme requestedTheme() const`：当前生效主题和用户请求模式。
+- `void refreshSystemTheme()`：System 模式下重新检测。
+- `QColor color(const QString &key) const` / `QString hex(const QString &key) const`：语义化颜色查询。
+- `bool applyCurrentTheme()`：重新发射 `themeChanged` 信号。
+
+**信号**：
+- `themeChanged(ThemeManager::Theme newTheme)`：主题变更时发出，各组件在槽中重新应用 QSS/Palette。
+
+**协作关系**：
+- 由 `MainWindow` 在构造时调用 `ThemeManager::instance().setTheme(...)` 初始化。
+- `MainWindow::onAppearanceSettingChanged("theme", val)` 中调用 `setTheme(static_cast<Theme>(val))`。
+- `ConfigManager` 提供 `theme` 默认值（0=Dark）。
+- 各 widget 的 `setupStyles()`/`reloadColors()` 连接 `themeChanged` 信号实现响应。
+
+
+### 34. `CompilerErrorParser` — 编译器/Python 错误解析器
 
 **文件**：`compilererrorparser.h`
 
@@ -1437,12 +1466,12 @@
 - 被 `MainWindow::parseAndShowBlockDiagnostics()` 调用，根据 `m_currentBlockLanguage`（`"cpp"` / `"python"`）选择对应的解析函数。
 
 
-### 34. MD 代码块诊断（Preview Code Block Diagnostics）
+### 35. MD 代码块诊断（Preview Code Block Diagnostics）
 
 **概述**：
 - MD 文件预览模式下，点击代码块的 ▶ Run 按钮运行代码后，底部面板诊断标签页显示当前代码块的编译器/运行时错误诊断。预览中的代码块对应行通过 JS 注入红色/黄色波浪线（与 `CodeEditor` 的 `WaveUnderline` 样式一致）。
 - 诊断信息来源于 `CompilerErrorParser` 对 stderr 的解析。每次运行新代码块时立即清空旧诊断，运行结束后（编译失败或运行结束）重新解析并显示。
-- 用户手动终止（Ctrl+C / Stop 按钮）时跳过诊断解析，避免 "进程异常退出" 等进程级消息被错误识别为代码错误。
+- 用户手动终止（Ctrl+C / Stop 按钮）时跳过诊断解析，避免"进程异常退出"等进程级消息被错误识别为代码错误。
 
 **数据流**：
 ```

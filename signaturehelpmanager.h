@@ -39,6 +39,7 @@ private:
 
     void updateContent();
     void updatePosition();
+    void refreshStyle();
 
 protected:
     void mouseReleaseEvent(QMouseEvent *event) override;

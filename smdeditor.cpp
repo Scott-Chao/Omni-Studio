@@ -10,6 +10,7 @@
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include "languageutils.h"
+#include "thememanager.h"
 
 #include <QFile>
 #include <QTextStream>
@@ -42,10 +43,13 @@ public:
         // twice when combined with explicit close() + window-system hide.
         // Disable it — we call deleteLater() exactly once in confirm().
         setAttribute(Qt::WA_DeleteOnClose, false);
+        auto &tm = ThemeManager::instance();
+        QString popupBg = tm.color("menu.background").name();
+        QString popupBorder = tm.color("menu.separatorColor").name();
         setStyleSheet(QStringLiteral(
-            "LangSelectorPopup { background: #2d2d30; border: 1px solid #555555; "
+            "LangSelectorPopup { background: %1; border: 1px solid %2; "
             "border-radius: 4px; }"
-        ));
+        ).arg(popupBg, popupBorder));
         auto *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
@@ -60,8 +64,8 @@ public:
         for (const auto &opt : opts) {
             auto *item = new QLabel(opt.text, this);
             item->setStyleSheet(QStringLiteral(
-                "QLabel { color: #e0e0e0; padding: 6px 16px; font-size: 12px; }"
-            ));
+                "QLabel { color: %1; padding: 6px 16px; font-size: 12px; }"
+            ).arg(tm.color("cell.foreground").name()));
             item->setCursor(Qt::PointingHandCursor);
             item->installEventFilter(this);
             item->setProperty("cellType", static_cast<int>(opt.type));
@@ -79,11 +83,14 @@ public:
     void selectIndex(int idx)
     {
         if (idx < 0 || idx >= m_items.size()) return;
+        auto &tm = ThemeManager::instance();
+        QString fg = tm.color("cell.foreground").name();
+        QString selBg = tm.color("menu.selectionBackground").name();
         for (int i = 0; i < m_items.size(); ++i)
             m_items[i]->setStyleSheet(i == idx
-                ? QStringLiteral("QLabel { color: #e0e0e0; padding: 6px 16px; font-size: 12px; "
-                                 "background: #094771; }")
-                : QStringLiteral("QLabel { color: #e0e0e0; padding: 6px 16px; font-size: 12px; }"));
+                ? QStringLiteral("QLabel { color: %1; padding: 6px 16px; font-size: 12px; "
+                                 "background: %2; }").arg(fg, selBg)
+                : QStringLiteral("QLabel { color: %1; padding: 6px 16px; font-size: 12px; }").arg(fg));
         m_selectedIndex = idx;
     }
 
@@ -179,23 +186,27 @@ SmdEditor::SmdEditor(QWidget *parent)
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
 
+    auto &tm = ThemeManager::instance();
+    QString editorBg = tm.color("editor.background").name();
+    QString panelBorder = tm.color("panel.border").name();
+
     // Splitter so the user can drag the diagnostics panel top edge to resize.
     m_splitter = new QSplitter(Qt::Vertical, this);
     m_splitter->setChildrenCollapsible(false);
     m_splitter->setHandleWidth(4);
     m_splitter->setStyleSheet(QStringLiteral(
-        "QSplitter::handle { background: #3c3c3c; }"
-    ));
+        "QSplitter::handle { background: %1; }"
+    ).arg(panelBorder));
 
     m_scrollArea = new QScrollArea(m_splitter);
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setStyleSheet(QStringLiteral(
-        "QScrollArea { background-color: #1E1E1E; border: none; }"
-    ));
+        "QScrollArea { background-color: %1; border: none; }"
+    ).arg(editorBg));
 
     m_cellContainer = new QWidget(m_scrollArea);
-    m_cellContainer->setStyleSheet(QStringLiteral("background-color: #1E1E1E;"));
+    m_cellContainer->setStyleSheet(QStringLiteral("background-color: %1;").arg(editorBg));
     m_cellLayout = new QVBoxLayout(m_cellContainer);
     m_cellLayout->setContentsMargins(8, 8, 8, 8);
     m_cellLayout->setSpacing(4);
@@ -212,6 +223,9 @@ SmdEditor::SmdEditor(QWidget *parent)
     mainLayout->addWidget(m_splitter);
 
     m_processRunner = new ProcessRunner(this);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SmdEditor::refreshStyle);
 
     setFocusPolicy(Qt::StrongFocus);
     installEventFilter(this);
@@ -477,6 +491,24 @@ void SmdEditor::setEditorFont(const QString &family, int size)
 void SmdEditor::reloadColors()
 {
     // Cell colors are set at creation time from ConfigManager
+}
+
+void SmdEditor::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    QString editorBg = tm.color("editor.background").name();
+    QString panelBorder = tm.color("panel.border").name();
+
+    m_splitter->setStyleSheet(QStringLiteral(
+        "QSplitter::handle { background: %1; }"
+    ).arg(panelBorder));
+
+    m_scrollArea->setStyleSheet(QStringLiteral(
+        "QScrollArea { background-color: %1; border: none; }"
+    ).arg(editorBg));
+
+    m_cellContainer->setStyleSheet(QStringLiteral(
+        "background-color: %1;").arg(editorBg));
 }
 
 // ---- Cell Management ----

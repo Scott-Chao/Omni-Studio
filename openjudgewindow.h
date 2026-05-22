@@ -63,6 +63,8 @@ private:
     void showListPage();
     void showDetailPage(const ProblemDetail &detail);
     void rebuildListView();
+    void refreshStyle();
+    void updateSelectButtonStyle(bool selected);
 
     struct SamplePair {
         QString input;

@@ -1,0 +1,172 @@
+/* ===== Scrollbar: Vertical ===== */
+QScrollBar:vertical {
+    width: 10px;
+    background: transparent;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: %%scrollbarSlider.background%%;
+    border-radius: 5px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+    background: %%scrollbarSlider.hoverBackground%%;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* ===== Scrollbar: Horizontal ===== */
+QScrollBar:horizontal {
+    height: 10px;
+    background: transparent;
+    margin: 0;
+}
+QScrollBar::handle:horizontal {
+    background: %%scrollbarSlider.background%%;
+    border-radius: 5px;
+    min-width: 30px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: %%scrollbarSlider.hoverBackground%%;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
+/* ===== Menu ===== */
+QMenu {
+    background: %%menu.background%%;
+    border: 1px solid %%menu.separatorColor%%;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 24px;
+    color: %%menu.foreground%%;
+}
+QMenu::item:selected {
+    background: %%menu.selectionBackground%%;
+    color: %%menu.foreground%%;
+}
+QMenu::separator {
+    height: 1px;
+    background: %%menu.separatorColor%%;
+    margin: 4px 8px;
+}
+
+/* ===== ToolTip ===== */
+QToolTip {
+    background: %%menu.background%%;
+    color: %%menu.foreground%%;
+    border: 1px solid %%menu.separatorColor%%;
+    padding: 4px 8px;
+}
+
+/* ===== MainWindow ===== */
+QMainWindow {
+    background: %%workbench.background%%;
+}
+
+/* ===== Dock Widget ===== */
+QDockWidget {
+    background: %%sideBar.background%%;
+}
+QDockWidget::title {
+    background: %%titleBar.background%%;
+    color: %%titleBar.foreground%%;
+    text-align: left;
+    padding-left: 8px;
+}
+
+/* ===== Tab Widget ===== */
+QTabWidget {
+    background: %%tab.activeBackground%%;
+}
+QTabWidget::pane {
+    background: %%tab.activeBackground%%;
+    border: none;
+}
+
+/* ===== Splitter ===== */
+QSplitter::handle {
+    background: %%panel.border%%;
+}
+QSplitter::handle:horizontal {
+    width: 1px;
+}
+QSplitter::handle:vertical {
+    height: 1px;
+}
+
+/* ===== Tab Bar (replaces per-widget TabManager QSS) ===== */
+QTabBar {
+    background: %%tab.inactiveBackground%%;
+    border: none;
+}
+QTabBar::tab {
+    height: 32px;
+    margin-right: 2px;
+    padding: 4px 12px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    background: %%tab.inactiveBackground%%;
+    color: %%tab.inactiveForeground%%;
+    border: none;
+}
+QTabBar::tab:selected {
+    background: %%tab.activeBackground%%;
+    color: %%tab.activeForeground%%;
+}
+QTabBar::tab:hover:!selected {
+    background: %%tab.hoverBackground%%;
+}
+QTabBar::close-button {
+    image: url(:/icons/close);
+    subcontrol-position: right;
+    margin: 2px;
+}
+QTabBar::close-button:hover {
+    background: %%titleBar.buttonCloseHover%%;
+}
+
+/* ===== Tree View (FileExplorer) ===== */
+QTreeView {
+    background: %%sideBar.background%%;
+    color: %%sideBar.foreground%%;
+    border: none;
+    outline: none;
+}
+QTreeView::item {
+    height: 28px;
+    padding: 2px 4px;
+}
+QTreeView::item:hover {
+    background: %%list.hoverBackground%%;
+}
+QTreeView::item:selected {
+    background: %%list.activeBackground%%;
+    color: %%sideBar.foreground%%;
+}
+
+/* ===== Line Edit (background/foreground from QPalette) ===== */
+QLineEdit {
+    border: 1px solid %%input.border%%;
+    border-radius: 3px;
+    padding: 3px 6px;
+}
+
+/* ===== Plain Text / Rich Text (bg/fg from QPalette Base/Text) ===== */
+QPlainTextEdit {
+    selection-background-color: %%editor.selectionBackground%%;
+    border: none;
+}
+QTextEdit {
+    selection-background-color: %%editor.selectionBackground%%;
+    border: none;
+}

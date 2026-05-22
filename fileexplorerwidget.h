@@ -80,6 +80,7 @@ private:
     QWidget *m_breadcrumb;
     FlowLayout *m_breadcrumbLayout;
     void updateBreadcrumb();
+    void refreshStyle();
 
     // 文件树工具栏
     QWidget *m_toolbar;

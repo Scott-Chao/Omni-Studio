@@ -110,6 +110,8 @@ private:
     QWidget *createShortcutsPage();
     QWidget *createAiServicePage();
 
+    void refreshStyle();
+
     // Shared helper for consistent section label styling
     QLabel *createSectionLabel(const QString &text);
 
@@ -139,6 +141,9 @@ private:
     QSpinBox *m_searchPerFileSpin = nullptr;
     QSpinBox *m_searchTotalSpin = nullptr;
     QSpinBox *m_searchSnippetSpin = nullptr;
+
+    // Appearance page controls
+    QComboBox *m_themeCombo = nullptr;
 
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;

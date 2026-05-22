@@ -1,4 +1,5 @@
 #include "rightpanelcontainer.h"
+#include "thememanager.h"
 #include "historypanel.h"
 #include "outlinepanel.h"
 #include "tagpanel.h"
@@ -15,9 +16,6 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
     // Tab bar
     m_tabBar = new QWidget(this);
     m_tabBar->setFixedHeight(32);
-    m_tabBar->setStyleSheet(
-        "background-color: #252525;"
-    );
 
     QHBoxLayout *tabLayout = new QHBoxLayout(m_tabBar);
     tabLayout->setContentsMargins(4, 0, 4, 0);
@@ -73,29 +71,28 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
     connect(m_backlinksPanel, &BacklinksPanel::fileClicked,
             this, &RightPanelContainer::fileClicked);
 
-    // Apply dark theme to list widgets in all sub-panels
-    setStyleSheet(
-        "RightPanelContainer { background-color: #1E1E1E; }"
-        "QListWidget { background-color: #1E1E1E; color: #D4D4D4; border: none; outline: none; }"
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &RightPanelContainer::refreshStyle);
+    refreshStyle();
+}
+
+void RightPanelContainer::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    m_tabBar->setStyleSheet(QString("background-color: %1;")
+        .arg(tm.color("editorLineNumber.background").name()));
+
+    setStyleSheet(QString(
+        "RightPanelContainer { background-color: %1; }"
+        "QListWidget { background-color: %1; color: %2; border: none; outline: none; }"
         "QListWidget::item { padding: 4px 8px; }"
-        "QListWidget::item:hover { background-color: #2a2d2e; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-    );
+        "QListWidget::item:hover { background-color: %3; }")
+        .arg(tm.color("sideBar.background").name(),
+             tm.color("sideBar.foreground").name(),
+             tm.color("list.hoverBackground").name()));
+
+    updateTabStyles(m_currentPanel);
 }
 
 QPushButton *RightPanelContainer::createTabButton(const QString &text, const QIcon &icon, int index)
@@ -105,20 +102,6 @@ QPushButton *RightPanelContainer::createTabButton(const QString &text, const QIc
     btn->setCursor(Qt::PointingHandCursor);
     btn->setFixedHeight(32);
     btn->setIconSize(QSize(14, 14));
-    btn->setStyleSheet(
-        "QPushButton {"
-        "  background: transparent;"
-        "  border: none;"
-        "  border-bottom: 2px solid transparent;"
-        "  color: #888;"
-        "  padding: 0 12px;"
-        "  font-size: 12px;"
-        "}"
-        "QPushButton:hover {"
-        "  color: #ccc;"
-        "  background: #2d2d2d;"
-        "}"
-    );
 
     connect(btn, &QPushButton::clicked, this, [this, index]() {
         setActivePanel(index);
@@ -140,31 +123,38 @@ void RightPanelContainer::setActivePanel(int index)
 
 void RightPanelContainer::updateTabStyles(int activeIndex)
 {
+    auto &tm = ThemeManager::instance();
     for (int i = 0; i < m_tabButtons.size(); ++i) {
         bool active = (i == activeIndex);
-        m_tabButtons[i]->setStyleSheet(
-            active ?
-            "QPushButton {"
-            "  background: transparent;"
-            "  border: none;"
-            "  border-bottom: 2px solid #0078D4;"
-            "  color: #ffffff;"
-            "  padding: 0 12px;"
-            "  font-size: 12px;"
-            "}"
-            :
-            "QPushButton {"
-            "  background: transparent;"
-            "  border: none;"
-            "  border-bottom: 2px solid transparent;"
-            "  color: #888;"
-            "  padding: 0 12px;"
-            "  font-size: 12px;"
-            "}"
-            "QPushButton:hover {"
-            "  color: #ccc;"
-            "  background: #2d2d2d;"
-            "}"
-        );
+        if (active) {
+            m_tabButtons[i]->setStyleSheet(QString(
+                "QPushButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  border-bottom: 2px solid %1;"
+                "  color: %2;"
+                "  padding: 0 12px;"
+                "  font-size: 12px;"
+                "}"
+            ).arg(tm.color("activityBar.activeBorder").name(),
+                  tm.color("tab.activeForeground").name()));
+        } else {
+            m_tabButtons[i]->setStyleSheet(QString(
+                "QPushButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  border-bottom: 2px solid transparent;"
+                "  color: %1;"
+                "  padding: 0 12px;"
+                "  font-size: 12px;"
+                "}"
+                "QPushButton:hover {"
+                "  color: %2;"
+                "  background: %3;"
+                "}"
+            ).arg(tm.color("tab.inactiveForeground").name(),
+                  tm.color("sideBar.foreground").name(),
+                  tm.color("list.hoverBackground").name()));
+        }
     }
 }

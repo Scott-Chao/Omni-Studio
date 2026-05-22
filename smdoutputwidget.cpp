@@ -1,4 +1,5 @@
 #include "smdoutputwidget.h"
+#include "thememanager.h"
 #include <QFont>
 #include <QTextCursor>
 #include <QTextBlock>
@@ -20,43 +21,6 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     m_outputEdit->setMaximumBlockCount(0);
     m_outputEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_outputEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_outputEdit->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { background-color: #1E1E1E; color: #D4D4D4; "
-        "selection-background-color: #264F78; border: none; "
-        "border-top: 1px solid #3c3c3c; padding: 2px 8px; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}"
-        "QScrollBar:horizontal {"
-        "  background-color: #1E1E1E;"
-        "  height: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:horizontal {"
-        "  background-color: #555555;"
-        "  min-width: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
-        "  width: 0;"
-        "}"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
-        "  background: none;"
-        "}"
-    ));
     QFont font(QStringLiteral("Consolas"), 10);
     font.setStyleHint(QFont::Monospace);
     m_outputEdit->setFont(font);
@@ -66,7 +30,21 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     connect(m_outputEdit->document(), &QTextDocument::blockCountChanged,
             this, &SmdOutputWidget::updateHeight);
 
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SmdOutputWidget::refreshStyle);
+    refreshStyle();
+
     setVisible(false);
+}
+
+void SmdOutputWidget::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    m_outputEdit->setStyleSheet(QStringLiteral(
+        "QPlainTextEdit { selection-background-color: %1; border: none; "
+        "border-top: 1px solid %2; padding: 2px 8px; }"
+    ).arg(tm.color("output.selectionBackground").name(),
+          tm.color("panel.border").name()));
 }
 
 void SmdOutputWidget::setOutput(const QString &text)
@@ -118,7 +96,7 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
     // Append the new text
     if (isStderr) {
         QTextCharFormat fmt;
-        fmt.setForeground(QColor(QStringLiteral("#F48771")));
+        fmt.setForeground(ThemeManager::instance().color("output.stderr"));
         cursor.insertText(text, fmt);
     } else {
         cursor.insertText(text);
@@ -140,13 +118,13 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
 
         cursor.movePosition(QTextCursor::End);
         QTextCharFormat grayFmt;
-        grayFmt.setForeground(QColor(QStringLiteral("#858585")));
+        grayFmt.setForeground(ThemeManager::instance().color("editorLineNumber.foreground"));
         cursor.insertText(QStringLiteral("\n[%1 more lines]").arg(m_hiddenLineCount), grayFmt);
     } else if (m_hiddenLineCount > 0) {
         // Re-add indicator after removing it, since we're still under the limit
         cursor.movePosition(QTextCursor::End);
         QTextCharFormat grayFmt;
-        grayFmt.setForeground(QColor(QStringLiteral("#858585")));
+        grayFmt.setForeground(ThemeManager::instance().color("editorLineNumber.foreground"));
         cursor.insertText(QStringLiteral("\n[%1 more lines]").arg(m_hiddenLineCount), grayFmt);
     }
 }

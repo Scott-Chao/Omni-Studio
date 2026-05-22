@@ -471,3 +471,4 @@ void TabManager::updatePathsAfterMove(const QString &oldBase, const QString &new
         editor->setFilePath(newPath);
     }
 }
+

@@ -1,4 +1,5 @@
 #include "searchpanel.h"
+#include "thememanager.h"
 #include "fileutils.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
@@ -15,41 +16,16 @@
 SearchPanel::SearchPanel(QWidget *parent)
     : QWidget(parent)
 {
-    setStyleSheet("SearchPanel { background-color: #1E1E1E; }");
     m_searchInput = new QLineEdit(this);
     m_searchInput->setPlaceholderText(tr("搜索文件..."));
     m_searchInput->setClearButtonEnabled(true);
-    m_searchInput->setStyleSheet(
-        "QLineEdit { background: #3c3c3c; color: #D4D4D4; border: 1px solid #555;"
-        "  border-radius: 3px; padding: 3px 6px; }");
 
     m_resultList = new QListWidget(this);
     m_resultList->setSelectionMode(QAbstractItemView::NoSelection);
     m_resultList->setWordWrap(true);
     m_resultList->setSpacing(2);
-    m_resultList->setStyleSheet(
-        "QListWidget { background: #1E1E1E; color: #D4D4D4; border: none; }"
-        "QListWidget::item { padding: 2px 0; }"
-        "QListWidget::item:hover { background: #2a2d2e; }"
-        "QScrollBar:vertical {"
-        "  background-color: #1E1E1E;"
-        "  width: 10px;"
-        "  margin: 0;"
-        "}"
-        "QScrollBar::handle:vertical {"
-        "  background-color: #555555;"
-        "  min-height: 30px;"
-        "  border-radius: 5px;"
-        "}"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
-        "  height: 0;"
-        "}"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
-        "  background: none;"
-        "}");
 
     m_statusLabel = new QLabel(tr("打开文件夹以搜索文件"), this);
-    m_statusLabel->setStyleSheet(QString("color: #888; padding: 4px 8px; font-size: 12px;"));
 
     m_debounceTimer = new QTimer(this);
     m_debounceTimer->setSingleShot(true);
@@ -68,6 +44,36 @@ SearchPanel::SearchPanel(QWidget *parent)
             this, &SearchPanel::performSearch);
     connect(m_resultList, &QListWidget::itemClicked,
             this, &SearchPanel::onResultItemClicked);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SearchPanel::refreshStyle);
+    refreshStyle();
+}
+
+void SearchPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QString("SearchPanel { background-color: %1; }")
+        .arg(tm.color("sideBar.background").name()));
+
+    m_searchInput->setStyleSheet(QString(
+        "QLineEdit { background: %1; color: %2; border: 1px solid %3;"
+        "  border-radius: 3px; padding: 3px 6px; }")
+        .arg(tm.color("input.background").name(),
+             tm.color("input.foreground").name(),
+             tm.color("input.border").name()));
+
+    m_resultList->setStyleSheet(QString(
+        "QListWidget { background: %1; color: %2; border: none; }"
+        "QListWidget::item { padding: 2px 0; }"
+        "QListWidget::item:hover { background: %3; }")
+        .arg(tm.color("sideBar.background").name(),
+             tm.color("sideBar.foreground").name(),
+             tm.color("list.hoverBackground").name()));
+
+    m_statusLabel->setStyleSheet(QString("color: %1; padding: 4px 8px; font-size: 12px;")
+        .arg(tm.color("editorLineNumber.foreground").name()));
 }
 
 void SearchPanel::setRootPath(const QString &path)
@@ -219,10 +225,18 @@ void SearchPanel::addResultItem(const SearchResult &result)
         QString("%1  (第 %2 行)")
             .arg(fi.fileName())
             .arg(result.lineNumber));
-    titleLabel->setStyleSheet("font-weight: bold; font-size: 12px; color: #D4D4D4;");
+    {
+        auto &tm = ThemeManager::instance();
+        titleLabel->setStyleSheet(QString("font-weight: bold; font-size: 12px; color: %1;")
+            .arg(tm.color("sideBar.foreground").name()));
+    }
 
     QLabel *snippetLabel = new QLabel(result.snippet);
-    snippetLabel->setStyleSheet("color: #aaa; font-size: 11px;");
+    {
+        auto &tm = ThemeManager::instance();
+        snippetLabel->setStyleSheet(QString("color: %1; font-size: 11px;")
+            .arg(tm.color("tab.inactiveForeground").name()));
+    }
     snippetLabel->setWordWrap(true);
 
     itemLayout->addWidget(titleLabel);

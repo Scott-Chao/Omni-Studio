@@ -11,6 +11,7 @@
 class OutputPanel;
 class DiagnosticSection;
 class CodeEditor;
+class QScrollArea;
 
 class BottomPanel : public QWidget
 {
@@ -43,6 +44,8 @@ private:
     QPushButton *m_closeBtn;
     QStackedWidget *m_stack;
     OutputPanel *m_outputPanel;
+    QWidget *m_headerBar = nullptr;
+    QScrollArea *m_diagScrollArea = nullptr;
 
     // Diagnostics page
     QWidget *m_diagnosticsPage;
@@ -54,6 +57,7 @@ private:
     Tab m_currentTab = RunTab;
     CodeEditor *m_currentEditor = nullptr;
 
+    void refreshStyle();
     void updateTabButtonStyles();
     void rebuildDiagnostics();
 };

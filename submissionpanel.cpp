@@ -1,5 +1,6 @@
 #include "submissionpanel.h"
 #include "configmanager.h"
+#include "thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -14,10 +15,11 @@ SubmitResultPanel::SubmitResultPanel(QWidget *parent)
 void SubmitResultPanel::setupUi()
 {
     const auto &cfg = ConfigManager::instance();
+    auto &tm = ThemeManager::instance();
     setStyleSheet(QString(
         "QWidget { background: %1; color: %2; }")
-        .arg(cfg.editorBackground().name())
-        .arg(cfg.editorForeground().name()));
+        .arg(tm.color("sideBar.background").name())
+        .arg(tm.color("sideBar.foreground").name()));
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
@@ -26,13 +28,13 @@ void SubmitResultPanel::setupUi()
     QFont statusFont(QStringLiteral("Microsoft YaHei"), 24, QFont::Bold);
     m_statusLabel->setFont(statusFont);
     m_statusLabel->setMinimumHeight(cfg.submitResultStatusMinHeight());
-    m_statusLabel->setStyleSheet(QStringLiteral("color: #888; padding: 8px;"));
+    m_statusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 8px;").arg(tm.color("tab.inactiveForeground").name()));
 
     m_detailLabel = new QLabel(this);
     m_detailLabel->setAlignment(Qt::AlignCenter);
     QFont detailFont(QStringLiteral("Microsoft YaHei"), 11);
     m_detailLabel->setFont(detailFont);
-    m_detailLabel->setStyleSheet(QStringLiteral("color: #D4D4D4; padding: 4px;"));
+    m_detailLabel->setStyleSheet(QStringLiteral("color: %1; padding: 4px;").arg(tm.color("editor.foreground").name()));
 
     m_ceEdit = new QPlainTextEdit(this);
     m_ceEdit->setReadOnly(true);
@@ -44,20 +46,26 @@ void SubmitResultPanel::setupUi()
     m_ceEdit->setFont(monoFont);
     m_ceEdit->setStyleSheet(QStringLiteral(
         "QPlainTextEdit {"
-        "  background-color: #2D2D30;"
-        "  color: #F48771;"
-        "  border: 1px solid #3c3c3c;"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
         "  padding: 8px;"
-        "}"));
+        "}").arg(tm.color("menu.background").name(),
+                 tm.color("output.stderr").name(),
+                 tm.color("panel.border").name()));
     m_ceEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_ceEdit->hide();
 
     m_hideBtn = new QPushButton(tr("隐藏"), this);
     m_hideBtn->setFixedWidth(ConfigManager::instance().submitResultHideButtonWidth());
     m_hideBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: #3E3E42; color: #D4D4D4; border: 1px solid #555; "
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
         "border-radius: 3px; padding: 4px 12px; } "
-        "QPushButton:hover { background: #505050; }"));
+        "QPushButton:hover { background: %4; }")
+        .arg(tm.color("input.background").name(),
+             tm.color("input.foreground").name(),
+             tm.color("input.border").name(),
+             tm.color("aiAssistant.actionButtonHoverBackground").name()));
 
     auto *btnLayout = new QHBoxLayout;
     btnLayout->setContentsMargins(4, 2, 4, 4);

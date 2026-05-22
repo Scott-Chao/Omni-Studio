@@ -50,6 +50,7 @@ signals:
 
 private slots:
     void onTabSwitch(int index);
+    void refreshStyle();
 
 private:
     void updateTabButtonStyle();
@@ -60,6 +61,7 @@ private:
     QLineEdit *m_inputEdit;
     QPushButton *m_sendBtn;
     QPushButton *m_clearBtn;
+    QWidget *m_titleBar;
 
     // Tab switching
     QStackedWidget *m_stackedWidget;

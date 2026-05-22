@@ -45,6 +45,7 @@ private:
     QListWidget *m_resultList;
     QLabel *m_statusLabel;
     QTimer *m_debounceTimer;
+    void refreshStyle();
 
     QString m_rootPath;
     QString m_searchText;

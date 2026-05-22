@@ -1,4 +1,5 @@
 #include "scrollbarhider.h"
+#include "thememanager.h"
 #include <QAbstractScrollArea>
 #include <QScrollBar>
 #include <QTimer>
@@ -7,6 +8,8 @@
 ScrollbarHider::ScrollbarHider(QObject *parent)
     : QObject(parent)
 {
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &ScrollbarHider::refreshAll);
 }
 
 void ScrollbarHider::manage(QAbstractScrollArea *area)
@@ -106,10 +109,19 @@ void ScrollbarHider::setScrollbarVisible(QAbstractScrollArea *area, bool visible
         sb->setStyleSheet(qss);
 }
 
+void ScrollbarHider::refreshAll()
+{
+    for (QAbstractScrollArea *area : std::as_const(m_managed)) {
+        if (area)
+            setScrollbarVisible(area, false);
+    }
+}
+
 QString ScrollbarHider::makeScrollbarQss(bool visible) const
 {
-    QString track = visible ? QStringLiteral("#1E1E1E") : QStringLiteral("transparent");
-    QString handle = visible ? QStringLiteral("#555555") : QStringLiteral("transparent");
+    auto &tm = ThemeManager::instance();
+    QString track = visible ? tm.color("workbench.background").name() : QStringLiteral("transparent");
+    QString handle = visible ? tm.color("scrollbarSlider.hoverBackground").name() : QStringLiteral("transparent");
 
     return QStringLiteral(
         "QScrollBar:vertical {"
