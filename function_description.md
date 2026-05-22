@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.4）
+## 功能说明文档（v0.11.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,9 +58,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.4
-- 修复设置面板切换主题后右侧页面背景不会立即更新的问题：在 `refreshStyle()` 中新增 `refreshPageTree()` 递归遍历方法，对页内所有 `QScrollArea`（`scrollAreaStyle()`）、内容背景（`menu.background`）、`QLabel`（按字体大小区分 section 标签/描述标签/普通标签，分别应用 `sectionLabelStyle()`/`labelStyle()`）、`QSpinBox`/`QLineEdit`/`QComboBox`（`inputStyle()`）统一重新应用主题样式（`settingspanel.cpp`）
-- 修复设置面板切换主题后"恢复主题默认值"按钮、快捷键表格头部行/列表容器、"恢复默认"按钮、AI 系统提示词 `QTextEdit` 背景不更新的问题：为 `m_resetThemeBtn`、`m_shortcutsHeaderRow`、`m_shortcutsListContainer`、`m_shortcutsResetBtn` 添加成员指针，在 `refreshStyle()` 中显式刷新各自定制样式；`m_aiSystemPromptEdit` 同步刷新（`settingspanel.h` + `settingspanel.cpp`）
+### 修复 v0.11.5
+- 修复文件树工具栏仅硬编码深色样式、切换浅色主题后仍显示暗色背景的问题：将工具栏（`m_toolbar`）、文件夹标签（`m_folderLabel`）及刷新/折叠按钮的样式表全部迁移至 `refreshStyle()`，分别使用 `editorLineNumber.background`（工具栏背景）、`sideBar.border`（底边框）、`sideBar.foreground`（文字）和 `list.hoverBackground`（按钮悬停）等主题 token，使深色/浅色主题自动适配（`fileexplorerwidget.cpp`）
+- 修复文件树工具栏刷新/折叠按钮图标在浅色模式下颜色不匹配的问题：引入 `coloredSvgIcon` 工具函数，在 `refreshStyle()` 中使用 `sideBar.foreground` 对图标进行重新着色——深色主题为浅灰 `#bfbfbf`，浅色主题为深灰 `#202020`（`fileexplorerwidget.cpp`）
 
 ### 1. `MainWindow` - 主窗口控制器
 

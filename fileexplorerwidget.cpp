@@ -17,6 +17,27 @@
 #include <QHBoxLayout>
 #include <QResizeEvent>
 #include <QFileIconProvider>
+#include <QIcon>
+#include <QPixmap>
+#include <QImage>
+
+namespace {
+
+QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
+    QPainter p(&img);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(img.rect(), color);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+} // namespace
 
 class NoGhostDelegate : public QStyledItemDelegate
 {
@@ -181,17 +202,12 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 文件树工具栏
     m_toolbar = new QWidget(this);
-    m_toolbar->setStyleSheet(QStringLiteral(
-        "background-color: #252525; border-bottom: 1px solid #3c3c3c;"
-    ));
+    m_toolbar->setObjectName("fileTreeToolbar");
     QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
     toolbarLayout->setContentsMargins(8, 1, 4, 1);
     toolbarLayout->setSpacing(4);
 
     m_folderLabel = new QLabel(this);
-    m_folderLabel->setStyleSheet(QStringLiteral(
-        "color: #cccccc; background: transparent; border: none; font-size: 12px;"
-    ));
     m_folderLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     toolbarLayout->addWidget(m_folderLabel, 1);
 
@@ -204,16 +220,6 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_refreshBtn->setFlat(true);
     m_refreshBtn->setCursor(Qt::PointingHandCursor);
     m_refreshBtn->setToolTip(tr("刷新文件树"));
-    m_refreshBtn->setStyleSheet(QStringLiteral(
-        "QPushButton {"
-        "  background: transparent;"
-        "  border: none;"
-        "  border-radius: 3px;"
-        "}"
-        "QPushButton:hover {"
-        "  background: #3c3c3c;"
-        "}"
-    ));
     m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     m_collapseAllBtn = new QPushButton(this);
@@ -223,16 +229,6 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_collapseAllBtn->setFlat(true);
     m_collapseAllBtn->setCursor(Qt::PointingHandCursor);
     m_collapseAllBtn->setToolTip(tr("收起所有文件夹"));
-    m_collapseAllBtn->setStyleSheet(QStringLiteral(
-        "QPushButton {"
-        "  background: transparent;"
-        "  border: none;"
-        "  border-radius: 3px;"
-        "}"
-        "QPushButton:hover {"
-        "  background: #3c3c3c;"
-        "}"
-    ));
     m_collapseAllBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     toolbarLayout->addWidget(m_collapseAllBtn);
 
@@ -416,6 +412,29 @@ void FileExplorerWidget::refreshStyle()
         "background-color: %1; border-bottom: 1px solid %2;"
     ).arg(tm.color("editorLineNumber.background").name(),
           tm.color("sideBar.border").name()));
+
+    // Toolbar
+    m_toolbar->setStyleSheet(QStringLiteral(
+        "background-color: %1; border-bottom: 1px solid %2;"
+    ).arg(tm.color("editorLineNumber.background").name(),
+          tm.color("sideBar.border").name()));
+
+    m_folderLabel->setStyleSheet(QStringLiteral(
+        "color: %1; background: transparent; border: none; font-size: 12px;"
+    ).arg(tm.color("sideBar.foreground").name()));
+
+    QString btnHover = tm.color("list.hoverBackground").name();
+    QString btnStyle = QStringLiteral(
+        "QPushButton { background: transparent; border: none; border-radius: 3px; }"
+        "QPushButton:hover { background: %1; }"
+    ).arg(btnHover);
+
+    m_refreshBtn->setStyleSheet(btnStyle);
+    m_collapseAllBtn->setStyleSheet(btnStyle);
+
+    QColor iconColor = tm.color("sideBar.foreground");
+    m_refreshBtn->setIcon(coloredSvgIcon(":/icons/refresh", iconColor, 14));
+    m_collapseAllBtn->setIcon(coloredSvgIcon(":/icons/collapse-all", iconColor, 14));
 
     updateBreadcrumb();
 }
