@@ -15,9 +15,11 @@ public:
     void setSearchActive(bool active);
     void setJudgeActive(bool active);
     void setAiActive(bool active);
+    void setExplorerActive(bool active);
     void setExportPdfVisible(bool visible);
 
 signals:
+    void explorerClicked();
     void searchClicked();
     void settingsClicked();
     void exportPdfClicked();
@@ -30,12 +32,14 @@ private:
     QString buttonStyleSheet(bool active) const;
     void refreshStyle();
 
+    QPushButton *m_explorerBtn;
     QPushButton *m_searchBtn;
     QPushButton *m_aiBtn;
     QPushButton *m_settingsBtn;
     QPushButton *m_exportPdfBtn;
     QPushButton *m_judgeBtn;
 
+    bool m_explorerActive = false;
     bool m_searchActive = false;
     bool m_aiActive = false;
     bool m_judgeActive = false;

@@ -687,6 +687,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutActions["toggle_tags"] = m_toggleTagsAction;
     m_shortcutActions["toggle_backlinks"] = m_toggleBacklinksAction;
     m_shortcutActions["toggle_search"] = toggleSearchAction;
+    m_shortcutActions["toggle_explorer"] = m_toggleExplorerAction;
     m_shortcutActions["toggle_judge"] = m_toggleJudgeAction;
     m_shortcutActions["toggle_preview"] = m_previewAction;
     m_shortcutActions["toggle_split_preview"] = m_splitPreviewAction;
@@ -792,20 +793,32 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // 文件浏览面板折叠/展开
+    m_toggleExplorerAction = new QAction(tr("切换文件浏览"), this);
+    m_toggleExplorerAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_explorer", "Ctrl+B")));
+    connect(m_toggleExplorerAction, &QAction::triggered, this, &MainWindow::toggleLeftPanel);
+    addAction(m_toggleExplorerAction);
+
     // ActivityBar 信号连接
-    connect(m_activityBar, &ActivityBar::searchClicked, this, [this]() {
-        if (m_leftStack->currentIndex() == 1)
-            showLeftPanel(0);
+    connect(m_activityBar, &ActivityBar::explorerClicked, this, [this]() {
+        if (m_leftStack->currentIndex() == 0 && !m_leftStack->isHidden())
+            toggleLeftPanel();
         else
+            showLeftPanel(0);
+    });
+    connect(m_activityBar, &ActivityBar::searchClicked, this, [this]() {
+        if (m_leftStack->currentIndex() == 1 && !m_leftStack->isHidden()) {
+            toggleLeftPanel();
+        } else {
             showLeftPanel(1);
-        if (m_leftStack->currentIndex() == 1)
             m_searchPanel->focusSearchInput();
+        }
     });
     connect(m_activityBar, &ActivityBar::settingsClicked, this, &MainWindow::toggleSettings);
     connect(m_activityBar, &ActivityBar::exportPdfClicked, this, &MainWindow::onExportPdf);
     connect(m_activityBar, &ActivityBar::judgeClicked, this, [this]() {
-        if (m_leftStack->currentIndex() == 2)
-            showLeftPanel(0);
+        if (m_leftStack->currentIndex() == 2 && !m_leftStack->isHidden())
+            toggleLeftPanel();
         else
             showLeftPanel(2);
     });
@@ -1289,12 +1302,39 @@ void MainWindow::showRightPanel(int panelIndex)
 
 void MainWindow::showLeftPanel(int index)
 {
+    // 如果面板已折叠，先展开并恢复宽度
+    if (m_leftStack->isHidden()) {
+        m_leftStack->show();
+        QList<int> sizes = m_splitter->sizes();
+        if (sizes.size() == 3) {
+            int available = sizes[2] - m_savedLeftPanelWidth;
+            if (available < 100) available = 100;
+            sizes[1] = m_savedLeftPanelWidth;
+            sizes[2] = available;
+            m_splitter->setSizes(sizes);
+        }
+    }
+
     m_leftStack->setCurrentIndex(index);
+    m_activityBar->setExplorerActive(index == 0);
     m_activityBar->setSearchActive(index == 1);
     m_activityBar->setJudgeActive(index == 2);
-    // 打开左侧面板时隐藏右侧面板
+    // 打开非文件浏览面板时隐藏右侧面板
     if (index > 0)
         m_dockRightPanel->hide();
+}
+
+void MainWindow::toggleLeftPanel()
+{
+    if (m_leftStack->isHidden()) {
+        showLeftPanel(m_leftStack->currentIndex());
+    } else {
+        m_savedLeftPanelWidth = m_leftStack->width();
+        m_leftStack->hide();
+        m_activityBar->setExplorerActive(false);
+        m_activityBar->setSearchActive(false);
+        m_activityBar->setJudgeActive(false);
+    }
 }
 
 void MainWindow::updateAiActionBar()

@@ -158,6 +158,9 @@ private:
     // 左侧面板栈（文件夹/搜索/评测 VS Code 风格覆盖）
     QStackedWidget *m_leftStack;
     void showLeftPanel(int index);
+    void toggleLeftPanel();
+    int m_savedLeftPanelWidth = 220;
+    QAction *m_toggleExplorerAction = nullptr;
 
     // OpenJudge 窗口（单例）
     QPointer<OpenJudgeWindow> m_openJudgeWindow;

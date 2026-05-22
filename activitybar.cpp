@@ -34,12 +34,14 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->setContentsMargins(0, 4, 0, 4);
     layout->setSpacing(0);
 
+    m_explorerBtn = createButton(QIcon(":/icons/file"),  tr("文件浏览 (Ctrl+B)"));
     m_searchBtn    = createButton(QIcon(":/icons/search"),    tr("搜索 (Ctrl+Shift+F)"));
     m_aiBtn        = createButton(QIcon(":/icons/ai"),        tr("AI 助手 (Ctrl+Shift+A)"));
     m_settingsBtn  = createButton(QIcon(":/icons/settings"),  tr("设置 (Ctrl+,)"));
     m_exportPdfBtn = createButton(QIcon(":/icons/pdf"),       tr("导出 PDF (Ctrl+E)"));
     m_judgeBtn     = createButton(QIcon(":/icons/judge"),     tr("评测 (Ctrl+Shift+J)"));
 
+    layout->addWidget(m_explorerBtn);
     layout->addWidget(m_searchBtn);
     layout->addWidget(m_aiBtn);
     layout->addWidget(m_settingsBtn);
@@ -47,6 +49,7 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->addWidget(m_exportPdfBtn);
     layout->addWidget(m_judgeBtn);
 
+    connect(m_explorerBtn, &QPushButton::clicked, this, &ActivityBar::explorerClicked);
     connect(m_searchBtn,    &QPushButton::clicked, this, &ActivityBar::searchClicked);
     connect(m_aiBtn,        &QPushButton::clicked, this, &ActivityBar::aiClicked);
     connect(m_settingsBtn,  &QPushButton::clicked, this, &ActivityBar::settingsClicked);
@@ -68,12 +71,14 @@ void ActivityBar::refreshStyle()
 
     QColor fg = tm.color("activityBar.foreground");
     const int iconSize = 22;
+    m_explorerBtn->setIcon(coloredSvgIcon(":/icons/file", fg, iconSize));
     m_searchBtn->setIcon(coloredSvgIcon(":/icons/search", fg, iconSize));
     m_aiBtn->setIcon(coloredSvgIcon(":/icons/ai", fg, iconSize));
     m_settingsBtn->setIcon(coloredSvgIcon(":/icons/settings", fg, iconSize));
     m_exportPdfBtn->setIcon(coloredSvgIcon(":/icons/pdf", fg, iconSize));
     m_judgeBtn->setIcon(coloredSvgIcon(":/icons/judge", fg, iconSize));
 
+    updateButtonStyle(m_explorerBtn, m_explorerActive);
     updateButtonStyle(m_searchBtn, m_searchActive);
     updateButtonStyle(m_aiBtn, m_aiActive);
     updateButtonStyle(m_settingsBtn, false);
@@ -126,6 +131,7 @@ void ActivityBar::updateButtonStyle(QPushButton *btn, bool active)
     btn->setStyleSheet(buttonStyleSheet(active));
 }
 
+void ActivityBar::setExplorerActive(bool active) { m_explorerActive = active; updateButtonStyle(m_explorerBtn, active); }
 void ActivityBar::setSearchActive(bool active) { m_searchActive = active; updateButtonStyle(m_searchBtn, active); }
 void ActivityBar::setAiActive(bool active)    { m_aiActive = active; updateButtonStyle(m_aiBtn, active); }
 void ActivityBar::setJudgeActive(bool active)  { m_judgeActive = active; updateButtonStyle(m_judgeBtn, active); }
