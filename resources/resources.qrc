@@ -49,6 +49,7 @@
     <file alias="pdf">icons/icon-pdf.svg</file>
     <file alias="help">icons/icon-help.svg</file>
     <file alias="refresh">icons/icon-refresh.svg</file>
+    <file alias="collapse-all">icons/icon-collapse-all.svg</file>
   </qresource>
   <qresource prefix="/help">
     <file alias="content">help-content.html</file>

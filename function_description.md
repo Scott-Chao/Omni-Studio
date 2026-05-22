@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.12）
+## 功能说明文档（v0.10.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -57,8 +57,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.12
-Markdown 导出 PDF 时，非关键字的代码块采用暗色主题
+### 新增 v0.10.13
+文件树工具栏新增一键收起按钮，点击可收起所有已展开的文件夹
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -288,7 +288,7 @@ Markdown 导出 PDF 时，非关键字的代码块采用暗色主题
 - 支持拖拽移动文件或文件夹（在该树视图内），通过事件过滤器拦截 DragEnter、DragMove、Drop 事件，在符合条件时执行文件系统移动并发送 `fileRenamed` 信号。
 - 拖拽时对目标文件夹提供视觉反馈：通过自定义委托 `NoGhostDelegate` 在悬停文件夹底部绘制蓝色横条。
 - 在构造函数中创建顶部面包屑路径栏（`m_breadcrumb`），使用 `FlowLayout` 布局实现路径过长时的自动换行。`setRootPath()` 调用时自动更新面包屑。`updateBreadcrumb()` 方法从叶到根收集路径段，反转后依次创建 `QPushButton`，当前目录白色不可点击，祖先目录灰色可点击跳转，段之间用灰色 `>` 标签分隔。
-- 面包屑下方创建文件树工具栏（`m_toolbar`），通过 `QHBoxLayout` 左对齐显示文件夹名称（`m_folderLabel`，`QSizePolicy::Preferred`），右对齐放置操作按钮。`updateFolderLabel()` 在窗口大小变化时通过 `QFontMetrics::elidedText` 自动省略标题文字，保证按钮不被挤压。`resizeEvent()` 中调用 `updateFolderLabel()` 实时更新。`refreshTree()` 方法重新设置 `QFileSystemModel` 根路径并刷新排序代理，实现手动刷新文件树。
+- 面包屑下方创建文件树工具栏（`m_toolbar`），通过 `QHBoxLayout` 左对齐显示文件夹名称（`m_folderLabel`，`QSizePolicy::Preferred`），右对齐放置操作按钮（收起所有文件夹、刷新）。`updateFolderLabel()` 在窗口大小变化时通过 `QFontMetrics::elidedText` 自动省略标题文字，保证按钮不被挤压。`resizeEvent()` 中调用 `updateFolderLabel()` 实时更新。`collapseAll()` 方法调用 `m_treeView->collapseAll()` 一键收起所有已展开的文件夹。`refreshTree()` 方法重新设置 `QFileSystemModel` 根路径并刷新排序代理，实现手动刷新文件树。
 
 **主要接口**：
 - `void setRootPath(const QString &path)`：设置文件树显示的根目录。
@@ -1499,6 +1499,7 @@ Markdown 导出 PDF 时，非关键字的代码块采用暗色主题
 - **缩放控件**：在状态栏底部右侧放置缩小按钮（`−`）、百分比标签（如 `100%`）、放大按钮（`+`）和重置按钮，同时支持快捷键 `Ctrl+=`、`Ctrl+-` 和 `Ctrl+0`。百分比标签随当前编辑器的缩放因子实时更新，且当前编辑器的缩放变化会触发该标签刷新。重置按钮和 `Ctrl+0` 快捷键将缩放恢复至设置面板中配置的默认缩放比例（通过 `SettingsManager::editorDefaultZoom()` 获取），而非固定 100%。
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
 - **面包屑路径栏**：位于文件树顶部，深色背景（`#252525`），底部有 1px 分割线（`#3c3c3c`）。按钮扁平无边框，当前目录白色、祖先目录灰色（`#b0b0b0`），悬停时背景变为 `#3c3c3c`。段之间用灰色 `>` 标签（`#858585`）分隔。使用 `FlowLayout` 实现自动换行。
+- **文件树工具栏**：面包屑下方，左侧显示当前文件夹名称（过长时自动省略），右侧放置收起所有文件夹按钮（方框内减号图标）和刷新按钮。收起按钮调用 `collapseAll()` 一键收起所有已展开的目录；刷新按钮调用 `refreshTree()` 重新加载文件树。
 - **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。`FileSortProxyModel` 内聚图标有效性检测与兜底修复（成员 `QFileIconProvider` 缓存 + 惰性图标），避免 Windows 空心图标和重复 SHGetFileInfo 调用。
 - **滚动性能**：`setUniformRowHeights(true)` 配合固定行高样式表，Qt 以 O(1) 乘法计算行位置替代 O(n) 逐行高度查询。
 - **文件树选中同步**：切换标签页时，文件树自动选中当前编辑的文件，并逐级展开折叠的父目录；新建未保存文件或文件不在当前根目录时，文件树选中状态保持不变。

@@ -217,6 +217,27 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
         "}"
     ));
     m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    m_collapseAllBtn = new QPushButton(this);
+    m_collapseAllBtn->setIcon(QIcon(QStringLiteral(":/icons/collapse-all")));
+    m_collapseAllBtn->setIconSize(QSize(14, 14));
+    m_collapseAllBtn->setFixedSize(26, 26);
+    m_collapseAllBtn->setFlat(true);
+    m_collapseAllBtn->setCursor(Qt::PointingHandCursor);
+    m_collapseAllBtn->setToolTip(tr("收起所有文件夹"));
+    m_collapseAllBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  border: none;"
+        "  border-radius: 3px;"
+        "}"
+        "QPushButton:hover {"
+        "  background: #3c3c3c;"
+        "}"
+    ));
+    m_collapseAllBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    toolbarLayout->addWidget(m_collapseAllBtn);
+
     toolbarLayout->addWidget(m_refreshBtn);
 
     layout->addWidget(m_toolbar);
@@ -312,6 +333,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_dropTargetIndex = QModelIndex();
 
     connect(m_refreshBtn, &QPushButton::clicked, this, &FileExplorerWidget::refreshTree);
+    connect(m_collapseAllBtn, &QPushButton::clicked, this, &FileExplorerWidget::collapseAll);
 
     reloadShortcuts();
 }
@@ -852,6 +874,11 @@ void FileExplorerWidget::refreshTree()
     }
 }
 
+void FileExplorerWidget::collapseAll()
+{
+    m_treeView->collapseAll();
+}
+
 void FileExplorerWidget::updateFolderLabel()
 {
     QString path = rootPath();
@@ -868,11 +895,11 @@ void FileExplorerWidget::updateFolderLabel()
         return;
     }
 
-    int btnWidth = m_refreshBtn->width();
+    int btnWidth = m_refreshBtn->width() + m_collapseAllBtn->width();
     QHBoxLayout *lay = qobject_cast<QHBoxLayout*>(m_toolbar->layout());
     int margins = lay ? lay->contentsMargins().left() + lay->contentsMargins().right() : 0;
     int spacing = lay ? lay->spacing() : 0;
-    int availableWidth = m_toolbar->width() - btnWidth - margins - spacing;
+    int availableWidth = m_toolbar->width() - btnWidth - margins - spacing * 2;
 
     if (availableWidth < 40) {
         m_folderLabel->setText(QString());

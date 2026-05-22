@@ -44,6 +44,7 @@ public:
     bool isDropTargetFolder(const QModelIndex &proxyIndex) const; // 判断某个代理索引是否当前拖拽悬停的文件夹
     void reloadShortcuts();
     void refreshTree();
+    void collapseAll();
 
 signals:
     void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
@@ -82,6 +83,7 @@ private:
     QWidget *m_toolbar;
     QLabel *m_folderLabel;
     QPushButton *m_refreshBtn;
+    QPushButton *m_collapseAllBtn;
     QString m_folderFullName;
     void updateFolderLabel();
 
