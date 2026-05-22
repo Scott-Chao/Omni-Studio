@@ -831,8 +831,9 @@ MainWindow::MainWindow(QWidget *parent)
     connectCurrentEditorZoomSignal();
     updateZoomLabel();
 
-    // 连接信号：文件树点击 -> 打开文件
+    // 连接信号：文件树单击 → 预览打开，双击 → 永久打开
     connect(m_explorer, &FileExplorerWidget::fileClicked, this, &MainWindow::onFileSelected);
+    connect(m_explorer, &FileExplorerWidget::fileDoubleClicked, this, &MainWindow::onFileDoubleClicked);
 
     // 将重命名、删除的请求直接转发给 FileExplorerWidget 的内部槽
     connect(m_explorer, &FileExplorerWidget::requestDelete, this, &MainWindow::onRequestDelete);
@@ -883,7 +884,7 @@ MainWindow::~MainWindow()
 // ----- 转发给TabManager的槽函数 -----
 void MainWindow::onFileSelected(const QString &filePath)
 {
-    m_tabManager->openFile(filePath);
+    m_tabManager->openPreview(filePath);
     if (auto *editor = m_tabManager->currentEditor()) {
         editor->setZoomFactor(m_settings->editorDefaultZoom());
     }
@@ -899,6 +900,29 @@ void MainWindow::onFileSelected(const QString &filePath)
             m_runToolAction->setEnabled(isCode);
         }
     }
+}
+
+void MainWindow::onFileDoubleClicked(const QString &filePath)
+{
+    // 如果目标文件就是当前预览标签页的文件，直接提升为永久
+    EditorWidget *preview = m_tabManager->previewEditor();
+    if (preview) {
+        QString previewPath = QDir::cleanPath(preview->currentFilePath());
+        QString targetPath  = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+        if (previewPath.compare(targetPath, Qt::CaseInsensitive) == 0) {
+            m_tabManager->promotePreviewToPermanent();
+            return;
+        }
+    }
+    // 否则：以永久方式打开
+    m_tabManager->openFile(filePath);
+    if (auto *editor = m_tabManager->currentEditor()) {
+        editor->setZoomFactor(m_settings->editorDefaultZoom());
+    }
+    updateZoomLabel();
+    updatePreviewActionState();
+    updateSplitPreviewActionState();
+    addToRecentFiles(filePath);
 }
 
 void MainWindow::newFile()

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.10.13）
+## 功能说明文档（v0.10.14）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -19,6 +19,7 @@
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**和 **诊断波浪线**（错误/警告）。`.py` 文件通过 Jedi helper 进程的 `diagnostics` action 获取语法诊断，`.cpp` 文件通过 clangd 的 `textDocument/publishDiagnostics` 获取诊断。诊断信息通过 `Ctrl+D` 切换底部 `BottomPanel` 的诊断标签页查看。
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
+- 文件树预览标签页：单击文件以临时标签页（斜体标题）预览，多次单击复用同一标签页；双击永久打开；编辑临时标签页内容后自动提升为永久标签页。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
@@ -57,8 +58,12 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.10.13
-文件树工具栏新增一键收起按钮，点击可收起所有已展开的文件夹
+### 新增 v0.10.14
+文件树预览标签页改进
+- 单击文件以预览模式（临时标签页）打开，多次单击不同文件会复用同一个临时标签页
+- 双击文件永久打开
+- 编辑临时标签页内容后自动提升为永久标签页。
+- 临时标签页以斜体标题区分。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -68,7 +73,7 @@
 - 作为应用程序的主窗口，负责整体布局与用户交互。
 - 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter` 等子组件。
 - 加载与保存应用程序的全局配置（通过 `SettingsManager`），包括窗口几何、分割条状态、上次访问的目录（打开目录和另存为分别记忆）。
-- 协调文件树与标签管理器的双向联动：当用户在文件树中点击文件时，通知 `TabManager` 打开或切换到对应文件；当用户切换标签页时，文件树自动选中对应文件并展开父级目录。
+- 协调文件树与标签管理器的双向联动：用户**单击**文件树中的文件时，以预览模式（临时标签页）打开，多次单击复用同一标签页；**双击**文件时永久打开（或提升已有预览标签页）；编辑预览标签页内容后自动提升为永久。切换标签页时文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
 - 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。
@@ -103,7 +108,8 @@
 - `.md` ↔ `.smd` 双向转换：通过 `m_convertMdSmdAction`（快捷键 `Ctrl+T`）触发 `onConvertMdSmd()`。对当前 `.md` 或 `.smd` 文件调用 `convertMdToSmd()` / `convertSmdToMd()`，生成对应格式文件并写入磁盘（目标未打开时）或直接更新内存内容（目标已打开时）。转换使用 `SmdFormat::fromMarkdownWithMapping()` / `toMarkdownWithMapping()`，保留光标位置（通过行→单元格映射），源文件修改状态保持不变。
 
 **主要接口（槽函数）**：
-- `void onFileSelected(const QString &filePath)`：转发文件路径给 `TabManager::openFile`。
+- `void onFileSelected(const QString &filePath)`：单击文件树 → 转发给 `TabManager::openPreview`（预览模式打开）。
+- `void onFileDoubleClicked(const QString &filePath)`：双击文件树 → 若目标文件在预览标签页中则调用 `promotePreviewToPermanent()`，否则调用 `openFile()` 永久打开。
 - `void newFile()`：转发给 `TabManager::newFile`。
 - `void saveFile()`：若当前文件无路径则调用 `onSaveFileAs()`（使用记忆路径），否则直接调用编辑器的 `saveFile()`。
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
@@ -168,14 +174,18 @@
 - 监听每个编辑器的 `modificationChanged` 和 `fileSaved` 信号，自动更新对应标签标题（修改时添加 `*` 号）。
 - 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字"保存"、"不保存"、"取消"）。
 - 提供 `closeAllTabs()` 方法，用于主窗口关闭时逐个尝试关闭所有标签页，若任一用户取消则返回 `false` 阻止退出。
-- 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制而不影响原有布局。
+- 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制。`CustomTabBar` 覆盖 `paintEvent` 和 `tabSizeHint`：对预览标签页使用斜体字体渲染并为斜体文字预留额外宽度（+8px），避免右侧裁剪。
 
 **主要接口**：
-- `EditorWidget* openFile(const QString &filePath)`：若文件已在某标签中打开则切换到该标签，否则新建标签并加载文件。
+- `EditorWidget* openFile(const QString &filePath)`：若文件已在某标签中打开则切换到该标签并自动提升预览标签页（若适用），否则新建标签并加载文件。
+- `EditorWidget* openPreview(const QString &filePath)`：以预览模式打开文件。若文件已在永久标签页中则切换；若已在预览标签页中则仅切换；若预览标签页已有其他文件则替换内容（调用 `loadFile`）；若无预览标签页则新建。预览标签页标题以斜体显示。
+- `void promotePreviewToPermanent()`：将当前预览标签页提升为永久标签页（清除预览标记，恢复正常字体）。
+- `bool isPreviewEditor(EditorWidget* editor) const`：检查指定编辑器是否为当前预览编辑器。
+- `EditorWidget* previewEditor() const`：返回当前预览编辑器指针，若无则返回 `nullptr`。
 - `EditorWidget* newFile()`：创建一个未命名的空白编辑器，添加为新标签。
 - `EditorWidget* currentEditor() const`：返回当前活动标签下的编辑器。
 - `void saveCurrentFile()`：保存当前编辑器的内容（无路径时自动调用另存为）。
-- `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。
+- `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。关闭预览标签页时自动清理 `m_previewEditor` 指针。
 - `bool closeAllTabs()`：依次关闭所有标签页，若任何一次 `closeTab` 返回 `false` 则立即停止并返回 `false`。
 - `EditorWidget* findEditorByPath(const QString &filePath) const`：根据文件路径查找已打开的编辑器实例（大小写不敏感）。
 - `bool closeTabByPath(const QString &filePath, bool askSave)`：关闭指定路径的标签页，`askSave` 为 `true` 时弹出保存提示，为 `false` 时强制丢弃修改。
@@ -185,10 +195,14 @@
 
 **信号**：
 - `void tabCountChanged(int count)`：当标签数量变化时发出（供外部如窗口标题更新使用）。
+- `void previewTabPromoted(EditorWidget *editor)`：预览标签页提升为永久时发出。
+
+**自动提升机制**：在 `connectEditorSignals` 中，若编辑器是预览标签页，额外连接 `modificationChanged` 信号——当内容被修改（`modified == true`）且 `m_previewEditor` 仍指向该编辑器时，自动调用 `promotePreviewToPermanent()`。`openFile` 中若发现文件已在预览标签页中也会触发提升。
 
 **协作关系**：
 - 被 `MainWindow` 持有，主窗口将文件打开、新建、保存等操作直接转发给 `TabManager`。
-- 内部创建和持有 `EditorWidget`，并连接其状态信号以更新标签标题。
+- 内部创建和持有 `EditorWidget`，并连接其状态信号以更新标签标题和自动提升。
+- `CustomTabBar` 通过 `qobject_cast<const TabManager*>(parent())` 获取 TabManager 引用，查询 `isPreviewEditor` 以决定斜体渲染。
 - 与 `QMessageBox` 交互，提供自定义的文件保存提示对话框。
 
 ---
@@ -283,7 +297,7 @@
 - 重写 `eventFilter`，监听 `Delete` 键，在非编辑状态下直接对选中项发起删除请求。
 - 右键菜单中使用 `DeleteKeyFilter` 事件过滤器，支持在菜单弹出时按 `Delete` 键触发删除。
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
-- 发出 `fileClicked` 信号，携带被选中文件的绝对路径。
+- 发出 `fileClicked` 信号（单击）和 `fileDoubleClicked` 信号（双击），分别携带被选中文件的绝对路径。单击以预览模式打开文件，双击永久打开。
 - 提供 `selectFolder` 公共槽，弹出目录选择对话框并更新根目录。支持传入初始目录参数，以便对话框从上次记忆的路径开始浏览。
 - 支持拖拽移动文件或文件夹（在该树视图内），通过事件过滤器拦截 DragEnter、DragMove、Drop 事件，在符合条件时执行文件系统移动并发送 `fileRenamed` 信号。
 - 拖拽时对目标文件夹提供视觉反馈：通过自定义委托 `NoGhostDelegate` 在悬停文件夹底部绘制蓝色横条。
@@ -299,14 +313,15 @@
 - `bool isDropTargetFolder(const QModelIndex &proxyIndex) const`：供自定义委托查询当前索引是否为拖拽目标文件夹。
 
 **信号**：
-- `void fileClicked(const QString &filePath)`：当用户点击一个有效文件（非目录）时发出。
+- `void fileClicked(const QString &filePath)`：当用户单击文件树中的有效文件（非目录）时发出，以预览模式打开。
+- `void fileDoubleClicked(const QString &filePath)`：当用户双击文件树中的有效文件时发出，永久打开（或提升预览标签页）。
 - `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
 - `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。路径使用 `QDir::absoluteFilePath` 规范化（统一 `/` 分隔符），确保与 `BacklinkIndex` 存储的路径格式一致。
 - `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
 - `void itemDeleted(const QString &path)`：在成功删除文件/文件夹后发出。
 
 **协作关系**：
-- 被 `MainWindow` 使用，其 `fileClicked` 信号连接到主窗口的 `onFileSelected` 槽，最终转发给 `TabManager`。
+- 被 `MainWindow` 使用，`fileClicked` 信号连接到 `onFileSelected`（调用 `openPreview`），`fileDoubleClicked` 信号连接到 `onFileDoubleClicked`（调用 `openFile` 或 `promotePreviewToPermanent`）。
 - `folderChanged` 信号连接到 `MainWindow::onFolderChanged`，实现路径记忆。
 - 内部使用 NoGhostDelegate 附加到 QTreeView，无需外部干预。
 - 事件过滤器同时安装于 `m_treeView->viewport()`，确保拖放事件能正确捕获。
@@ -1500,6 +1515,7 @@
 - **文件树右键菜单**：通过 `QMenu` 动态构建。在文件夹或空白处可内联新建文件/文件夹，新建后立即进入命名编辑状态；对已有项目支持重命名（内联编辑）和删除。删除前弹出确认对话框。
 - **面包屑路径栏**：位于文件树顶部，深色背景（`#252525`），底部有 1px 分割线（`#3c3c3c`）。按钮扁平无边框，当前目录白色、祖先目录灰色（`#b0b0b0`），悬停时背景变为 `#3c3c3c`。段之间用灰色 `>` 标签（`#858585`）分隔。使用 `FlowLayout` 实现自动换行。
 - **文件树工具栏**：面包屑下方，左侧显示当前文件夹名称（过长时自动省略），右侧放置收起所有文件夹按钮（方框内减号图标）和刷新按钮。收起按钮调用 `collapseAll()` 一键收起所有已展开的目录；刷新按钮调用 `refreshTree()` 重新加载文件树。
+- **预览标签页**：单击文件树中的文件以预览模式打开（临时标签页，斜体标题）。多次单击不同文件复用同一标签页（通过 `loadFile` 替换内容）。双击文件永久打开（调用 `openFile`，若文件已在预览标签页中则自动提升）。编辑预览标签页内容后 `modificationChanged(true)` 信号触发 `promotePreviewToPermanent()` 自动提升为永久标签页。`CustomTabBar::paintEvent` 为预览标签页应用斜体字体，`tabSizeHint` 为斜体文字预留额外 8px 宽度避免裁剪。
 - **排序规则**：文件树始终按”文件夹优先、名称升序”排列，且新建或重命名后实时重排。`FileSortProxyModel` 内聚图标有效性检测与兜底修复（成员 `QFileIconProvider` 缓存 + 惰性图标），避免 Windows 空心图标和重复 SHGetFileInfo 调用。
 - **滚动性能**：`setUniformRowHeights(true)` 配合固定行高样式表，Qt 以 O(1) 乘法计算行位置替代 O(n) 逐行高度查询。
 - **文件树选中同步**：切换标签页时，文件树自动选中当前编辑的文件，并逐级展开折叠的父目录；新建未保存文件或文件不在当前根目录时，文件树选中状态保持不变。

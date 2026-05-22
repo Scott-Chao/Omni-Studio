@@ -47,7 +47,8 @@ public:
     void collapseAll();
 
 signals:
-    void fileClicked(const QString &filePath); // 当用户点击一个文件时发出信号，参数为文件完整路径
+    void fileClicked(const QString &filePath); // 单击文件 → 以预览模式打开
+    void fileDoubleClicked(const QString &filePath); // 双击文件 → 永久打开
     void folderChanged(const QString &newPath);
     void requestDelete(const QString &path, bool isDir); // 请求删除
     void fileRenamed(const QString &oldPath, const QString &newPath); // 重命名成功时发出
@@ -62,6 +63,7 @@ public slots:
 
 private slots:
     void onTreeViewClicked(const QModelIndex &index); // 处理树视图的点击事件
+    void onTreeViewDoubleClicked(const QModelIndex &index); // 处理树视图的双击事件
 
 private:
     QFileSystemModel *m_fileModel;

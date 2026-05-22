@@ -3,6 +3,9 @@
 #include <QMessageBox>
 #include <QAbstractButton>
 #include <QDir>
+#include <QStyleOptionTab>
+#include <QStyle>
+#include <QPainter>
 
 TabManager::TabManager(QWidget *parent)
     : QTabWidget(parent)
@@ -20,6 +23,10 @@ EditorWidget* TabManager::openFile(const QString &filePath)
         EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
         if (editor && editor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0) {
             setCurrentIndex(i);
+            // 如果文件当前在预览标签页中，自动提升为永久
+            if (editor == m_previewEditor) {
+                promotePreviewToPermanent();
+            }
             return editor;
         }
     }
@@ -36,6 +43,70 @@ EditorWidget* TabManager::openFile(const QString &filePath)
         delete editor;
         return nullptr;
     }
+}
+
+EditorWidget* TabManager::openPreview(const QString &filePath)
+{
+    QString normalized = QFileInfo(filePath).absoluteFilePath();
+
+    // 情况 1：文件已作为永久标签页打开 → 切换到该标签页
+    for (int i = 0; i < count(); ++i) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(widget(i));
+        if (editor && editor != m_previewEditor
+            && editor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0) {
+            setCurrentWidget(editor);
+            return editor;
+        }
+    }
+
+    // 情况 2：文件已在当前预览标签页中 → 仅切换
+    if (m_previewEditor
+        && m_previewEditor->currentFilePath().compare(normalized, Qt::CaseInsensitive) == 0) {
+        setCurrentWidget(m_previewEditor);
+        return m_previewEditor;
+    }
+
+    // 情况 3：预览标签页存在但文件不同 → 替换预览内容
+    if (m_previewEditor) {
+        m_previewEditor->loadFile(normalized);
+        updateTabTitle(m_previewEditor);
+        setCurrentWidget(m_previewEditor);
+        return m_previewEditor;
+    }
+
+    // 情况 4：无预览标签页 → 新建
+    EditorWidget *editor = new EditorWidget(this);
+    if (!editor->loadFile(normalized)) {
+        delete editor;
+        return nullptr;
+    }
+    int index = addTab(editor, QFileInfo(normalized).fileName());
+    setCurrentIndex(index);
+    m_previewEditor = editor;
+    connectEditorSignals(editor);
+    updateTabTitle(editor); // 应用预览样式
+    emit tabCountChanged(count());
+    return editor;
+}
+
+void TabManager::promotePreviewToPermanent()
+{
+    if (!m_previewEditor)
+        return;
+    EditorWidget *editor = m_previewEditor;
+    m_previewEditor = nullptr;
+    updateTabTitle(editor);
+    emit previewTabPromoted(editor);
+}
+
+bool TabManager::isPreviewEditor(EditorWidget* editor) const
+{
+    return editor && editor == m_previewEditor;
+}
+
+EditorWidget* TabManager::previewEditor() const
+{
+    return m_previewEditor;
 }
 
 EditorWidget* TabManager::newFile()
@@ -125,6 +196,11 @@ bool TabManager::closeTab(int index)
         // 如果点击的是 Discard（不保存），则继续执行关闭操作
     }
 
+    // 如果关闭的是预览标签页，先清理指针
+    if (editor == m_previewEditor) {
+        m_previewEditor = nullptr;
+    }
+
     removeTab(index);
     editor->deleteLater();
     emit tabCountChanged(count());
@@ -160,6 +236,16 @@ void TabManager::connectEditorSignals(EditorWidget *editor)
             this, [this, editor](const QString &/*newPath*/) {
                 updateTabTitle(editor);
             });
+
+    // 预览标签页自动提升：内容被修改时自动变为永久标签页
+    if (editor == m_previewEditor) {
+        connect(editor, &EditorWidget::modificationChanged,
+                this, [this](bool modified) {
+                    if (modified && m_previewEditor) {
+                        promotePreviewToPermanent();
+                    }
+                });
+    }
 }
 
 void TabManager::onEditorModificationChanged(EditorWidget *editor, bool /*modified*/)
@@ -188,6 +274,7 @@ void TabManager::updateTabTitle(EditorWidget *editor)
         title += " *";
 
     setTabText(idx, title);
+    // 预览标签页的斜体样式由 CustomTabBar::initStyleOption 自动处理
 }
 
 EditorWidget* TabManager::findEditorByPath(const QString &filePath) const {
@@ -309,6 +396,48 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
         }
     }
     QTabBar::mouseMoveEvent(event); // 未处于拖拽状态，或拖拽尚未开始，按普通移动处理
+}
+
+void CustomTabBar::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+    const TabManager *tm = qobject_cast<const TabManager*>(parent());
+    if (!tm) {
+        QTabBar::paintEvent(event);
+        return;
+    }
+
+    QPainter painter(this);
+    QFont normalFont = font();
+
+    for (int i = 0; i < count(); ++i) {
+        QStyleOptionTab opt;
+        initStyleOption(&opt, i);
+
+        EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(i));
+        if (editor && tm->isPreviewEditor(editor)) {
+            QFont italicFont = normalFont;
+            italicFont.setItalic(true);
+            painter.setFont(italicFont);
+        } else {
+            painter.setFont(normalFont);
+        }
+
+        style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+    }
+}
+
+QSize CustomTabBar::tabSizeHint(int index) const
+{
+    QSize size = QTabBar::tabSizeHint(index);
+    const TabManager *tm = qobject_cast<const TabManager*>(parent());
+    if (tm) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(index));
+        if (editor && tm->isPreviewEditor(editor)) {
+            size.setWidth(size.width() + 8);
+        }
+    }
+    return size;
 }
 
 void CustomTabBar::mouseReleaseEvent(QMouseEvent *event)

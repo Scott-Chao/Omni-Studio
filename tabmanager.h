@@ -20,6 +20,8 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
+    QSize tabSizeHint(int index) const override;
 
 private:
     bool m_dragStarted = false;
@@ -59,8 +61,15 @@ public:
     bool closeTabByPath(const QString &filePath, bool askSave = true);
     void updateEditorFilePath(const QString &oldPath, const QString &newPath);
 
+    // 预览标签页（临时标签页，单击替换内容，编辑后自动提升为永久）
+    EditorWidget* openPreview(const QString &filePath);
+    void promotePreviewToPermanent();
+    bool isPreviewEditor(EditorWidget* editor) const;
+    EditorWidget* previewEditor() const;
+
 signals:
     void tabCountChanged(int count); // 当标签数量变化时发出
+    void previewTabPromoted(EditorWidget *editor); // 预览标签页提升为永久时发出
 
 private slots:
     void onTabCloseRequested(int index);
@@ -70,6 +79,7 @@ private slots:
 private:
     void connectEditorSignals(EditorWidget *editor);
     void updateTabTitle(EditorWidget *editor);
+    EditorWidget* m_previewEditor = nullptr; // 当前预览编辑器，nullptr 表示无预览标签页
 };
 
 #endif // TABMANAGER_H

@@ -64,7 +64,8 @@ private:
     QString m_currentFilePath; // 当前打开的文件路径（文件树）
 
 private slots:
-    void onFileSelected(const QString &filePath); // 选中文件（打开）
+    void onFileSelected(const QString &filePath); // 单击文件 → 预览模式打开
+    void onFileDoubleClicked(const QString &filePath); // 双击文件 → 永久打开
     void saveFile(); // 保存文件
     void onSaveFileAs(); // 另存为
     void onExportPdf(); // 导出 PDF

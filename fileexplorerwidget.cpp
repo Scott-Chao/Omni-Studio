@@ -323,6 +323,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 连接点击信号
     connect(m_treeView, &QTreeView::clicked, this, &FileExplorerWidget::onTreeViewClicked);
+    connect(m_treeView, &QTreeView::doubleClicked, this, &FileExplorerWidget::onTreeViewDoubleClicked);
     m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_treeView, &QTreeView::customContextMenuRequested,
             this, &FileExplorerWidget::onCustomContextMenu);
@@ -557,13 +558,23 @@ void FileExplorerWidget::selectFile(const QString &filePath)
 
 void FileExplorerWidget::onTreeViewClicked(const QModelIndex &proxyIndex)
 {
-    // 点击树视图打开文件
+    // 单击树视图 — 以预览模式打开文件
     QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
     QString filePath = m_fileModel->filePath(sourceIndex);
     QFileInfo fileInfo(filePath);
-    // 只处理文件（不处理目录）
     if (!fileInfo.isDir()) {
         emit fileClicked(filePath);
+    }
+}
+
+void FileExplorerWidget::onTreeViewDoubleClicked(const QModelIndex &proxyIndex)
+{
+    // 双击树视图 — 永久打开文件
+    QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+    QString filePath = m_fileModel->filePath(sourceIndex);
+    QFileInfo fileInfo(filePath);
+    if (!fileInfo.isDir()) {
+        emit fileDoubleClicked(filePath);
     }
 }
 
