@@ -1,4 +1,5 @@
 #include "completionpopup.h"
+#include "thememanager.h"
 #include <QVBoxLayout>
 #include <QPainter>
 #include <QScreen>
@@ -15,13 +16,15 @@ void CompletionItemDelegate::paint(QPainter *painter,
 {
     painter->save();
 
+    auto &tm = ThemeManager::instance();
+
     // Background
     if (option.state & QStyle::State_Selected) {
-        painter->fillRect(option.rect, QColor("#094771"));
+        painter->fillRect(option.rect, tm.color("list.activeBackground"));
     } else if (option.state & QStyle::State_MouseOver) {
-        painter->fillRect(option.rect, QColor("#2A2D2E"));
+        painter->fillRect(option.rect, tm.color("list.hoverBackground"));
     } else {
-        painter->fillRect(option.rect, QColor("#252526"));
+        painter->fillRect(option.rect, tm.color("sideBar.background"));
     }
 
     QRect r = option.rect.adjusted(4, 0, -8, 0);
@@ -39,7 +42,7 @@ void CompletionItemDelegate::paint(QPainter *painter,
     // Name
     QString name = index.data(Qt::DisplayRole).toString();
     painter->setFont(f);
-    painter->setPen(QColor("#D4D4D4"));
+    painter->setPen(tm.color("editor.foreground"));
     QRect nameRect(r.left(), r.top(), r.width() * 3 / 5, r.height());
     QString elidedName = painter->fontMetrics().elidedText(name, Qt::ElideRight, nameRect.width());
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, elidedName);
@@ -47,7 +50,7 @@ void CompletionItemDelegate::paint(QPainter *painter,
     // Type label
     QString typeLabel = index.data(Qt::UserRole).toString();
     if (!typeLabel.isEmpty()) {
-        painter->setPen(QColor("#6A6A6A"));
+        painter->setPen(tm.color("tab.inactiveForeground"));
         QFont typeFont = f;
         typeFont.setPointSize(qMax(f.pointSize() - 2, 7));
         painter->setFont(typeFont);
@@ -87,14 +90,6 @@ CompletionPopup::CompletionPopup(QWidget *parent)
     m_listWidget->setFrameShape(QFrame::NoFrame);
     m_listWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_listWidget->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_listWidget->setStyleSheet(
-        "QListWidget { background: #252526; border: 1px solid #3C3C3C; }"
-        "QListWidget::item { border: none; }"
-        "QListWidget::item:selected { background: transparent; }"
-        "QScrollBar:vertical { width: 10px; background: #1E1E1E; margin: 0; }"
-        "QScrollBar::handle:vertical { background: #555555; border-radius: 5px; min-height: 30px; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
-    );
     m_listWidget->setCursor(Qt::ArrowCursor);
     m_listWidget->installEventFilter(this);
     layout->addWidget(m_listWidget);
@@ -102,9 +97,6 @@ CompletionPopup::CompletionPopup(QWidget *parent)
     // Hint bar
     m_hintLabel = new QLabel(tr("Tab 接受    ↑↓ 选择    Esc 关闭"), this);
     m_hintLabel->setFixedHeight(22);
-    m_hintLabel->setStyleSheet(
-        "QLabel { background: #1E1E1E; color: #6A6A6A; font-size: 11px; padding: 2px 8px; }"
-    );
     m_hintLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     layout->addWidget(m_hintLabel);
 
@@ -115,6 +107,30 @@ CompletionPopup::CompletionPopup(QWidget *parent)
             emit itemSelected(item);
         hide();
     });
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &CompletionPopup::refreshStyle);
+    refreshStyle();
+}
+
+void CompletionPopup::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    m_listWidget->setStyleSheet(QStringLiteral(
+        "QListWidget { background: %1; border: 1px solid %2; }"
+        "QListWidget::item { border: none; }"
+        "QListWidget::item:selected { background: transparent; }"
+        "QScrollBar:vertical { width: 10px; background: %1; margin: 0; }"
+        "QScrollBar::handle:vertical { background: %3; border-radius: 5px; min-height: 30px; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        )
+        .arg(tm.color("sideBar.background").name(),
+             tm.color("panel.border").name(),
+             tm.color("scrollbarSlider.hoverBackground").name()));
+    m_hintLabel->setStyleSheet(QStringLiteral(
+        "QLabel { background: %1; color: %2; font-size: 11px; padding: 2px 8px; }")
+        .arg(tm.color("editor.background").name(),
+             tm.color("tab.inactiveForeground").name()));
 }
 
 void CompletionPopup::showItems(const QList<CompletionItem> &items)
@@ -180,30 +196,31 @@ CompletionItem CompletionPopup::selectedItem() const
 
 QIcon CompletionPopup::iconForType(const QString &type) const
 {
+    auto &tm = ThemeManager::instance();
     QColor color;
     int shape = 0; // 0=rounded rect, 1=square, 2=diamond, 3=circle, 4=triangle
 
     if (type == QStringLiteral("Method") || type == QStringLiteral("Function")
         || type == QStringLiteral("Constructor")) {
-        color = QColor("#C586C0"); shape = 1;
+        color = tm.color("syntax.preprocessor"); shape = 1;
     } else if (type == QStringLiteral("Class") || type == QStringLiteral("Struct")
                || type == QStringLiteral("Interface")) {
-        color = QColor("#4EC9B0"); shape = 0;
+        color = tm.color("syntax.types"); shape = 0;
     } else if (type == QStringLiteral("Enum") || type == QStringLiteral("EnumMember")) {
-        color = QColor("#B5CEA8"); shape = 4;
+        color = tm.color("syntax.numbers"); shape = 4;
     } else if (type == QStringLiteral("Variable") || type == QStringLiteral("Field")
                || type == QStringLiteral("Property")) {
-        color = QColor("#569CD6"); shape = 2;
+        color = tm.color("syntax.keywords"); shape = 2;
     } else if (type == QStringLiteral("Module") || type == QStringLiteral("Reference")) {
         color = QColor("#DCDCAA"); shape = 0;
     } else if (type == QStringLiteral("Keyword")) {
-        color = QColor("#D4D4D4"); shape = 3;
+        color = tm.color("editor.foreground"); shape = 3;
     } else if (type == QStringLiteral("Constant")) {
         color = QColor("#4FC1FF"); shape = 1;
     } else if (type == QStringLiteral("TypeParameter")) {
-        color = QColor("#4EC9B0"); shape = 2;
+        color = tm.color("syntax.types"); shape = 2;
     } else {
-        color = QColor("#6A6A6A"); shape = 3;
+        color = tm.color("tab.inactiveForeground"); shape = 3;
     }
 
     QPixmap pixmap(16, 16);

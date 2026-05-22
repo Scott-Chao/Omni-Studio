@@ -110,6 +110,8 @@ private:
     QWidget *createShortcutsPage();
     QWidget *createAiServicePage();
 
+    void refreshStyle();
+
     // Shared helper for consistent section label styling
     QLabel *createSectionLabel(const QString &text);
 

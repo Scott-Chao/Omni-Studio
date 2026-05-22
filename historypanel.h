@@ -22,6 +22,7 @@ private slots:
     void clearHistory();
 
 private:
+    void refreshStyle();
     QListWidget *m_listWidget;
     QStringList m_filePaths; // 按显示顺序的完整路径
     SettingsManager *m_settings;

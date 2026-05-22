@@ -1,4 +1,5 @@
 #include <historypanel.h>
+#include "thememanager.h"
 #include <QFileInfo>
 #include <QVBoxLayout>
 #include <QDir>
@@ -12,15 +13,25 @@ HistoryPanel::HistoryPanel(SettingsManager *settings, QWidget *parent)
     connect(m_listWidget, &QListWidget::itemClicked, this, &HistoryPanel::onItemClicked);
 
     m_clearButton = new QPushButton(tr("清空历史记录"), this);
-    m_clearButton->setStyleSheet(
-        "QPushButton { color: #E74C3C; background: transparent; border: none; padding: 4px 8px; }"
-        "QPushButton:hover { color: #FF6B5A; }");
     connect(m_clearButton, &QPushButton::clicked, this, &HistoryPanel::clearHistory);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_listWidget);
     layout->addWidget(m_clearButton);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &HistoryPanel::refreshStyle);
+    refreshStyle();
+}
+
+void HistoryPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+    m_clearButton->setStyleSheet(QStringLiteral(
+        "QPushButton { color: %1; background: transparent; border: none; padding: 4px 8px; }"
+        "QPushButton:hover { color: %2; }")
+        .arg(tm.color("judge.wa").name(),
+             tm.color("judge.wa").lighter(130).name()));
 }
 
 void HistoryPanel::addFile(const QString &rawPath)

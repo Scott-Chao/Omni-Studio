@@ -15,6 +15,7 @@ public:
     explicit ScrollbarHider(QObject *parent = nullptr);
 
     void manage(QAbstractScrollArea *area);
+    void refreshAll();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

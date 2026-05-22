@@ -37,6 +37,7 @@ private:
     void loadContent();
     void computeSectionPositions();
     void onScrollChanged(int value);
+    void refreshStyle();
 
     QLabel *m_titleLabel;
     QPushButton *m_closeButton;

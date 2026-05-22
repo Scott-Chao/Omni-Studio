@@ -1,5 +1,6 @@
 #include "backlinkspanel.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include <QVBoxLayout>
 #include <QFileInfo>
 #include <QColor>
@@ -26,7 +27,7 @@ void BacklinksPanel::showBacklinks(const QStringList &sourceFiles)
     if (m_sourceFiles.isEmpty()) {
         QListWidgetItem *item = new QListWidgetItem(tr("无反向链接"));
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
-        item->setForeground(QColor("#888"));
+        item->setForeground(ThemeManager::instance().color("tab.inactiveForeground"));
         m_listWidget->addItem(item);
         return;
     }
