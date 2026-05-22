@@ -529,6 +529,7 @@ QWidget *SettingsPanel::createAppearancePage()
 
     connect(m_themeCombo, &QComboBox::currentTextChanged, this, [this](const QString &name) {
         ThemeManager::instance().loadTheme(name);
+        SettingsManager::instance().setSettingOverride("appearance.theme", name);
     });
     connect(&tm, &ThemeManager::themeChanged, this, [this]() {
         m_themeCombo->setCurrentText(ThemeManager::instance().currentThemeName());

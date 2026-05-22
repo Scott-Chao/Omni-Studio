@@ -4,6 +4,7 @@
 #include "editorwidget.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include "tabmanager.h"
 #include "historypanel.h"
 #include "backlinkindex.h"
@@ -120,6 +121,11 @@ MainWindow::MainWindow(QWidget *parent)
     , m_zoomLabel(nullptr)
 {
     ui->setupUi(this);
+
+    // Restore saved theme
+    QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
+    if (!savedTheme.isEmpty())
+        ThemeManager::instance().loadTheme(savedTheme);
 
     // 设置窗口标题与无边框
     setWindowTitle(tr("Smart Markdown"));
