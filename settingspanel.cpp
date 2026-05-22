@@ -274,6 +274,90 @@ void SettingsPanel::refreshStyle()
              listSelBg, listSelFg, accent, handleBg));
 
     m_stackedWidget->setStyleSheet(QStringLiteral("background: %1;").arg(tm.color("menu.background").name()));
+
+    // Refresh custom-styled widgets on each page
+    if (m_resetThemeBtn) {
+        m_resetThemeBtn->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: %1; color: %2; border: 1px solid %3;"
+            "  padding: 4px 12px; border-radius: 3px; font-size: 12px;"
+            "}"
+            "QPushButton:hover { background: %4; }")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 tm.color("aiAssistant.actionButtonHoverBackground").name()));
+    }
+    if (m_shortcutsHeaderRow) {
+        m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;")
+            .arg(tm.color("activityBar.background").name(), tm.color("panel.border").name()));
+    }
+    if (m_shortcutsListContainer) {
+        m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;")
+            .arg(tm.color("menu.background").name(), tm.color("panel.border").name()));
+    }
+    if (m_shortcutsResetBtn) {
+        m_shortcutsResetBtn->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: %1; color: %2; border: 1px solid %3;"
+            "  padding: 6px 16px; border-radius: 3px; font-size: 12px;"
+            "}"
+            "QPushButton:hover { background: %4; }")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 tm.color("aiAssistant.actionButtonHoverBackground").name()));
+    }
+    if (m_aiSystemPromptEdit) {
+        m_aiSystemPromptEdit->setStyleSheet(QStringLiteral(
+            "QTextEdit {"
+            "  background-color: %1;"
+            "  color: %2;"
+            "  border: 1px solid %3;"
+            "  border-radius: 3px;"
+            "  padding: 4px;"
+            "  font-size: 12px;"
+            "}"
+            "QTextEdit:focus {"
+            "  border-color: %4;"
+            "}")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 tm.color("badge.background").name()));
+    }
+
+    // Refresh all inner page content (scroll areas, labels, inputs)
+    for (int i = 0; i < m_stackedWidget->count(); ++i) {
+        refreshPageTree(m_stackedWidget->widget(i));
+    }
+}
+
+void SettingsPanel::refreshPageTree(QWidget *w)
+{
+    auto &tm = ThemeManager::instance();
+
+    if (auto *scrollArea = qobject_cast<QScrollArea*>(w)) {
+        scrollArea->setStyleSheet(scrollAreaStyle());
+        if (auto *content = scrollArea->widget()) {
+            content->setStyleSheet(QStringLiteral("background: %1;").arg(tm.color("menu.background").name()));
+        }
+    } else if (auto *label = qobject_cast<QLabel*>(w)) {
+        QString ss = label->styleSheet();
+        if (ss.contains(QStringLiteral("font-size: 14px")))
+            label->setStyleSheet(sectionLabelStyle());
+        else if (ss.contains(QStringLiteral("font-size: 11px")))
+            label->setStyleSheet(QStringLiteral("color: %1; font-size: 11px; margin-bottom: 8px;")
+                .arg(tm.color("tab.inactiveForeground").name()));
+        else
+            label->setStyleSheet(labelStyle());
+    } else if (qobject_cast<QSpinBox*>(w) || qobject_cast<QLineEdit*>(w) || qobject_cast<QComboBox*>(w)) {
+        w->setStyleSheet(inputStyle());
+    }
+
+    for (auto *child : w->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
+        refreshPageTree(child);
+    }
 }
 
 QLabel *SettingsPanel::createSectionLabel(const QString &text)
@@ -555,8 +639,8 @@ QWidget *SettingsPanel::createAppearancePage()
         refreshStyle();
     });
 
-    auto *resetThemeBtn = new QPushButton(tr("恢复主题默认值"));
-    resetThemeBtn->setStyleSheet(QStringLiteral(
+    m_resetThemeBtn = new QPushButton(tr("恢复主题默认值"));
+    m_resetThemeBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"
         "  background: %1; color: %2; border: 1px solid %3;"
         "  padding: 4px 12px; border-radius: 3px; font-size: 12px;"
@@ -567,7 +651,7 @@ QWidget *SettingsPanel::createAppearancePage()
              ThemeManager::instance().color("input.border").name(),
              ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name())
     );
-    connect(resetThemeBtn, &QPushButton::clicked, this, [this]() {
+    connect(m_resetThemeBtn, &QPushButton::clicked, this, [this]() {
         auto &tm = ThemeManager::instance();
         tm.clearOverrides();
         tm.loadTheme(tm.currentThemeName());
@@ -576,7 +660,7 @@ QWidget *SettingsPanel::createAppearancePage()
     themeRow->addWidget(themeLabel);
     themeRow->addStretch();
     themeRow->addWidget(m_themeCombo);
-    themeRow->addWidget(resetThemeBtn);
+    themeRow->addWidget(m_resetThemeBtn);
     layout->addLayout(themeRow);
 
     layout->addSpacing(12);
@@ -984,9 +1068,9 @@ QWidget *SettingsPanel::createShortcutsPage()
     };
 
     // Header row
-    auto *headerRow = new QWidget;
-    headerRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
-    auto *headerLayout = new QHBoxLayout(headerRow);
+    m_shortcutsHeaderRow = new QWidget;
+    m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
+    auto *headerLayout = new QHBoxLayout(m_shortcutsHeaderRow);
     headerLayout->setContentsMargins(8, 4, 8, 4);
     auto *nameHeader = new QLabel(tr("操作"));
     QString headerFg = ThemeManager::instance().color("tab.inactiveForeground").name();
@@ -995,12 +1079,12 @@ QWidget *SettingsPanel::createShortcutsPage()
     keyHeader->setStyleSheet(QStringLiteral("color: %1; font-weight: bold; font-size: 12px;").arg(headerFg));
     headerLayout->addWidget(nameHeader, 1);
     headerLayout->addWidget(keyHeader, 1);
-    layout->addWidget(headerRow);
+    layout->addWidget(m_shortcutsHeaderRow);
 
     // Build a container for the list
-    auto *listContainer = new QWidget;
-    listContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
-    auto *listLayout = new QVBoxLayout(listContainer);
+    m_shortcutsListContainer = new QWidget;
+    m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
+    auto *listLayout = new QVBoxLayout(m_shortcutsListContainer);
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
 
@@ -1082,11 +1166,11 @@ QWidget *SettingsPanel::createShortcutsPage()
         listLayout->addWidget(sep);
     }
 
-    layout->addWidget(listContainer, 1);
+    layout->addWidget(m_shortcutsListContainer, 1);
 
     // Reset all button
-    auto *resetBtn = new QPushButton(tr("恢复默认"));
-    resetBtn->setStyleSheet(QStringLiteral(
+    m_shortcutsResetBtn = new QPushButton(tr("恢复默认"));
+    m_shortcutsResetBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"
         "  background: %1; color: %2; border: 1px solid %3;"
         "  padding: 6px 16px; border-radius: 3px; font-size: 12px;"
@@ -1097,8 +1181,8 @@ QWidget *SettingsPanel::createShortcutsPage()
              ThemeManager::instance().color("input.border").name(),
              ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name())
     );
-    resetBtn->setFixedWidth(120);
-    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+    m_shortcutsResetBtn->setFixedWidth(120);
+    connect(m_shortcutsResetBtn, &QPushButton::clicked, this, [this]() {
         const auto &cfg2 = ConfigManager::instance();
         for (auto it = m_keyRecorders.begin(); it != m_keyRecorders.end(); ++it) {
             QString defaultVal = cfg2.shortcut(it.key(), "");
@@ -1106,7 +1190,7 @@ QWidget *SettingsPanel::createShortcutsPage()
             emit shortcutChanged(it.key(), defaultVal);
         }
     });
-    layout->addWidget(resetBtn, 0, Qt::AlignLeft);
+    layout->addWidget(m_shortcutsResetBtn, 0, Qt::AlignLeft);
 
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);

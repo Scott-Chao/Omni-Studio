@@ -92,7 +92,7 @@
     "aiAssistant.linkColor": "#0069CC",
     "aiAssistant.selectionBackground": "#0069CC40",
     "aiAssistant.actionButtonBackground": "#EAEAEA",
-    "aiAssistant.actionButtonHoverBackground": "#00000010",
+    "aiAssistant.actionButtonHoverBackground": "#E0E0E0",
     "focusBorder": "#0069CCFF",
     "textLink.foreground": "#0069CC",
     "textLink.activeForeground": "#0069CC",

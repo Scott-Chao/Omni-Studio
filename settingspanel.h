@@ -111,6 +111,7 @@ private:
     QWidget *createAiServicePage();
 
     void refreshStyle();
+    void refreshPageTree(QWidget *w);
 
     // Shared helper for consistent section label styling
     QLabel *createSectionLabel(const QString &text);
@@ -145,9 +146,13 @@ private:
     // Appearance page controls
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
+    QPushButton *m_resetThemeBtn = nullptr;
 
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;
+    QWidget *m_shortcutsHeaderRow = nullptr;
+    QWidget *m_shortcutsListContainer = nullptr;
+    QPushButton *m_shortcutsResetBtn = nullptr;
 
     // AI service controls
     QComboBox *m_aiProviderCombo = nullptr;

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.3）
+## 功能说明文档（v0.11.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,8 +58,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.3
-- 修复工具栏按钮（帮助/面板/预览/分屏/运行）SVG 图标在悬停蓝色背景上出现彩色边缘斑块的问题：将 `coloredSvgIcon` 从逐像素手动着色改为 `QPainter::CompositionMode_SourceIn` 标准着色，消除预乘 Alpha 通道损坏；同时固定工具栏图标尺寸为 24×24，避免 Fusion 默认 32×32 导致的二次缩放伪影（`mainwindow.cpp` + `activitybar.cpp`）
+### 修复 v0.11.4
+- 修复设置面板切换主题后右侧页面背景不会立即更新的问题：在 `refreshStyle()` 中新增 `refreshPageTree()` 递归遍历方法，对页内所有 `QScrollArea`（`scrollAreaStyle()`）、内容背景（`menu.background`）、`QLabel`（按字体大小区分 section 标签/描述标签/普通标签，分别应用 `sectionLabelStyle()`/`labelStyle()`）、`QSpinBox`/`QLineEdit`/`QComboBox`（`inputStyle()`）统一重新应用主题样式（`settingspanel.cpp`）
+- 修复设置面板切换主题后"恢复主题默认值"按钮、快捷键表格头部行/列表容器、"恢复默认"按钮、AI 系统提示词 `QTextEdit` 背景不更新的问题：为 `m_resetThemeBtn`、`m_shortcutsHeaderRow`、`m_shortcutsListContainer`、`m_shortcutsResetBtn` 添加成员指针，在 `refreshStyle()` 中显式刷新各自定制样式；`m_aiSystemPromptEdit` 同步刷新（`settingspanel.h` + `settingspanel.cpp`）
 
 ### 1. `MainWindow` - 主窗口控制器
 
