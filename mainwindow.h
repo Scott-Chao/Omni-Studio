@@ -7,6 +7,7 @@
 #include "smddiagnostic.h"
 #include "ai/aiprovider.h"
 #include "ai/prompttemplates.h"
+#include "ai/aihistorymanager.h"
 #include <QTabWidget>
 #include <QSplitter>
 #include <QFileInfo>

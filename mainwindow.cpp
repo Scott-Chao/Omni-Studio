@@ -753,6 +753,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_aiPanel, &AiPanel::clearRequested, this, [this]() {
         abortAiRequest();
         m_aiHistory.clear();
+        AiHistoryManager::instance().clearCurrentConversation();
     });
 
     // ----- 界面布局 -----
@@ -1494,15 +1495,41 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
             this, &MainWindow::onAiError);
 
     // 9. Display user message in chat
+    QString userDisplayText;
     if (action == AiAction::FreeChat) {
+        userDisplayText = freeQuery;
         m_aiPanel->addUserMessage(freeQuery);
     } else {
         const ActionInfo *info = findActionInfo(action);
-        QString displayText = info ? tr(info->label) : tr("AI 操作");
+        userDisplayText = info ? tr(info->label) : tr("AI 操作");
         if (!ctx.selectedText.isEmpty()) {
-            displayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
+            userDisplayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
         }
-        m_aiPanel->addUserMessage(displayText);
+        m_aiPanel->addUserMessage(userDisplayText);
+    }
+
+    // 9b. Persist user message to AiHistoryManager
+    {
+        auto &mgr = AiHistoryManager::instance();
+        if (action == AiAction::FreeChat) {
+            // Create conversation on first FreeChat message
+            if (mgr.currentConversationId().isEmpty()) {
+                QString convTitle = freeQuery.left(30).trimmed();
+                if (convTitle.isEmpty()) convTitle = tr("新对话");
+                mgr.createConversation(convTitle, ctx.filePath);
+            }
+        } else {
+            // Action: always creates a new conversation
+            const ActionInfo *info = findActionInfo(action);
+            QString convTitle = info ? tr(info->label) : tr("AI 操作");
+            mgr.createConversation(convTitle, ctx.filePath);
+        }
+
+        AiMessage userMsg;
+        userMsg.role = MessageRole::User;
+        userMsg.content = userDisplayText;
+        userMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
+        mgr.appendMessage(mgr.currentConversationId(), userMsg);
     }
 
     // 10. Add empty assistant bubble as streaming target
@@ -1562,6 +1589,21 @@ void MainWindow::onAiPartialResponse(const QString &text)
 
 void MainWindow::onAiFinished()
 {
+    // Persist assistant response to AiHistoryManager
+    {
+        auto &mgr = AiHistoryManager::instance();
+        if (!mgr.currentConversationId().isEmpty()) {
+            QString content = m_aiPanel->lastAssistantContent();
+            if (!content.isEmpty()) {
+                AiMessage assistantMsg;
+                assistantMsg.role = MessageRole::Assistant;
+                assistantMsg.content = content;
+                assistantMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
+                mgr.appendMessage(mgr.currentConversationId(), assistantMsg);
+            }
+        }
+    }
+
     // Save assistant response to history (only for FreeChat, where history is non-empty)
     if (!m_aiHistory.isEmpty()) {
         QString content = m_aiPanel->lastAssistantContent();
