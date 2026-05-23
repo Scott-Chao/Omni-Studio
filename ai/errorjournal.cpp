@@ -7,6 +7,7 @@
 #include "aicontextmanager.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
+#include "crawler.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -102,6 +103,89 @@ void ErrorJournal::recordFailure(const JudgeEngine::TestResult &result,
     rec.expectedOutput = result.expectedOutput;
     rec.detail = result.detail;
     rec.inputData = result.inputData;
+    rec.timestamp = QDateTime::currentDateTime();
+
+    m_records.append(rec);
+    save();
+
+    emit recordsChanged();
+}
+
+// ── Record OpenJudge failure ────────────────────────────────────────
+
+static QString mapOpenJudgeStatus(const QString &ojStatus)
+{
+    // Map OpenJudge status strings to error-journal status codes
+    if (ojStatus == QStringLiteral("Wrong Answer"))
+        return QStringLiteral("WA");
+    if (ojStatus == QStringLiteral("Time Limit Exceeded"))
+        return QStringLiteral("TLE");
+    if (ojStatus == QStringLiteral("Memory Limit Exceeded"))
+        return QStringLiteral("MLE");
+    if (ojStatus == QStringLiteral("Runtime Error"))
+        return QStringLiteral("RE");
+    if (ojStatus == QStringLiteral("Compile Error"))
+        return QStringLiteral("CE");
+    if (ojStatus == QStringLiteral("Presentation Error"))
+        return QStringLiteral("PE");
+    if (ojStatus == QStringLiteral("Output Limit Exceeded"))
+        return QStringLiteral("OLE");
+    return ojStatus; // fallback: use raw status string
+}
+
+void ErrorJournal::recordOpenJudgeFailure(const SubmissionResult &result,
+                                           const QString &sourceFile,
+                                           const QString &problemName,
+                                           const QString &problemUrl,
+                                           const QString &sourceCode)
+{
+    Q_UNUSED(sourceCode);
+
+    ErrorRecord rec;
+    rec.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    rec.problemName = problemName;
+    rec.sourceFile = sourceFile;
+    rec.testFolder = problemUrl;   // use problem URL as reference
+    rec.testCaseName = QStringLiteral("OpenJudge");
+    rec.statusCode = mapOpenJudgeStatus(result.status);
+    rec.elapsedMs = result.timeMs;
+    rec.memoryKb = result.memoryKb;
+    rec.inputData = QString();
+    rec.actualOutput = QString();
+    rec.expectedOutput = QString();
+
+    // Build detail string
+    QString detail = result.status;
+    if (!result.compileError.isEmpty())
+        detail += QStringLiteral("\n") + result.compileError;
+    rec.detail = detail;
+
+    rec.timestamp = QDateTime::currentDateTime();
+
+    m_records.append(rec);
+    save();
+
+    emit recordsChanged();
+}
+
+void ErrorJournal::recordOpenJudgeFailure(const JudgeEngine::TestResult &result,
+                                           const QString &sourceFile,
+                                           const QString &problemName,
+                                           const QString &problemUrl)
+{
+    ErrorRecord rec;
+    rec.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    rec.problemName = problemName;
+    rec.sourceFile = sourceFile;
+    rec.testFolder = problemUrl;   // use problem URL as reference
+    rec.testCaseName = result.name;
+    rec.statusCode = result.statusCode;
+    rec.elapsedMs = result.elapsedMs;
+    rec.memoryKb = result.memoryKb;
+    rec.actualOutput = result.actualOutput;
+    rec.expectedOutput = result.expectedOutput;
+    rec.inputData = result.inputData;
+    rec.detail = result.detail;
     rec.timestamp = QDateTime::currentDateTime();
 
     m_records.append(rec);

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.1）
+## 功能说明文档（v0.12.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -27,8 +27,9 @@
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
-- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。
+- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。
 - 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。
+- OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（CaptionBtn 自绘悬停背景）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
@@ -58,8 +59,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增/修复 v0.12.1
-- 修复 SMD 文件切换主题后 Markdown 单元格渲染内容不更新的问题：`SmdCell::refreshStyle()` 中新增静态像素图重渲染触发逻辑，切换主题时保持旧像素图可见，后台用新主题色重新渲染完成后无缝替换
+### 新增 v0.12.2
+- **OpenJudge 提交失败自动记入错题本**：提交到 OpenJudge 的代码若未通过（非 AC），自动将失败结果记入错题本（`ErrorJournal`）。编译错误（CE）不记入错题本。
+- **OpenJudge 错题自动获取本地 I/O 数据**：提交失败后，自动在后台使用 OpenJudge 题目样例数据（用户在"选择此题目"时已缓存至评测面板）运行本地评测（`JudgeEngine`），将每个失败测试用例的输入、预期输出和实际输出填入错题本记录（`ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载）。若所有样例本地通过但 OpenJudge 判定失败（隐藏测试用例未通过），则记录一条无 I/O 数据的条目。若无样例数据，则回退至直接记录（无 I/O）。
+- **错题本状态码扩展**：`ErrorListPanel` 新增 CE（编译错误，`#c0392b`）、PE（格式错误，`#e67e22`）、OLE（输出超限，`#8e44ad`）三种状态码的颜色、中文标签和筛选选项。
+- **OpenJudgeWindow 新增访问器**：`currentProblemTitle()` 和 `currentProblemUrl()` 方法，供 `MainWindow` 在记录错题时获取题目上下文。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -846,6 +850,7 @@
 - 超时控制：每个用例 1000ms（复用 `QTimer`，`setSingleShot(true)`），超时标记 TLE。
 - 内存监控：三重捕获策略确保准确读取——① 进程启动后立即同步调用 `captureMemory()`（此时进程等待 stdin 输入，保证存活）；② 100ms `QTimer` 轮询续传（`captureMemory()` 抽取为共享方法，使用 `PROCESS_QUERY_LIMITED_INFORMATION`）；③ 进程退出时补充读取。峰值内存超过 65536KB 标记 MLE 并杀进程。
 - `m_testHandled` 标志位防止超时和进程结束双重触发。
+- `TestResult` 结构体被 `ErrorJournal` 和 `JudgePanel` 共享使用，包含 `name`、`passed`、`statusCode`、`elapsedMs`、`memoryKb`、`actualOutput`、`expectedOutput`、`inputData`、`detail` 字段。
 
 **信号**：
 - `judgeOutput(const QString &text, bool isStderr)`：引擎运行过程中的日志输出。
@@ -874,8 +879,65 @@
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
 - 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
 - 信号 `submitToOpenJudgeRequested()` 由 `MainWindow::onSubmitToOpenJudge()` 处理，执行代码提交流程。检查顺序：代码有效性 → 题目选择状态 → 登录状态 → 作业是否进行中，不满足时弹出相应提示。
+- `onTestFinished()` 中非 AC 结果自动调用 `ErrorJournal::instance().recordFailure()` 记入错题本（本地评测）。
 
 ---
+
+### 20b. `ErrorJournal` — 错题本（错误日志单例）
+
+**文件**：`ai/errorjournal.h` / `ai/errorjournal.cpp`
+
+**职责**：
+- 单例类（`ErrorJournal::instance()`），持久化管理评测失败记录（错题本）。
+- 数据存储于 `error_journal/records.json`（应用目录），JSON 格式（`version: 1` + `records` 数组）。
+- 核心数据结构 `ErrorRecord`：UUID、题目名（`problemName`）、源文件路径（`sourceFile`）、测试用例文件夹（`testFolder`）、测试用例名（`testCaseName`）、状态码（`statusCode`: WA/RE/TLE/MLE/CE/PE/OLE）、耗时（`elapsedMs`）、内存（`memoryKb`）、输入数据（`inputData`）、实际输出（`actualOutput`）、预期输出（`expectedOutput`）、错误详情（`detail`）、AI 分析结果（`aiAnalysis`）、知识点标签（`tags`）、时间戳、已阅标记。
+
+**主要接口**：
+- `recordFailure(TestResult, sourceFile, testFolder)`：本地评测失败时调用（由 `JudgePanel::onTestFinished()` 触发），从 `QDir(testFolder).dirName()` 推断题目名。
+- `recordOpenJudgeFailure(SubmissionResult, sourceFile, problemName, problemUrl, sourceCode)`：OpenJudge 提交失败且无本地 I/O 数据时调用（回退路径）。使用 `mapOpenJudgeStatus()` 将 OpenJudge 状态文本（"Wrong Answer" → "WA" 等）映射为标准状态码。`testFolder` 使用题目 URL 作为引用。
+- `recordOpenJudgeFailure(TestResult, sourceFile, problemName, problemUrl)`：OpenJudge 提交失败且有本地样例评测结果时调用（主路径）。直接从 `TestResult` 填充 `actualOutput`、`expectedOutput`、`inputData` 和 `testCaseName`。
+- `requestAnalysis(recordId)`：读取源文件 → 构建 `ContextBundle` → 调用 `buildPrompt(AiAction::ErrorAnalysis)` → 创建 AI provider → 流式分析 → 存储 `aiAnalysis` 并 emit `analysisReady(recordId)`。AI 分析过程中自动标记 `reviewed = true`。
+- `allRecords()` / `recordsByProblem(name)` / `recordsByStatus(code)` / `recordById(id)`：查询接口。
+- `deleteRecord(id)` / `clearAll()` / `setRecordReviewed(id, reviewed)`：管理接口。
+- `save()` / `load()`：持久化。`save()` 确保目录存在后写入格式化 JSON。
+
+**信号**：
+- `recordsChanged()`：记录增删或已阅状态变化时发出，驱动 `AiPanel::updateErrorBadge()` 更新徽章计数和 `ErrorListPanel::loadRecords()` 刷新列表。
+- `analysisReady(recordId)`：AI 分析完成时发出，驱动 `ErrorListPanel::updateAnalysis()` 更新详情面板。
+
+**辅助函数**：
+- `mapOpenJudgeStatus(ojStatus)`：静态函数，将 OpenJudge 状态文本映射为标准状态码。映射表：Wrong Answer→WA, Time Limit Exceeded→TLE, Memory Limit Exceeded→MLE, Runtime Error→RE, Compile Error→CE, Presentation Error→PE, Output Limit Exceeded→OLE，未知状态保留原文。
+
+---
+
+### 20c. `ErrorListPanel` — 错题本 UI
+
+**文件**：`ai/errorlistpanel.h` / `ai/errorlistpanel.cpp`
+
+**职责**：
+- AI 面板「错题本」标签页的内容组件（`AiPanel` 中 `QStackedWidget` index 1），提供错题的浏览、筛选和详情查看交互。
+- 布局结构：顶部筛选栏（`m_statusFilter` QComboBox + `m_searchEdit` QLineEdit）→ 中间 `QScrollArea`（`m_listContainer` + `ErrorDetailWidget`）→ 底部工具栏（`m_deleteAllBtn` + `m_countLabel`）。
+
+**子组件**：
+- `ErrorListItem`：固定 64px 高度的可点击卡片。显示状态徽章（`statusColor()` 着色）、题目名、箭头指示器、源文件名（省略）、时间戳、标签。`mousePressEvent` emit `clicked(recordId)`；`paintEvent` 绘制悬停背景和底部分割线。
+- `ErrorDetailWidget`：展开的详情视图。Header 行显示状态码 + 中文标签（`statusLabel()`）、耗时、内存、文件路径。输入输出对比区（`createOutputBlock()`，`QTextBrowser` 最大高度 120px，输入数据为空时自动隐藏输入块）。AI 分析区（`renderMarkdown()` 简易 Markdown→HTML 渲染：代码围栏块、标题、粗体、内联代码、换行）。操作按钮栏：「🔄 分析」（重新请求 AI 分析）、「🗑 删除」、「标记已阅」（切换 `reviewed` 状态）。
+- `renderMarkdown()`：简易 Markdown 转 HTML 渲染器，支持围栏代码块（`<pre><code>`）、`##`/`###` 标题、`**粗体**`、`` `内联代码` ``，先做 HTML 转义防注入。
+
+**筛选逻辑**（`filteredRecords()`）：
+- 状态筛选：`m_statusFilter` 支持全部状态 / WA / RE / TLE / MLE / CE / PE / OLE。
+- 关键词搜索：匹配 `problemName`、`sourceFile`、`statusCode`、`tags`（大小写不敏感）。
+
+**展开/折叠**：单展开模式——仅一个 `ErrorDetailWidget` 可见。点击同一项折叠；点击其他项切换。`m_detailWidgets` 缓存已创建的详情控件。
+
+**信号**：
+- `errorClicked(recordId)`：点击列表项，由 `AiPanel` 转发。
+- `deleteRecordRequested(recordId)` / `deleteAllRequested()`：删除操作。
+- `reanalyzeClicked(recordId)`：重新请求 AI 分析。
+- `markReviewed(recordId, reviewed)`：切换已阅状态。
+
+**协作关系**：
+- 由 `AiPanel` 创建并持有。`AiPanel` 连接 `ErrorJournal::recordsChanged` → `ErrorListPanel::loadRecords()`，`ErrorJournal::analysisReady` → `ErrorListPanel::updateAnalysis()`。
+- `statusColor(code)` 和 `statusLabel(code)` 静态函数：WA `#ff8c00` 答案错误、RE `#e74c3c` 运行时错误、TLE `#f39c12` 超时、MLE `#9b59b6` 超内存、CE `#c0392b` 编译错误、PE `#e67e22` 格式错误、OLE `#8e44ad` 输出超限，未知 `#888888` 显示原始代码。
 
 ---
 

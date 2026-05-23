@@ -36,6 +36,7 @@ class JudgePanel;
 class OpenJudgeWindow;
 class SubmitResultPanel;
 struct SubmissionResult;
+class JudgeEngine;
 class TagIndex;
 class QStackedWidget;
 class SettingsPanel;
@@ -182,6 +183,12 @@ private:
     QPointer<OpenJudgeWindow> m_openJudgeWindow;
     // 提交结果面板
     SubmitResultPanel *m_submitResultPanel = nullptr;
+    // 最近一次 OpenJudge 提交的上下文（用于错题本记录）
+    QString m_lastSubmitSourceFile;
+    QString m_lastSubmitSourceCode;
+    // OpenJudge 提交失败后，后台运行本地评测获取 I/O 数据
+    JudgeEngine *m_ojErrorJudgeEngine = nullptr;
+    QString m_ojErrorStatus;
 
     // 标签系统
     TagIndex *m_tagIndex;
@@ -243,6 +250,8 @@ private:
     void onSubmitToOpenJudge();
     void onConvertMdSmd();
     void onSubmissionResultReady(const SubmissionResult &result);
+    void runLocalTestsForOJError();
+    void onOJErrorLocalTestsFinished(int passed, int total);
     void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
     void toggleHelp();

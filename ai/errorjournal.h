@@ -10,6 +10,7 @@
 #include "judgeengine.h"
 
 class AiProvider;
+struct SubmissionResult;
 
 // ── Data structures ────────────────────────────────────────────────
 
@@ -45,6 +46,19 @@ public:
     void recordFailure(const JudgeEngine::TestResult &result,
                        const QString &sourceFile,
                        const QString &testFolder);
+
+    // 记录 OpenJudge 提交失败（无本地 I/O 数据时使用）
+    void recordOpenJudgeFailure(const SubmissionResult &result,
+                                const QString &sourceFile,
+                                const QString &problemName,
+                                const QString &problemUrl,
+                                const QString &sourceCode);
+
+    // 记录 OpenJudge 提交失败（含本地测试 I/O 数据）
+    void recordOpenJudgeFailure(const JudgeEngine::TestResult &result,
+                                const QString &sourceFile,
+                                const QString &problemName,
+                                const QString &problemUrl);
 
     // 请求 AI 分析错误原因
     void requestAnalysis(const QString &recordId);

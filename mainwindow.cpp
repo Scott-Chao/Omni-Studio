@@ -46,6 +46,7 @@ protected:
 #include "codeeditor.h"
 #include "debuglog.h"
 #include "judgepanel.h"
+#include "judgeengine.h"
 #include "openjudgewindow.h"
 #include "submissionpanel.h"
 #include "compilerutils.h"
@@ -64,6 +65,7 @@ protected:
 #include "ai/anthropicprovider.h"
 #include "ai/openaiprovider.h"
 #include "ai/aihistorylistwidget.h"
+#include "ai/errorjournal.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include "codeeditor.h"
@@ -2948,6 +2950,10 @@ void MainWindow::onSubmitToOpenJudge()
     QMap<QString, int> langMap = ConfigManager::instance().openJudgeSubmissionLanguageMap();
     int langId = langMap.value("." + ext, 1); // default: G++
 
+    // Save submission context for error journal (in case of failure)
+    m_lastSubmitSourceFile = filePath;
+    m_lastSubmitSourceCode = code;
+
     // Submit through OpenJudgeWindow
     m_openJudgeWindow->submitCurrentProblem(code, langId);
 
@@ -2974,6 +2980,19 @@ void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
     m_submitResultPanel->showResult(result);
     m_submitResultPanel->setVisible(true);
 
+    // Record non-Accepted, non-CE OpenJudge results to error journal
+    bool isAccepted = (result.status == QStringLiteral("Accepted")
+                       || result.status == QStringLiteral("AC"));
+    bool isCE = (result.status == QStringLiteral("Compile Error"));
+
+    if (!isAccepted && !isCE && !m_lastSubmitSourceFile.isEmpty()) {
+        // Store the OpenJudge status for async recording after local tests
+        m_ojErrorStatus = result.status;
+
+        // Try running local tests against sample data to get I/O
+        runLocalTestsForOJError();
+    }
+
     // Resize splitter to give the result panel configured ratio height
     double ratio = ConfigManager::instance().submissionResultHeightRatio();
     int total = m_rightSplitter->height();
@@ -2993,6 +3012,100 @@ void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
         }
         m_rightSplitter->setSizes(sizes);
     }
+}
+
+void MainWindow::runLocalTestsForOJError()
+{
+    // Get sample test folder from judge panel (set when user selected the problem)
+    QString testFolder = m_judgePanel->testFolder();
+    if (testFolder.isEmpty()) {
+        // No sample data available — fall back to recording without I/O
+        QString problemName;
+        QString problemUrl;
+        if (m_openJudgeWindow) {
+            problemName = m_openJudgeWindow->currentProblemTitle();
+            problemUrl = m_openJudgeWindow->currentProblemUrl();
+        }
+        SubmissionResult fallback;
+        fallback.status = m_ojErrorStatus;
+        ErrorJournal::instance().recordOpenJudgeFailure(
+            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
+        return;
+    }
+
+    // Check if test folder has any test cases
+    QDir testDir(testFolder);
+    QStringList inFiles = testDir.entryList({QStringLiteral("*.in")}, QDir::Files);
+    if (inFiles.isEmpty()) {
+        // No test cases — fall back to recording without I/O
+        QString problemName;
+        QString problemUrl;
+        if (m_openJudgeWindow) {
+            problemName = m_openJudgeWindow->currentProblemTitle();
+            problemUrl = m_openJudgeWindow->currentProblemUrl();
+        }
+        SubmissionResult fallback;
+        fallback.status = m_ojErrorStatus;
+        ErrorJournal::instance().recordOpenJudgeFailure(
+            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
+        return;
+    }
+
+    // Clean up any previous background engine
+    if (m_ojErrorJudgeEngine) {
+        if (m_ojErrorJudgeEngine->isRunning())
+            m_ojErrorJudgeEngine->stop();
+        m_ojErrorJudgeEngine->deleteLater();
+        m_ojErrorJudgeEngine = nullptr;
+    }
+
+    // Create background engine and run local tests
+    m_ojErrorJudgeEngine = new JudgeEngine(this);
+    m_ojErrorJudgeEngine->setSourceFile(m_lastSubmitSourceFile);
+    m_ojErrorJudgeEngine->setTestFolder(testFolder);
+
+    connect(m_ojErrorJudgeEngine, &JudgeEngine::allTestsFinished,
+            this, &MainWindow::onOJErrorLocalTestsFinished);
+
+    m_ojErrorJudgeEngine->start();
+}
+
+void MainWindow::onOJErrorLocalTestsFinished(int passed, int total)
+{
+    if (!m_ojErrorJudgeEngine)
+        return;
+
+    QString problemName;
+    QString problemUrl;
+    if (m_openJudgeWindow) {
+        problemName = m_openJudgeWindow->currentProblemTitle();
+        problemUrl = m_openJudgeWindow->currentProblemUrl();
+    }
+
+    const auto &results = m_ojErrorJudgeEngine->results();
+    bool anyRecorded = false;
+
+    // Record each failed test case with actual/expected output from local run
+    for (const auto &tr : results) {
+        if (tr.statusCode != QStringLiteral("AC")) {
+            ErrorJournal::instance().recordOpenJudgeFailure(
+                tr, m_lastSubmitSourceFile, problemName, problemUrl);
+            anyRecorded = true;
+        }
+    }
+
+    // If all local tests passed but OpenJudge says it failed,
+    // record one entry noting the failure is on hidden test cases
+    if (!anyRecorded) {
+        SubmissionResult fallback;
+        fallback.status = m_ojErrorStatus;
+        ErrorJournal::instance().recordOpenJudgeFailure(
+            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
+    }
+
+    // Clean up
+    m_ojErrorJudgeEngine->deleteLater();
+    m_ojErrorJudgeEngine = nullptr;
 }
 
 void MainWindow::onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username)

@@ -24,6 +24,8 @@ public:
 
     bool isLoggedIn() const { return m_isLoggedIn; }
     bool hasCurrentProblem() const { return !m_currentProblemUrl.isEmpty(); }
+    QString currentProblemTitle() const { return m_currentProblem.title; }
+    QString currentProblemUrl() const { return m_currentProblemUrl; }
     QString loggedInUsername() const { return m_username; }
     void submitCurrentProblem(const QString &sourceCode, int languageId);
     void onReLogin();

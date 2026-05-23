@@ -25,6 +25,9 @@ static QString statusColor(const QString &code)
     if (code == "RE")  return "#e74c3c";
     if (code == "TLE") return "#f39c12";
     if (code == "MLE") return "#9b59b6";
+    if (code == "CE")  return "#c0392b";
+    if (code == "PE")  return "#e67e22";
+    if (code == "OLE") return "#8e44ad";
     return "#888888";
 }
 
@@ -34,6 +37,9 @@ static QString statusLabel(const QString &code)
     if (code == "RE")  return QStringLiteral("运行时错误");
     if (code == "TLE") return QStringLiteral("超时");
     if (code == "MLE") return QStringLiteral("超内存");
+    if (code == "CE")  return QStringLiteral("编译错误");
+    if (code == "PE")  return QStringLiteral("格式错误");
+    if (code == "OLE") return QStringLiteral("输出超限");
     return code;
 }
 
@@ -503,6 +509,9 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
     m_statusFilter->addItem("RE", "RE");
     m_statusFilter->addItem("TLE", "TLE");
     m_statusFilter->addItem("MLE", "MLE");
+    m_statusFilter->addItem("CE", "CE");
+    m_statusFilter->addItem("PE", "PE");
+    m_statusFilter->addItem("OLE", "OLE");
 
     m_searchEdit = new QLineEdit;
     m_searchEdit->setPlaceholderText(tr("搜索错题..."));
