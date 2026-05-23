@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.3）
+## 功能说明文档（v0.12.4）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -59,8 +59,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.12.3
-- **错题本列表实时刷新**：修复新错题记录（本地评测或 OpenJudge 提交失败）产生后，错题本徽章计数实时更新但内容列表不刷新的问题。`AiPanel` 中 `ErrorJournal::recordsChanged` 信号现连接至 lambda，在更新徽章的同时判断当前是否为错题本标签页，若是则自动调用 `m_errorListPanel->loadRecords()` 刷新列表。本地评测和 OpenJudge 提交两种路径均修复。
+### 修复 v0.12.4
+- **错题本列表悬停高亮背景修复**：修复 `ErrorListItem` 鼠标悬停时灰色高亮背景无法覆盖子标签文字区域的问题。`refreshStyle()` 中为 `#errorItemName`、`#errorItemArrow`、`#errorItemFile`、`#errorItemTime`、`#errorItemTags` 全部子 QLabel 添加 `background: transparent`，使父控件 `paintEvent` 绘制的悬停背景完整透过子控件显示。
 
 ### 1. `MainWindow` - 主窗口控制器
 

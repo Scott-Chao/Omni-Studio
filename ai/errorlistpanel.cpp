@@ -158,11 +158,16 @@ void ErrorListItem::refreshStyle()
 
     auto &tm = ThemeManager::instance();
     setStyleSheet(QStringLiteral(
-        "#errorItemName { color: %1; font-size: 12px; font-weight: bold; }"
-        "#errorItemArrow { color: %2; font-size: 14px; }"
-        "#errorItemFile { color: %3; font-size: 10px; }"
-        "#errorItemTime { color: %4; font-size: 10px; }"
-        "#errorItemTags { color: %5; font-size: 10px; }"
+        "#errorItemName { color: %1; font-size: 12px; font-weight: bold;"
+        "  background: transparent; }"
+        "#errorItemArrow { color: %2; font-size: 14px;"
+        "  background: transparent; }"
+        "#errorItemFile { color: %3; font-size: 10px;"
+        "  background: transparent; }"
+        "#errorItemTime { color: %4; font-size: 10px;"
+        "  background: transparent; }"
+        "#errorItemTags { color: %5; font-size: 10px;"
+        "  background: transparent; }"
     ).arg(tm.color("workbench.foreground").name(),
           tm.color("editorLineNumber.foreground").name(),
           tm.color("editorLineNumber.foreground").name(),
