@@ -48,6 +48,7 @@ public:
 signals:
     void sendMessage(const QString &text);
     void clearRequested();
+    void newConversationRequested();
     void actionTriggered(int actionIndex);
     void errorSelected(const QString &recordId);
     void historyListVisibilityChanged(bool visible);
@@ -65,6 +66,7 @@ private:
     QLineEdit *m_inputEdit;
     QPushButton *m_sendBtn;
     QPushButton *m_clearBtn;
+    QPushButton *m_newConvBtn;
     QWidget *m_titleBar;
 
     // Tab switching

@@ -44,6 +44,10 @@ AiPanel::AiPanel(QWidget *parent)
     m_historyTabBtn->setFixedHeight(32);
     m_historyTabBtn->setCursor(Qt::PointingHandCursor);
 
+    m_newConvBtn = new QPushButton(tr("新对话"));
+    m_newConvBtn->setFixedHeight(24);
+    m_newConvBtn->setCursor(Qt::PointingHandCursor);
+
     m_clearBtn = new QPushButton(tr("清空对话"));
     m_clearBtn->setFixedHeight(24);
     m_clearBtn->setCursor(Qt::PointingHandCursor);
@@ -52,6 +56,7 @@ AiPanel::AiPanel(QWidget *parent)
     titleLayout->addWidget(m_errorTabBtn);
     titleLayout->addWidget(m_historyTabBtn);
     titleLayout->addStretch();
+    titleLayout->addWidget(m_newConvBtn);
     titleLayout->addWidget(m_clearBtn);
 
     // ── Action bar (only shown on chat tab) ──
@@ -124,6 +129,10 @@ AiPanel::AiPanel(QWidget *parent)
         clearChat();
         emit clearRequested();
     });
+    connect(m_newConvBtn, &QPushButton::clicked, this, [this]() {
+        clearChat();
+        emit newConversationRequested();
+    });
 
     // Forward error list item click
     connect(m_errorListPanel, &ErrorListPanel::errorClicked,
@@ -171,6 +180,7 @@ void AiPanel::onTabSwitch(int index)
     bool isChat = (index == ChatTab);
     m_actionBar->setVisible(isChat);
     m_inputBar->setVisible(isChat);
+    m_newConvBtn->setVisible(isChat);
     m_clearBtn->setVisible(isChat);
 
     if (index == ErrorTab) {
@@ -226,6 +236,24 @@ void AiPanel::refreshStyle()
     ).arg(tm.color("editorLineNumber.background").name()));
 
     m_clearBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: transparent;"
+        "  border: 1px solid %1;"
+        "  border-radius: 4px;"
+        "  color: %2;"
+        "  font-size: 11px;"
+        "  padding: 0 8px;"
+        "}"
+        "QPushButton:hover {"
+        "  color: %3;"
+        "  border-color: %4;"
+        "}"
+    ).arg(tm.color("input.border").name(),
+          tm.color("editorLineNumber.foreground").name(),
+          tm.color("workbench.foreground").name(),
+          tm.color("input.foreground").name()));
+
+    m_newConvBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"
         "  background: transparent;"
         "  border: 1px solid %1;"
@@ -333,6 +361,7 @@ void AiPanel::setInputEnabled(bool enabled)
 {
     m_inputEdit->setEnabled(enabled);
     m_sendBtn->setEnabled(enabled && !m_inputEdit->text().trimmed().isEmpty());
+    m_newConvBtn->setEnabled(enabled);
     m_clearBtn->setEnabled(enabled);
 }
 

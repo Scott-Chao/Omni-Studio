@@ -756,6 +756,11 @@ MainWindow::MainWindow(QWidget *parent)
         m_aiHistory.clear();
         AiHistoryManager::instance().clearCurrentConversation();
     });
+    connect(m_aiPanel, &AiPanel::newConversationRequested, this, [this]() {
+        abortAiRequest();
+        m_aiHistory.clear();
+        AiHistoryManager::instance().createConversation(tr("新对话"), {});
+    });
 
     // ── History list widget connections ──
     {
