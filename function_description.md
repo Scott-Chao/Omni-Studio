@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.2）
+## 功能说明文档（v0.12.3）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -59,11 +59,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.12.2
-- **OpenJudge 提交失败自动记入错题本**：提交到 OpenJudge 的代码若未通过（非 AC），自动将失败结果记入错题本（`ErrorJournal`）。编译错误（CE）不记入错题本。
-- **OpenJudge 错题自动获取本地 I/O 数据**：提交失败后，自动在后台使用 OpenJudge 题目样例数据（用户在"选择此题目"时已缓存至评测面板）运行本地评测（`JudgeEngine`），将每个失败测试用例的输入、预期输出和实际输出填入错题本记录（`ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载）。若所有样例本地通过但 OpenJudge 判定失败（隐藏测试用例未通过），则记录一条无 I/O 数据的条目。若无样例数据，则回退至直接记录（无 I/O）。
-- **错题本状态码扩展**：`ErrorListPanel` 新增 CE（编译错误，`#c0392b`）、PE（格式错误，`#e67e22`）、OLE（输出超限，`#8e44ad`）三种状态码的颜色、中文标签和筛选选项。
-- **OpenJudgeWindow 新增访问器**：`currentProblemTitle()` 和 `currentProblemUrl()` 方法，供 `MainWindow` 在记录错题时获取题目上下文。
+### 修复 v0.12.3
+- **错题本列表实时刷新**：修复新错题记录（本地评测或 OpenJudge 提交失败）产生后，错题本徽章计数实时更新但内容列表不刷新的问题。`AiPanel` 中 `ErrorJournal::recordsChanged` 信号现连接至 lambda，在更新徽章的同时判断当前是否为错题本标签页，若是则自动调用 `m_errorListPanel->loadRecords()` 刷新列表。本地评测和 OpenJudge 提交两种路径均修复。
 
 ### 1. `MainWindow` - 主窗口控制器
 
