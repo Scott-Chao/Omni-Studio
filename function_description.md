@@ -60,7 +60,13 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 搜索框内容发生变化，编辑器中的高亮立即清除
+异步 Python 进程生命周期管理
+- 进程启动 — 移除 waitForStarted(5000)，改用 started 信号 →onPyExecStarted()
+- 双路径执行 — 快速路径（直接写入）/ 慢速路径（入队等待）
+- 代码队列 — PyExecQueueItem、m_pyExecQueue、processPyExecQueue() FIFO 串行
+- 进程停止 — 移除 waitForBytesWritten/waitForFinished，disconnect()+kill()+deleteLater()
+- 进程终止 — handleProcessStop() 移除 waitForFinished(200)
+- 退出/错误处理—始终清理m_pyExecProcess（附带修复野指针bug）、排空队列
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1201,7 +1207,23 @@
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。**仅编辑模式**下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转）触发，通过 `eventFilter` 处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截。`m_jumpAfterExecute` 标志控制执行后是否跳转到下一个单元格。执行前后不改变编辑/命令模式状态。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
 - **Markdown 单元格**：空单元格（`content().trimmed().isEmpty()`）跳过渲染，直接根据 `m_jumpAfterExecute` 决定是否跳转。非空且未渲染时调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
 - **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → `m_jumpAfterExecute` 为 true 时跳转下一个单元格。
-- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。代码在发送前进行预处理：规范化行尾（`\r\n`/`\r` → `\n`）、替换孤立 UTF-16 surrogate。通过 **base64 编码**传输代码以避免 JSON 换行转义问题。守护进程解码后在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
+- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型（JSON-line stdin/stdout 协议），所有阻塞调用已消除。
+
+  **进程启动**（`startPythonExecProcess()`）：查找 `python_executor.py` 和 Python 解释器 → 创建 `QProcess`（`MergedChannels`）→ 连接信号（`readyReadStandardOutput` → `onPyExecReadyRead`、`finished` → `onPyExecFinished`、`errorOccurred` → `onPyExecError`、`started` → `onPyExecStarted`）→ 设置 `m_pyExecStarting = true` → `start()`。**不再使用 `waitForStarted(5000)` 同步阻塞**，进程就绪由 `onPyExecStarted()` 异步通知。
+
+  **双路径执行**（`executePythonCell()`）：
+  - **快速路径**：进程正在运行（`m_pyExecProcess && !m_pyExecStarting`）→ 直接通过 `encodePythonPayload()` 编码代码（规范化行尾 + 修复孤立 surrogate + Base64 + JSON）→ `write()` 发送。
+  - **慢速路径**：进程未就绪 → 若进程不存在则调用 `startPythonExecProcess()` 异步启动 → 将 cell 和当前 `m_jumpAfterExecute` 值封装为 `PyExecQueueItem`（使用 `QPointer<SmdCell>` 防悬空）入队 `m_pyExecQueue`。若 python 或脚本未找到则立即显示错误。
+
+  **代码队列**（`processPyExecQueue()`）：`onPyExecStarted()` 信号触发队列处理——从 `m_pyExecQueue` 头部取出首项，恢复 `m_jumpAfterExecute`，写入编码后的代码。当前 cell 执行完成后，`onPyExecReadyRead()` 末尾检查队列非空则自动处理下一项，实现 FIFO 串行执行。队列项 cell 已被删除（QPointer 为 null）时自动跳过。
+
+  **进程停止**（`stopPythonExecProcess()`）：发送 exit 命令后不再等待 `waitForBytesWritten`/`waitForFinished`。改为清理所有异步状态（`m_pyExecStarting`、`m_pyExecQueue`、`m_executingCell`）→ `disconnect()` 阻止信号触发自动重启 → `kill()` + `deleteLater()` + 置空 `m_pyExecProcess`。
+
+  **进程终止处理**（`handleProcessStop()`，Ctrl+C）：Python 分支移除 `waitForFinished(200)` 阻塞。改为先清理队列和 `m_pyExecStarting` → `disconnect()` 阻止自动重启 → `kill()` + `deleteLater()` + 置空。500ms 后异步重启。
+
+  **进程退出/错误处理**：`onPyExecFinished()` 和 `onPyExecError()` 始终清理 `m_pyExecProcess`（修复原正常退出时遗留野指针 bug），排空队列，为所有排队 cell 显示错误信息。崩溃后保留 1 秒延迟自动重启。
+
+  **协议**：守护进程解码 Base64 后在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。C++ 单元格保持原有合并+临时文件方式不变。
 - **空单元格**：Markdown 和代码单元格均跳过执行/渲染流程，`m_jumpAfterExecute` 为 true 时直接跳转。
 - 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。

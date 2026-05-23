@@ -1228,50 +1228,59 @@ void SmdEditor::splitCellAtCursor()
 
 // ---- Persistent Python Execution (Jupyter-like) ----
 
+QByteArray SmdEditor::encodePythonPayload(const QString &code) const
+{
+    QString sanitized = code;
+    sanitized.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    sanitized.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    for (int i = 0; i < sanitized.size(); ++i) {
+        QChar ch = sanitized.at(i);
+        if (ch.isLowSurrogate() && (i == 0 || !sanitized.at(i - 1).isHighSurrogate()))
+            sanitized[i] = QChar(QChar::ReplacementCharacter);
+        else if (ch.isHighSurrogate()
+                 && (i + 1 >= sanitized.size() || !sanitized.at(i + 1).isLowSurrogate()))
+            sanitized[i] = QChar(QChar::ReplacementCharacter);
+    }
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("exec");
+    req[QStringLiteral("code")] = QString::fromLatin1(sanitized.toUtf8().toBase64());
+    return QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+}
+
 void SmdEditor::executePythonCell(SmdCell *cell)
 {
     int execIndex = m_cells.indexOf(cell);
 
-    // Start persistent process on first use
-    if (!m_pyExecProcess || m_pyExecProcess->state() != QProcess::Running) {
+    // Fast path: process is running — write immediately
+    if (m_pyExecProcess && !m_pyExecStarting) {
+        m_executingCell = cell;
+        m_executingTempFile.clear();
+
+        if (execIndex >= 0 && execIndex < m_outputWidgets.size())
+            m_outputWidgets[execIndex]->clearOutput();
+
+        m_pyExecProcess->write(encodePythonPayload(cell->content()));
+        return;
+    }
+
+    // Slow path: start process and/or queue the cell
+    if (!m_pyExecProcess)
         startPythonExecProcess();
-        if (!m_pyExecProcess || m_pyExecProcess->state() != QProcess::Running) {
-            if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
-                m_outputWidgets[execIndex]->clearOutput();
-                m_outputWidgets[execIndex]->appendText(
-                    tr("Error: Python execution backend is not running.\n"), true);
-            }
-            return;
+
+    // If startPythonExecProcess() failed (python or script not found), report error
+    if (!m_pyExecProcess) {
+        if (execIndex >= 0 && execIndex < m_outputWidgets.size()) {
+            m_outputWidgets[execIndex]->clearOutput();
+            m_outputWidgets[execIndex]->appendText(
+                tr("Error: Python execution backend is not available.\n"), true);
         }
+        return;
     }
 
-    m_executingCell = cell;
-    m_executingTempFile.clear();
-
-    // Clear previous output (visibility is handled by appendText when output arrives)
-    if (execIndex >= 0 && execIndex < m_outputWidgets.size())
-        m_outputWidgets[execIndex]->clearOutput();
-
-    // Send code to persistent Python process.
-    // Base64-encode to avoid JSON newline escaping issues.
-    QString code = cell->content();
-    code.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    code.replace(QLatin1Char('\r'), QLatin1Char('\n'));
-    for (int i = 0; i < code.size(); ++i) {
-        QChar ch = code.at(i);
-        if (ch.isLowSurrogate() && (i == 0 || !code.at(i - 1).isHighSurrogate()))
-            code[i] = QChar(QChar::ReplacementCharacter);
-        else if (ch.isHighSurrogate()
-                 && (i + 1 >= code.size() || !code.at(i + 1).isLowSurrogate()))
-            code[i] = QChar(QChar::ReplacementCharacter);
-    }
-
-    QJsonObject req;
-    req[QStringLiteral("action")] = QStringLiteral("exec");
-    req[QStringLiteral("code")] = QString::fromLatin1(code.toUtf8().toBase64());
-
-    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
-    m_pyExecProcess->write(payload);
+    PyExecQueueItem item;
+    item.cell = cell;
+    item.jumpAfterExecute = m_jumpAfterExecute;
+    m_pyExecQueue.append(item);
 }
 
 void SmdEditor::startPythonExecProcess()
@@ -1312,38 +1321,69 @@ void SmdEditor::startPythonExecProcess()
             this, &SmdEditor::onPyExecFinished);
     connect(m_pyExecProcess, &QProcess::errorOccurred,
             this, &SmdEditor::onPyExecError);
+    connect(m_pyExecProcess, &QProcess::started,
+            this, &SmdEditor::onPyExecStarted);
 
     m_pyExecBuffer.clear();
+    m_pyExecStarting = true;
     m_pyExecProcess->start(python, {m_pyExecScriptPath});
+}
 
-    if (!m_pyExecProcess->waitForStarted(5000)) {
-        qWarning() << "SmdEditor: failed to start Python executor";
-        m_pyExecProcess->deleteLater();
-        m_pyExecProcess = nullptr;
+void SmdEditor::onPyExecStarted()
+{
+    m_pyExecStarting = false;
+    processPyExecQueue();
+}
+
+void SmdEditor::processPyExecQueue()
+{
+    if (m_pyExecQueue.isEmpty()) return;
+    if (!m_pyExecProcess || m_pyExecProcess->state() != QProcess::Running) return;
+
+    PyExecQueueItem item = m_pyExecQueue.takeFirst();
+    if (!item.cell) {
+        processPyExecQueue();
+        return;
     }
+
+    int execIndex = m_cells.indexOf(item.cell);
+
+    m_executingCell = item.cell;
+    m_jumpAfterExecute = item.jumpAfterExecute;
+    m_executingTempFile.clear();
+
+    if (execIndex >= 0 && execIndex < m_outputWidgets.size())
+        m_outputWidgets[execIndex]->clearOutput();
+
+    m_pyExecProcess->write(encodePythonPayload(item.cell->content()));
 }
 
 void SmdEditor::stopPythonExecProcess()
 {
     if (!m_pyExecProcess) return;
 
-    // Send exit command
+    // Best-effort graceful exit
     if (m_pyExecProcess->state() == QProcess::Running) {
         QJsonObject req;
         req[QStringLiteral("action")] = QStringLiteral("exit");
         QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
         m_pyExecProcess->write(payload);
-        m_pyExecProcess->waitForBytesWritten(500);
     }
 
+    // Clear all async state
+    m_pyExecStarting = false;
+    m_pyExecQueue.clear();
+    m_pyExecBuffer.clear();
+    m_executingCell = nullptr;
+
+    // Disconnect before kill to prevent signal handlers from firing
     m_pyExecProcess->disconnect();
-    if (m_pyExecProcess->state() != QProcess::NotRunning) {
+
+    if (m_pyExecProcess->state() != QProcess::NotRunning)
         m_pyExecProcess->kill();
-        m_pyExecProcess->waitForFinished(200);
-    }
+
     m_pyExecProcess->deleteLater();
     m_pyExecProcess = nullptr;
-    m_pyExecBuffer.clear();
 }
 
 void SmdEditor::onPyExecReadyRead()
@@ -1402,6 +1442,11 @@ void SmdEditor::onPyExecReadyRead()
             m_userTerminated = false;
         }
     }
+
+    // If the queue has pending cells and we just finished an execution,
+    // process the next one.
+    if (!m_executingCell && !m_pyExecQueue.isEmpty())
+        processPyExecQueue();
 }
 
 void SmdEditor::onPyExecFinished(int exitCode, QProcess::ExitStatus status)
@@ -1409,7 +1454,9 @@ void SmdEditor::onPyExecFinished(int exitCode, QProcess::ExitStatus status)
     Q_UNUSED(exitCode);
     if (!m_pyExecProcess) return;
 
-    // If there's a pending cell, show error
+    m_pyExecStarting = false;
+
+    // Notify the executing cell
     if (m_executingCell) {
         int idx = m_cells.indexOf(m_executingCell);
         if (idx >= 0 && idx < m_outputWidgets.size()) {
@@ -1424,11 +1471,26 @@ void SmdEditor::onPyExecFinished(int exitCode, QProcess::ExitStatus status)
         emit contentChanged();
     }
 
+    // Drain queued cells — they will never execute in this dead process
+    while (!m_pyExecQueue.isEmpty()) {
+        PyExecQueueItem item = m_pyExecQueue.takeFirst();
+        if (item.cell) {
+            int idx = m_cells.indexOf(item.cell);
+            if (idx >= 0 && idx < m_outputWidgets.size()) {
+                m_outputWidgets[idx]->clearOutput();
+                m_outputWidgets[idx]->appendText(
+                    tr("Python execution backend is not running.\n"), true);
+            }
+        }
+    }
+
+    // Clean up dead process
+    m_pyExecProcess->deleteLater();
+    m_pyExecProcess = nullptr;
+    m_pyExecBuffer.clear();
+
     // Auto-restart after crash
     if (status == QProcess::CrashExit) {
-        m_pyExecProcess->deleteLater();
-        m_pyExecProcess = nullptr;
-        m_pyExecBuffer.clear();
         QTimer::singleShot(1000, this, [this]() {
             if (m_lspManager)  // SmdEditor is still alive
                 startPythonExecProcess();
@@ -1441,6 +1503,9 @@ void SmdEditor::onPyExecError(QProcess::ProcessError error)
     Q_UNUSED(error);
     if (!m_pyExecProcess) return;
 
+    m_pyExecStarting = false;
+
+    // Notify the executing cell
     if (m_executingCell) {
         int idx = m_cells.indexOf(m_executingCell);
         if (idx >= 0 && idx < m_outputWidgets.size()) {
@@ -1450,6 +1515,24 @@ void SmdEditor::onPyExecError(QProcess::ProcessError error)
         m_executingCell = nullptr;
         emit contentChanged();
     }
+
+    // Notify all queued cells of the failure
+    while (!m_pyExecQueue.isEmpty()) {
+        PyExecQueueItem item = m_pyExecQueue.takeFirst();
+        if (item.cell) {
+            int idx = m_cells.indexOf(item.cell);
+            if (idx >= 0 && idx < m_outputWidgets.size()) {
+                m_outputWidgets[idx]->clearOutput();
+                m_outputWidgets[idx]->appendText(
+                    tr("Python execution backend failed to start.\n"), true);
+            }
+        }
+    }
+
+    // Clean up
+    m_pyExecProcess->deleteLater();
+    m_pyExecProcess = nullptr;
+    m_pyExecBuffer.clear();
 }
 
 // ---- Process Stop (Ctrl+C) ----
@@ -1464,11 +1547,16 @@ void SmdEditor::handleProcessStop()
     if (isPython) {
         // Kill and restart the persistent Python process
         if (m_pyExecProcess) {
+            // Clear async state first
+            m_pyExecStarting = false;
+            m_pyExecQueue.clear();
+            m_pyExecBuffer.clear();
+
+            // Disconnect before kill to prevent signal handlers
+            m_pyExecProcess->disconnect();
             m_pyExecProcess->kill();
-            m_pyExecProcess->waitForFinished(200);
             m_pyExecProcess->deleteLater();
             m_pyExecProcess = nullptr;
-            m_pyExecBuffer.clear();
         }
     } else {
         // Clean up temp files for C++

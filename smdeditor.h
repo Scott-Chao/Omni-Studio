@@ -97,6 +97,9 @@ private:
     void onPyExecReadyRead();
     void onPyExecFinished(int exitCode, QProcess::ExitStatus status);
     void onPyExecError(QProcess::ProcessError error);
+    void onPyExecStarted();
+    void processPyExecQueue();
+    QByteArray encodePythonPayload(const QString &code) const;
 
     // Diagnostics panel (public, also used by MainWindow shortcut)
 
@@ -168,6 +171,15 @@ private:
     QProcess *m_pyExecProcess = nullptr;
     QByteArray m_pyExecBuffer;
     QString m_pyExecScriptPath;
+
+    // Async process startup
+    bool m_pyExecStarting = false;
+
+    struct PyExecQueueItem {
+        QPointer<SmdCell> cell;
+        bool jumpAfterExecute;
+    };
+    QList<PyExecQueueItem> m_pyExecQueue;
 };
 
 #endif // SMDEDITOR_H
