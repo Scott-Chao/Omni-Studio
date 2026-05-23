@@ -81,6 +81,22 @@ void SearchPanel::refreshStyle()
 
     m_statusLabel->setStyleSheet(QString("color: %1; padding: 4px 8px; font-size: 12px;")
         .arg(tm.color("editorLineNumber.foreground").name()));
+
+    // Update result item child widget styles
+    for (int i = 0; i < m_resultList->count(); ++i) {
+        QWidget *w = m_resultList->itemWidget(m_resultList->item(i));
+        if (!w) continue;
+        QLabel *title = w->findChild<QLabel*>("searchResultTitle");
+        if (title) {
+            title->setStyleSheet(QString("font-weight: bold; font-size: 12px; color: %1;")
+                .arg(tm.color("sideBar.foreground").name()));
+        }
+        QLabel *snippet = w->findChild<QLabel*>("searchResultSnippet");
+        if (snippet) {
+            snippet->setStyleSheet(QString("color: %1; font-size: 11px;")
+                .arg(tm.color("tab.inactiveForeground").name()));
+        }
+    }
 }
 
 void SearchPanel::setRootPath(const QString &path)
@@ -277,6 +293,7 @@ void SearchPanel::addResultItem(const SearchResult &result)
         QString("%1  (第 %2 行)")
             .arg(fi.fileName())
             .arg(result.lineNumber));
+    titleLabel->setObjectName("searchResultTitle");
     {
         auto &tm = ThemeManager::instance();
         titleLabel->setStyleSheet(QString("font-weight: bold; font-size: 12px; color: %1;")
@@ -284,6 +301,7 @@ void SearchPanel::addResultItem(const SearchResult &result)
     }
 
     QLabel *snippetLabel = new QLabel(result.snippet);
+    snippetLabel->setObjectName("searchResultSnippet");
     {
         auto &tm = ThemeManager::instance();
         snippetLabel->setStyleSheet(QString("color: %1; font-size: 11px;")
