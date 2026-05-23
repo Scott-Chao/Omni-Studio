@@ -117,7 +117,7 @@ bool HoverManager::tryShowDiagnosticToolTip(const QPoint &viewportPos)
     m_editor->setStyleSheet(m_savedTooltipStyle + QStringLiteral(
         " QToolTip { background-color: %1; color: %2; "
         "border: 1px solid %3; border-radius: 3px; "
-        "padding: 5px 8px; "
+        "padding: 0px 4px; margin: 0px; "
         "font-family: Consolas, Microsoft YaHei, sans-serif; "
         "font-size: 12px; }")
         .arg(bgColor, textColor, borderColor));
@@ -176,12 +176,18 @@ void HoverManager::showHoverToolTip(const HoverInfo &info)
         return;
     }
 
+    // Apply compact tooltip style for LSP hover info
+    m_savedTooltipStyle = m_editor->styleSheet();
+    m_editor->setStyleSheet(m_savedTooltipStyle + QStringLiteral(
+        " QToolTip { padding: 1px 5px; margin: 0px; "
+        "font-family: Consolas, Microsoft YaHei, sans-serif; "
+        "font-size: 12px; }"));
+
     QPoint globalPos = m_editor->viewport()->mapToGlobal(m_mousePos);
     globalPos += QPoint(15, 20); // offset so the tooltip doesn't cover the code
     QToolTip::showText(globalPos, text, m_editor);
     m_tooltipShowing = true;
-
-    qDebug() << "HoverManager: showing tooltip";
+    m_diagnosticTooltipActive = false;
 }
 
 void HoverManager::hideHover()
@@ -190,7 +196,7 @@ void HoverManager::hideHover()
     m_hoverTimer.stop();
     m_hoverCursorPos = -1;
     m_tooltipShowing = false;
-    if (m_diagnosticTooltipActive) {
+    if (!m_savedTooltipStyle.isEmpty()) {
         m_editor->setStyleSheet(m_savedTooltipStyle);
         m_savedTooltipStyle.clear();
     }

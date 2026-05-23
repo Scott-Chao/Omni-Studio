@@ -4,8 +4,24 @@
 
 #include <QApplication>
 #include <QStyleFactory>
+#include <QProxyStyle>
 #include <QLocale>
 #include <QTranslator>
+
+// QProxyStyle that reduces Qt's default tooltip internal margins.
+class CompactTooltipStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    int pixelMetric(PixelMetric metric, const QStyleOption *option = nullptr,
+                    const QWidget *widget = nullptr) const override
+    {
+        if (metric == PM_ToolTipLabelFrameWidth)
+            return 0;
+        return QProxyStyle::pixelMetric(metric, option, widget);
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -16,8 +32,8 @@ int main(int argc, char *argv[])
 
     QApplication a(argc, argv);
 
-    // Fusion style for consistent cross-platform rendering and proper dark-theme QSS support
-    a.setStyle(QStyleFactory::create("Fusion"));
+    // Fusion style wrapped with compact tooltip proxy
+    a.setStyle(new CompactTooltipStyle(QStyleFactory::create("Fusion")));
 
     // Initialize ThemeManager (loads default theme)
     ThemeManager::instance();

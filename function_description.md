@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.8）
+## 功能说明文档（v0.11.9）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,8 +58,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.8
-- 修复打开设置面板/帮助面板时，Markdown 预览/分屏预览区域内容消失变为纯黑色的问题。根因：非原生子 widget 覆盖层（`m_settingsOverlay` / `m_helpOverlay`）遮挡原生 QWebEngineView 时，Qt 通过 `SetWindowRgn` 裁剪 QWebEngineView 的 HWND 区域为空，导致 Chromium 检测到窗口隐藏并暂停 GPU 合成器。修复方案：将两个覆盖层改为独立顶层 `Qt::Tool` 窗口（`OverlayWidget` 类），由 Windows DWM 合成半透明背景（`WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)`），不再参与 MainWindow 的 widget 层级，从而避免 Qt 裁剪原生子窗口。关闭设置面板后自动通过 `refreshPreviewTheme()` 同步预览主题颜色。
+### 修复 v0.11.9
+- 优化全局悬浮提示（QToolTip）的边缘内边距，使其更紧凑。通过自定义 `CompactTooltipStyle`（QProxyStyle 子类）将 `PM_ToolTipLabelFrameWidth` 设为 0，消除 Qt Fusion 样式在 tooltip 内部额外添加的边框宽度；同时将全局 QSS 中 `QToolTip` 的 `padding` 从 `4px 8px` 缩减为 `0px 4px`、`margin` 显式设为 `0px`、新增 `font-size: 12px` 控制字号。`HoverManager` 中诊断提示与 LSP 悬停提示均同步应用紧凑样式（`padding: 0px 4px; margin: 0px;`），确保编辑器内代码提示浮窗与外层按钮/列表项的系统 tooltip 视觉一致。修复了 `HoverManager::hideHover()` 中仅诊断提示才恢复样式的问题，改为只要有保存的样式即恢复。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -574,7 +574,7 @@
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
-- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。鼠标移动/离开/点击/滚轮时关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。诊断提示（错误/警告）和 LSP 悬停提示均应用紧凑样式（`padding: 0px 4px; margin: 0px;`），与全局 `QToolTip` 样式一致。全局 tooltip 通过 `CompactTooltipStyle`（`main.cpp` 中的 QProxyStyle 子类，`PM_ToolTipLabelFrameWidth = 0`）进一步消除 Qt Fusion 样式的额外内框边距。鼠标移动/离开/点击/滚轮时关闭。
 - **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。

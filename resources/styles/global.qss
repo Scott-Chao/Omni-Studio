@@ -65,7 +65,9 @@ QToolTip {
     background: %%menu.background%%;
     color: %%menu.foreground%%;
     border: 1px solid %%menu.separatorColor%%;
-    padding: 4px 8px;
+    padding: 0px 4px;
+    margin: 0px;
+    font-size: 12px;
 }
 
 /* ===== MainWindow ===== */
