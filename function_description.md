@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.4）
+## 功能说明文档（v0.12.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -25,10 +25,10 @@
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
 - 异步索引构建：切换到大目录时，文件索引、反向链接扫描与标签索引扫描在后台线程依次执行（Phase 1/2/3），UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
-- OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容（深色主题）。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
+- OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。窗口全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。
-- 提交结果面板：提交后自动显示评测结果面板（暗色主题），大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。
+- 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
@@ -59,8 +59,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.12.4
-- **错题本列表悬停高亮背景修复**：修复 `ErrorListItem` 鼠标悬停时灰色高亮背景无法覆盖子标签文字区域的问题。`refreshStyle()` 中为 `#errorItemName`、`#errorItemArrow`、`#errorItemFile`、`#errorItemTime`、`#errorItemTags` 全部子 QLabel 添加 `background: transparent`，使父控件 `paintEvent` 绘制的悬停背景完整透过子控件显示。
+### 修复 v0.12.5
+- **提交结果面板主题跟随修复**：`SubmitResultPanel` 新增 `refreshStyle()` 方法并接入 `ThemeManager::themeChanged` 信号。切换主题时面板背景（`editor.background`，与编辑区统一）、详情标签、编译错误编辑区和隐藏按钮的样式实时同步。`m_detailLabel` 设置 `background: transparent` 消除子控件色块分隔。
+- **OpenJudge 浏览窗口主题跟随修复**：`OpenJudgeWindow::refreshStyle()` 新增顶部工具栏（`m_toolbar`，`activityBar.background`）和分隔线（`m_separator`）的主题同步。题目详情内容（`QTextBrowser`）切换主题时自动以新主题颜色重新渲染当前章节 HTML（通过 `m_currentSectionIndex` 记录当前选中章节索引），无需手动切换栏目即可看到更新。新增成员 `m_toolbar`、`m_separator`、`m_currentSectionIndex` 置于原有成员声明之后，保持原有初始化顺序不变。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -997,13 +998,13 @@
 **文件**：`openjudgewindow.h` / `openjudgewindow.cpp`
 
 **职责**：
-- 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，深色主题（背景 `#2D2D30`，前景 `#D4D4D4`）。
-- 顶部工具栏：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。选择按钮仅在题目详情页可见，蓝色（`#0078D4`）突出显示。点击后切换为"已选择"状态（颜色变为 `#4A9BE0`），再次点击或查看其他题目时取消选中状态。
+- 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时窗口背景、Toolbar、分隔线、列表控件、章节导航和题目内容实时同步。
+- 顶部工具栏（`m_toolbar`）：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。
 - **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
 - **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
 - 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
-- 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧渲染内容（`QTextBrowser`），无间隔紧凑布局。选择按钮在此页可见。
+- 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧渲染内容（`QTextBrowser`），无间隔紧凑布局。选择按钮在此页可见。切换主题时通过 `m_currentSectionIndex` 记录当前章节，`refreshStyle()` 以新主题颜色重新调用 `wrapHtml()` 渲染当前章节 HTML，确保内容即时刷新无需手动切换栏目。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-Cache"`（固定目录），每次写入前清空已有内容，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
 - **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。

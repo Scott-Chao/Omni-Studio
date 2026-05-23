@@ -10,16 +10,23 @@ SubmitResultPanel::SubmitResultPanel(QWidget *parent)
     : QWidget(parent)
 {
     setupUi();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &SubmitResultPanel::refreshStyle);
+}
+
+static QString submitResultPanelStyle(const ThemeManager &tm)
+{
+    return QStringLiteral(
+        "SubmitResultPanel { background: %1; }")
+        .arg(tm.color("editor.background").name());
 }
 
 void SubmitResultPanel::setupUi()
 {
     const auto &cfg = ConfigManager::instance();
     auto &tm = ThemeManager::instance();
-    setStyleSheet(QString(
-        "QWidget { background: %1; color: %2; }")
-        .arg(tm.color("sideBar.background").name())
-        .arg(tm.color("sideBar.foreground").name()));
+
+    setStyleSheet(submitResultPanelStyle(tm));
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setAlignment(Qt::AlignCenter);
@@ -28,13 +35,13 @@ void SubmitResultPanel::setupUi()
     QFont statusFont(QStringLiteral("Microsoft YaHei"), 24, QFont::Bold);
     m_statusLabel->setFont(statusFont);
     m_statusLabel->setMinimumHeight(cfg.submitResultStatusMinHeight());
-    m_statusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 8px;").arg(tm.color("tab.inactiveForeground").name()));
 
     m_detailLabel = new QLabel(this);
     m_detailLabel->setAlignment(Qt::AlignCenter);
     QFont detailFont(QStringLiteral("Microsoft YaHei"), 11);
     m_detailLabel->setFont(detailFont);
-    m_detailLabel->setStyleSheet(QStringLiteral("color: %1; padding: 4px;").arg(tm.color("editor.foreground").name()));
+    m_detailLabel->setStyleSheet(QStringLiteral("color: %1; padding: 4px; background: transparent;")
+                                 .arg(tm.color("editor.foreground").name()));
 
     m_ceEdit = new QPlainTextEdit(this);
     m_ceEdit->setReadOnly(true);
@@ -81,6 +88,35 @@ void SubmitResultPanel::setupUi()
     mainLayout->addLayout(btnLayout);
 
     connect(m_hideBtn, &QPushButton::clicked, this, &SubmitResultPanel::hideRequested);
+}
+
+void SubmitResultPanel::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(submitResultPanelStyle(tm));
+
+    m_detailLabel->setStyleSheet(QStringLiteral("color: %1; padding: 4px; background: transparent;")
+                                 .arg(tm.color("editor.foreground").name()));
+
+    m_ceEdit->setStyleSheet(QStringLiteral(
+        "QPlainTextEdit {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
+        "  padding: 8px;"
+        "}").arg(tm.color("menu.background").name(),
+                 tm.color("output.stderr").name(),
+                 tm.color("panel.border").name()));
+
+    m_hideBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; padding: 4px 12px; } "
+        "QPushButton:hover { background: %4; }")
+        .arg(tm.color("input.background").name(),
+             tm.color("input.foreground").name(),
+             tm.color("input.border").name(),
+             tm.color("aiAssistant.actionButtonHoverBackground").name()));
 }
 
 void SubmitResultPanel::showResult(const SubmissionResult &result)

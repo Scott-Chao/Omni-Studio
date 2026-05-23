@@ -4,6 +4,7 @@
 #include "configmanager.h"
 #include "thememanager.h"
 
+#include <QFrame>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -158,10 +159,10 @@ void OpenJudgeWindow::setupUi()
              tm.color("editor.foreground").name()));
 
     // --- Top toolbar ---
-    auto *toolbar = new QWidget;
-    toolbar->setStyleSheet(QStringLiteral("QWidget { background: %1; }")
+    m_toolbar = new QWidget;
+    m_toolbar->setStyleSheet(QStringLiteral("QWidget { background: %1; }")
                            .arg(tm.color("activityBar.background").name()));
-    auto *toolbarLayout = new QHBoxLayout(toolbar);
+    auto *toolbarLayout = new QHBoxLayout(m_toolbar);
     toolbarLayout->setContentsMargins(12, 8, 12, 8);
 
     m_statusLabel->setVisible(false);
@@ -200,10 +201,10 @@ void OpenJudgeWindow::setupUi()
     toolbarLayout->addWidget(m_loginBtn);
 
     // --- Separator ---
-    auto *separator = new QFrame;
-    separator->setFrameShape(QFrame::HLine);
-    separator->setFrameShadow(QFrame::Sunken);
-    separator->setStyleSheet(QStringLiteral("QFrame { color: %1; }").arg(tm.color("input.border").name()));
+    m_separator = new QFrame;
+    m_separator->setFrameShape(QFrame::HLine);
+    m_separator->setFrameShadow(QFrame::Sunken);
+    m_separator->setStyleSheet(QStringLiteral("QFrame { color: %1; }").arg(tm.color("input.border").name()));
 
     // --- Setup stacked widget pages ---
     setupDetailPage();
@@ -242,8 +243,8 @@ void OpenJudgeWindow::setupUi()
     auto *centralLayout = new QVBoxLayout(centralWidget);
     centralLayout->setContentsMargins(0, 0, 0, 0);
     centralLayout->setSpacing(0);
-    centralLayout->addWidget(toolbar);
-    centralLayout->addWidget(separator);
+    centralLayout->addWidget(m_toolbar);
+    centralLayout->addWidget(m_separator);
     centralLayout->addWidget(m_stackedWidget, 1);
     setCentralWidget(centralWidget);
 
@@ -315,6 +316,7 @@ void OpenJudgeWindow::showListPage()
 {
     m_stackedWidget->setCurrentIndex(0);
     m_selectBtn->setVisible(false);
+    m_currentSectionIndex = -1;
 }
 
 void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
@@ -331,6 +333,7 @@ void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
 
     if (!detail.sections.isEmpty()) {
         m_sectionList->setCurrentRow(0);
+        m_currentSectionIndex = 0;
     {
         auto &tm = ThemeManager::instance();
         m_sectionContent->setHtml(wrapHtml(detail.sections.first().contentHtml,
@@ -719,6 +722,7 @@ void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
 
 void OpenJudgeWindow::onSectionClicked(QListWidgetItem *item)
 {
+    m_currentSectionIndex = m_sectionList->row(item);
     QString content = item->data(Qt::UserRole).toString();
     {
         auto &tm = ThemeManager::instance();
@@ -875,6 +879,18 @@ void OpenJudgeWindow::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
+    // Toolbar
+    if (m_toolbar) {
+        m_toolbar->setStyleSheet(QStringLiteral("QWidget { background: %1; }")
+                                 .arg(tm.color("activityBar.background").name()));
+    }
+
+    // Separator
+    if (m_separator) {
+        m_separator->setStyleSheet(QStringLiteral("QFrame { color: %1; }")
+                                   .arg(tm.color("input.border").name()));
+    }
+
     setStyleSheet(QStringLiteral(
         "QMainWindow { background: %1; }"
         "QWidget { background: %1; color: %2; }")
@@ -929,6 +945,16 @@ void OpenJudgeWindow::refreshStyle()
         .arg(tm.color("menu.background").name(),
              tm.color("input.border").name(),
              tm.color("editor.foreground").name()));
+
+    // Re-render problem detail content with new theme colors
+    if (m_viewState == OJ_PROBLEM_DETAIL && m_currentSectionIndex >= 0
+        && m_currentSectionIndex < m_currentProblem.sections.size()) {
+        const QString &html = m_currentProblem.sections[m_currentSectionIndex].contentHtml;
+        m_sectionContent->setHtml(wrapHtml(html,
+            tm.color("editor.background"), tm.color("editor.foreground"),
+            tm.color("menu.background"), tm.color("input.border"),
+            tm.color("syntax.keywords")));
+    }
 
 }
 

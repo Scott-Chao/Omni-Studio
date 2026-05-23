@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include "crawler.h"
 
+class QFrame;
 class QListWidget;
 class QListWidgetItem;
 class QLabel;
@@ -96,6 +97,10 @@ private:
     QPushButton *m_nextPageBtn;
     QLabel *m_pageLabel;
     QWidget *m_paginationBar;
+
+    QWidget *m_toolbar = nullptr;
+    QFrame *m_separator = nullptr;
+    int m_currentSectionIndex = -1;
 
     OjViewState m_viewState = OJ_HOMEWORK_LIST;
     QList<HomeworkItem> m_ongoingItems;

@@ -24,6 +24,7 @@ private:
     QPlainTextEdit *m_ceEdit;
     QPushButton *m_hideBtn;
     void setupUi();
+    void refreshStyle();
 };
 
 #endif // SUBMISSIONPANEL_H
