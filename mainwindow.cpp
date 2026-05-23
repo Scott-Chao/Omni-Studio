@@ -1486,6 +1486,88 @@ void MainWindow::updateAiActionBar()
     m_aiPanel->setActionList(actionsForMode(mode));
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Context window management for multi-turn conversation history.
+// m_aiHistory stores the FULL, unpruned conversation.
+// Each API call gets a token-aware windowed COPY.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Rough token estimation: CJK ≈1 token/char, ASCII ≈1 token/4 chars, +overhead
+static int estimateTokens(const QString &text)
+{
+    if (text.isEmpty())
+        return 0;
+    int cjk = 0, ascii = 0;
+    for (const QChar &c : text) {
+        if (c.unicode() >= 0x2E80)
+            ++cjk;
+        else if (c.unicode() < 0x80)
+            ++ascii;
+    }
+    return cjk + ascii / 4 + 2;
+}
+
+// Model → max context window token limit (conservative values from official docs)
+static int modelContextLimit(const QString &model)
+{
+    struct Entry { const char *prefix; int limit; };
+    static const Entry entries[] = {
+        {"claude-3-opus-20240229", 200000},
+        {"claude-3-opus-4-7",      200000},
+        {"claude-sonnet-4-6",      200000},
+        {"claude-haiku-4-5",       200000},
+        {"claude-3-5-sonnet",      200000},
+        {"claude-3-5-haiku",       200000},
+        {"claude-3-sonnet",        200000},
+        {"claude-3-haiku",         200000},
+        {"claude-2",               100000},
+        {"claude",                 200000},
+        {"gpt-4-turbo",            128000},
+        {"gpt-4o-mini",            128000},
+        {"gpt-4o",                 128000},
+        {"gpt-4",                   8192},
+        {"gpt-3.5-turbo",           16385},
+        {"deepseek-chat",           65536},
+        {"deepseek-reasoner",       65536},
+        {"gemini",                 1048576},
+        {nullptr, 0}
+    };
+    for (const Entry *e = entries; e->prefix; ++e) {
+        if (model.contains(QLatin1String(e->prefix)))
+            return e->limit;
+    }
+    return 128000; // generous fallback for unknown / future models
+}
+
+// Build a token-aware window: keep the newest messages that fit within budget.
+// Never prunes the original history — works on a copy.
+static QList<Message> pruneContextWindow(const QList<Message> &history,
+                                         const QString &model,
+                                         int maxResponseTokens,
+                                         const QString &systemPrompt)
+{
+    const int contextLimit = modelContextLimit(model);
+    const int systemTokens = estimateTokens(systemPrompt);
+
+    // Budget = total context - response allocation - system prompt - safety margin
+    int available = contextLimit - maxResponseTokens - systemTokens;
+    available = qMax(available * 9 / 10, 2048); // 10% safety, min 2048
+
+    QList<Message> window;
+    int totalTokens = 0;
+    // Walk backwards (newest first) to keep the most recent context
+    for (int i = history.size() - 1; i >= 0; --i) {
+        const int msgTokens = estimateTokens(history[i].content) + 8; // +JSON overhead
+        if (totalTokens + msgTokens > available && !window.isEmpty())
+            break;
+        window.prepend(history[i]);
+        totalTokens += msgTokens;
+    }
+    return window;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+
 void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
 {
     // 1. Abort any ongoing request
@@ -1592,27 +1674,14 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
     // 10. Add empty assistant bubble as streaming target
     m_aiPanel->addAssistantMessage(QString());
 
-    // 11. Build message list for the API call (always include full history)
-    QList<Message> messages = m_aiHistory;
+    // 11. Append current user message to canonical full history (unpruned)
     Message userMsg;
     userMsg.role = MessageRole::User;
     userMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
-    messages.append(userMsg);
     m_aiHistory.append(userMsg);
 
-    // 12. Prune history to stay within context window
-    if (m_aiHistory.size() >= 4) {
-        const int maxChars = maxTokens * 4; // rough 4 chars/token
-        int total = 0;
-        for (const auto &msg : m_aiHistory)
-            total += msg.content.length();
-        while (total > maxChars && m_aiHistory.size() >= 4) {
-            total -= m_aiHistory[0].content.length();
-            m_aiHistory.removeFirst();
-            total -= m_aiHistory[0].content.length();
-            m_aiHistory.removeFirst();
-        }
-    }
+    // 12. Build token-aware context window for the API call (copy, never modify m_aiHistory)
+    QList<Message> messages = pruneContextWindow(m_aiHistory, model, maxTokens, prompt.systemPrompt);
 
     // 13. Disable input and start streaming
     m_aiPanel->setInputEnabled(false);
