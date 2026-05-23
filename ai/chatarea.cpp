@@ -60,6 +60,12 @@ void ChatArea::appendToLastMessage(const QString &text)
     scrollToBottom();
 }
 
+void ChatArea::flushPendingUpdates()
+{
+    for (ChatBubble *bubble : m_bubbles)
+        bubble->flushUpdate();
+}
+
 void ChatArea::clear()
 {
     for (ChatBubble *bubble : m_bubbles) {

@@ -1647,6 +1647,10 @@ void MainWindow::onAiPartialResponse(const QString &text)
 
 void MainWindow::onAiFinished()
 {
+    // Flush any pending debounced content update so the final
+    // assistant response text is fully rendered before persisting.
+    m_aiPanel->flushPendingUpdates();
+
     // Persist assistant response to AiHistoryManager
     {
         auto &mgr = AiHistoryManager::instance();

@@ -17,6 +17,7 @@ public:
 
     void addMessage(ChatBubble::Role role, const QString &text);
     void appendToLastMessage(const QString &text);
+    void flushPendingUpdates();
     void clear();
     int messageCount() const { return m_bubbles.size(); }
     ChatBubble *lastBubble() const;

@@ -8,6 +8,7 @@
 class QTextBrowser;
 class QLabel;
 class QResizeEvent;
+class QTimer;
 
 class ChatBubble : public QWidget
 {
@@ -20,6 +21,7 @@ public:
 
     void setText(const QString &text);
     void appendText(const QString &text);
+    void flushUpdate();
     Role role() const { return m_role; }
     QString text() const { return m_text; }
 
@@ -32,6 +34,7 @@ public:
 
 private:
     void updateContent();
+    void updateBrowserHeight();
     void refreshStyle();
     void resizeEvent(QResizeEvent *event) override;
     QString messageStyleSheet() const;
@@ -40,6 +43,9 @@ private:
     QString m_text;
     QTextBrowser *m_browser;
     QLabel *m_roleLabel;
+    QTimer *m_updateTimer;
+
+    static constexpr int UPDATE_INTERVAL_MS = 80;
 };
 
 #endif // CHATBUBBLE_H

@@ -7,6 +7,8 @@
 #include <QHBoxLayout>
 #include <QResizeEvent>
 #include <QRegularExpression>
+#include <QTimer>
+#include <QScrollBar>
 
 // ── Markdown → HTML converter (lightweight) ──────────────────────────
 
@@ -254,6 +256,14 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
 
     outerLayout->addLayout(bubbleRow);
 
+    // Debounce timer for streaming updates — avoid O(n²) re-renders
+    // on every SSE chunk. Timer fires at most every 80ms, coalescing
+    // rapid chunks into a single updateContent() call.
+    m_updateTimer = new QTimer(this);
+    m_updateTimer->setSingleShot(true);
+    m_updateTimer->setInterval(UPDATE_INTERVAL_MS);
+    connect(m_updateTimer, &QTimer::timeout, this, &ChatBubble::updateContent);
+
     // Set a max width proportionally to parent
     if (parent) {
         int pw = parent->width();
@@ -300,7 +310,17 @@ void ChatBubble::setText(const QString &text)
 void ChatBubble::appendText(const QString &text)
 {
     m_text += text;
-    updateContent();
+    // Debounce: restart timer instead of immediately re-rendering.
+    // Multiple rapid chunks coalesce into a single updateContent() call.
+    m_updateTimer->start();
+}
+
+void ChatBubble::flushUpdate()
+{
+    if (m_updateTimer->isActive()) {
+        m_updateTimer->stop();
+        updateContent();
+    }
 }
 
 void ChatBubble::updateContent()
@@ -312,6 +332,10 @@ void ChatBubble::updateContent()
     QColor linkColor = tm.color("aiAssistant.linkColor");
     QColor selectionBg = tm.color("aiAssistant.selectionBackground");
     QColor headingColor = textColor;
+
+    // Suppress painting during setHtml to avoid the blank flash that
+    // occurs when QTextDocument clears its content before re-parsing.
+    m_browser->setUpdatesEnabled(false);
 
     if (m_role == Assistant) {
         QString html = markdownToHtml(m_text, textColor, codeBg, codeFg,
@@ -330,10 +354,21 @@ void ChatBubble::updateContent()
         );
     }
 
-    // Force height update after setHtml() completes.
+    updateBrowserHeight();
+
+    m_browser->setUpdatesEnabled(true);
+    m_browser->viewport()->update();
+}
+
+void ChatBubble::updateBrowserHeight()
+{
     QTextDocument *doc = m_browser->document();
     doc->setTextWidth(m_browser->viewport()->width());
-    m_browser->setFixedHeight(qCeil(doc->size().height()));
+
+    int docHeight = qCeil(doc->size().height());
+    // Only update if height actually changed to avoid infinite resize loops.
+    if (qAbs(docHeight - m_browser->height()) > 1)
+        m_browser->setFixedHeight(docHeight);
 }
 
 void ChatBubble::resizeEvent(QResizeEvent *event)
@@ -342,9 +377,10 @@ void ChatBubble::resizeEvent(QResizeEvent *event)
     // Recalculate browser height when bubble gets its final layout width.
     // The constructor's updateContent() might run before the widget has its
     // actual width, leading to a stale fixed height and blank space at bottom.
-    QTextDocument *doc = m_browser->document();
-    doc->setTextWidth(m_browser->viewport()->width());
-    m_browser->setFixedHeight(qCeil(doc->size().height()));
+    // NOTE: Uses the same max-height cap as updateContent() via
+    // updateBrowserHeight(), so resizeEvent and the streaming timer never
+    // fight each other with conflicting heights (which would cause flicker).
+    updateBrowserHeight();
 }
 
 QString ChatBubble::messageStyleSheet() const

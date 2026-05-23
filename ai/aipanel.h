@@ -28,6 +28,7 @@ public:
     void addUserMessage(const QString &text);
     void addAssistantMessage(const QString &text);
     void appendToLastAssistant(const QString &text);
+    void flushPendingUpdates();
     void clearChat();
     void setInputEnabled(bool enabled);
 

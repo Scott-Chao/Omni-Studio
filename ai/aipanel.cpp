@@ -319,6 +319,11 @@ void AiPanel::appendToLastAssistant(const QString &text)
     m_chatArea->appendToLastMessage(text);
 }
 
+void AiPanel::flushPendingUpdates()
+{
+    m_chatArea->flushPendingUpdates();
+}
+
 void AiPanel::clearChat()
 {
     m_chatArea->clear();
