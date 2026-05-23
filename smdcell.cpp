@@ -1163,6 +1163,12 @@ void SmdCell::refreshStyle()
               hex("panel.border"));
         m_renderView->page()->runJavaScript(js);
     }
+
+    // If already rendered as a static pixmap (no active render view),
+    // re-render with new theme colors. The old pixmap stays visible on
+    // the stack while the new render runs in the background.
+    if (m_rendered && !m_renderView)
+        scheduleReRender();
 }
 
 SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)

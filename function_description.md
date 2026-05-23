@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.0）
+## 功能说明文档（v0.12.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,18 +58,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增/修复 v0.12.0
-- 新增 AI 对话历史持久化存储：`AiHistoryManager` 单例管理，以 `index.json` + 独立 `conv_{uuid}.json` 文件存储于 `{exeDir}/ai_history/` 目录，支持创建/删除/重命名对话、按文件过滤、消息追加与加载、导出 Markdown
-- 新增 AI 历史对话 UI（`AiHistoryListWidget`）：在 AI 面板中新增「历史对话」标签页，支持搜索过滤、按时间自动分组（今天/昨天/更早）、绿色圆点标记当前对话、右键菜单（重命名/删除/导出 Markdown），右键删除时弹出确认对话框
-- 新增「新对话」按钮：AI 面板标题栏新增按钮，点击后清空当前对话并创建新对话
-- 预设按钮改为多轮续聊模式：改进/总结/解释等预设操作不再清空 `m_aiHistory`，所有操作均保留多轮对话上下文
-- 实现 token 感知的上下文窗口裁剪：新增 `pruneContextWindow()`、`estimateTokens()`、`modelContextLimit()` 函数，为 API 调用创建只读 token 窗口副本，覆盖 Claude（200K）、GPT（128K）、DeepSeek（64K）、Gemini（1M）等多模型上下文限制
-- 修复 AI 长回复时流式渲染卡顿/闪退：ChatBubble 新增 80ms 防抖定时器，SSE 多个 chunk 合并为单次 `updateContent()` 调用，消除 O(n²) 重渲染
-- 修复流式渲染闪烁问题：`setUpdatesEnabled(false)` 围绕 `setHtml()` 抑制 QTextDocument 清空内容时的纯黑闪屏；`updateBrowserHeight()` 提取为独立方法，带 >1px 变化阈值判断防止无限 resize 循环
-- 修复 AI 流式结束时可能缺少最后一段内容的问题：新增 `ChatArea::flushPendingUpdates()` 和 `ChatBubble::flushUpdate()`，在 `onAiFinished()` 中强制刷出防抖定时器中的待更新内容，然后才持久化回复
-- 修复 Provider 端 SSE 重复 `finished()` 发射：`AnthropicProvider` 和 `OpenAiProvider` 新增 `m_finished` 守卫标志，防止 `message_stop` / `[DONE]` / `finish_reason` 事件重复触发
-- 改进 AI 历史对话 UI 与主题切换响应：`ActionBar::refreshStyle()` 中调用 `rebuildButtons()` 确保主题切换时按钮样式重建；新增 `QToolTip` 样式支持主题适配
-- 调整暗色主题 `bubbleUser` 背景色从 `#ffffff13` 改为 `#2b2d30`，新增 `debugIcon.startForeground` 主题色供历史列表绿色圆点使用
+### 新增/修复 v0.12.1
+- 修复 SMD 文件切换主题后 Markdown 单元格渲染内容不更新的问题：`SmdCell::refreshStyle()` 中新增静态像素图重渲染触发逻辑，切换主题时保持旧像素图可见，后台用新主题色重新渲染完成后无缝替换
 
 ### 1. `MainWindow` - 主窗口控制器
 
