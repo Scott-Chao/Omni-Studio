@@ -84,6 +84,7 @@ private slots:
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
     void onSearchResultClicked(const QString &filePath, int lineNumber,
                                const QString &searchText); // 打开搜索结果
+    void onSearchTextChangedByUser(); // 搜索文本变化时清除编辑器高亮
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
     void buildFileIndex(); // 全量更新索引
     void startAsyncIndexBuild(); // 异步版本，避免大目录卡死 UI

@@ -32,6 +32,7 @@ public:
 signals:
     void resultClicked(const QString &filePath, int lineNumber,
                        const QString &searchText);
+    void searchTextChanged();
 
 private slots:
     void onSearchTextChanged();

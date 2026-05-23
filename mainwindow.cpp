@@ -281,6 +281,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_searchPanel = new SearchPanel(this);
     connect(m_searchPanel, &SearchPanel::resultClicked,
             this, &MainWindow::onSearchResultClicked);
+    connect(m_searchPanel, &SearchPanel::searchTextChanged,
+            this, &MainWindow::onSearchTextChangedByUser);
 
     toggleSearchAction = new QAction(tr("显示/隐藏搜索"), this);
     toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
@@ -2153,6 +2155,12 @@ void MainWindow::onSearchResultClicked(const QString &filePath,
     if (!editor) return;
 
     editor->scrollToLine(lineNumber, searchText);
+}
+
+void MainWindow::onSearchTextChangedByUser()
+{
+    if (auto *editor = m_tabManager->currentEditor())
+        editor->clearExtraSelections();
 }
 
 void MainWindow::onWikiLinkClicked(const QString &fileName)

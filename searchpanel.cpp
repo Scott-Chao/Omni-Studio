@@ -135,6 +135,7 @@ void SearchPanel::focusSearchInput()
 void SearchPanel::onSearchTextChanged()
 {
     m_debounceTimer->start();
+    emit searchTextChanged();
 }
 
 void SearchPanel::performSearch()
