@@ -1,4 +1,4 @@
-## 功能说明文档（v0.11.9）
+## 功能说明文档（v0.12.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,8 +58,18 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.11.9
-- 优化全局悬浮提示（QToolTip）的边缘内边距，使其更紧凑。通过自定义 `CompactTooltipStyle`（QProxyStyle 子类）将 `PM_ToolTipLabelFrameWidth` 设为 0，消除 Qt Fusion 样式在 tooltip 内部额外添加的边框宽度；同时将全局 QSS 中 `QToolTip` 的 `padding` 从 `4px 8px` 缩减为 `0px 4px`、`margin` 显式设为 `0px`、新增 `font-size: 12px` 控制字号。`HoverManager` 中诊断提示与 LSP 悬停提示均同步应用紧凑样式（`padding: 0px 4px; margin: 0px;`），确保编辑器内代码提示浮窗与外层按钮/列表项的系统 tooltip 视觉一致。修复了 `HoverManager::hideHover()` 中仅诊断提示才恢复样式的问题，改为只要有保存的样式即恢复。
+### 新增/修复 v0.12.0
+- 新增 AI 对话历史持久化存储：`AiHistoryManager` 单例管理，以 `index.json` + 独立 `conv_{uuid}.json` 文件存储于 `{exeDir}/ai_history/` 目录，支持创建/删除/重命名对话、按文件过滤、消息追加与加载、导出 Markdown
+- 新增 AI 历史对话 UI（`AiHistoryListWidget`）：在 AI 面板中新增「历史对话」标签页，支持搜索过滤、按时间自动分组（今天/昨天/更早）、绿色圆点标记当前对话、右键菜单（重命名/删除/导出 Markdown），右键删除时弹出确认对话框
+- 新增「新对话」按钮：AI 面板标题栏新增按钮，点击后清空当前对话并创建新对话
+- 预设按钮改为多轮续聊模式：改进/总结/解释等预设操作不再清空 `m_aiHistory`，所有操作均保留多轮对话上下文
+- 实现 token 感知的上下文窗口裁剪：新增 `pruneContextWindow()`、`estimateTokens()`、`modelContextLimit()` 函数，为 API 调用创建只读 token 窗口副本，覆盖 Claude（200K）、GPT（128K）、DeepSeek（64K）、Gemini（1M）等多模型上下文限制
+- 修复 AI 长回复时流式渲染卡顿/闪退：ChatBubble 新增 80ms 防抖定时器，SSE 多个 chunk 合并为单次 `updateContent()` 调用，消除 O(n²) 重渲染
+- 修复流式渲染闪烁问题：`setUpdatesEnabled(false)` 围绕 `setHtml()` 抑制 QTextDocument 清空内容时的纯黑闪屏；`updateBrowserHeight()` 提取为独立方法，带 >1px 变化阈值判断防止无限 resize 循环
+- 修复 AI 流式结束时可能缺少最后一段内容的问题：新增 `ChatArea::flushPendingUpdates()` 和 `ChatBubble::flushUpdate()`，在 `onAiFinished()` 中强制刷出防抖定时器中的待更新内容，然后才持久化回复
+- 修复 Provider 端 SSE 重复 `finished()` 发射：`AnthropicProvider` 和 `OpenAiProvider` 新增 `m_finished` 守卫标志，防止 `message_stop` / `[DONE]` / `finish_reason` 事件重复触发
+- 改进 AI 历史对话 UI 与主题切换响应：`ActionBar::refreshStyle()` 中调用 `rebuildButtons()` 确保主题切换时按钮样式重建；新增 `QToolTip` 样式支持主题适配
+- 调整暗色主题 `bubbleUser` 背景色从 `#ffffff13` 改为 `#2b2d30`，新增 `debugIcon.startForeground` 主题色供历史列表绿色圆点使用
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -134,6 +144,9 @@
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
 - `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引与标签索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
+- `void startAiRequest(AiAction action, const QString &freeQuery)`：发起 AI 请求。收集编辑器上下文 → 构建 prompt → 创建 provider → 流式请求。新实现中所有操作均保留 `m_aiHistory` 用于多轮续聊（不再按操作清空历史），请求前通过 `pruneContextWindow()` 创建 token 感知的窗口副本。每次请求自动持久化用户消息至 `AiHistoryManager`。
+- `void loadAiConversation(const QString &convId)`：从 `AiHistoryManager` 加载历史对话。终止进行中的请求 → `clearChat()` + 清空 `m_aiHistory` → 设置当前对话 ID → 逐条加载消息到 UI 和 `m_aiHistory` → 刷新历史列表绿色圆点 → 切回聊天标签页。
+- `void filterAiHistoryByCurrentFile()`：按当前编辑器文件路径 (`m_currentFilePath`) 过滤 `AiHistoryListWidget` 的对话列表，并更新活跃对话 ID。在标签切换、文件打开、对话列表变更时被调用。
 - `void updateWikiLinksAfterRename(const QStringList &affectedSources, const QString &oldLinkText, const QString &newLinkText)`：文件重命名后更新所有引用文件中的 wiki 链接文本。从 BacklinkIndex 获取受影响源文件列表，使用 `replaceWikiLinkText` 精确匹配替换 `[[oldLinkText]]` → `[[newLinkText]]`。若源文件在打开的标签中，优先读取 `editor->toPlainText()` 以保留未保存更改，替换后写盘并重新加载编辑器。
 
 **协作关系**：
@@ -1514,6 +1527,87 @@
 - `preview-template.html`（修改）：CSS 波浪线样式 + JS `applyBlockDiagnostics`/`clearBlockDiagnostics` + blockIndex 传递
 - `mainwindow.h/.cpp`（修改）：`m_mdDiagnostics`/`m_isRunningCodeBlock`/`m_processManuallyStopped` 等状态，`parseAndShowBlockDiagnostics()`/`loadMdDiagnosticsForCurrentTab()` 方法，`currentChanged` 标签切换 MD 逻辑
 - `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
+
+
+### 36. `AiConversation` / `AiMessage` — 对话数据结构
+
+**文件**：`aiconversation.h`
+
+**职责**：
+- 纯头文件、纯数据 `struct`，分别表示一个 AI 对话记录和单条消息。各自提供 `toJson()` / `fromJson()` JSON 序列化/反序列化支持持久化存储。
+
+**`AiConversation` 字段**：
+- `QString id`：UUID 唯一标识（`QUuid::WithoutBraces` 格式）。
+- `QString title`：对话标题（预设操作显示对应操作名，自由对话取首条消息前 30 字）。
+- `QString sourceFile`：关联的编辑器文件路径（用于按文件过滤历史列表）。
+- `QDateTime createdAt` / `updatedAt`：创建和最后更新时间。
+- `int messageCount`：消息总数。
+- `bool isValid() const`：空 ID 返回 false，用于查不到时的哨兵判断。
+
+**`AiMessage` 字段**：
+- `MessageRole role`：User / Assistant / System（枚举值转换时默认 `User` 兜底）。
+- `QString content`：消息文本内容。
+- `qint64 timestampMs`：消息时间戳（Unix 毫秒）。
+
+**协作关系**：
+- 被 `AiHistoryManager` 用于持久化存储的所有读写操作。
+- 被 `AiHistoryListWidget` 用于构建历史列表 UI。
+
+
+### 37. `AiHistoryManager` — 对话历史管理器
+
+**文件**：`aihistorymanager.h` / `aihistorymanager.cpp`
+
+**职责**：
+- `QObject` 单例（`instance()` 静态方法），管理 AI 对话历史的持久化存储。
+
+**存储结构**：
+- 存储根目录：`{QCoreApplication::applicationDirPath()}/ai_history/`。
+- 索引文件：`index.json`（`QJsonArray`，每条为 `AiConversation::toJson()`），`loadIndex()` 加载、`saveIndex()` 保存（`Indented` 格式）。
+- 消息文件：每个对话独立文件 `conv_{uuid}.json`（`QJsonArray`，每条为 `AiMessage::toJson()`）。
+
+**主要接口**：
+- 对话 CRUD：`createConversation(title, sourceFile)` → 返回新 UUID；`deleteConversation(id)` → 删除索引和消息文件；`renameConversation(id, newTitle)` → 更新标题和时间戳；`clearCurrentConversation()` → 删除当前并新建空对话。
+- 消息管理：`appendMessage(convId, msg)` → 加载已有消息 → 追加 → 写回 → 更新索引中 `messageCount`/`updatedAt`；`loadMessages(convId)` → 从文件读取消息列表。
+- 查询：`allConversations()` → 按 `updatedAt` 降序返回；`conversationsByFile(filePath)` → 按 `sourceFile` 过滤（文件路径为空时返回全部）；`conversationById(id)` → 单条查询；`currentConversationId()` / `setCurrentConversation(id)` → 当前活跃会话管理。
+- 导出：`exportToMarkdown(convId)` → 生成带标题/时间/消息流的 Markdown 文档。
+
+**信号**：
+- `void conversationListChanged()`：索引变更时发出，由 `MainWindow` 连接刷新历史列表 UI。
+
+**协作关系**：
+- 由 `MainWindow` 在 `startAiRequest()` 和 `onAiFinished()` 中调用持久化用户和助手消息。
+- 由 `MainWindow::loadAiConversation()` 调用 `loadMessages()` 加载历史对话到 UI 和 `m_aiHistory`。
+- `AiHistoryListWidget` 通过信号 `conversationSelected` / `renameRequested` / `deleteRequested` / `exportRequested` 间接操作管理器。
+
+
+### 38. `AiHistoryListWidget` — 历史对话列表 UI
+
+**文件**：`aihistorylistwidget.h` / `aihistorylistwidget.cpp`
+
+**职责**：
+- AI 面板「历史对话」标签页的内容组件，提供对话记录的搜索、浏览和操作交互。
+- 布局结构：顶部搜索栏（`QLineEdit` + `setClearButtonEnabled(true)`）→ 中间 `QListWidget`（`NoFrame`、`SingleSelection`、`CustomContextMenu`）。
+- `setConversations(list)` 设置完整列表 → `rebuildList()` 按搜索文本过滤 → 按日期分组排序 → 创建分节标题（"— 今天 —" / "— 昨天 —" / "— 更早 —"）和带绿色圆点（当前对话）的条目控件。
+- 搜索：`onSearchChanged` 实时过滤 `conv.title.toLower().contains(filter)`。
+- 日期分组：`dateGroupLabel()` 根据 `updatedAt` 的日期与 `QDate::currentDate()` 比较，非今天/昨天的全部归为"更早"。
+- 条目控件：`QWidget`（QHBoxLayout）。左侧 8px 绿色圆点（`debugIcon.startForeground`，仅当前对话可见）；右侧两行文字——标题（10px 粗体）+ 副标题（9px，显示消息数和更新时间）。
+- 上下文菜单（右键）：重命名、删除、分隔线、导出 Markdown。菜单项发出对应信号由 `MainWindow` 处理操作逻辑。
+
+**主要接口**：
+- `void setConversations(const QList<AiConversation> &convs)`：设置全部对话列表并重建 UI。
+- `void setActiveConversationId(const QString &id)`：设置当前对话 ID（切换绿色圆点高亮）。
+- `QString activeConversationId() const`：返回当前对话 ID。
+
+**信号**：
+- `void conversationSelected(const QString &convId)`：点击条目时发出。
+- `void renameRequested(const QString &convId)` / `deleteRequested(const QString &convId)` / `exportRequested(const QString &convId)`：右键菜单操作。
+
+**协作关系**：
+- 由 `AiPanel` 创建并持有（`QStackedWidget` index 2）。
+- `MainWindow` 连接所有信号处理实际操作：重命名调用 `QInputDialog::getText`，删除调用 `QMessageBox::question` 确认，导出调用 `QFileDialog::getSaveFileName`。
+- `AiHistoryManager::conversationListChanged` 信号触发 `MainWindow::filterAiHistoryByCurrentFile()` 刷新列表。
+- 切换到历史标签页时（`AiPanel::historyListVisibilityChanged`），同样刷新列表并更新活跃对话绿色圆点。
 
 
 ### 配置存储说明
