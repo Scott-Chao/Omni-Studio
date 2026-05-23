@@ -1495,13 +1495,7 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
 
     m_aiStreaming = true;
 
-    // 2. Actions clear history + chat for a fresh conversation
-    if (action != AiAction::FreeChat) {
-        m_aiPanel->clearChat();
-        m_aiHistory.clear();
-    }
-
-    // 3. Collect context from current editor
+    // 2. Collect context from current editor
     EditorWidget *editor = m_tabManager->currentEditor();
     ContextBundle ctx;
     if (editor)
@@ -1574,48 +1568,40 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
     // 9b. Persist user message to AiHistoryManager
     {
         auto &mgr = AiHistoryManager::instance();
-        if (action == AiAction::FreeChat) {
-            // Create conversation on first FreeChat message
-            if (mgr.currentConversationId().isEmpty()) {
-                QString convTitle = freeQuery.left(30).trimmed();
+        // Create conversation on first message if none exists
+        if (mgr.currentConversationId().isEmpty()) {
+            QString convTitle;
+            if (action == AiAction::FreeChat) {
+                convTitle = freeQuery.left(30).trimmed();
                 if (convTitle.isEmpty()) convTitle = tr("新对话");
-                mgr.createConversation(convTitle, QString());
+            } else {
+                const ActionInfo *info = findActionInfo(action);
+                convTitle = info ? tr(info->label) : tr("AI 操作");
             }
-        } else {
-            // Action: always creates a new conversation, linked to the current file
-            const ActionInfo *info = findActionInfo(action);
-            QString convTitle = info ? tr(info->label) : tr("AI 操作");
-            mgr.createConversation(convTitle, ctx.filePath);
+            QString filePath = (action != AiAction::FreeChat) ? ctx.filePath : QString();
+            mgr.createConversation(convTitle, filePath);
         }
 
-        AiMessage userMsg;
-        userMsg.role = MessageRole::User;
-        userMsg.content = userDisplayText;
-        userMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
-        mgr.appendMessage(mgr.currentConversationId(), userMsg);
+        AiMessage histMsg;
+        histMsg.role = MessageRole::User;
+        histMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
+        histMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
+        mgr.appendMessage(mgr.currentConversationId(), histMsg);
     }
 
     // 10. Add empty assistant bubble as streaming target
     m_aiPanel->addAssistantMessage(QString());
 
-    // 11. Build message list for the API call
-    QList<Message> messages;
-    if (action == AiAction::FreeChat) {
-        messages = m_aiHistory;
-        Message userMsg;
-        userMsg.role = MessageRole::User;
-        userMsg.content = freeQuery;
-        messages.append(userMsg);
-        m_aiHistory.append(userMsg);
-    } else {
-        Message userMsg;
-        userMsg.role = MessageRole::User;
-        userMsg.content = prompt.userPrompt;
-        messages.append(userMsg);
-    }
+    // 11. Build message list for the API call (always include full history)
+    QList<Message> messages = m_aiHistory;
+    Message userMsg;
+    userMsg.role = MessageRole::User;
+    userMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
+    messages.append(userMsg);
+    m_aiHistory.append(userMsg);
 
-    // 12. Prune free-chat history to stay within context window
-    if (action == AiAction::FreeChat && m_aiHistory.size() >= 4) {
+    // 12. Prune history to stay within context window
+    if (m_aiHistory.size() >= 4) {
         const int maxChars = maxTokens * 4; // rough 4 chars/token
         int total = 0;
         for (const auto &msg : m_aiHistory)
@@ -1671,7 +1657,7 @@ void MainWindow::onAiFinished()
         }
     }
 
-    // Save assistant response to history (only for FreeChat, where history is non-empty)
+    // Save assistant response to in-memory history for subsequent turns
     if (!m_aiHistory.isEmpty()) {
         QString content = m_aiPanel->lastAssistantContent();
         if (!content.isEmpty()) {
