@@ -35,21 +35,34 @@ void ThemeManager::initBuiltinThemes()
 
 bool ThemeManager::loadTheme(const QString &name)
 {
+    // Guard against re-entrant calls (e.g. triggered by a slot connected to
+    // themeChanged() that somehow calls loadTheme() again).
+    if (m_loadingTheme) {
+        qWarning() << "[ThemeManager] Re-entrant loadTheme(\"" << name
+                   << "\") blocked — already loading \"" << m_currentTheme.name << "\"";
+        return false;
+    }
+    m_loadingTheme = true;
+
     for (const auto &entry : m_builtinThemes) {
         if (entry.name == name) {
             ThemeData data;
-            if (!loadThemeFromFile(entry.filePath, data))
+            if (!loadThemeFromFile(entry.filePath, data)) {
+                m_loadingTheme = false;
                 return false;
+            }
 
             m_currentTheme = data;
             applyPalette();
             loadQss();
             emit themeChanged();
+            m_loadingTheme = false;
             return true;
         }
     }
 
     qWarning() << "[ThemeManager] Unknown theme:" << name;
+    m_loadingTheme = false;
     return false;
 }
 

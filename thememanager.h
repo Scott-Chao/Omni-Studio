@@ -52,6 +52,7 @@ private:
     ThemeData m_currentTheme;
     QMap<QString, QColor> m_overrides;
     QList<ThemeEntry> m_builtinThemes;
+    bool m_loadingTheme = false;
 
     bool loadThemeFromFile(const QString &path, ThemeData &out);
     void initBuiltinThemes();

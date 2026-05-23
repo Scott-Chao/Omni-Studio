@@ -60,7 +60,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- SMD 单元格块标题文字颜色调整，提高对比度
+- SMD 文件打开时多次切换主题导致闪退
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1112,7 +1112,7 @@
 1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
 2. **编辑器/视图栈**（`m_editorStack`，`QStackedWidget`）：
    - Page 0：编辑器——Markdown 单元格使用 `QPlainTextEdit`（等宽字体、深色主题），C++/Python 单元格使用 `CodeEditor`（带语法高亮和行号）。
-   - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示，销毁 QWebEngineView 释放 GPU 资源。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
+   - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示。**QWebEngineView 在首次渲染时创建，之后所有重渲染复用同一实例**（停止 → 隐藏 → 重连信号 → 重定位 → 加载新内容），仅在切换回编辑模式或析构时才真正销毁。这避免了反复创建/销毁 QWebEngineView 导致的 Chromium GPU 进程资源耗尽和闪退。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
 
 **主要接口**：
 - `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容，最后调用 `setCommandMode(m_commandMode)` 将当前命令/编辑模式状态重新应用到新编辑器。
@@ -1136,11 +1136,16 @@
 - 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。lambda 还对新 editor 安装 `eventFilter`。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
 - `m_lspManager` 在 `setPlainText()` 中 **晚于 `addCell()` 创建**。`addCell()` 执行时 `m_lspManager` 为 null，无法注入共享 provider。`setPlainText()` 中 `cellAdded()` 循环后额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 完成初始注入。
 - 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
-- `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
+- **QWebEngineView 生命周期管理**（防闪退关键设计）：
+  - `ensureRenderView()` — 设置 `m_viewActive = true`。若视图已存在（重渲染复用），仅重连 `loadFinished` 信号；若不存在（首次渲染），创建独立顶层窗口 `Qt::Tool | FramelessWindowHint`。
+  - `releaseRenderView()` — 设置 `m_viewActive = false`。停止 grab 轮询定时器，断开所有 WebEngine 信号，`stop()` + `hide()`，**但不删除视图对象**。视图复用避免反复创建/销毁 QWebEngineView 导致的 Chromium GPU 进程资源耗尽和闪退。
+  - `destroyRenderView()` — 设置 `m_viewActive = false`。停止轮询、断开信号、`stop()` → `hide()` → `close()` → `delete` → `nullptr`。仅在两处调用：`setRendered(false)`（切换到编辑模式）和 `~SmdCell()` 析构函数。
+  - `m_viewActive` 标志用于区分"正在渲染中"（可调用 `runJavaScript()` 更新 CSS 变量）和"已释放/已销毁"（需要通过 `scheduleReRender()` 启动新渲染管线）两种状态。`refreshStyle()` 在主题切换时通过此标志判断是推 JS 还是触发重渲染。
+- **重渲染防重入守卫**：`performReRender()` 入口检查 `m_reRendering` 标志，若已有渲染在进行中（被 `startRenderPipeline()` 内 `processEvents()` 触发的其他 cell 定时器回调），则调用 `scheduleReRender()` 重新排队而非嵌套执行。这确保同一时刻只有一个 cell 调用 `processEvents()`，防止多个 QWebEngineView 顶层窗口同时存在导致的 GPU 进程争用。
 
 **事件处理**：
 - 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` 事件发射 `focusEntered()` 信号（`MouseButtonPress` 不再触发，改由 `SmdEditor::eventFilter` 全局过滤器统一处理点击激活）。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
-- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：保留本地遮罩层避免闪烁 → `setRendered(false)` → 恢复内容 → `setRendered(true)` → 恢复命令模式。
+- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：`releaseRenderView()` 释放旧渲染状态（保留视图对象） → 清理遮罩层 → `ensureRenderView()` 重连信号（不创建新视图） → `startRenderPipeline(false)` 重新加载 HTML。**视图复用**避免创建/销毁 Chromium GPU 进程，入口的 `m_reRendering` 防重入守卫确保同时只有一个 cell 调用 `processEvents()`。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
@@ -1508,6 +1513,7 @@
 - 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
 - 主题枚举：`Dark=0, Light=1, System=2`。`setTheme(System)` 自动检测系统主题：优先读取 Windows 注册表 `AppsUseLightTheme`，兜底根据当前时间（6:00-18:00 → Light，其余 → Dark）判断。
 - System 模式下 5 分钟 `QTimer` 自动刷新系统主题检测。
+- **防重入守卫**：`loadTheme()` 入口检查 `m_loadingTheme` 标志，阻止递归调用（如 `themeChanged()` 槽中再次触发主题切换）。重入时输出警告并返回 `false`，所有返回路径均复位标志。
 - `themeChanged(Theme)` 信号在主题实际变化时发出；`applyCurrentTheme()` 重新发射信号强制所有组件刷新。
 - 语义化颜色访问：`color("editor.background")` 返回 `QColor`，`hex("panel.border")` 返回 `"#RRGGBB"` 字符串。缺失 key 返回品红色 `#FF00FF` 方便开发时发现遗漏。
 

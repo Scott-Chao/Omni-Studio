@@ -25,6 +25,7 @@ public:
 
     explicit SmdCell(CellType type = Markdown, const QString &content = QString(),
                      QWidget *parent = nullptr);
+    ~SmdCell() override;
 
     CellType cellType() const { return m_type; }
     void setCellType(CellType type);
@@ -84,7 +85,8 @@ private:
     void startGrabPolling();
     void pollGrabReady();
     void performGrab();
-    void cleanupRenderView();
+    void releaseRenderView();   // stop + hide, keep alive for reuse
+    void destroyRenderView();   // delete + null out (edit-mode switch, dtor)
     void startRenderPipeline(bool isInitialRender);
     void scheduleReRender();
     void performReRender();
@@ -95,6 +97,8 @@ private:
     bool m_rendered = false;
     bool m_grabbing = false;  // suppress focusEntered during performGrab
     bool m_updatingHeight = false;  // guard against recursive updateEditorHeight
+    bool m_reRendering = false;     // guard against re-entrant performReRender
+    bool m_viewActive = false;      // true while QWebEngineView is actively rendering
     int m_pendingContentChanges = 0;  // >0 when QTextDocument signals a real content edit
 
     QWidget *m_headerBar = nullptr;
