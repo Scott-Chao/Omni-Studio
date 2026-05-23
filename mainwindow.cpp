@@ -63,6 +63,7 @@ protected:
 #include "ai/aiproviderfactory.h"
 #include "ai/anthropicprovider.h"
 #include "ai/openaiprovider.h"
+#include "ai/aihistorylistwidget.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include "codeeditor.h"
@@ -756,6 +757,62 @@ MainWindow::MainWindow(QWidget *parent)
         AiHistoryManager::instance().clearCurrentConversation();
     });
 
+    // ── History list widget connections ──
+    {
+        auto *historyWidget = m_aiPanel->historyListWidget();
+        connect(historyWidget, &AiHistoryListWidget::conversationSelected,
+                this, &MainWindow::loadAiConversation);
+        connect(historyWidget, &AiHistoryListWidget::renameRequested, this, [this](const QString &convId) {
+            auto &mgr = AiHistoryManager::instance();
+            AiConversation conv = mgr.conversationById(convId);
+            if (!conv.isValid()) return;
+            bool ok;
+            QString newTitle = QInputDialog::getText(this, tr("重命名对话"), tr("新名称："),
+                                                       QLineEdit::Normal, conv.title, &ok);
+            if (ok && !newTitle.trimmed().isEmpty())
+                mgr.renameConversation(convId, newTitle.trimmed());
+        });
+        connect(historyWidget, &AiHistoryListWidget::deleteRequested, this, [this](const QString &convId) {
+            auto &mgr = AiHistoryManager::instance();
+            AiConversation conv = mgr.conversationById(convId);
+            if (!conv.isValid()) return;
+            auto result = QMessageBox::question(this, tr("删除对话"),
+                tr("确定要删除「%1」吗？").arg(conv.title));
+            if (result == QMessageBox::Yes) {
+                // If deleting the current conversation, clear state
+                if (convId == mgr.currentConversationId()) {
+                    m_aiPanel->clearChat();
+                    m_aiHistory.clear();
+                }
+                mgr.deleteConversation(convId);
+            }
+        });
+        connect(historyWidget, &AiHistoryListWidget::exportRequested, this, [this](const QString &convId) {
+            auto &mgr = AiHistoryManager::instance();
+            AiConversation conv = mgr.conversationById(convId);
+            if (!conv.isValid()) return;
+            QString filePath = QFileDialog::getSaveFileName(this, tr("导出对话"),
+                conv.title + QStringLiteral(".md"), tr("Markdown (*.md)"));
+            if (filePath.isEmpty()) return;
+            QFile file(filePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(mgr.exportToMarkdown(convId).toUtf8());
+            }
+        });
+    }
+
+    // ── Refresh history list when manager signals changes ──
+    connect(&AiHistoryManager::instance(), &AiHistoryManager::conversationListChanged,
+            this, &MainWindow::filterAiHistoryByCurrentFile);
+
+    // ── Refresh history list when history tab becomes visible ──
+    connect(m_aiPanel, &AiPanel::historyListVisibilityChanged, this, [this](bool) {
+        filterAiHistoryByCurrentFile();
+        // Update active dot
+        m_aiPanel->historyListWidget()->setActiveConversationId(
+            AiHistoryManager::instance().currentConversationId());
+    });
+
     // ----- 界面布局 -----
     // 左侧活动栏（搜索/设置/导出PDF/评测）
     m_activityBar = new ActivityBar(this);
@@ -789,6 +846,7 @@ MainWindow::MainWindow(QWidget *parent)
         refreshBacklinks();
         refreshTags();
         refreshOutline();
+        filterAiHistoryByCurrentFile();
         updateCurrentEditorCompletions();
 
         // 更新编译运行按钮状态
@@ -1516,10 +1574,10 @@ void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
             if (mgr.currentConversationId().isEmpty()) {
                 QString convTitle = freeQuery.left(30).trimmed();
                 if (convTitle.isEmpty()) convTitle = tr("新对话");
-                mgr.createConversation(convTitle, ctx.filePath);
+                mgr.createConversation(convTitle, QString());
             }
         } else {
-            // Action: always creates a new conversation
+            // Action: always creates a new conversation, linked to the current file
             const ActionInfo *info = findActionInfo(action);
             QString convTitle = info ? tr(info->label) : tr("AI 操作");
             mgr.createConversation(convTitle, ctx.filePath);
@@ -1631,6 +1689,57 @@ void MainWindow::onAiError(const QString &message)
 
     m_aiStreaming = false;
     m_aiPanel->setInputEnabled(true);
+}
+
+// ── History list integration ─────────────────────────────────────
+
+void MainWindow::loadAiConversation(const QString &convId)
+{
+    // Abort any ongoing request
+    if (m_aiStreaming)
+        abortAiRequest();
+
+    // Clear current state
+    m_aiPanel->clearChat();
+    m_aiHistory.clear();
+
+    auto &mgr = AiHistoryManager::instance();
+
+    // Set as current conversation
+    mgr.setCurrentConversation(convId);
+
+    // Load and display messages
+    const QList<AiMessage> messages = mgr.loadMessages(convId);
+    for (const auto &aiMsg : messages) {
+        if (aiMsg.role == MessageRole::Assistant)
+            m_aiPanel->addAssistantMessage(aiMsg.content);
+        else
+            m_aiPanel->addUserMessage(aiMsg.content);
+
+        // Rebuild m_aiHistory for API context
+        Message msg;
+        msg.role = aiMsg.role;
+        msg.content = aiMsg.content;
+        m_aiHistory.append(msg);
+    }
+
+    // Update active dot in history list
+    filterAiHistoryByCurrentFile();
+
+    // Switch back to chat tab
+    m_aiPanel->setCurrentTab(AiPanel::ChatTab);
+}
+
+void MainWindow::filterAiHistoryByCurrentFile()
+{
+    auto *historyWidget = m_aiPanel->historyListWidget();
+    if (!historyWidget)
+        return;
+
+    auto &mgr = AiHistoryManager::instance();
+    QList<AiConversation> convs = mgr.conversationsByFile(m_currentFilePath);
+    historyWidget->setConversations(convs);
+    historyWidget->setActiveConversationId(mgr.currentConversationId());
 }
 
 void MainWindow::onResetToDefaults()

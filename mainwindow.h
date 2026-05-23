@@ -209,6 +209,8 @@ private:
 
     void startAiRequest(AiAction action, const QString &freeQuery = QString());
     void abortAiRequest();
+    void loadAiConversation(const QString &convId);
+    void filterAiHistoryByCurrentFile();
     void showRightPanel(int panelIndex);
 
     // .md ↔ .smd 转换

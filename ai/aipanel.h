@@ -12,6 +12,7 @@ class QLineEdit;
 class QPushButton;
 class QStackedWidget;
 class ErrorJournal;
+class AiHistoryListWidget;
 
 class AiPanel : public QWidget
 {
@@ -21,7 +22,7 @@ public:
     explicit AiPanel(QWidget *parent = nullptr);
 
     enum { DefaultWidth = 340 };
-    enum TabIndex { ChatTab = 0, ErrorTab = 1 };
+    enum TabIndex { ChatTab = 0, ErrorTab = 1, HistoryTab = 2 };
 
     // Chat operations
     void addUserMessage(const QString &text);
@@ -34,8 +35,9 @@ public:
     void setActionList(const QVector<AiAction> &actions);
     void clearActionList();
 
-    // Error list panel access
+    // Sub-panel access
     ErrorListPanel *errorListPanel() const { return m_errorListPanel; }
+    AiHistoryListWidget *historyListWidget() const { return m_historyListWidget; }
     void setCurrentTab(int index);
 
     // Query chat state
@@ -47,6 +49,7 @@ signals:
     void clearRequested();
     void actionTriggered(int actionIndex);
     void errorSelected(const QString &recordId);
+    void historyListVisibilityChanged(bool visible);
 
 private slots:
     void onTabSwitch(int index);
@@ -67,7 +70,9 @@ private:
     QStackedWidget *m_stackedWidget;
     QPushButton *m_aiTabBtn;
     QPushButton *m_errorTabBtn;
+    QPushButton *m_historyTabBtn;
     ErrorListPanel *m_errorListPanel;
+    AiHistoryListWidget *m_historyListWidget;
     QWidget *m_inputBar;
     int m_currentTab = ChatTab;
 };

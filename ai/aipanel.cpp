@@ -3,6 +3,7 @@
 #include "actionbar.h"
 #include "errorlistpanel.h"
 #include "errorjournal.h"
+#include "aihistorylistwidget.h"
 #include "thememanager.h"
 
 #include <QVBoxLayout>
@@ -39,26 +40,33 @@ AiPanel::AiPanel(QWidget *parent)
     m_errorTabBtn->setFixedHeight(32);
     m_errorTabBtn->setCursor(Qt::PointingHandCursor);
 
+    m_historyTabBtn = new QPushButton(tr("历史对话"));
+    m_historyTabBtn->setFixedHeight(32);
+    m_historyTabBtn->setCursor(Qt::PointingHandCursor);
+
     m_clearBtn = new QPushButton(tr("清空对话"));
     m_clearBtn->setFixedHeight(24);
     m_clearBtn->setCursor(Qt::PointingHandCursor);
 
     titleLayout->addWidget(m_aiTabBtn);
     titleLayout->addWidget(m_errorTabBtn);
+    titleLayout->addWidget(m_historyTabBtn);
     titleLayout->addStretch();
     titleLayout->addWidget(m_clearBtn);
 
     // ── Action bar (only shown on chat tab) ──
     m_actionBar = new ActionBar(this);
 
-    // ── Stacked widget: chat area (0) | error list (1) ──
+    // ── Stacked widget: chat area (0) | error list (1) | history list (2) ──
     m_stackedWidget = new QStackedWidget(this);
 
     m_chatArea = new ChatArea(this);
     m_errorListPanel = new ErrorListPanel(this);
+    m_historyListWidget = new AiHistoryListWidget(this);
 
-    m_stackedWidget->addWidget(m_chatArea);       // index 0 = ChatTab
-    m_stackedWidget->addWidget(m_errorListPanel);  // index 1 = ErrorTab
+    m_stackedWidget->addWidget(m_chatArea);          // index 0 = ChatTab
+    m_stackedWidget->addWidget(m_errorListPanel);     // index 1 = ErrorTab
+    m_stackedWidget->addWidget(m_historyListWidget);  // index 2 = HistoryTab
 
     // ── Input bar (only shown on chat tab) ──
     m_inputBar = new QWidget(this);
@@ -89,6 +97,7 @@ AiPanel::AiPanel(QWidget *parent)
     // ── Connections ──
     connect(m_aiTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ChatTab); });
     connect(m_errorTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ErrorTab); });
+    connect(m_historyTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(HistoryTab); });
 
     connect(m_actionBar, &ActionBar::actionTriggered, this, [this](AiAction action) {
         emit actionTriggered(static_cast<int>(action));
@@ -164,9 +173,10 @@ void AiPanel::onTabSwitch(int index)
     m_inputBar->setVisible(isChat);
     m_clearBtn->setVisible(isChat);
 
-    // Refresh error list when switching to error tab
-    if (!isChat) {
+    if (index == ErrorTab) {
         m_errorListPanel->loadRecords();
+    } else if (index == HistoryTab) {
+        emit historyListVisibilityChanged(true);
     }
 }
 
@@ -204,6 +214,7 @@ void AiPanel::updateTabButtonStyle()
 
     m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? activeStyle : inactiveStyle);
     m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? activeStyle : inactiveStyle);
+    m_historyTabBtn->setStyleSheet(m_currentTab == HistoryTab ? activeStyle : inactiveStyle);
 }
 
 void AiPanel::refreshStyle()

@@ -28,6 +28,7 @@ public:
     QList<AiConversation> conversationsByFile(const QString &filePath) const;
     AiConversation conversationById(const QString &id) const;
     QString currentConversationId() const { return m_currentConvId; }
+    void setCurrentConversation(const QString &id) { m_currentConvId = id; }
 
     // Export
     QString exportToMarkdown(const QString &convId) const;
