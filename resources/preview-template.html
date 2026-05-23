@@ -15,6 +15,26 @@
     --blockquote: {{PREVIEW_BLOCKQUOTE}};
     --th-bg: {{PREVIEW_TH_BG}};
     --hr: {{PREVIEW_HR}};
+    --scrollbar-bg: rgba(136, 136, 136, 0.4);
+    --scrollbar-hover-bg: rgba(136, 136, 136, 0.55);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 5px;
+    min-height: 30px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-hover-bg);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
   body {
     background-color: var(--bg);
@@ -354,6 +374,29 @@
         el.removeAttribute('title');
       });
   };
+
+  // --- Scrollbar auto-hide (show only on hover, 150ms delay) ---
+  var hideTimer = null;
+  var SCROLLBAR_STYLE_ID = '__scrollbar_show';
+  var SCROLLBAR_COLOR = 'rgba(136, 136, 136, 0.4)';
+  function showScrollbar() {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    if (document.getElementById(SCROLLBAR_STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = SCROLLBAR_STYLE_ID;
+    s.textContent = '::-webkit-scrollbar-thumb { background: ' + SCROLLBAR_COLOR + '; }';
+    document.head.appendChild(s);
+  }
+  function hideScrollbarDelayed() {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(function() {
+      var el = document.getElementById(SCROLLBAR_STYLE_ID);
+      if (el) el.remove();
+      hideTimer = null;
+    }, 150);
+  }
+  document.addEventListener('mouseenter', showScrollbar);
+  document.addEventListener('mouseleave', hideScrollbarDelayed);
 
   // Initial render on page load
   window.renderMarkdown(document.getElementById('markdown-content').textContent);

@@ -15,6 +15,7 @@ public:
     explicit ScrollbarHider(QObject *parent = nullptr);
 
     void manage(QAbstractScrollArea *area);
+    void setAlwaysVisible(QAbstractScrollArea *area);
     void refreshAll();
 
 protected:
@@ -35,6 +36,7 @@ private:
     QHash<QAbstractScrollArea*, QTimer*> m_areaTimers;
 
     QSet<QAbstractScrollArea*> m_managed;
+    QSet<QAbstractScrollArea*> m_alwaysVisible;
 };
 
 #endif // SCROLLBARHIDER_H

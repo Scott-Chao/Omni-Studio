@@ -69,6 +69,7 @@ protected:
 #include "smdformat.h"
 #include "smdeditor.h"
 #include "codeeditor.h"
+#include <QPdfView>
 #include "scrollbarhider.h"
 #include <QDateTime>
 #include <QDebug>
@@ -979,16 +980,26 @@ MainWindow::MainWindow(QWidget *parent)
     auto *hider = new ScrollbarHider(this);
     {
         const auto areas = findChildren<QAbstractScrollArea*>();
-        for (auto *area : areas)
+        for (auto *area : areas) {
             hider->manage(area);
+            // PDF scrollbar always visible
+            if (qobject_cast<QPdfView*>(area)) {
+                hider->setAlwaysVisible(area);
+            }
+        }
     }
 
     // Watch for dynamically created QAbstractScrollAreas (e.g. PDF view in new tabs)
     connect(m_tabManager, &QTabWidget::currentChanged, this, [this, hider](int) {
         if (auto *editor = m_tabManager->currentEditor()) {
             const auto areas = editor->findChildren<QAbstractScrollArea*>();
-            for (auto *area : areas)
+            for (auto *area : areas) {
                 hider->manage(area);
+                // PDF scrollbar always visible
+                if (qobject_cast<QPdfView*>(area)) {
+                    hider->setAlwaysVisible(area);
+                }
+            }
         }
     });
 
@@ -2422,8 +2433,8 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("badge.foreground").name(),
           tm.color("menu.separatorColor").name()));
 
-    // Themed toolbar action icons
-    QColor titleFg = tm.color("titleBar.foreground");
+    // Themed toolbar action icons — match activity bar icons
+    QColor titleFg = tm.color("activityBar.foreground");
     m_helpAction->setIcon(coloredSvgIcon(":/icons/help", titleFg));
     toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
     m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));

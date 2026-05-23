@@ -46,14 +46,23 @@ void ScrollbarHider::manage(QAbstractScrollArea *area)
         }
     });
 
-    // Start hidden
-    setScrollbarVisible(area, false);
+    // Start hidden (unless always-visible)
+    setScrollbarVisible(area, m_alwaysVisible.contains(area));
 }
 
 void ScrollbarHider::attach(QObject *target, QAbstractScrollArea *area)
 {
     target->installEventFilter(this);
     m_watched[target] = area;
+}
+
+void ScrollbarHider::setAlwaysVisible(QAbstractScrollArea *area)
+{
+    if (!area)
+        return;
+    m_alwaysVisible.insert(area);
+    // Show scrollbars immediately with transparent track
+    setScrollbarVisible(area, true);
 }
 
 bool ScrollbarHider::eventFilter(QObject *obj, QEvent *event)
@@ -64,6 +73,10 @@ bool ScrollbarHider::eventFilter(QObject *obj, QEvent *event)
 
     QAbstractScrollArea *area = it.value();
     if (!area)
+        return QObject::eventFilter(obj, event);
+
+    // Always-visible areas are not affected by auto-hide
+    if (m_alwaysVisible.contains(area))
         return QObject::eventFilter(obj, event);
 
     if (event->type() == QEvent::Enter) {
@@ -113,24 +126,23 @@ void ScrollbarHider::refreshAll()
 {
     for (QAbstractScrollArea *area : std::as_const(m_managed)) {
         if (area)
-            setScrollbarVisible(area, false);
+            setScrollbarVisible(area, m_alwaysVisible.contains(area));
     }
 }
 
 QString ScrollbarHider::makeScrollbarQss(bool visible) const
 {
     auto &tm = ThemeManager::instance();
-    QString track = visible ? tm.color("workbench.background").name() : QStringLiteral("transparent");
     QString handle = visible ? tm.color("scrollbarSlider.hoverBackground").name() : QStringLiteral("transparent");
 
     return QStringLiteral(
         "QScrollBar:vertical {"
-        "  background-color: %1;"
+        "  background: transparent;"
         "  width: 10px;"
         "  margin: 0;"
         "}"
         "QScrollBar::handle:vertical {"
-        "  background-color: %2;"
+        "  background-color: %1;"
         "  min-height: 30px;"
         "  border-radius: 5px;"
         "}"
@@ -141,12 +153,12 @@ QString ScrollbarHider::makeScrollbarQss(bool visible) const
         "  background: none;"
         "}"
         "QScrollBar:horizontal {"
-        "  background-color: %1;"
+        "  background: transparent;"
         "  height: 10px;"
         "  margin: 0;"
         "}"
         "QScrollBar::handle:horizontal {"
-        "  background-color: %2;"
+        "  background-color: %1;"
         "  min-width: 30px;"
         "  border-radius: 5px;"
         "}"
@@ -156,5 +168,5 @@ QString ScrollbarHider::makeScrollbarQss(bool visible) const
         "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
         "  background: none;"
         "}"
-    ).arg(track, handle);
+    ).arg(handle);
 }

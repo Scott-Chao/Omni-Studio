@@ -44,8 +44,8 @@ void TitleBarButton::paintEvent(QPaintEvent *)
         p.fillRect(rect(), hoverBgColor());
     }
 
-    // Icon color
-    QColor fg = ThemeManager::instance().color(QStringLiteral("titleBar.foreground"));
+    // Icon color — match activity bar icons
+    QColor fg = ThemeManager::instance().color(QStringLiteral("activityBar.foreground"));
     if (!fg.isValid())
         fg = QColor(QStringLiteral("#CCCCCC"));
 

@@ -212,6 +212,36 @@ void ThemeManager::applyPalette()
     // Placeholder text
     pal.setColor(QPalette::PlaceholderText, color(QStringLiteral("editorLineNumber.foreground")));
 
+    // ---- Fusion 3D border / shading roles (derive from workbench background) ----
+    {
+        QColor bg = color(QStringLiteral("workbench.background"));
+        if (currentThemeType() == Dark) {
+            pal.setColor(QPalette::Light,       bg.lighter(130));
+            pal.setColor(QPalette::Midlight,    bg.lighter(115));
+            pal.setColor(QPalette::Mid,         bg.lighter(105));
+            pal.setColor(QPalette::Dark,        bg.darker(105));
+            pal.setColor(QPalette::Shadow,      bg.darker(110));
+        } else {
+            pal.setColor(QPalette::Light,       bg.lighter(101));
+            pal.setColor(QPalette::Midlight,    bg);
+            pal.setColor(QPalette::Mid,         bg);
+            pal.setColor(QPalette::Dark,        bg.darker(101));
+            pal.setColor(QPalette::Shadow,      bg.darker(103));
+        }
+    }
+
+    // ---- Alternating row color (subtle variation of editor background) ----
+    {
+        QColor alt = color(QStringLiteral("editor.background"));
+        if (currentThemeType() == Dark)
+            pal.setColor(QPalette::AlternateBase, alt.lighter(108));
+        else
+            pal.setColor(QPalette::AlternateBase, alt.darker(103));
+    }
+
+    // ---- Bright text (error/emphasis) ----
+    pal.setColor(QPalette::BrightText, color(QStringLiteral("diagnostics.error")));
+
     // Disabled state
     QColor dimmed = color(QStringLiteral("tab.inactiveForeground"));
     pal.setColor(QPalette::Disabled, QPalette::WindowText, dimmed);
