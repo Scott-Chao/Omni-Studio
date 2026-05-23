@@ -12,6 +12,7 @@
 #include <QTextStream>
 #include <QListWidgetItem>
 #include <QLabel>
+#include <QThread>
 
 SearchPanel::SearchPanel(QWidget *parent)
     : QWidget(parent)
@@ -48,6 +49,12 @@ SearchPanel::SearchPanel(QWidget *parent)
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             this, &SearchPanel::refreshStyle);
     refreshStyle();
+}
+
+SearchPanel::~SearchPanel()
+{
+    if (m_searchCancelled)
+        m_searchCancelled->store(true);
 }
 
 void SearchPanel::refreshStyle()
@@ -132,50 +139,88 @@ void SearchPanel::performSearch()
         return;
     }
 
+    // Cancel any in-flight search
+    if (m_searchCancelled)
+        m_searchCancelled->store(true);
+
+    m_searchCancelled = std::make_shared<std::atomic<bool>>(false);
+    uint64_t searchId = ++m_searchId;
+
     m_statusLabel->setText(tr("搜索中..."));
 
-    QStringList files;
-    collectTextFiles(m_rootPath, files);
+    // Capture all needed data by value for the worker thread
+    QString searchText = m_searchText;
+    QString rootPath = m_rootPath;
+    auto &sm = SettingsManager::instance();
+    const auto &cfg = ConfigManager::instance();
+    int maxPerFile = sm.value("search_panel.max_per_file", cfg.searchMaxPerFile()).toInt();
+    int maxTotalResults = sm.value("search_panel.max_total_results", cfg.searchMaxTotalResults()).toInt();
+    int snippetMaxLen = sm.value("search_panel.snippet_max_length", cfg.searchSnippetMaxLength()).toInt();
+    auto cancelled = m_searchCancelled;
 
-    int totalResults = 0;
+    QThread::create([this, cancelled, searchId, searchText, rootPath,
+                     maxPerFile, maxTotalResults, snippetMaxLen]() {
+        QStringList files;
+        collectTextFiles(rootPath, files);
 
-    for (const QString &filePath : files) {
-        QFile file(filePath);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            continue;
+        if (cancelled->load()) return;
 
-        QTextStream in(&file);
-        int lineNum = 0;
-        int fileMatches = 0;
+        QVector<SearchResult> batch;
+        int totalResults = 0;
 
-        auto &sm = SettingsManager::instance();
-        const auto &cfg = ConfigManager::instance();
-        int maxPerFile = sm.value("search_panel.max_per_file", cfg.searchMaxPerFile()).toInt();
-        int maxTotalResults = sm.value("search_panel.max_total_results", cfg.searchMaxTotalResults()).toInt();
-        while (!in.atEnd() && fileMatches < maxPerFile
-               && totalResults < maxTotalResults) {
-            QString line = in.readLine();
-            ++lineNum;
+        for (const QString &filePath : files) {
+            if (cancelled->load()) return;
 
-            if (line.toLower().contains(m_searchText)) {
-                SearchResult result;
-                result.filePath = filePath;
-                result.lineNumber = lineNum;
-                result.snippet = extractSnippet(line);
+            QFile file(filePath);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
 
-                m_results.append(result);
-                addResultItem(result);
-                ++fileMatches;
-                ++totalResults;
+            QTextStream in(&file);
+            int lineNum = 0;
+            int fileMatches = 0;
+
+            while (!in.atEnd() && fileMatches < maxPerFile
+                   && totalResults < maxTotalResults) {
+                if (cancelled->load()) {
+                    file.close();
+                    return;
+                }
+
+                QString line = in.readLine();
+                ++lineNum;
+
+                if (line.toLower().contains(searchText)) {
+                    SearchResult result;
+                    result.filePath = filePath;
+                    result.lineNumber = lineNum;
+                    result.snippet = extractSnippet(line, searchText,
+                                                    snippetMaxLen);
+
+                    batch.append(result);
+                    ++fileMatches;
+                    ++totalResults;
+                }
             }
+            file.close();
+
+            if (totalResults >= maxTotalResults)
+                break;
         }
-        file.close();
 
-        if (totalResults >= maxTotalResults)
-            break;
-    }
+        if (cancelled->load()) return;
 
-    updateStatusLabel();
+        // Deliver results to main thread
+        QMetaObject::invokeMethod(this, [this, searchId,
+                                         batch = std::move(batch)]() mutable {
+            if (searchId != m_searchId.load()) return;
+
+            for (const auto &r : batch) {
+                m_results.append(r);
+                addResultItem(r);
+            }
+            updateStatusLabel();
+        }, Qt::QueuedConnection);
+    })->start();
 }
 
 void SearchPanel::collectTextFiles(const QString &rootPath,
@@ -188,18 +233,18 @@ void SearchPanel::collectTextFiles(const QString &rootPath,
     }
 }
 
-QString SearchPanel::extractSnippet(const QString &line) const
+QString SearchPanel::extractSnippet(const QString &line,
+                                         const QString &searchText,
+                                         int maxLen)
 {
     QString trimmed = line.trimmed();
-    int maxLen = SettingsManager::instance().value("search_panel.snippet_max_length",
-                   ConfigManager::instance().searchSnippetMaxLength()).toInt();
     if (trimmed.length() > maxLen) {
-        int matchIdx = trimmed.toLower().indexOf(m_searchText);
-        int contextLen = (maxLen - m_searchText.length()) / 2;
+        int matchIdx = trimmed.toLower().indexOf(searchText);
+        int contextLen = (maxLen - searchText.length()) / 2;
         if (matchIdx >= 0) {
             int start = qMax(0, matchIdx - contextLen);
             int end = qMin(trimmed.length(),
-                           matchIdx + m_searchText.length() + contextLen);
+                           matchIdx + searchText.length() + contextLen);
             QString snippet = trimmed.mid(start, end - start);
             if (start > 0) snippet.prepend("...");
             if (end < trimmed.length()) snippet.append("...");
@@ -208,6 +253,13 @@ QString SearchPanel::extractSnippet(const QString &line) const
         return trimmed.left(maxLen) + "...";
     }
     return trimmed;
+}
+
+QString SearchPanel::extractSnippet(const QString &line) const
+{
+    int maxLen = SettingsManager::instance().value("search_panel.snippet_max_length",
+                   ConfigManager::instance().searchSnippetMaxLength()).toInt();
+    return extractSnippet(line, m_searchText, maxLen);
 }
 
 void SearchPanel::addResultItem(const SearchResult &result)

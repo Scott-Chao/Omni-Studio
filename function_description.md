@@ -59,6 +59,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
+### 修复
+- 异步后台搜索：搜索管道（目录遍历 + 文件读取 + 行匹配）通过 `QThread::create()` 在后台线程执行，不阻塞 UI。
+
 ### 1. `MainWindow` - 主窗口控制器
 
 **文件**：`mainwindow.h` / `mainwindow.cpp`
@@ -515,6 +518,9 @@
 **职责**：
 - 提供全文搜索功能，在当前根目录下的所有文本文件中检索关键词。
 - 搜索输入支持 300ms 防抖，避免每次按键都触发磁盘扫描。
+- **异步后台搜索**：搜索管道（目录遍历 + 文件读取 + 行匹配）通过 `QThread::create()` 在后台线程执行，不阻塞 UI。
+- 使用 `std::shared_ptr<std::atomic<bool>>` 取消令牌 + `std::atomic<uint64_t>` 代数计数器管理并发搜索：新搜索启动时取消旧搜索，结果回调时检查代数以丢弃过期结果。
+- 后台线程收集全部 `SearchResult` 后，通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 一次性将结果传回主线程更新 UI。
 - 使用 `QDirIterator` + `TextFileUtils::scanNameFilters()` 递归收集文本文件列表。
 - 使用 `QTextStream::readLine()` 逐行流式读取文件内容，`QString::toLower().contains()` 进行大小写不敏感匹配。
 - 结果上限：每文件匹配数和总结果数从 `SettingsManager` 覆盖值读取（默认每文件 20、总计 500），片段最大长度同样可配置（默认 120）。设置面板中的修改实时生效。
