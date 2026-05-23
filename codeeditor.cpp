@@ -189,6 +189,25 @@ void CodeEditor::reloadColors()
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
 
+    // Rebuild search highlights with new theme colors
+    if (!m_searchHighlightText.isEmpty()) {
+        m_searchHighlights.clear();
+        QTextDocument *doc = document();
+        QTextCursor searchCursor(doc);
+        while (true) {
+            QTextCursor found = doc->find(m_searchHighlightText, searchCursor);
+            if (found.isNull())
+                break;
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(tm.color("search.highlightBackground"));
+            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.cursor = found;
+            m_searchHighlights.append(sel);
+            searchCursor = found;
+            searchCursor.movePosition(QTextCursor::EndOfWord);
+        }
+    }
+
     highlightCurrentLine();
     m_lineNumberArea->update();
 }
@@ -1233,23 +1252,26 @@ bool CodeEditor::isCursorInStringOrComment() const
 
 void CodeEditor::setSearchHighlights(const QString &searchText)
 {
+    m_searchHighlightText = searchText;
     m_searchHighlights.clear();
-    QTextDocument *doc = document();
 
-    QTextCursor searchCursor(doc);
-    while (true) {
-        QTextCursor found = doc->find(searchText, searchCursor);
-        if (found.isNull())
-            break;
+    if (!searchText.isEmpty()) {
+        QTextDocument *doc = document();
+        QTextCursor searchCursor(doc);
+        while (true) {
+            QTextCursor found = doc->find(searchText, searchCursor);
+            if (found.isNull())
+                break;
 
-        QTextEdit::ExtraSelection sel;
-        sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
-        sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
-        sel.cursor = found;
-        m_searchHighlights.append(sel);
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
+            sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
+            sel.cursor = found;
+            m_searchHighlights.append(sel);
 
-        searchCursor = found;
-        searchCursor.movePosition(QTextCursor::EndOfWord);
+            searchCursor = found;
+            searchCursor.movePosition(QTextCursor::EndOfWord);
+        }
     }
 
     // Merge with current line highlight
@@ -1259,6 +1281,7 @@ void CodeEditor::setSearchHighlights(const QString &searchText)
 void CodeEditor::clearSearchHighlights()
 {
     m_searchHighlights.clear();
+    m_searchHighlightText.clear();
     highlightCurrentLine();
 }
 

@@ -142,6 +142,7 @@ private:
     QWidget *m_previewContainer; // 暗色容器，遮挡 WebEngine 白底
     CodeEditor *m_codeEditor; // 代码编辑
     QString m_filePath;
+    QString m_lastSearchHighlightText;
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板
 

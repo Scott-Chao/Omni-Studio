@@ -89,6 +89,7 @@ private:
     QColor m_cachedLnFg;
     QColor m_cachedCurrentLine;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
+    QString m_searchHighlightText;
     QList<SmdDiagnostic> m_diagnostics;
 
     // Configurable shortcuts

@@ -1445,6 +1445,26 @@ void EditorWidget::reloadEditorColors()
           tm.color("editor.foreground").name(),
           tm.color("editor.selectionBackground").name()));
 
+    // Re-apply search highlights with new theme colors
+    if (!m_lastSearchHighlightText.isEmpty() && m_editorMode != CodeEdit) {
+        QList<QTextEdit::ExtraSelection> selections;
+        QTextCursor searchCursor(m_textEdit->document());
+        while (true) {
+            QTextCursor found = m_textEdit->document()->find(
+                m_lastSearchHighlightText, searchCursor);
+            if (found.isNull())
+                break;
+            QTextEdit::ExtraSelection sel;
+            sel.format.setBackground(tm.color("search.highlightBackground"));
+            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.cursor = found;
+            selections.append(sel);
+            searchCursor = found;
+            searchCursor.movePosition(QTextCursor::EndOfWord);
+        }
+        m_textEdit->setExtraSelections(selections);
+    }
+
     // Update preview container background
     m_previewContainer->setStyleSheet(
         QString("background-color: %1;")
@@ -1736,6 +1756,8 @@ void EditorWidget::scrollToLine(int lineNumber, const QString &highlightText)
     m_textEdit->setTextCursor(cursor);
     m_textEdit->ensureCursorVisible();
 
+    m_lastSearchHighlightText = highlightText;
+
     if (!highlightText.isEmpty()) {
         QList<QTextEdit::ExtraSelection> selections;
         QTextCursor searchCursor(m_textEdit->document());
@@ -1836,6 +1858,7 @@ void EditorWidget::clearExtraSelections()
 {
     if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
+    m_lastSearchHighlightText.clear();
     if (m_editorMode == CodeEdit)
         m_codeEditor->clearSearchHighlights();
     else

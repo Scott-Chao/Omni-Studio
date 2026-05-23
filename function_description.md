@@ -60,7 +60,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 异步后台搜索：搜索管道（目录遍历 + 文件读取 + 行匹配）通过 `QThread::create()` 在后台线程执行，不阻塞 UI。
+- 搜索结果高亮随主题更新
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -241,8 +241,8 @@
 - `bool isCodeEdit() const` / `bool isPdfView() const` / `bool isSmdEdit() const`：查询当前编辑模式。
 - `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
 - `void setTagNames(const QStringList &names)`：设置 #tag 自动补全的标签列表。
-- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
-- `void clearExtraSelections()`：清除搜索高亮。
+- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。存储高亮文本至 `m_lastSearchHighlightText`，供主题切换时重建高亮。
+- `void clearExtraSelections()`：清除搜索高亮，同时清空存储的高亮文本。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
 - `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM。设置面板关闭时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
 - `void updatePreviewContent(std::function<void()> onFinished)`：调用 `preparePreviewContent()` 获取预处理内容 → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
@@ -591,7 +591,7 @@
 - Tab 缩进（`handleTabKey`）：插入 4 空格缩进；有选区时批量缩进选中行。
 - 缩进调整（`handleIndentLeft` / `handleIndentRight` / `Ctrl+[` 向左缩进 / `Ctrl+]` 向右缩进）。无选区时调整当前行缩进；有选区时调整所有选中行的缩进，自动跳过空行。
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
-- 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索结果高亮列表（金色 `#FFD700`），与当前行高亮合并后通过 `setExtraSelections` 统一应用。
+- 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
