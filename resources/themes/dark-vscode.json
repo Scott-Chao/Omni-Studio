@@ -88,7 +88,7 @@
     "aiAssistant.codeForeground": "#a5d6ff",
     "aiAssistant.roleUser": "#48A0C7",
     "aiAssistant.roleAssistant": "#8C8C8C",
-    "aiAssistant.bubbleUser": "#ffffff13",
+    "aiAssistant.bubbleUser": "#2b2d30",
     "aiAssistant.bubbleAssistant": "#202122",
     "aiAssistant.linkColor": "#48A0C7",
     "aiAssistant.selectionBackground": "#276782dd",
@@ -114,6 +114,7 @@
     "gitDecoration.modifiedResourceForeground": "#e5ba7d",
     "gitDecoration.deletedResourceForeground": "#f48771",
     "foreground": "#bfbfbf",
-    "background": "#121314"
+    "background": "#121314",
+    "debugIcon.startForeground": "#73c991"
   }
 }

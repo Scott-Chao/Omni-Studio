@@ -114,6 +114,7 @@
     "gitDecoration.modifiedResourceForeground": "#667309",
     "gitDecoration.deletedResourceForeground": "#ad0707",
     "foreground": "#202020",
-    "background": "#FFFFFF"
+    "background": "#FFFFFF",
+    "debugIcon.startForeground": "#587c0c"
   }
 }

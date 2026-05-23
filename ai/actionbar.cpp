@@ -47,6 +47,9 @@ void ActionBar::refreshStyle()
     m_separator->setStyleSheet(QStringLiteral(
         "QFrame { color: %1; margin: 4px 0 0 0; }"
     ).arg(tm.color("panel.border").name()));
+
+    // Rebuild buttons with new theme colors
+    rebuildButtons();
 }
 
 void ActionBar::setActions(const QVector<AiAction> &actions)
@@ -101,12 +104,23 @@ void ActionBar::rebuildButtons()
             "  background-color: %5;"
             "  color: %6;"
             "}"
+            "QToolTip {"
+            "  background-color: %7;"
+            "  color: %8;"
+            "  border: 1px solid %9;"
+            "  border-radius: 0px;"
+            "  padding: 0px 4px;"
+            "  font-size: 12px;"
+            "}"
         ).arg(tm.color("aiAssistant.actionButtonBackground").name(),
               tm.color("workbench.foreground").name(),
               tm.color("input.border").name(),
               tm.color("aiAssistant.actionButtonHoverBackground").name(),
               tm.color("activityBar.activeBorder").name(),
-              tm.color("button.foreground").name()));
+              tm.color("button.foreground").name(),
+              tm.color("menu.background").name(),
+              tm.color("menu.foreground").name(),
+              tm.color("menu.separatorColor").name()));
 
         connect(btn, &QPushButton::clicked, this, [this, action]() {
             emit actionTriggered(action);

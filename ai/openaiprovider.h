@@ -38,6 +38,7 @@ private:
     QString m_systemPrompt;
     QString m_endpoint;
     int m_maxTokens = 4096;
+    bool m_finished = false;
 };
 
 #endif // OPENAIProvider_H

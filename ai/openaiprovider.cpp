@@ -50,6 +50,7 @@ void OpenAiProvider::chatStream(const QList<Message> &messages)
     }
 
     m_buffer.clear();
+    m_finished = false;
 
     QString url = m_endpoint;
     if (!url.endsWith(QLatin1Char('/')))
@@ -177,7 +178,10 @@ void OpenAiProvider::parseSseBuffer()
 
         // OpenAI end-of-stream marker
         if (dataStr == QStringLiteral("[DONE]")) {
-            emit finished();
+            if (!m_finished) {
+                m_finished = true;
+                emit finished();
+            }
             return;
         }
 
@@ -215,7 +219,10 @@ void OpenAiProvider::parseSseBuffer()
         // Check for finish reason
         QString finishReason = choice.value("finish_reason").toString();
         if (!finishReason.isEmpty() && finishReason != "null") {
-            emit finished();
+            if (!m_finished) {
+                m_finished = true;
+                emit finished();
+            }
             return;
         }
     }

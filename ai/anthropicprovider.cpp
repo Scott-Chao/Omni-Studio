@@ -50,6 +50,7 @@ void AnthropicProvider::chatStream(const QList<Message> &messages)
     }
 
     m_buffer.clear();
+    m_finished = false;
 
     QString url = m_endpoint;
     if (!url.endsWith(QLatin1Char('/')))
@@ -200,7 +201,10 @@ void AnthropicProvider::parseSseFrame(const QString &frame)
         if (!text.isEmpty())
             emit partialResponse(text);
     } else if (eventType == QStringLiteral("message_stop")) {
-        emit finished();
+        if (!m_finished) {
+            m_finished = true;
+            emit finished();
+        }
     } else if (eventType == QStringLiteral("error")) {
         QJsonObject errorObj = obj.value("error").toObject();
         QString errorMsg = errorObj.value("message").toString();

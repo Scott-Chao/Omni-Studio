@@ -132,18 +132,20 @@ void AiHistoryListWidget::refreshStyle()
         "  font-size: 12px;"
         "}"
         "QListWidget::item {"
-        "  padding: 8px 10px;"
         "  border-bottom: 1px solid %3;"
         "}"
         "QListWidget::item:hover {"
         "  background-color: %4;"
+        "}"
+        "QListWidget::item:pressed {"
+        "  background-color: %5;"
         "}"
         "QListWidget::item:selected {"
         "  background-color: %5;"
         "}"
     ).arg(bg, fg, border,
           tm.color("list.hoverBackground").name(),
-          tm.color("list.activeSelectionBackground").name()));
+          tm.color("list.activeBackground").name()));
 }
 
 // ── Internal ─────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ void AiHistoryListWidget::rebuildList()
         // Create item widget with green dot, title, subtitle
         auto *itemWidget = new QWidget;
         auto *hLayout = new QHBoxLayout(itemWidget);
-        hLayout->setContentsMargins(4, 4, 4, 4);
+        hLayout->setContentsMargins(4, 10, 4, 10);
         hLayout->setSpacing(8);
 
         // Green dot for active conversation
@@ -206,11 +208,11 @@ void AiHistoryListWidget::rebuildList()
 
         // Text layout
         auto *vLayout = new QVBoxLayout;
-        vLayout->setSpacing(2);
+        vLayout->setSpacing(6);
 
         auto *titleLabel = new QLabel(conv.title);
         QFont titleFont = titleLabel->font();
-        titleFont.setPointSize(11);
+        titleFont.setPointSize(10);
         titleFont.setBold(true);
         titleLabel->setFont(titleFont);
         titleLabel->setStyleSheet(QStringLiteral(
