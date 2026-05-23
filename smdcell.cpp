@@ -1084,7 +1084,7 @@ void SmdCell::updateTypeLabel()
     m_typeLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 10px; padding: 1px 6px; "
         "border-radius: 3px; background: %2; }"
-    ).arg(tm.color("cell.foreground").name(),
+    ).arg(tm.color("cell.badge.foreground").name(),
           tm.color(badgeToken).name()));
 }
 

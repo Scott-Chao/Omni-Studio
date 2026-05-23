@@ -60,13 +60,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-异步 Python 进程生命周期管理
-- 进程启动 — 移除 waitForStarted(5000)，改用 started 信号 →onPyExecStarted()
-- 双路径执行 — 快速路径（直接写入）/ 慢速路径（入队等待）
-- 代码队列 — PyExecQueueItem、m_pyExecQueue、processPyExecQueue() FIFO 串行
-- 进程停止 — 移除 waitForBytesWritten/waitForFinished，disconnect()+kill()+deleteLater()
-- 进程终止 — handleProcessStop() 移除 waitForFinished(200)
-- 退出/错误处理—始终清理m_pyExecProcess（附带修复野指针bug）、排空队列
+- SMD 单元格块标题文字颜色调整，提高对比度
 
 ### 1. `MainWindow` - 主窗口控制器
 
