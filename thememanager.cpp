@@ -210,9 +210,10 @@ void ThemeManager::applyPalette()
     pal.setColor(QPalette::Button, color(QStringLiteral("button.background")));
     pal.setColor(QPalette::ButtonText, color(QStringLiteral("button.foreground")));
 
-    // Selection colors
-    pal.setColor(QPalette::Highlight, color(QStringLiteral("list.activeBackground")));
-    pal.setColor(QPalette::HighlightedText, color(QStringLiteral("badge.foreground")));
+    // Selection colors — use editor.selectionBackground for text selection
+    // (list.activeBackground is for tree/list item backgrounds, too low-alpha for text)
+    pal.setColor(QPalette::Highlight, color(QStringLiteral("editor.selectionBackground")));
+    pal.setColor(QPalette::HighlightedText, color(QStringLiteral("editor.foreground")));
 
     // Tooltip colors (fallback to menu if tooltip tokens absent)
     pal.setColor(QPalette::ToolTipBase, color(QStringLiteral("menu.background")));
