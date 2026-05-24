@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.7）
+## 功能说明文档（v0.12.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -32,7 +32,7 @@
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
-- 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（CaptionBtn 自绘悬停背景）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
+- 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
 - ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI 助手/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索与 AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
 - 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。
@@ -59,15 +59,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增/修复 v0.12.7
+### 新增/修复 v0.12.8
 
-#### 主线程阻塞修复（全面审查与异步化）
-- **搜索面板后台搜索线程**：`performSearch()` 将目录遍历 + 文件读取 + 行匹配全部移入 `QThread::create()` 工作线程，通过 `std::shared_ptr<std::atomic<bool>>` 取消令牌支持快速连续搜索，结果通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 分批传回主线程更新 UI。
-- **Python 执行进程异步生命周期管理**：`startPythonExecProcess()` 移除 `waitForStarted(5000)` 阻塞等待（最多 5 秒 UI 冻结），改为连接 `QProcess::started` 信号表示就绪，通过 FIFO 队列机制在进程就绪后出队发送待执行代码；`stopPythonExecProcess()` 移除 `waitForBytesWritten` 和 `waitForFinished`，异步处理进程退出。
-- **文件索引异步化**：`buildFileIndex()` 重构为 `buildFileIndexAsync()`，将 `QDirIterator` 遍历移入 `QThread::create()` 后台线程，通过独立的取消令牌 `m_fileIdxCancelled` 和代际计数器 `m_fileIdxScanId` 拒绝过期结果。增量更新（重命名/删除/另存为）与全量扫描使用独立的取消机制，互不干扰。
-- **ProcessRunner::stop() 去同步等待**：移除 `waitForFinished()` 对主线程的阻塞，改为 `kill()` + `cleanupProcess()` 即时返回，仅在析构函数中保留短超时 `waitForFinished(200)` 确保子进程清理。
-- **WikiLink 重命名异步化**：`updateWikiLinksAfterRename()` 将批量文件读取 → 正则替换 → 文件写入的循环移入 `QThread::create()` 工作线程，通过 `m_wikiLinkUpdateId` generation counter 拒绝过期请求，完成后通过 QueuedConnection 回主线程重新加载编辑器并重建索引。
-- **SMD Cell grab() 视觉反馈优化**：`performGrab()` 在同步 `QWebEngineView::grab()` 前后添加 `QApplication::setOverrideCursor(Qt::WaitCursor)` / `restoreOverrideCursor()`，为用户提供"正在处理"的视觉反馈。
+#### 标题栏按钮改为 Windows 11 原生图标
+- `TitleBarButton` 重构：改用 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生标题栏图标（`SP_TitleBarMinButton` / `SP_TitleBarMaxButton` / `SP_TitleBarNormalButton` / `SP_TitleBarCloseButton`），替代原有的 QPainter 手动绘制方式。由于应用全局使用 Fusion 样式（`main.cpp` 中 `a.setStyle(new CompactTooltipStyle(QStyleFactory::create("Fusion")))`），Fusion 的标准图标为通用跨平台样式而非 Windows 11 原生样式，故通过独立的原生 `windowsvista` style 实例获取图标。
+- `paintEvent` 重构：hover 背景自绘后直接通过 `QIcon::paint()` 居中绘制图标，不再调用 `QPushButton::paintEvent()`，避免 Fusion 样式在按钮周围绘制边框/聚焦框。
+- 按钮尺寸：从 42×28 调整为 46×32，与 Windows 11 原生标题栏按钮尺寸一致。图标尺寸：最小化 28×28（横线图标视觉偏小单独放大），最大化/还原/关闭 16×16。
+- 添加 `setFocusPolicy(Qt::NoFocus)`，防止按钮获取焦点时出现聚焦框。
 
 #### 主题修复
 - 文件树内联重命名编辑器现在正确跟随 VS Code 2026 Dark/Light 主题，高亮不透明度调整
@@ -90,7 +88,7 @@
 - 协调文件树与标签管理器的双向联动：用户**单击**文件树中的文件时，以预览模式（临时标签页）打开，多次单击复用同一标签页；**双击**文件时永久打开（或提升已有预览标签页）；编辑预览标签页内容后自动提升为永久。切换标签页时文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
-- 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`CaptionBtn` 类，使用系统原生图标并通过 `QPainter::fillRect` 自绘 hover 背景确保即时响应）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。构造函数中通过 `DwmSetWindowAttribute`（`DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`）向 DWM 请求系统级圆角，确保在 Fusion 样式下 Windows 11 窗口圆角依然生效（最大化时自动关闭）。
+- 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式边框干扰，hover 背景自绘 `QPainter::fillRect`）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。构造函数中通过 `DwmSetWindowAttribute`（`DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`）向 DWM 请求系统级圆角，确保在 Fusion 样式下 Windows 11 窗口圆角依然生效（最大化时自动关闭）。
 - 管理工具栏，包括文件操作（新建、保存、另存为、导出PDF）、帮助按钮（F1，位于 spacer 与面板按钮之间）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。导出PDF按钮仅 `.md` 文件可见。
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+D` 切换底部诊断面板（仅代码文件）、`Ctrl+T` .md ↔ .smd 转换（仅 `.md` / `.smd` 文件）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
