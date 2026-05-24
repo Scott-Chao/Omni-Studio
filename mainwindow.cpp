@@ -1095,14 +1095,16 @@ void MainWindow::onSaveFileAs()
         if (!newDir.isEmpty()) {
             m_settings->setLastSaveAsFolderPath(newDir);
         }
-        buildFileIndex();
-        m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
-        m_tagIndex->rebuildFile(newFilePath);
+        // 异步重建文件索引，完成后更新 backlink/tag
+        buildFileIndexAsync([this, newFilePath]() {
+            m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
+            m_tagIndex->rebuildFile(newFilePath);
+            refreshBacklinks();
+            refreshTags();
+        });
         updatePreviewActionState();
         updateSplitPreviewActionState();
         addToRecentFiles(newFilePath);
-        refreshBacklinks();
-        refreshTags();
     }
 }
 
@@ -2212,23 +2214,6 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
     }
 }
 
-void MainWindow::buildFileIndex()
-{
-    m_fileIndex.clear();
-    QString root = m_explorer->rootPath();
-    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath())
-        return;
-
-    QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        QString fullPath = it.next();
-        QFileInfo info(fullPath);
-        QString baseName = info.completeBaseName();
-        m_fileIndex[baseName].append(fullPath);
-    }
-    updateCurrentEditorCompletions();
-}
-
 void MainWindow::startAsyncIndexBuild()
 {
     // Cancel any in-flight scan
@@ -2284,6 +2269,51 @@ void MainWindow::startAsyncIndexBuild()
     })->start();
 }
 
+void MainWindow::buildFileIndexAsync(std::function<void()> onComplete)
+{
+    // Cancel any in-flight scan
+    if (m_scanCancelled)
+        m_scanCancelled->store(true);
+    m_scanCancelled = std::make_shared<std::atomic<bool>>(false);
+    uint64_t scanId = ++m_scanId;
+
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath()) {
+        m_fileIndex.clear();
+        updateCurrentEditorCompletions();
+        if (onComplete)
+            onComplete();
+        return;
+    }
+
+    auto cancelled = m_scanCancelled;
+    QThread::create([this, cancelled, scanId, root,
+                     onComplete = std::move(onComplete)]() {
+        // Build file index on background thread
+        QMap<QString, QStringList> fileIndex;
+        QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            if (cancelled->load()) return;
+            QString fullPath = it.next();
+            QFileInfo info(fullPath);
+            fileIndex[info.completeBaseName()].append(fullPath);
+        }
+        if (cancelled->load()) return;
+
+        // Deliver result to main thread
+        QMetaObject::invokeMethod(this, [this, scanId,
+                                         fileIndex = std::move(fileIndex),
+                                         onComplete = std::move(onComplete)]() mutable {
+            if (scanId != m_scanId.load()) return; // Stale
+            m_fileIndex = std::move(fileIndex);
+            updateCurrentEditorCompletions();
+            if (onComplete)
+                onComplete();
+        }, Qt::QueuedConnection);
+    })->start();
+}
+
 void MainWindow::updateCurrentEditorCompletions()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
@@ -2306,19 +2336,21 @@ void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &new
         affectedSources = m_backlinkIndex->backlinksFor(oldPath);
     }
 
-    buildFileIndex();
+    // 这些不依赖 m_fileIndex，立即执行
     m_backlinkIndex->onFileRenamed(oldPath, newPath);
     m_tagIndex->onFileRenamed(oldPath, newPath);
 
-    // 更新所有引用文件中的 [[旧文件名]] 为 [[新文件名]]
-    updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
-
-    refreshBacklinks();
+    // 异步重建文件索引，完成后更新 wiki 链接文本
+    buildFileIndexAsync([this, affectedSources = std::move(affectedSources),
+                         oldBaseName, newBaseName]() {
+        updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
+        refreshBacklinks();
+    });
 }
 
 void MainWindow::onFileDeletedInIndex(const QString &path)
 {
-    buildFileIndex();
+    buildFileIndexAsync(); // 异步重建，后续操作不依赖 m_fileIndex
     m_backlinkIndex->onFileDeleted(path);
     m_tagIndex->onFileDeleted(path);
     m_rightPanel->historyPanel()->removeFile(path);

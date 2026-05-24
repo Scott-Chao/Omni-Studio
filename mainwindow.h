@@ -15,6 +15,7 @@
 #include <QMap>
 #include <QPointer>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class ActivityBar;
@@ -86,8 +87,8 @@ private slots:
                                const QString &searchText); // 打开搜索结果
     void onSearchTextChangedByUser(); // 搜索文本变化时清除编辑器高亮
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
-    void buildFileIndex(); // 全量更新索引
     void startAsyncIndexBuild(); // 异步版本，避免大目录卡死 UI
+    void buildFileIndexAsync(std::function<void()> onComplete = nullptr); // 轻量异步，仅重建文件索引
     void onFileRenamedInIndex(const QString &oldPath, const QString &newPath); // 增量更新：重命名
     void onFileDeletedInIndex(const QString &path); // 增量更新：删除
     void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath); // 通过文件树进行文件移动
