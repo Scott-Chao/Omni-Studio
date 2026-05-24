@@ -35,21 +35,34 @@ void ThemeManager::initBuiltinThemes()
 
 bool ThemeManager::loadTheme(const QString &name)
 {
+    // Guard against re-entrant calls (e.g. triggered by a slot connected to
+    // themeChanged() that somehow calls loadTheme() again).
+    if (m_loadingTheme) {
+        qWarning() << "[ThemeManager] Re-entrant loadTheme(\"" << name
+                   << "\") blocked — already loading \"" << m_currentTheme.name << "\"";
+        return false;
+    }
+    m_loadingTheme = true;
+
     for (const auto &entry : m_builtinThemes) {
         if (entry.name == name) {
             ThemeData data;
-            if (!loadThemeFromFile(entry.filePath, data))
+            if (!loadThemeFromFile(entry.filePath, data)) {
+                m_loadingTheme = false;
                 return false;
+            }
 
             m_currentTheme = data;
             applyPalette();
             loadQss();
             emit themeChanged();
+            m_loadingTheme = false;
             return true;
         }
     }
 
     qWarning() << "[ThemeManager] Unknown theme:" << name;
+    m_loadingTheme = false;
     return false;
 }
 
@@ -197,9 +210,10 @@ void ThemeManager::applyPalette()
     pal.setColor(QPalette::Button, color(QStringLiteral("button.background")));
     pal.setColor(QPalette::ButtonText, color(QStringLiteral("button.foreground")));
 
-    // Selection colors
-    pal.setColor(QPalette::Highlight, color(QStringLiteral("list.activeBackground")));
-    pal.setColor(QPalette::HighlightedText, color(QStringLiteral("badge.foreground")));
+    // Selection colors — use editor.selectionBackground for text selection
+    // (list.activeBackground is for tree/list item backgrounds, too low-alpha for text)
+    pal.setColor(QPalette::Highlight, color(QStringLiteral("editor.selectionBackground")));
+    pal.setColor(QPalette::HighlightedText, color(QStringLiteral("editor.foreground")));
 
     // Tooltip colors (fallback to menu if tooltip tokens absent)
     pal.setColor(QPalette::ToolTipBase, color(QStringLiteral("menu.background")));

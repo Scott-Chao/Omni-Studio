@@ -8,6 +8,9 @@
 #include <QTimer>
 #include <QVector>
 
+#include <atomic>
+#include <memory>
+
 class SearchPanel : public QWidget
 {
     Q_OBJECT
@@ -20,6 +23,7 @@ public:
     };
 
     explicit SearchPanel(QWidget *parent = nullptr);
+    ~SearchPanel();
 
     void setRootPath(const QString &path);
     void clearSearch();
@@ -28,6 +32,7 @@ public:
 signals:
     void resultClicked(const QString &filePath, int lineNumber,
                        const QString &searchText);
+    void searchTextChanged();
 
 private slots:
     void onSearchTextChanged();
@@ -37,6 +42,8 @@ private slots:
 private:
     static void collectTextFiles(const QString &rootPath,
                                  QStringList &outFiles);
+    static QString extractSnippet(const QString &line,
+                                  const QString &searchText, int maxLen);
     void addResultItem(const SearchResult &result);
     void updateStatusLabel();
     QString extractSnippet(const QString &line) const;
@@ -50,6 +57,9 @@ private:
     QString m_rootPath;
     QString m_searchText;
     QVector<SearchResult> m_results;
+
+    std::shared_ptr<std::atomic<bool>> m_searchCancelled;
+    std::atomic<uint64_t> m_searchId{0};
 };
 
 #endif // SEARCHPANEL_H

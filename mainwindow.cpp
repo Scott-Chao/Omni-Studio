@@ -282,6 +282,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_searchPanel = new SearchPanel(this);
     connect(m_searchPanel, &SearchPanel::resultClicked,
             this, &MainWindow::onSearchResultClicked);
+    connect(m_searchPanel, &SearchPanel::searchTextChanged,
+            this, &MainWindow::onSearchTextChangedByUser);
 
     toggleSearchAction = new QAction(tr("显示/隐藏搜索"), this);
     toggleSearchAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_search", "Ctrl+Shift+F")));
@@ -845,12 +847,29 @@ MainWindow::MainWindow(QWidget *parent)
         updateZoomLabel();
         connectCurrentEditorZoomSignal();
         syncFileTreeSelection();
+
+        EditorWidget *editor = m_tabManager->currentEditor();
         // 连接当前编辑器的诊断面板切换信号
-        if (EditorWidget *ed = m_tabManager->currentEditor()) {
-            connect(ed, &EditorWidget::diagnosticsToggleRequested,
+        if (editor) {
+            connect(editor, &EditorWidget::diagnosticsToggleRequested,
                     this, &MainWindow::toggleDiagnosticsInCodeEditor,
                     Qt::UniqueConnection);
         }
+        // 连接 fileLoaded 信号：覆盖所有文件加载场景（含预览标签复用不触发 currentChanged 的情况）
+        disconnect(m_fileLoadedConnection);
+        if (editor) {
+            m_fileLoadedConnection = connect(editor, &EditorWidget::fileLoaded,
+                                             this, [this](const QString &) {
+                EditorWidget *current = m_tabManager->currentEditor();
+                if (current != sender()) return;
+                refreshBacklinks();
+                refreshTags();
+                refreshOutline();
+                filterAiHistoryByCurrentFile();
+                updateCurrentEditorCompletions();
+            });
+        }
+
         refreshBacklinks();
         refreshTags();
         refreshOutline();
@@ -858,7 +877,6 @@ MainWindow::MainWindow(QWidget *parent)
         updateCurrentEditorCompletions();
 
         // 更新编译运行按钮状态
-        EditorWidget *editor = m_tabManager->currentEditor();
         bool isCode = editor && editor->isCodeEdit();
         bool running = m_processRunner->isRunning();
         m_compileAction->setEnabled(isCode && !running);
@@ -1009,6 +1027,8 @@ MainWindow::~MainWindow()
 {
     if (m_scanCancelled)
         m_scanCancelled->store(true);
+    if (m_fileIdxCancelled)
+        m_fileIdxCancelled->store(true);
     delete ui;
 }
 
@@ -1031,6 +1051,14 @@ void MainWindow::onFileSelected(const QString &filePath)
             m_runToolAction->setEnabled(isCode);
         }
     }
+    // openPreview may reuse the existing preview tab without changing
+    // the current index, so currentChanged is NOT emitted. Explicitly
+    // refresh side panels whose content depends on the active file.
+    refreshBacklinks();
+    refreshTags();
+    refreshOutline();
+    filterAiHistoryByCurrentFile();
+    updateCurrentEditorCompletions();
 }
 
 void MainWindow::onFileDoubleClicked(const QString &filePath)
@@ -1104,14 +1132,16 @@ void MainWindow::onSaveFileAs()
         if (!newDir.isEmpty()) {
             m_settings->setLastSaveAsFolderPath(newDir);
         }
-        buildFileIndex();
-        m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
-        m_tagIndex->rebuildFile(newFilePath);
+        // 异步重建文件索引，完成后更新 backlink/tag
+        buildFileIndexAsync([this, newFilePath]() {
+            m_backlinkIndex->rebuildFile(newFilePath, m_explorer->rootPath(), m_fileIndex);
+            m_tagIndex->rebuildFile(newFilePath);
+            refreshBacklinks();
+            refreshTags();
+        });
         updatePreviewActionState();
         updateSplitPreviewActionState();
         addToRecentFiles(newFilePath);
-        refreshBacklinks();
-        refreshTags();
     }
 }
 
@@ -2144,6 +2174,7 @@ void MainWindow::onHistoryFileClicked(const QString &filePath)
         QString newRoot = QFileInfo(absolutePath).absolutePath();
         m_explorer->setRootPath(newRoot);
         m_settings->setLastFolderPath(newRoot);
+        startAsyncIndexBuild();
         syncFileTreeSelection();
     }
     addToRecentFiles(absolutePath); // 记录到历史（置顶）
@@ -2164,6 +2195,12 @@ void MainWindow::onSearchResultClicked(const QString &filePath,
     if (!editor) return;
 
     editor->scrollToLine(lineNumber, searchText);
+}
+
+void MainWindow::onSearchTextChangedByUser()
+{
+    if (auto *editor = m_tabManager->currentEditor())
+        editor->clearExtraSelections();
 }
 
 void MainWindow::onWikiLinkClicked(const QString &fileName)
@@ -2213,23 +2250,6 @@ void MainWindow::onWikiLinkClicked(const QString &fileName)
             }
         }
     }
-}
-
-void MainWindow::buildFileIndex()
-{
-    m_fileIndex.clear();
-    QString root = m_explorer->rootPath();
-    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath())
-        return;
-
-    QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        QString fullPath = it.next();
-        QFileInfo info(fullPath);
-        QString baseName = info.completeBaseName();
-        m_fileIndex[baseName].append(fullPath);
-    }
-    updateCurrentEditorCompletions();
 }
 
 void MainWindow::startAsyncIndexBuild()
@@ -2287,6 +2307,51 @@ void MainWindow::startAsyncIndexBuild()
     })->start();
 }
 
+void MainWindow::buildFileIndexAsync(std::function<void()> onComplete)
+{
+    // Cancel any in-flight file-index-only scan (but NOT the full index build)
+    if (m_fileIdxCancelled)
+        m_fileIdxCancelled->store(true);
+    m_fileIdxCancelled = std::make_shared<std::atomic<bool>>(false);
+    uint64_t scanId = ++m_fileIdxScanId;
+
+    QString root = m_explorer->rootPath();
+    if (root.isEmpty() || QDir(root).isRoot() || root == QDir::homePath()) {
+        m_fileIndex.clear();
+        updateCurrentEditorCompletions();
+        if (onComplete)
+            onComplete();
+        return;
+    }
+
+    auto cancelled = m_fileIdxCancelled;
+    QThread::create([this, cancelled, scanId, root,
+                     onComplete = std::move(onComplete)]() {
+        // Build file index on background thread
+        QMap<QString, QStringList> fileIndex;
+        QDirIterator it(root, TextFileUtils::scanNameFilters(), QDir::Files,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            if (cancelled->load()) return;
+            QString fullPath = it.next();
+            QFileInfo info(fullPath);
+            fileIndex[info.completeBaseName()].append(fullPath);
+        }
+        if (cancelled->load()) return;
+
+        // Deliver result to main thread
+        QMetaObject::invokeMethod(this, [this, scanId,
+                                         fileIndex = std::move(fileIndex),
+                                         onComplete = std::move(onComplete)]() mutable {
+            if (scanId != m_fileIdxScanId.load()) return; // Stale
+            m_fileIndex = std::move(fileIndex);
+            updateCurrentEditorCompletions();
+            if (onComplete)
+                onComplete();
+        }, Qt::QueuedConnection);
+    })->start();
+}
+
 void MainWindow::updateCurrentEditorCompletions()
 {
     EditorWidget *editor = m_tabManager->currentEditor();
@@ -2309,19 +2374,21 @@ void MainWindow::onFileRenamedInIndex(const QString &oldPath, const QString &new
         affectedSources = m_backlinkIndex->backlinksFor(oldPath);
     }
 
-    buildFileIndex();
+    // 这些不依赖 m_fileIndex，立即执行
     m_backlinkIndex->onFileRenamed(oldPath, newPath);
     m_tagIndex->onFileRenamed(oldPath, newPath);
 
-    // 更新所有引用文件中的 [[旧文件名]] 为 [[新文件名]]
-    updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
-
-    refreshBacklinks();
+    // 异步重建文件索引，完成后更新 wiki 链接文本
+    buildFileIndexAsync([this, affectedSources = std::move(affectedSources),
+                         oldBaseName, newBaseName]() {
+        updateWikiLinksAfterRename(affectedSources, oldBaseName, newBaseName);
+        refreshBacklinks();
+    });
 }
 
 void MainWindow::onFileDeletedInIndex(const QString &path)
 {
-    buildFileIndex();
+    buildFileIndexAsync(); // 异步重建，后续操作不依赖 m_fileIndex
     m_backlinkIndex->onFileDeleted(path);
     m_tagIndex->onFileDeleted(path);
     m_rightPanel->historyPanel()->removeFile(path);
@@ -2335,43 +2402,86 @@ void MainWindow::updateWikiLinksAfterRename(const QStringList &affectedSources,
     if (affectedSources.isEmpty() || oldLinkText == newLinkText)
         return;
 
-    QString rootPath = m_explorer->rootPath();
+    // Collect editor content on main thread first — GUI access must stay here
+    struct SourceInfo {
+        QString path;
+        QString content;  // non-empty = from editor; empty = read from disk in thread
+        bool fromEditor = false;
+    };
+    QList<SourceInfo> sources;
+    sources.reserve(affectedSources.size());
     for (const QString &srcPath : affectedSources) {
-        // 获取源文件内容（优先用编辑器中的内容，以保留未保存的更改）
+        SourceInfo info;
+        info.path = srcPath;
         EditorWidget *editor = m_tabManager->findEditorByPath(srcPath);
-        QString content;
         if (editor) {
-            content = editor->toPlainText();
-        } else {
-            QFile file(srcPath);
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-                continue;
-            QTextStream in(&file);
-            content = in.readAll();
-            file.close();
+            info.content = editor->toPlainText();
+            info.fromEditor = true;
         }
-
-        // 替换 wiki 链接文本
-        QString newContent = replaceWikiLinkText(content, oldLinkText, newLinkText);
-        if (newContent == content)
-            continue; // 无变化则跳过
-
-        // 写入新内容
-        QFile outFile(srcPath);
-        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
-            continue;
-        QTextStream out(&outFile);
-        out << newContent;
-        outFile.close();
-
-        // 若文件在打开的标签中，从磁盘重新加载以正确更新编辑器状态
-        if (editor) {
-            editor->loadFile(srcPath);
-        }
-
-        // 重建此文件的双向链接索引
-        m_backlinkIndex->rebuildFile(srcPath, rootPath, m_fileIndex);
+        sources.append(std::move(info));
     }
+
+    QString rootPath = m_explorer->rootPath();
+    int updateId = ++m_wikiLinkUpdateId;
+
+    QThread::create([this, sources = std::move(sources), oldLinkText, newLinkText,
+                     rootPath, updateId]() {
+        if (updateId != m_wikiLinkUpdateId.load()) return;
+
+        QStringList writtenPaths;
+        writtenPaths.reserve(sources.size());
+        for (const auto &src : sources) {
+            if (updateId != m_wikiLinkUpdateId.load()) return;
+
+            QString content = src.content;
+            if (content.isEmpty() && !src.fromEditor) {
+                QFile file(src.path);
+                if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                    continue;
+                QTextStream in(&file);
+                content = in.readAll();
+                file.close();
+            }
+
+            QString newContent = replaceWikiLinkText(content, oldLinkText, newLinkText);
+            if (newContent == content)
+                continue;
+
+            QFile outFile(src.path);
+            if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
+                continue;
+            QTextStream out(&outFile);
+            out << newContent;
+            outFile.close();
+
+            writtenPaths.append(src.path);
+        }
+
+        if (updateId != m_wikiLinkUpdateId.load()) return;
+
+        QMetaObject::invokeMethod(this, [this, updateId,
+                                         writtenPaths = std::move(writtenPaths),
+                                         rootPath]() {
+            if (updateId != m_wikiLinkUpdateId.load()) return;
+
+            // Capture the current editor BEFORE any reloads.
+            EditorWidget *currentBefore = m_tabManager->currentEditor();
+
+            for (const QString &path : writtenPaths) {
+                // rebuildFile FIRST so that fileLoaded→refreshBacklinks sees fresh data
+                m_backlinkIndex->rebuildFile(path, rootPath, m_fileIndex);
+                EditorWidget *editor = m_tabManager->findEditorByPath(path);
+                if (editor)
+                    editor->loadFile(path);
+            }
+
+            // Only refresh if the active tab was NOT changed by the reloads.
+            EditorWidget *currentAfter = m_tabManager->currentEditor();
+            if (currentAfter == currentBefore) {
+                refreshBacklinks();
+            }
+        }, Qt::QueuedConnection);
+    })->start();
 }
 
 // ============================================================

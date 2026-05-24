@@ -62,6 +62,7 @@
     "preview.webEngineBackground": "#121314",
     "preview.codeBackground": "#1e1e1e",
     "cell.foreground": "#BBBEBF",
+    "cell.badge.foreground": "#0D0D0D",
     "cell.badge.markdown": "#48A0C7",
     "cell.badge.cpp": "#73c991",
     "cell.badge.python": "#e5ba7d",

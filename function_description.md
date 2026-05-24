@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.6）
+## 功能说明文档（v0.12.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -23,7 +23,7 @@
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
 - 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
-- 异步索引构建：切换到大目录时，文件索引、反向链接扫描与标签索引扫描在后台线程依次执行（Phase 1/2/3），UI 保持响应。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
+- 异步索引构建：全量扫描（切换目录时）通过 `startAsyncIndexBuild` 在后台线程依次执行文件索引、反向链接扫描与标签索引扫描（Phase 1/2/3），UI 保持响应。增量更新（重命名/删除/另存为）通过 `buildFileIndexAsync` 仅重建文件索引，回调中执行依赖项。两者使用**独立的取消令牌和代际计数器**（`m_scanCancelled`/`m_scanId` 与 `m_fileIdxCancelled`/`m_fileIdxScanId`），增量更新不会取消全量扫描，避免启动时反向链接数据丢失。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。窗口全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
 - OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
@@ -59,14 +59,25 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.12.6
-- **SettingsManager 单例空指针保护**：`instance()` 方法增加惰性初始化，在 `s_instance` 为 null 时自动创建静态 fallback 实例，防止在 `MainWindow` 构造前调用导致空指针解引用。
-- **Provider 重复错误处理提取**：将 `AnthropicProvider` 和 `OpenAiProvider` 中完全相同的 `cancel()`、`onTimeout()`、`handleNetworkError()`、`onFinished()` 以及公共成员变量提取到 `AiProvider` 基类，消除代码重复。新增 `ai/aiprovider.cpp` 实现文件。新增纯虚 `drainBuffer()` 供子类实现差异化 buffer 刷入。
-- **BottomPanel 缺少 tr() 封装修复**：修复 `bottompanel.cpp` 中 5 处用户可见字符串（"输出"、"诊断"、"错误"、"警告"、"无诊断信息"）未使用 `tr()` 包裹的问题。
-- **SettingsManager::clear() 破坏性过强**：将 `clear()` 从清空整个 config.ini 改为仅清除 `settings_overrides` 分组和 `editor/defaultZoom`，保留 OJ 凭据、AI API Key、窗口状态、恢复文件等其他关键数据。
-- **JudgeEngine 评测循环 processEvents 重入风险**：`finishCurrentTest()` 中的 `processEvents()` 改为 `processEvents(QEventLoop::ExcludeUserInputEvents)`，在保持 UI 信号刷新的同时阻止用户交互事件在测试循环期间重入。
-- **滚动条 QSS 定义合并**：移除 `scrollbarhider.cpp` 中内联的 `makeScrollbarQss()` 重复样式表，统一使用 `global.qss` 全局定义，消除两处维护不同步的风险。
-- **C++ 关键字列表去重**：将 C++ 关键字列表提取到共享头文件，消除 `cppsyntaxhighlighter.cpp`、`editorwidget.cpp`、`keywordcompletionprovider.cpp` 三处独立定义导致的不同步问题。
+### 新增/修复 v0.12.7
+
+#### 主线程阻塞修复（全面审查与异步化）
+- **搜索面板后台搜索线程**：`performSearch()` 将目录遍历 + 文件读取 + 行匹配全部移入 `QThread::create()` 工作线程，通过 `std::shared_ptr<std::atomic<bool>>` 取消令牌支持快速连续搜索，结果通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 分批传回主线程更新 UI。
+- **Python 执行进程异步生命周期管理**：`startPythonExecProcess()` 移除 `waitForStarted(5000)` 阻塞等待（最多 5 秒 UI 冻结），改为连接 `QProcess::started` 信号表示就绪，通过 FIFO 队列机制在进程就绪后出队发送待执行代码；`stopPythonExecProcess()` 移除 `waitForBytesWritten` 和 `waitForFinished`，异步处理进程退出。
+- **文件索引异步化**：`buildFileIndex()` 重构为 `buildFileIndexAsync()`，将 `QDirIterator` 遍历移入 `QThread::create()` 后台线程，通过独立的取消令牌 `m_fileIdxCancelled` 和代际计数器 `m_fileIdxScanId` 拒绝过期结果。增量更新（重命名/删除/另存为）与全量扫描使用独立的取消机制，互不干扰。
+- **ProcessRunner::stop() 去同步等待**：移除 `waitForFinished()` 对主线程的阻塞，改为 `kill()` + `cleanupProcess()` 即时返回，仅在析构函数中保留短超时 `waitForFinished(200)` 确保子进程清理。
+- **WikiLink 重命名异步化**：`updateWikiLinksAfterRename()` 将批量文件读取 → 正则替换 → 文件写入的循环移入 `QThread::create()` 工作线程，通过 `m_wikiLinkUpdateId` generation counter 拒绝过期请求，完成后通过 QueuedConnection 回主线程重新加载编辑器并重建索引。
+- **SMD Cell grab() 视觉反馈优化**：`performGrab()` 在同步 `QWebEngineView::grab()` 前后添加 `QApplication::setOverrideCursor(Qt::WaitCursor)` / `restoreOverrideCursor()`，为用户提供"正在处理"的视觉反馈。
+
+#### 主题修复
+- 文件树内联重命名编辑器现在正确跟随 VS Code 2026 Dark/Light 主题，高亮不透明度调整
+- 修复 SMD 文件打开时多次切换主题导致闪退的问题
+- SMD 单元格块标题文字颜色调整，提高深色/浅色主题下的对比度
+- 搜索结果高亮随主题切换同步更新
+- 修复切换主题时搜索结果面板文字颜色不更新的问题
+
+#### 搜索修复
+- 搜索框内容变化时，编辑器中的高亮立即清除（而非残留旧匹配）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -133,18 +144,18 @@
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
 - `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的点击，打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
-- `void buildFileIndex()`：全量扫描当前根目录，更新文件名与绝对路径的映射关系（同步版本，保留用于重命名/删除后的即时更新）。
+- `void buildFileIndexAsync(std::function<void()> onComplete)`：轻量异步文件索引构建，仅执行 `QDirIterator` 目录遍历（Phase 1），不重建 backlink/tag 索引。使用**独立的** `m_fileIdxCancelled`/`m_fileIdxScanId` 取消令牌和扫描代际保护，不影响全量索引构建。完成后更新 `m_fileIndex` 和补全列表，若提供回调则在主线程执行（用于处理依赖更新后索引的操作，如 `updateWikiLinksAfterRename`）。用于重命名/删除/另存为后的即时更新。
 - `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建、反向链接扫描和标签索引构建（Phase 1/2/3）。支持取消令牌和扫描代际保护。完成后交付主线程并刷新补全列表、反链面板和标签面板。
-- `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。
+- `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。在 `currentChanged`（标签页切换）和 `EditorWidget::fileLoaded`（当前编辑器加载文件）信号中自动调用，覆盖预览标签复用等不触发 `currentChanged` 的场景。`onFileSelected` 中也显式调用作为兜底保障。
 - `void refreshTags()` / `void onTagClicked(const QString &tag)`：刷新标签面板显示所有标签；响应标签点击时在面板显示关联文件列表并确保面板可见（`show` + `raise`）。
 - `void refreshOutline()`：提取当前 Markdown 编辑器的所有标题（`extractHeadingsFromContent`，行级正则 + 跳过代码块），更新大纲面板显示。非 `.md` 文件时清空面板。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
-- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，同步更新内存索引与标签索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，索引迁移后调用 `updateWikiLinksAfterRename` 将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 同时调用 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
+- `void onFileRenamedInIndex` / `void onFileDeletedInIndex`：响应动态文件操作，异步更新文件索引。`onFileRenamedInIndex` 在索引迁移前通过 `backlinksFor(oldPath)` 捕获受影响的源文件，然后立即执行 backlink/tag 的增量迁移（不依赖 `m_fileIndex`），再通过 `buildFileIndexAsync` 回调在索引更新完成后调用 `updateWikiLinksAfterRename`（**异步**，后台线程执行文件 I/O + 正则替换）将所有源文件中的 `[[旧名]]` 替换为 `[[新名]]`。`onFileDeletedInIndex` 调用 `buildFileIndexAsync` 异步重建索引，同时执行 backlink/tag 删除和 `HistoryPanel::removeFile` 清理历史记录中的失效条目。
 - `void onFileMovedOrRenamed(const QString &oldPath, const QString &newPath)`：协调文件移动/重命名后的路径更新，依次调用 `onFileRenamedInIndex`、`TabManager::updatePathsAfterMove`、`HistoryPanel::replacePath`，确保编辑器、历史记录和索引一致。
 - `void startAiRequest(AiAction action, const QString &freeQuery)`：发起 AI 请求。收集编辑器上下文 → 构建 prompt → 创建 provider → 流式请求。新实现中所有操作均保留 `m_aiHistory` 用于多轮续聊（不再按操作清空历史），请求前通过 `pruneContextWindow()` 创建 token 感知的窗口副本。每次请求自动持久化用户消息至 `AiHistoryManager`。
 - `void loadAiConversation(const QString &convId)`：从 `AiHistoryManager` 加载历史对话。终止进行中的请求 → `clearChat()` + 清空 `m_aiHistory` → 设置当前对话 ID → 逐条加载消息到 UI 和 `m_aiHistory` → 刷新历史列表绿色圆点 → 切回聊天标签页。
 - `void filterAiHistoryByCurrentFile()`：按当前编辑器文件路径 (`m_currentFilePath`) 过滤 `AiHistoryListWidget` 的对话列表，并更新活跃对话 ID。在标签切换、文件打开、对话列表变更时被调用。
-- `void updateWikiLinksAfterRename(const QStringList &affectedSources, const QString &oldLinkText, const QString &newLinkText)`：文件重命名后更新所有引用文件中的 wiki 链接文本。从 BacklinkIndex 获取受影响源文件列表，使用 `replaceWikiLinkText` 精确匹配替换 `[[oldLinkText]]` → `[[newLinkText]]`。若源文件在打开的标签中，优先读取 `editor->toPlainText()` 以保留未保存更改，替换后写盘并重新加载编辑器。
+- `void updateWikiLinksAfterRename(const QStringList &affectedSources, const QString &oldLinkText, const QString &newLinkText)`：文件重命名后异步更新所有引用文件中的 wiki 链接文本。**主线程阶段**：遍历受影响源文件，优先从已打开编辑器中读取内容（`editor->toPlainText()`，保留未保存更改）。**后台线程阶段**（`QThread::create()`）：对未打开的文件从磁盘读取内容，执行 `replaceWikiLinkText` 精确匹配替换 `[[oldLinkText]]` → `[[newLinkText]]`，替换后写入磁盘。**主线程回调**：重新加载受影响编辑器，调用 `BacklinkIndex::rebuildFile` 更新索引，最后 `refreshBacklinks()`。使用 `m_wikiLinkUpdateId` 代际计数器实现取消令牌，快速连续重命名时自动丢弃过期结果。
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
@@ -159,7 +170,7 @@
 - 通过 `updatePreviewActionState()` 方法统一控制预览按钮的可见性、启用状态和勾选状态，标签切换、文件路径变化、新建/打开/保存文件时都会调用该方法，确保按钮只在当前文件为 `.md` 时出现。
 - 持有 `HistoryPanel*` 和 `QDockWidget*`，将面板放置于右侧停靠区域，默认隐藏。
 - 持有 `BacklinkIndex*`、`BacklinksPanel*` 和对应的 `QDockWidget*`，反链面板同样放置在右侧停靠区域，默认隐藏。
-  - 在标签页切换时自动调用 `refreshBacklinks()` 更新面板。
+  - 在标签页切换时通过 `currentChanged` 自动调用 `refreshBacklinks()` 更新面板；同时连接当前编辑器的 `fileLoaded` 信号，确保预览标签复用（`loadFile` 不触发 `currentChanged`）等场景下反链面板也能即时刷新。
   - 在文件保存时调用 `BacklinkIndex::rebuildFile` 增量更新反链索引。
   - 在文件重命名/移动时调用 `BacklinkIndex::onFileRenamed` 迁移索引路径，并调用 `updateWikiLinksAfterRename` 将所有引用文件中的 `[[旧名]]` 替换为 `[[新名]]`。
   - 在文件删除时调用 `BacklinkIndex::onFileDeleted` 清理索引。
@@ -247,8 +258,8 @@
 - `bool isCodeEdit() const` / `bool isPdfView() const` / `bool isSmdEdit() const`：查询当前编辑模式。
 - `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
 - `void setTagNames(const QStringList &names)`：设置 #tag 自动补全的标签列表。
-- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。
-- `void clearExtraSelections()`：清除搜索高亮。
+- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。存储高亮文本至 `m_lastSearchHighlightText`，供主题切换时重建高亮。
+- `void clearExtraSelections()`：清除搜索高亮，同时清空存储的高亮文本。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
 - `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM。设置面板关闭时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
 - `void updatePreviewContent(std::function<void()> onFinished)`：调用 `preparePreviewContent()` 获取预处理内容 → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
@@ -524,6 +535,9 @@
 **职责**：
 - 提供全文搜索功能，在当前根目录下的所有文本文件中检索关键词。
 - 搜索输入支持 300ms 防抖，避免每次按键都触发磁盘扫描。
+- **异步后台搜索**：搜索管道（目录遍历 + 文件读取 + 行匹配）通过 `QThread::create()` 在后台线程执行，不阻塞 UI。
+- 使用 `std::shared_ptr<std::atomic<bool>>` 取消令牌 + `std::atomic<uint64_t>` 代数计数器管理并发搜索：新搜索启动时取消旧搜索，结果回调时检查代数以丢弃过期结果。
+- 后台线程收集全部 `SearchResult` 后，通过 `QMetaObject::invokeMethod` + `Qt::QueuedConnection` 一次性将结果传回主线程更新 UI。
 - 使用 `QDirIterator` + `TextFileUtils::scanNameFilters()` 递归收集文本文件列表。
 - 使用 `QTextStream::readLine()` 逐行流式读取文件内容，`QString::toLower().contains()` 进行大小写不敏感匹配。
 - 结果上限：每文件匹配数和总结果数从 `SettingsManager` 覆盖值读取（默认每文件 20、总计 500），片段最大长度同样可配置（默认 120）。设置面板中的修改实时生效。
@@ -594,7 +608,7 @@
 - Tab 缩进（`handleTabKey`）：插入 4 空格缩进；有选区时批量缩进选中行。
 - 缩进调整（`handleIndentLeft` / `handleIndentRight` / `Ctrl+[` 向左缩进 / `Ctrl+]` 向右缩进）。无选区时调整当前行缩进；有选区时调整所有选中行的缩进，自动跳过空行。
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
-- 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索结果高亮列表（金色 `#FFD700`），与当前行高亮合并后通过 `setExtraSelections` 统一应用。
+- 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
@@ -746,7 +760,7 @@
 - `startRun(executable)`：运行可执行文件，完成后发出 `runFinished(exitCode)`。
 - `startCompileAndRun(sourceFile)`：先编译，成功后再自动运行。
 - `startRunPython(sourceFile)`：检测 python 解释器并直接运行 `.py` 源文件。
-- `stop()`：终止当前正在执行的进程。
+- `stop()`：终止当前正在执行的进程。调用 `kill()` + `cleanupProcess()`（`disconnect` + `deleteLater`）后立即返回，**不阻塞主线程**（不再调用 `waitForFinished`）。显式 `emit processStopped()` 通知 UI 更新。析构函数中保留 200ms 短超时确保子进程清理（不在用户交互路径中）。
 - `writeInput(const QString &text)`：向正在运行的进程写入 stdin 数据（自动追加换行符）。
 - `writeRaw(const QString &text)`：向正在运行的进程写入 stdin 数据（不追加换行符，用于原始字节写入）。
 - 实时输出流：通过 `readyReadStandardOutput/Error` 读取原始输出并通过 `outputReceived(text, isStderr)` 信号发出，不进行 `.trimmed()` 处理，保留原始格式。
@@ -1115,7 +1129,7 @@
 1. **头部栏**（`m_headerBar`，24px 固定高度）：左侧类型标签（`QLabel`，彩色圆角背景——MD 蓝色 `#3a6ea5`、C++ 绿色 `#2d8a56`、Python 黄色 `#b8952e`），右侧操作提示。
 2. **编辑器/视图栈**（`m_editorStack`，`QStackedWidget`）：
    - Page 0：编辑器——Markdown 单元格使用 `QPlainTextEdit`（等宽字体、深色主题），C++/Python 单元格使用 `CodeEditor`（带语法高亮和行号）。
-   - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示，销毁 QWebEngineView 释放 GPU 资源。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
+   - Page 1：渲染视图（仅 Markdown）——`RenderPixmapWidget`（自定义 QWidget，以 `QPainter` 绘制 `QPixmap` 实现 `scaledContents` 等效行为），通过 QWebEngineView 独立顶层窗口渲染 Markdown（含 LaTeX/Mermaid），`performGrab()` 抓取为 `QPixmap` 后由 RenderPixmapWidget 显示。**QWebEngineView 在首次渲染时创建，之后所有重渲染复用同一实例**（停止 → 隐藏 → 重连信号 → 重定位 → 加载新内容），仅在切换回编辑模式或析构时才真正销毁。这避免了反复创建/销毁 QWebEngineView 导致的 Chromium GPU 进程资源耗尽和闪退。RenderPixmapWidget 的 `sizeHint()` 返回 `(-1,-1)`，不传播 pixmap 尺寸，避免父布局被锁定在渲染宽度而无法缩小。
 
 **主要接口**：
 - `CellType cellType() const` / `void setCellType(CellType type)`：获取/设置单元格类型。`setCellType()` 会销毁旧编辑器并重建新类型对应的编辑器，保留内容，最后调用 `setCommandMode(m_commandMode)` 将当前命令/编辑模式状态重新应用到新编辑器。
@@ -1139,11 +1153,16 @@
 - 类型变更信号 `cellTypeChanged(CellType oldType)` 携带旧类型参数。`connectCellSignals()` 中 lambda 用 `oldType` 计算 `oldLangId` 并调用 `m_lspManager->cellTypeChanged(index, oldLangId, newLangId, content)`，确保旧语言的 `cellOrder` 和缓存被正确清理。lambda 还对新 editor 安装 `eventFilter`。信号在 re-index 循环中先 `disconnect` 再 `connect`，防止重复连接累积。
 - `m_lspManager` 在 `setPlainText()` 中 **晚于 `addCell()` 创建**。`addCell()` 执行时 `m_lspManager` 为 null，无法注入共享 provider。`setPlainText()` 中 `cellAdded()` 循环后额外遍历 cell 调用 `providerForCell() → setCompletionProvider()` 完成初始注入。
 - 渲染管线 `runJavaScript` 回调使用 `QPointer<SmdCell>` 守卫替代裸 `this` 捕获，cell 删除后自动为 null。
-- `cleanupRenderView()` 在 delete 前先 `disconnect()` QWebEngineView 和 QWebEnginePage 的所有信号。
+- **QWebEngineView 生命周期管理**（防闪退关键设计）：
+  - `ensureRenderView()` — 设置 `m_viewActive = true`。若视图已存在（重渲染复用），仅重连 `loadFinished` 信号；若不存在（首次渲染），创建独立顶层窗口 `Qt::Tool | FramelessWindowHint`。
+  - `releaseRenderView()` — 设置 `m_viewActive = false`。停止 grab 轮询定时器，断开所有 WebEngine 信号，`stop()` + `hide()`，**但不删除视图对象**。视图复用避免反复创建/销毁 QWebEngineView 导致的 Chromium GPU 进程资源耗尽和闪退。
+  - `destroyRenderView()` — 设置 `m_viewActive = false`。停止轮询、断开信号、`stop()` → `hide()` → `close()` → `delete` → `nullptr`。仅在两处调用：`setRendered(false)`（切换到编辑模式）和 `~SmdCell()` 析构函数。
+  - `m_viewActive` 标志用于区分"正在渲染中"（可调用 `runJavaScript()` 更新 CSS 变量）和"已释放/已销毁"（需要通过 `scheduleReRender()` 启动新渲染管线）两种状态。`refreshStyle()` 在主题切换时通过此标志判断是推 JS 还是触发重渲染。
+- **重渲染防重入守卫**：`performReRender()` 入口检查 `m_reRendering` 标志，若已有渲染在进行中（被 `startRenderPipeline()` 内 `processEvents()` 触发的其他 cell 定时器回调），则调用 `scheduleReRender()` 重新排队而非嵌套执行。这确保同一时刻只有一个 cell 调用 `processEvents()`，防止多个 QWebEngineView 顶层窗口同时存在导致的 GPU 进程争用。
 
 **事件处理**：
 - 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` 事件发射 `focusEntered()` 信号（`MouseButtonPress` 不再触发，改由 `SmdEditor::eventFilter` 全局过滤器统一处理点击激活）。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
-- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：保留本地遮罩层避免闪烁 → `setRendered(false)` → 恢复内容 → `setRendered(true)` → 恢复命令模式。
+- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：`releaseRenderView()` 释放旧渲染状态（保留视图对象） → 清理遮罩层 → `ensureRenderView()` 重连信号（不创建新视图） → `startRenderPipeline(false)` 重新加载 HTML。**视图复用**避免创建/销毁 Chromium GPU 进程，入口的 `m_reRendering` 防重入守卫确保同时只有一个 cell 调用 `processEvents()`。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
@@ -1204,7 +1223,23 @@
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。**仅编辑模式**下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转）触发，通过 `eventFilter` 处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截。`m_jumpAfterExecute` 标志控制执行后是否跳转到下一个单元格。执行前后不改变编辑/命令模式状态。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
 - **Markdown 单元格**：空单元格（`content().trimmed().isEmpty()`）跳过渲染，直接根据 `m_jumpAfterExecute` 决定是否跳转。非空且未渲染时调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
 - **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → `m_jumpAfterExecute` 为 true 时跳转下一个单元格。
-- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型。首个 Python cell 执行时通过 `startPythonExecProcess()` 启动后台 `python_executor.py` 守护进程（JSON-line stdin/stdout 协议）。代码在发送前进行预处理：规范化行尾（`\r\n`/`\r` → `\n`）、替换孤立 UTF-16 surrogate。通过 **base64 编码**传输代码以避免 JSON 换行转义问题。守护进程解码后在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。进程崩溃时自动重启（1 秒延迟），Ctrl+C 终止时 kill 并自动重启进程。文件关闭或新文件打开时通过 `stopPythonExecProcess()` 发送 exit 命令并清理进程。C++ 单元格保持原有合并+临时文件方式不变。
+- **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型（JSON-line stdin/stdout 协议），所有阻塞调用已消除。
+
+  **进程启动**（`startPythonExecProcess()`）：查找 `python_executor.py` 和 Python 解释器 → 创建 `QProcess`（`MergedChannels`）→ 连接信号（`readyReadStandardOutput` → `onPyExecReadyRead`、`finished` → `onPyExecFinished`、`errorOccurred` → `onPyExecError`、`started` → `onPyExecStarted`）→ 设置 `m_pyExecStarting = true` → `start()`。**不再使用 `waitForStarted(5000)` 同步阻塞**，进程就绪由 `onPyExecStarted()` 异步通知。
+
+  **双路径执行**（`executePythonCell()`）：
+  - **快速路径**：进程正在运行（`m_pyExecProcess && !m_pyExecStarting`）→ 直接通过 `encodePythonPayload()` 编码代码（规范化行尾 + 修复孤立 surrogate + Base64 + JSON）→ `write()` 发送。
+  - **慢速路径**：进程未就绪 → 若进程不存在则调用 `startPythonExecProcess()` 异步启动 → 将 cell 和当前 `m_jumpAfterExecute` 值封装为 `PyExecQueueItem`（使用 `QPointer<SmdCell>` 防悬空）入队 `m_pyExecQueue`。若 python 或脚本未找到则立即显示错误。
+
+  **代码队列**（`processPyExecQueue()`）：`onPyExecStarted()` 信号触发队列处理——从 `m_pyExecQueue` 头部取出首项，恢复 `m_jumpAfterExecute`，写入编码后的代码。当前 cell 执行完成后，`onPyExecReadyRead()` 末尾检查队列非空则自动处理下一项，实现 FIFO 串行执行。队列项 cell 已被删除（QPointer 为 null）时自动跳过。
+
+  **进程停止**（`stopPythonExecProcess()`）：发送 exit 命令后不再等待 `waitForBytesWritten`/`waitForFinished`。改为清理所有异步状态（`m_pyExecStarting`、`m_pyExecQueue`、`m_executingCell`）→ `disconnect()` 阻止信号触发自动重启 → `kill()` + `deleteLater()` + 置空 `m_pyExecProcess`。
+
+  **进程终止处理**（`handleProcessStop()`，Ctrl+C）：Python 分支移除 `waitForFinished(200)` 阻塞。改为先清理队列和 `m_pyExecStarting` → `disconnect()` 阻止自动重启 → `kill()` + `deleteLater()` + 置空。500ms 后异步重启。
+
+  **进程退出/错误处理**：`onPyExecFinished()` 和 `onPyExecError()` 始终清理 `m_pyExecProcess`（修复原正常退出时遗留野指针 bug），排空队列，为所有排队 cell 显示错误信息。崩溃后保留 1 秒延迟自动重启。
+
+  **协议**：守护进程解码 Base64 后在共享命名空间中 `exec()` 代码并独立捕获 stdout/stderr，返回 JSON 响应 `{"ok":true,"stdout":"...","stderr":"..."}` 或 `{"ok":false,"error":"..."}`。输出仅路由到当前 cell 的 `SmdOutputWidget`（仅在 stdout/stderr 非空时调用 `appendText()` 显示控件），前面 cell 的 print 输出不会出现在后续 cell 中。C++ 单元格保持原有合并+临时文件方式不变。
 - **空单元格**：Markdown 和代码单元格均跳过执行/渲染流程，`m_jumpAfterExecute` 为 true 时直接跳转。
 - 执行期间不支持标准输入交互（Python 持久进程中 `input()` 会干扰 JSON 协议）。
 - 跳转保护：仅在执行单元格仍为当前活动单元格时执行跳转，用户已导航至其他单元格时不跳转。
@@ -1495,6 +1530,7 @@
 - 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
 - 主题枚举：`Dark=0, Light=1, System=2`。`setTheme(System)` 自动检测系统主题：优先读取 Windows 注册表 `AppsUseLightTheme`，兜底根据当前时间（6:00-18:00 → Light，其余 → Dark）判断。
 - System 模式下 5 分钟 `QTimer` 自动刷新系统主题检测。
+- **防重入守卫**：`loadTheme()` 入口检查 `m_loadingTheme` 标志，阻止递归调用（如 `themeChanged()` 槽中再次触发主题切换）。重入时输出警告并返回 `false`，所有返回路径均复位标志。
 - `themeChanged(Theme)` 信号在主题实际变化时发出；`applyCurrentTheme()` 重新发射信号强制所有组件刷新。
 - 语义化颜色访问：`color("editor.background")` 返回 `QColor`，`hex("panel.border")` 返回 `"#RRGGBB"` 字符串。缺失 key 返回品红色 `#FF00FF` 方便开发时发现遗漏。
 

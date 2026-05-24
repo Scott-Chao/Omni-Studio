@@ -11,6 +11,8 @@
 #include <QTextLayout>
 #include <QWebEngineSettings>
 #include <QWebEnginePage>
+
+#include <QApplication>
 #include <QCoreApplication>
 #include <QFile>
 #include <QDir>
@@ -125,6 +127,11 @@ SmdCell::SmdCell(CellType type, const QString &content, QWidget *parent)
     setupUi(type);
     if (!content.isEmpty())
         setContent(content);
+}
+
+SmdCell::~SmdCell()
+{
+    destroyRenderView();
 }
 
 void SmdCell::setupUi(CellType type)
@@ -396,8 +403,15 @@ void SmdCell::setActive(bool active)
 
 void SmdCell::ensureRenderView()
 {
-    if (m_renderView)
+    m_viewActive = true;
+
+    if (m_renderView) {
+        // View already exists from a previous render — just reconnect the
+        // loadFinished signal that was disconnected in releaseRenderView().
+        connect(m_renderView->page(), &QWebEnginePage::loadFinished,
+                this, &SmdCell::onRenderLoadFinished);
         return;
+    }
 
     // Create as a SEPARATE TOP-LEVEL WINDOW, NOT a child of SmdCell.
     // This prevents Qt from cascading native windows to SmdCell and all ancestor
@@ -539,7 +553,7 @@ void SmdCell::setRendered(bool rendered)
             delete m_renderOverlay;
             m_renderOverlay = nullptr;
         }
-        cleanupRenderView();
+        destroyRenderView();
         m_editorStack->setCurrentIndex(0);
         if (m_markdownEditor) {
             if (m_commandMode) {
@@ -733,7 +747,9 @@ void SmdCell::performGrab()
 
     // Grab the top-level render window, then immediately hide it.
     m_grabbing = true; // suppress focusEntered during hide/cleanup
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     QPixmap pm = m_renderView->grab();
+    QApplication::restoreOverrideCursor();
     m_renderView->hide(); // hide immediately after grab — no linger
     if (pm.isNull() || pm.height() <= 0) {
         return;
@@ -761,8 +777,8 @@ void SmdCell::performGrab()
     }
     m_editorStack->repaint();
 
-    // Close and delete the top-level QWebEngineView
-    cleanupRenderView();
+    // Close and hide the top-level QWebEngineView (kept alive for reuse)
+    releaseRenderView();
     if (m_renderOverlay) {
         delete m_renderOverlay;
         m_renderOverlay = nullptr;
@@ -774,13 +790,31 @@ void SmdCell::performGrab()
     emit renderFinished();
 }
 
-void SmdCell::cleanupRenderView()
+void SmdCell::releaseRenderView()
 {
+    m_viewActive = false;
     if (m_grabTimer) {
         m_grabTimer->stop();
     }
     if (m_renderView) {
         // Disconnect all signals BEFORE stopping to prevent cascading callbacks
+        m_renderView->page()->disconnect();
+        m_renderView->disconnect();
+        m_renderView->stop();
+        m_renderView->hide();
+        // Keep m_renderView alive — it will be reused for the next render
+        // instead of paying the cost of destroying and recreating a
+        // QWebEngineView (and its Chromium GPU process) each time.
+    }
+}
+
+void SmdCell::destroyRenderView()
+{
+    m_viewActive = false;
+    if (m_grabTimer) {
+        m_grabTimer->stop();
+    }
+    if (m_renderView) {
         m_renderView->page()->disconnect();
         m_renderView->disconnect();
         m_renderView->stop();
@@ -812,12 +846,25 @@ void SmdCell::performReRender()
     if (!m_rendered)
         return;
 
+    // Guard against re-entrant calls. During startRenderPipeline() we call
+    // processEvents() to let the window manager process show/lower/resize.
+    // Another cell's debounce timer could fire during those pumped events
+    // and try to re-render.  Instead of nesting (which would create multiple
+    // QWebEngineView instances simultaneously and risk GPU-process exhaustion),
+    // reschedule and let the current render finish first.
+    if (m_reRendering) {
+        scheduleReRender();
+        return;
+    }
+    m_reRendering = true;
+
     // Stop any in-progress grab polling
     if (m_grabTimer)
         m_grabTimer->stop();
 
-    // Clean up stale render state from a previous render (initial or re-render)
-    cleanupRenderView();
+    // Release the render view from the previous render (stop + hide,
+    // but keep it alive — avoids the GPU-process churn of delete + new).
+    releaseRenderView();
 
     // Clean up overlay if left over from an interrupted initial render
     if (m_renderOverlay) {
@@ -826,10 +873,13 @@ void SmdCell::performReRender()
         m_renderOverlay = nullptr;
     }
 
-    // Create a fresh QWebEngineView and start the render pipeline.
+    // Reuse the existing QWebEngineView — ensureRenderView() reconnects
+    // signals and only creates a new view on the very first render.
     // The old pixmap stays visible on QStackedWidget page 1 as a seamless placeholder.
     ensureRenderView();
     startRenderPipeline(false);
+
+    m_reRendering = false;
 }
 
 QWidget *SmdCell::editorWidget() const
@@ -1084,7 +1134,7 @@ void SmdCell::updateTypeLabel()
     m_typeLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 10px; padding: 1px 6px; "
         "border-radius: 3px; background: %2; }"
-    ).arg(tm.color("cell.foreground").name(),
+    ).arg(tm.color("cell.badge.foreground").name(),
           tm.color(badgeToken).name()));
 }
 
@@ -1141,8 +1191,9 @@ void SmdCell::refreshStyle()
     updateTypeLabel();
     updateBorderStyle();
 
-    // Update preview HTML CSS variables if render view is loaded
-    if (m_renderView && m_renderView->page()) {
+    // Update preview HTML CSS variables if the render view is actively
+    // rendering (view is visible and loading HTML).
+    if (m_viewActive && m_renderView && m_renderView->page()) {
         auto hex = [&](const QString &token) -> QString {
             QColor c = tm.color(token);
             return c.isValid() ? c.name() : QStringLiteral("#000000");
@@ -1164,11 +1215,17 @@ void SmdCell::refreshStyle()
         m_renderView->page()->runJavaScript(js);
     }
 
-    // If already rendered as a static pixmap (no active render view),
-    // re-render with new theme colors. The old pixmap stays visible on
-    // the stack while the new render runs in the background.
-    if (m_rendered && !m_renderView)
-        scheduleReRender();
+    // If already rendered as a static pixmap (view is released, not
+    // actively rendering), re-render with new theme colors. The old
+    // pixmap stays visible on the stack while the new render runs.
+    // Deferred via singleShot(0) to avoid starting every cell's debounce
+    // timer simultaneously during the synchronous theme-changed cascade.
+    if (m_rendered && !m_viewActive) {
+        QTimer::singleShot(0, this, [guard = QPointer<SmdCell>(this)]() {
+            if (guard)
+                guard->scheduleReRender();
+        });
+    }
 }
 
 SmdCell::CellType SmdCell::typeFromLangId(const QString &langId)
