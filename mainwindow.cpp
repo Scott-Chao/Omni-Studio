@@ -175,6 +175,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_leftStack->addWidget(m_explorer); // index 0: 文件浏览器
 
     // Restore saved theme
+    ThemeManager::instance().setStyleSheetTarget(this);
     QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
     if (!savedTheme.isEmpty())
         ThemeManager::instance().loadTheme(savedTheme);

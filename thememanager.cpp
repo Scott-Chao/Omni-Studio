@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QDebug>
 #include <QRegularExpression>
+#include <QWidget>
 
 ThemeManager &ThemeManager::instance()
 {
@@ -178,7 +179,15 @@ void ThemeManager::loadQss()
     }
     result += qss.mid(lastPos);
 
-    qApp->setStyleSheet(result);
+    if (m_qssTarget)
+        m_qssTarget->setStyleSheet(result);
+    else
+        qApp->setStyleSheet(result);
+}
+
+void ThemeManager::setStyleSheetTarget(QWidget *w)
+{
+    m_qssTarget = w;
 }
 
 void ThemeManager::applyPalette()
