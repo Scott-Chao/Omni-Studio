@@ -169,6 +169,7 @@ private:
     QString m_currentBlockLanguage;
     QString m_mdStderrBuffer;
     QMetaObject::Connection m_stderrBufferConnection;
+    QMetaObject::Connection m_fileLoadedConnection;  // current editor fileLoaded → refresh panels
 
     // 本地评测
     JudgePanel *m_judgePanel;
@@ -287,8 +288,11 @@ private:
     // 键：文件名（不带路径，不带后缀，如 "笔记"）
     // 值：该文件名对应的所有绝对路径列表（处理同名文件）
     QMap<QString, QStringList> m_fileIndex;
-    std::shared_ptr<std::atomic<bool>> m_scanCancelled;
+    std::shared_ptr<std::atomic<bool>> m_scanCancelled;      // startAsyncIndexBuild (full)
     std::atomic<uint64_t> m_scanId{0};
+    std::shared_ptr<std::atomic<bool>> m_fileIdxCancelled;   // buildFileIndexAsync (file only)
+    std::atomic<uint64_t> m_fileIdxScanId{0};
+    std::atomic<int> m_wikiLinkUpdateId{0};
     QString findWikiTarget(const QString &fileName); // 向上递归搜索目标文件
     void updateCurrentEditorCompletions(); // 更新当前编辑器的 WikiLink 补全列表
 
