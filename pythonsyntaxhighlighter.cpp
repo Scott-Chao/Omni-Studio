@@ -1,4 +1,5 @@
 #include "pythonsyntaxhighlighter.h"
+#include "pykeywords.h"
 #include "configmanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
@@ -37,21 +38,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
-    const QStringList keywords = {
-        QStringLiteral("def"), QStringLiteral("class"), QStringLiteral("if"),
-        QStringLiteral("elif"), QStringLiteral("else"), QStringLiteral("for"),
-        QStringLiteral("while"), QStringLiteral("import"), QStringLiteral("from"),
-        QStringLiteral("as"), QStringLiteral("return"), QStringLiteral("yield"),
-        QStringLiteral("try"), QStringLiteral("except"), QStringLiteral("finally"),
-        QStringLiteral("raise"), QStringLiteral("with"), QStringLiteral("pass"),
-        QStringLiteral("break"), QStringLiteral("continue"), QStringLiteral("lambda"),
-        QStringLiteral("del"), QStringLiteral("global"), QStringLiteral("nonlocal"),
-        QStringLiteral("assert"), QStringLiteral("async"), QStringLiteral("await"),
-        QStringLiteral("match"), QStringLiteral("case"), QStringLiteral("and"),
-        QStringLiteral("or"), QStringLiteral("not"), QStringLiteral("is"),
-        QStringLiteral("in")
-    };
-    for (const QString &kw : keywords) {
+    for (const QString &kw : pyKeywords()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
         rule.format = m_keywordFormat;
@@ -59,55 +46,11 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Constants format (blue, bold) ---
-    // True, False, None get same color as keywords
-    const QStringList constants = {
-        QStringLiteral("True"), QStringLiteral("False"), QStringLiteral("None")
-    };
-    for (const QString &c : constants) {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(c));
-        rule.format = m_keywordFormat;
-        m_rules.append(rule);
-    }
+    // True, False, None already included in pyKeywords()
 
     // --- Builtin format (teal) ---
     m_builtinFormat.setForeground(cfg.syntaxTypes());
-    const QStringList builtins = {
-        // Types
-        QStringLiteral("int"), QStringLiteral("float"), QStringLiteral("str"),
-        QStringLiteral("list"), QStringLiteral("dict"), QStringLiteral("tuple"),
-        QStringLiteral("set"), QStringLiteral("bool"), QStringLiteral("bytes"),
-        QStringLiteral("bytearray"), QStringLiteral("complex"), QStringLiteral("frozenset"),
-        QStringLiteral("range"), QStringLiteral("slice"), QStringLiteral("type"),
-        QStringLiteral("super"), QStringLiteral("object"), QStringLiteral("property"),
-        QStringLiteral("staticmethod"), QStringLiteral("classmethod"),
-        // Functions
-        QStringLiteral("enumerate"), QStringLiteral("zip"), QStringLiteral("map"),
-        QStringLiteral("filter"), QStringLiteral("len"), QStringLiteral("print"),
-        QStringLiteral("open"), QStringLiteral("isinstance"), QStringLiteral("hasattr"),
-        QStringLiteral("getattr"), QStringLiteral("setattr"), QStringLiteral("sorted"),
-        QStringLiteral("reversed"), QStringLiteral("iter"), QStringLiteral("next"),
-        QStringLiteral("any"), QStringLiteral("all"), QStringLiteral("sum"),
-        QStringLiteral("min"), QStringLiteral("max"), QStringLiteral("abs"),
-        QStringLiteral("round"), QStringLiteral("ord"), QStringLiteral("chr"),
-        QStringLiteral("repr"), QStringLiteral("input"), QStringLiteral("format"),
-        QStringLiteral("id"), QStringLiteral("dir"), QStringLiteral("vars"),
-        QStringLiteral("callable"), QStringLiteral("issubclass"), QStringLiteral("eval"),
-        QStringLiteral("exec"), QStringLiteral("compile"), QStringLiteral("locals"),
-        QStringLiteral("globals"), QStringLiteral("hash"),
-        // Exceptions
-        QStringLiteral("ValueError"), QStringLiteral("TypeError"),
-        QStringLiteral("KeyError"), QStringLiteral("IndexError"),
-        QStringLiteral("AttributeError"), QStringLiteral("ImportError"),
-        QStringLiteral("ModuleNotFoundError"), QStringLiteral("NameError"),
-        QStringLiteral("FileNotFoundError"), QStringLiteral("ZeroDivisionError"),
-        QStringLiteral("StopIteration"), QStringLiteral("RuntimeError"),
-        QStringLiteral("OSError"), QStringLiteral("IOError"),
-        QStringLiteral("Exception"), QStringLiteral("BaseException"),
-        QStringLiteral("Warning"), QStringLiteral("UserWarning"),
-        QStringLiteral("DeprecationWarning")
-    };
-    for (const QString &b : builtins) {
+    for (const QString &b : pyBuiltins()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(b));
         rule.format = m_builtinFormat;

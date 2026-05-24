@@ -65,6 +65,8 @@
 - **BottomPanel 缺少 tr() 封装修复**：修复 `bottompanel.cpp` 中 5 处用户可见字符串（"输出"、"诊断"、"错误"、"警告"、"无诊断信息"）未使用 `tr()` 包裹的问题。
 - **SettingsManager::clear() 破坏性过强**：将 `clear()` 从清空整个 config.ini 改为仅清除 `settings_overrides` 分组和 `editor/defaultZoom`，保留 OJ 凭据、AI API Key、窗口状态、恢复文件等其他关键数据。
 - **JudgeEngine 评测循环 processEvents 重入风险**：`finishCurrentTest()` 中的 `processEvents()` 改为 `processEvents(QEventLoop::ExcludeUserInputEvents)`，在保持 UI 信号刷新的同时阻止用户交互事件在测试循环期间重入。
+- **滚动条 QSS 定义合并**：移除 `scrollbarhider.cpp` 中内联的 `makeScrollbarQss()` 重复样式表，统一使用 `global.qss` 全局定义，消除两处维护不同步的风险。
+- **C++ 关键字列表去重**：将 C++ 关键字列表提取到共享头文件，消除 `cppsyntaxhighlighter.cpp`、`editorwidget.cpp`、`keywordcompletionprovider.cpp` 三处独立定义导致的不同步问题。
 
 ### 1. `MainWindow` - 主窗口控制器
 

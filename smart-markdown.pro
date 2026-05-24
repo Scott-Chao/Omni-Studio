@@ -106,6 +106,7 @@ HEADERS += \
     compilererrorparser.h \
     compilerutils.h \
     cppcompletionprovider.h \
+    cppkeywords.h \
     cppsyntaxhighlighter.h \
     crawler.h \
     editorwidget.h \
@@ -130,6 +131,7 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
+    pykeywords.h \
     pythoncompletionprovider.h \
     rightpanelcontainer.h \
     scrollbarhider.h \

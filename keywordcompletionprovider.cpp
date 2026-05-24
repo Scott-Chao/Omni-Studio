@@ -1,4 +1,6 @@
 #include "keywordcompletionprovider.h"
+#include "cppkeywords.h"
+#include "pykeywords.h"
 #include <QDebug>
 #include <QRegularExpression>
 
@@ -89,77 +91,12 @@ void KeywordCompletionProvider::requestSignatureHelp(const QString &text, int cu
 QStringList KeywordCompletionProvider::keywordsForLanguage() const
 {
     if (m_languageId == QStringLiteral("cpp") || m_languageId == QStringLiteral("c")) {
-        return {
-            QStringLiteral("alignas"), QStringLiteral("alignof"), QStringLiteral("auto"),
-            QStringLiteral("bool"), QStringLiteral("break"), QStringLiteral("case"),
-            QStringLiteral("catch"), QStringLiteral("char"), QStringLiteral("class"),
-            QStringLiteral("const"), QStringLiteral("constexpr"), QStringLiteral("continue"),
-            QStringLiteral("decltype"), QStringLiteral("default"), QStringLiteral("delete"),
-            QStringLiteral("do"), QStringLiteral("double"), QStringLiteral("else"),
-            QStringLiteral("enum"), QStringLiteral("explicit"), QStringLiteral("extern"),
-            QStringLiteral("false"), QStringLiteral("float"), QStringLiteral("for"),
-            QStringLiteral("friend"), QStringLiteral("goto"), QStringLiteral("if"),
-            QStringLiteral("inline"), QStringLiteral("int"), QStringLiteral("long"),
-            QStringLiteral("mutable"), QStringLiteral("namespace"), QStringLiteral("new"),
-            QStringLiteral("noexcept"), QStringLiteral("nullptr"), QStringLiteral("operator"),
-            QStringLiteral("override"), QStringLiteral("private"), QStringLiteral("protected"),
-            QStringLiteral("public"), QStringLiteral("return"), QStringLiteral("short"),
-            QStringLiteral("signed"), QStringLiteral("sizeof"), QStringLiteral("static"),
-            QStringLiteral("static_cast"), QStringLiteral("struct"), QStringLiteral("switch"),
-            QStringLiteral("template"), QStringLiteral("this"), QStringLiteral("throw"),
-            QStringLiteral("true"), QStringLiteral("try"), QStringLiteral("typedef"),
-            QStringLiteral("typename"), QStringLiteral("union"), QStringLiteral("unsigned"),
-            QStringLiteral("using"), QStringLiteral("virtual"), QStringLiteral("void"),
-            QStringLiteral("volatile"), QStringLiteral("while"),
-
-            // Common C++ standard types
-            QStringLiteral("int8_t"), QStringLiteral("int16_t"), QStringLiteral("int32_t"),
-            QStringLiteral("int64_t"), QStringLiteral("uint8_t"), QStringLiteral("uint16_t"),
-            QStringLiteral("uint32_t"), QStringLiteral("uint64_t"), QStringLiteral("size_t"),
-            QStringLiteral("string"), QStringLiteral("vector"), QStringLiteral("map"),
-            QStringLiteral("set"), QStringLiteral("list"), QStringLiteral("pair"),
-            QStringLiteral("optional"), QStringLiteral("variant"), QStringLiteral("unique_ptr"),
-            QStringLiteral("shared_ptr"), QStringLiteral("string_view"), QStringLiteral("span"),
-            QStringLiteral("array"), QStringLiteral("tuple"), QStringLiteral("function"),
-            QStringLiteral("cout"), QStringLiteral("cin"), QStringLiteral("endl"),
-
-            // Common Qt types (user project uses Qt)
-            QStringLiteral("QString"), QStringLiteral("QWidget"), QStringLiteral("QObject"),
-            QStringLiteral("QVariant"), QStringLiteral("QList"), QStringLiteral("QVector"),
-            QStringLiteral("QMap"), QStringLiteral("QSet"), QStringLiteral("QHash"),
-            QStringLiteral("QStringList"), QStringLiteral("QSharedPointer"), QStringLiteral("QScopedPointer"),
-            QStringLiteral("QDebug"), QStringLiteral("QFile"), QStringLiteral("QDir"),
-            QStringLiteral("QTimer"), QStringLiteral("QProcess"), QStringLiteral("QThread"),
-        };
+        return cppKeywords() + cppCommonTypes();
     }
 
     if (m_languageId == QStringLiteral("python")) {
-        return {
-            QStringLiteral("False"), QStringLiteral("None"), QStringLiteral("True"),
-            QStringLiteral("and"), QStringLiteral("as"), QStringLiteral("assert"),
-            QStringLiteral("async"), QStringLiteral("await"), QStringLiteral("break"),
-            QStringLiteral("class"), QStringLiteral("continue"), QStringLiteral("def"),
-            QStringLiteral("del"), QStringLiteral("elif"), QStringLiteral("else"),
-            QStringLiteral("except"), QStringLiteral("finally"), QStringLiteral("for"),
-            QStringLiteral("from"), QStringLiteral("global"), QStringLiteral("if"),
-            QStringLiteral("import"), QStringLiteral("in"), QStringLiteral("is"),
-            QStringLiteral("lambda"), QStringLiteral("nonlocal"), QStringLiteral("not"),
-            QStringLiteral("or"), QStringLiteral("pass"), QStringLiteral("raise"),
-            QStringLiteral("return"), QStringLiteral("try"), QStringLiteral("while"),
-            QStringLiteral("with"), QStringLiteral("yield"),
-
-            // Common builtins
-            QStringLiteral("print"), QStringLiteral("len"), QStringLiteral("range"),
-            QStringLiteral("int"), QStringLiteral("float"), QStringLiteral("str"),
-            QStringLiteral("list"), QStringLiteral("dict"), QStringLiteral("tuple"),
-            QStringLiteral("set"), QStringLiteral("bool"), QStringLiteral("bytes"),
-            QStringLiteral("open"), QStringLiteral("isinstance"), QStringLiteral("enumerate"),
-            QStringLiteral("zip"), QStringLiteral("map"), QStringLiteral("filter"),
-            QStringLiteral("sorted"), QStringLiteral("reversed"), QStringLiteral("type"),
-            QStringLiteral("super"), QStringLiteral("self"), QStringLiteral("cls"),
-            QStringLiteral("ValueError"), QStringLiteral("TypeError"), QStringLiteral("KeyError"),
-            QStringLiteral("IndexError"), QStringLiteral("AttributeError"), QStringLiteral("ImportError"),
-            QStringLiteral("Exception"), QStringLiteral("BaseException"),
+        return pyKeywords() + pyBuiltins() + QStringList{
+            QStringLiteral("self"), QStringLiteral("cls"),
         };
     }
 

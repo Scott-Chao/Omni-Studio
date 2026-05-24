@@ -133,7 +133,8 @@ void ScrollbarHider::refreshAll()
 QString ScrollbarHider::makeScrollbarQss(bool visible) const
 {
     auto &tm = ThemeManager::instance();
-    QString handle = visible ? tm.color("scrollbarSlider.hoverBackground").name() : QStringLiteral("transparent");
+    QString bg      = visible ? tm.color("scrollbarSlider.background").name()      : QStringLiteral("transparent");
+    QString hoverBg = visible ? tm.color("scrollbarSlider.hoverBackground").name() : QStringLiteral("transparent");
 
     return QStringLiteral(
         "QScrollBar:vertical {"
@@ -145,6 +146,9 @@ QString ScrollbarHider::makeScrollbarQss(bool visible) const
         "  background-color: %1;"
         "  min-height: 30px;"
         "  border-radius: 5px;"
+        "}"
+        "QScrollBar::handle:vertical:hover {"
+        "  background-color: %2;"
         "}"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
         "  height: 0;"
@@ -162,11 +166,14 @@ QString ScrollbarHider::makeScrollbarQss(bool visible) const
         "  min-width: 30px;"
         "  border-radius: 5px;"
         "}"
+        "QScrollBar::handle:horizontal:hover {"
+        "  background-color: %2;"
+        "}"
         "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
         "  width: 0;"
         "}"
         "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
         "  background: none;"
         "}"
-    ).arg(handle);
+    ).arg(bg, hoverBg);
 }
