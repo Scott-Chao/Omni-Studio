@@ -89,7 +89,7 @@ void AnthropicProvider::chatStream(const QList<Message> &messages)
 
     m_reply = m_net->post(request, postData);
     connect(m_reply, &QNetworkReply::readyRead, this, &AnthropicProvider::onReadyRead);
-    connect(m_reply, &QNetworkReply::finished, this, &AnthropicProvider::onFinished);
+    connect(m_reply, &QNetworkReply::finished, this, &AiProvider::onFinished);
 
     m_timeoutTimer->start();
 }
@@ -115,23 +115,12 @@ void AnthropicProvider::onReadyRead()
     }
 }
 
-void AnthropicProvider::onFinished()
+void AnthropicProvider::drainBuffer()
 {
-    m_timeoutTimer->stop();
-
-    if (!m_reply)
-        return;
-
-    // Process any remaining buffered data
     if (!m_buffer.isEmpty()) {
         parseSseFrame(m_buffer);
         m_buffer.clear();
     }
-
-    handleNetworkError();
-
-    m_reply->deleteLater();
-    m_reply = nullptr;
 }
 
 void AnthropicProvider::parseSseFrame(const QString &frame)

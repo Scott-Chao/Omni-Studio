@@ -44,9 +44,13 @@ signals:
     void finished();
     void error(const QString &message);
 
-protected:
+public:
     void onTimeout();
+    void onFinished();
+
+protected:
     void handleNetworkError();
+    virtual void drainBuffer() = 0;
 
     QNetworkAccessManager *m_net = nullptr;
     QNetworkReply *m_reply = nullptr;

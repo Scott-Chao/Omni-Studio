@@ -86,7 +86,7 @@ void OpenAiProvider::chatStream(const QList<Message> &messages)
 
     m_reply = m_net->post(request, postData);
     connect(m_reply, &QNetworkReply::readyRead, this, &OpenAiProvider::onReadyRead);
-    connect(m_reply, &QNetworkReply::finished, this, &OpenAiProvider::onFinished);
+    connect(m_reply, &QNetworkReply::finished, this, &AiProvider::onFinished);
 
     m_timeoutTimer->start();
 }
@@ -102,21 +102,10 @@ void OpenAiProvider::onReadyRead()
     parseSseBuffer();
 }
 
-void OpenAiProvider::onFinished()
+void OpenAiProvider::drainBuffer()
 {
-    m_timeoutTimer->stop();
-
-    if (!m_reply)
-        return;
-
-    // Process any remaining buffered data
     if (!m_buffer.isEmpty())
         parseSseBuffer();
-
-    handleNetworkError();
-
-    m_reply->deleteLater();
-    m_reply = nullptr;
 }
 
 void OpenAiProvider::parseSseBuffer()

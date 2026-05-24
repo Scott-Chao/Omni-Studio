@@ -61,8 +61,10 @@
 
 ### 修复 v0.12.6
 - **SettingsManager 单例空指针保护**：`instance()` 方法增加惰性初始化，在 `s_instance` 为 null 时自动创建静态 fallback 实例，防止在 `MainWindow` 构造前调用导致空指针解引用。
-- **Provider 重复错误处理提取**：将 `AnthropicProvider` 和 `OpenAiProvider` 中完全相同的 `cancel()`、`onTimeout()`、`handleNetworkError()` 以及公共成员变量提取到 `AiProvider` 基类，消除代码重复。新增 `ai/aiprovider.cpp` 实现文件，更新 `.pro`。
+- **Provider 重复错误处理提取**：将 `AnthropicProvider` 和 `OpenAiProvider` 中完全相同的 `cancel()`、`onTimeout()`、`handleNetworkError()`、`onFinished()` 以及公共成员变量提取到 `AiProvider` 基类，消除代码重复。新增 `ai/aiprovider.cpp` 实现文件。新增纯虚 `drainBuffer()` 供子类实现差异化 buffer 刷入。
 - **BottomPanel 缺少 tr() 封装修复**：修复 `bottompanel.cpp` 中 5 处用户可见字符串（"输出"、"诊断"、"错误"、"警告"、"无诊断信息"）未使用 `tr()` 包裹的问题。
+- **SettingsManager::clear() 破坏性过强**：将 `clear()` 从清空整个 config.ini 改为仅清除 `settings_overrides` 分组和 `editor/defaultZoom`，保留 OJ 凭据、AI API Key、窗口状态、恢复文件等其他关键数据。
+- **JudgeEngine 评测循环 processEvents 重入风险**：`finishCurrentTest()` 中的 `processEvents()` 改为 `processEvents(QEventLoop::ExcludeUserInputEvents)`，在保持 UI 信号刷新的同时阻止用户交互事件在测试循环期间重入。
 
 ### 1. `MainWindow` - 主窗口控制器
 

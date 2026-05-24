@@ -12,6 +12,20 @@ void AiProvider::cancel()
         m_timeoutTimer->stop();
 }
 
+void AiProvider::onFinished()
+{
+    m_timeoutTimer->stop();
+
+    if (!m_reply)
+        return;
+
+    drainBuffer();
+    handleNetworkError();
+
+    m_reply->deleteLater();
+    m_reply = nullptr;
+}
+
 void AiProvider::onTimeout()
 {
     if (m_reply) {

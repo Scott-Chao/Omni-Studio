@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QTextStream>
 #include <QCoreApplication>
+#include <QEventLoop>
 
 #include <windows.h>
 #include <psapi.h>
@@ -445,7 +446,7 @@ void JudgeEngine::finishCurrentTest(bool passed, const QString &statusCode, cons
     emit testFinished(m_currentTestIndex, result);
     cleanupTestProcess();
 
-    QCoreApplication::processEvents();
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     runNextTest();
 }
 

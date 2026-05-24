@@ -49,7 +49,7 @@ public:
     void removeSettingOverride(const QString &key);
     QStringList allOverrideKeys() const;
 
-    // 清除所有设置
+    // 清除用户设置覆盖（不触碰窗口状态、凭据、恢复文件等）
     void clear();
 
     // 编辑器默认缩放

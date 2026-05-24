@@ -166,8 +166,17 @@ QStringList SettingsManager::allOverrideKeys() const
 
 void SettingsManager::clear()
 {
+    // 只清除用户可配置的设置覆盖，不触碰窗口状态、凭据、恢复文件等
     m_overrideMap.clear();
-    m_settings->clear();
+
+    m_settings->beginGroup(KEY_OVERRIDES);
+    m_settings->remove(QString());
+    m_settings->endGroup();
+
+    m_settings->remove(KEY_DEFAULT_ZOOM);
+    m_cachedDefaultZoom = 1.0;
+
+    m_settings->sync();
 }
 
 void SettingsManager::flushOverrides()

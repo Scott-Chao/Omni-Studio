@@ -18,9 +18,9 @@ public:
 
 private slots:
     void onReadyRead();
-    void onFinished();
 
 private:
+    void drainBuffer() override;
     void parseSseBuffer();
 };
 
