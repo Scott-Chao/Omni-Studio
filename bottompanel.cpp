@@ -26,13 +26,13 @@ BottomPanel::BottomPanel(QWidget *parent)
     headerLayout->setContentsMargins(4, 0, 4, 0);
     headerLayout->setSpacing(2);
 
-    m_runTabBtn = new QPushButton(QStringLiteral("输出"), m_headerBar);
+    m_runTabBtn = new QPushButton(tr("输出"), m_headerBar);
     m_runTabBtn->setFlat(true);
     m_runTabBtn->setCursor(Qt::PointingHandCursor);
     m_runTabBtn->setFixedHeight(22);
     m_runTabBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
 
-    m_diagnosticsTabBtn = new QPushButton(QStringLiteral("诊断"), m_headerBar);
+    m_diagnosticsTabBtn = new QPushButton(tr("诊断"), m_headerBar);
     m_diagnosticsTabBtn->setFlat(true);
     m_diagnosticsTabBtn->setCursor(Qt::PointingHandCursor);
     m_diagnosticsTabBtn->setFixedHeight(22);
@@ -74,14 +74,14 @@ BottomPanel::BottomPanel(QWidget *parent)
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(0);
 
-    m_errorSection = new DiagnosticSection(QStringLiteral("错误"),
+    m_errorSection = new DiagnosticSection(tr("错误"),
                                            ThemeManager::instance().color("diagnostics.error").name(),
                                            1, contentWidget);
-    m_warningSection = new DiagnosticSection(QStringLiteral("警告"),
+    m_warningSection = new DiagnosticSection(tr("警告"),
                                              ThemeManager::instance().color("diagnostics.warning").name(),
                                              2, contentWidget);
 
-    m_emptyLabel = new QLabel(QStringLiteral("无诊断信息"), contentWidget);
+    m_emptyLabel = new QLabel(tr("无诊断信息"), contentWidget);
     m_emptyLabel->setAlignment(Qt::AlignCenter);
 
     connect(m_errorSection, &DiagnosticSection::lineClicked,

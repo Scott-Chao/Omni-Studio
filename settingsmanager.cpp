@@ -46,6 +46,12 @@ SettingsManager::~SettingsManager()
 
 SettingsManager &SettingsManager::instance()
 {
+    if (!s_instance) {
+        QString appDir = QCoreApplication::applicationDirPath();
+        QString iniPath = appDir + "/config.ini";
+        static SettingsManager fallback(iniPath);
+        s_instance = &fallback;
+    }
     return *s_instance;
 }
 

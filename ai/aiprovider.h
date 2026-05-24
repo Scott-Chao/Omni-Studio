@@ -5,6 +5,9 @@
 #include <QString>
 #include <QList>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QTimer>
 
 enum class MessageRole { User, Assistant, System };
 
@@ -33,12 +36,28 @@ public:
     virtual void setSystemPrompt(const QString &prompt) = 0;
     virtual void setMaxTokens(int maxTokens) = 0;
     virtual void chatStream(const QList<Message> &messages) = 0;
-    virtual void cancel() = 0;
+
+    void cancel();
 
 signals:
     void partialResponse(const QString &text);
     void finished();
     void error(const QString &message);
+
+protected:
+    void onTimeout();
+    void handleNetworkError();
+
+    QNetworkAccessManager *m_net = nullptr;
+    QNetworkReply *m_reply = nullptr;
+    QTimer *m_timeoutTimer = nullptr;
+    QString m_buffer;
+    QString m_apiKey;
+    QString m_model;
+    QString m_systemPrompt;
+    QString m_endpoint;
+    int m_maxTokens = 4096;
+    bool m_finished = false;
 };
 
 #endif // AIPROVIDER_H

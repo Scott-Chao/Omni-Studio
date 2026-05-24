@@ -7,13 +7,13 @@
 
 OpenAiProvider::OpenAiProvider(QObject *parent)
     : AiProvider(parent)
-    , m_net(new QNetworkAccessManager(this))
-    , m_timeoutTimer(new QTimer(this))
-    , m_endpoint(QStringLiteral("https://api.deepseek.com/v1"))
 {
+    m_net = new QNetworkAccessManager(this);
+    m_timeoutTimer = new QTimer(this);
     m_timeoutTimer->setSingleShot(true);
     m_timeoutTimer->setInterval(30000);
-    connect(m_timeoutTimer, &QTimer::timeout, this, &OpenAiProvider::onTimeout);
+    m_endpoint = QStringLiteral("https://api.deepseek.com/v1");
+    connect(m_timeoutTimer, &QTimer::timeout, this, &AiProvider::onTimeout);
 }
 
 void OpenAiProvider::setApiKey(const QString &key)
@@ -91,16 +91,6 @@ void OpenAiProvider::chatStream(const QList<Message> &messages)
     m_timeoutTimer->start();
 }
 
-void OpenAiProvider::cancel()
-{
-    if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-    }
-    m_timeoutTimer->stop();
-}
-
 void OpenAiProvider::onReadyRead()
 {
     m_timeoutTimer->start(); // reset timeout on any data
@@ -120,37 +110,13 @@ void OpenAiProvider::onFinished()
         return;
 
     // Process any remaining buffered data
-    if (!m_buffer.isEmpty()) {
+    if (!m_buffer.isEmpty())
         parseSseBuffer();
-    }
 
-    if (m_reply->error() != QNetworkReply::NoError
-        && m_reply->error() != QNetworkReply::OperationCanceledError) {
-        int httpStatus = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QString errorMsg;
-
-        if (httpStatus == 401 || httpStatus == 403)
-            errorMsg = tr("API Key 无效，请在设置中检查");
-        else if (httpStatus == 429)
-            errorMsg = tr("请求过于频繁，请稍后再试");
-        else
-            errorMsg = tr("网络连接失败: %1").arg(m_reply->errorString());
-
-        emit error(errorMsg);
-    }
+    handleNetworkError();
 
     m_reply->deleteLater();
     m_reply = nullptr;
-}
-
-void OpenAiProvider::onTimeout()
-{
-    if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-    }
-    emit error(tr("响应超时"));
 }
 
 void OpenAiProvider::parseSseBuffer()

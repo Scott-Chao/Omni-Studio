@@ -7,13 +7,13 @@
 
 AnthropicProvider::AnthropicProvider(QObject *parent)
     : AiProvider(parent)
-    , m_net(new QNetworkAccessManager(this))
-    , m_timeoutTimer(new QTimer(this))
-    , m_endpoint(QStringLiteral("https://api.anthropic.com/v1"))
 {
+    m_net = new QNetworkAccessManager(this);
+    m_timeoutTimer = new QTimer(this);
     m_timeoutTimer->setSingleShot(true);
     m_timeoutTimer->setInterval(30000);
-    connect(m_timeoutTimer, &QTimer::timeout, this, &AnthropicProvider::onTimeout);
+    m_endpoint = QStringLiteral("https://api.anthropic.com/v1");
+    connect(m_timeoutTimer, &QTimer::timeout, this, &AiProvider::onTimeout);
 }
 
 void AnthropicProvider::setApiKey(const QString &key)
@@ -94,16 +94,6 @@ void AnthropicProvider::chatStream(const QList<Message> &messages)
     m_timeoutTimer->start();
 }
 
-void AnthropicProvider::cancel()
-{
-    if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-    }
-    m_timeoutTimer->stop();
-}
-
 void AnthropicProvider::onReadyRead()
 {
     m_timeoutTimer->start(); // reset timeout on any data
@@ -138,34 +128,10 @@ void AnthropicProvider::onFinished()
         m_buffer.clear();
     }
 
-    // Check for errors if we didn't get a proper finish via SSE
-    if (m_reply->error() != QNetworkReply::NoError
-        && m_reply->error() != QNetworkReply::OperationCanceledError) {
-        int httpStatus = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QString errorMsg;
-
-        if (httpStatus == 401 || httpStatus == 403)
-            errorMsg = tr("API Key 无效，请在设置中检查");
-        else if (httpStatus == 429)
-            errorMsg = tr("请求过于频繁，请稍后再试");
-        else
-            errorMsg = tr("网络连接失败: %1").arg(m_reply->errorString());
-
-        emit error(errorMsg);
-    }
+    handleNetworkError();
 
     m_reply->deleteLater();
     m_reply = nullptr;
-}
-
-void AnthropicProvider::onTimeout()
-{
-    if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-    }
-    emit error(tr("响应超时"));
 }
 
 void AnthropicProvider::parseSseFrame(const QString &frame)

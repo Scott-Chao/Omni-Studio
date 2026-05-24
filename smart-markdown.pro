@@ -19,6 +19,7 @@ SOURCES += \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
+    ai/aiprovider.cpp \
     ai/aiproviderfactory.cpp \
     ai/anthropicprovider.cpp \
     ai/chatarea.cpp \

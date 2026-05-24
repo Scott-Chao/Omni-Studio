@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.5）
+## 功能说明文档（v0.12.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -59,9 +59,10 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.12.5
-- **提交结果面板主题跟随修复**：`SubmitResultPanel` 新增 `refreshStyle()` 方法并接入 `ThemeManager::themeChanged` 信号。切换主题时面板背景（`editor.background`，与编辑区统一）、详情标签、编译错误编辑区和隐藏按钮的样式实时同步。`m_detailLabel` 设置 `background: transparent` 消除子控件色块分隔。
-- **OpenJudge 浏览窗口主题跟随修复**：`OpenJudgeWindow::refreshStyle()` 新增顶部工具栏（`m_toolbar`，`activityBar.background`）和分隔线（`m_separator`）的主题同步。题目详情内容（`QTextBrowser`）切换主题时自动以新主题颜色重新渲染当前章节 HTML（通过 `m_currentSectionIndex` 记录当前选中章节索引），无需手动切换栏目即可看到更新。新增成员 `m_toolbar`、`m_separator`、`m_currentSectionIndex` 置于原有成员声明之后，保持原有初始化顺序不变。
+### 修复 v0.12.6
+- **SettingsManager 单例空指针保护**：`instance()` 方法增加惰性初始化，在 `s_instance` 为 null 时自动创建静态 fallback 实例，防止在 `MainWindow` 构造前调用导致空指针解引用。
+- **Provider 重复错误处理提取**：将 `AnthropicProvider` 和 `OpenAiProvider` 中完全相同的 `cancel()`、`onTimeout()`、`handleNetworkError()` 以及公共成员变量提取到 `AiProvider` 基类，消除代码重复。新增 `ai/aiprovider.cpp` 实现文件，更新 `.pro`。
+- **BottomPanel 缺少 tr() 封装修复**：修复 `bottompanel.cpp` 中 5 处用户可见字符串（"输出"、"诊断"、"错误"、"警告"、"无诊断信息"）未使用 `tr()` 包裹的问题。
 
 ### 1. `MainWindow` - 主窗口控制器
 
