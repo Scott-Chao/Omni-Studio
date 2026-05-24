@@ -12,6 +12,7 @@
 #include <QWebEngineSettings>
 #include <QWebEnginePage>
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QFile>
 #include <QDir>
@@ -746,7 +747,9 @@ void SmdCell::performGrab()
 
     // Grab the top-level render window, then immediately hide it.
     m_grabbing = true; // suppress focusEntered during hide/cleanup
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     QPixmap pm = m_renderView->grab();
+    QApplication::restoreOverrideCursor();
     m_renderView->hide(); // hide immediately after grab — no linger
     if (pm.isNull() || pm.height() <= 0) {
         return;

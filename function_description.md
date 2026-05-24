@@ -60,17 +60,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 文件树内联重命名主题适配与高亮不透明度调整
-- 双向链接索引构建异步化
-- SMD 文件打开时多次切换主题导致闪退
-- SMD 单元格块标题文字颜色调整，提高对比度
-- 异步 Python 进程生命周期管理
-- 主线程阻塞修复（Fix 4-5）：
-  - `ProcessRunner::stop()` 移除 `waitForFinished()` 阻塞等待，编译/运行停止按钮即时响应
-  - `updateWikiLinksAfterRename` 异步化：文件 I/O（读/写/正则替换）移入后台线程，UI 保持响应
-  - `buildFileIndexAsync` 使用独立取消令牌，不再取消全量索引构建，修复启动时反向链接为空
-  - `onFileSelected` 显式刷新侧边面板，修复预览标签复用时反向链接不更新
-  - `currentChanged` handler 连接 `fileLoaded` 信号，覆盖所有文件加载场景的面板刷新
+- smdcell.cpp — grab() 视觉反馈优化
 
 ### 1. `MainWindow` - 主窗口控制器
 
