@@ -1015,6 +1015,10 @@ MainWindow::MainWindow(QWidget *parent)
             if (m_editorScrollAreasRegistered.contains(editor))
                 return;
             m_editorScrollAreasRegistered.insert(editor);
+            connect(editor, &QObject::destroyed, this, [this](QObject *obj) {
+                m_editorScrollAreasRegistered.remove(
+                    static_cast<EditorWidget*>(obj));
+            });
             const auto areas = editor->findChildren<QAbstractScrollArea*>();
             for (auto *area : areas) {
                 hider->manage(area);

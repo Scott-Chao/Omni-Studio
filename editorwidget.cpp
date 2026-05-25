@@ -1425,7 +1425,7 @@ void EditorWidget::reloadEditorColors()
 
     // Push CSS variable updates to preview HTML via JavaScript
     QString js = previewThemeJs();
-    if (m_previewReady && m_previewView->page()) {
+    if (m_previewReady && m_previewView && m_previewView->page()) {
         m_previewView->page()->runJavaScript(js);
     }
     if (m_splitPreviewReady && m_splitPreviewView) {
