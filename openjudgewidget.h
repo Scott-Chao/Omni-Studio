@@ -52,6 +52,7 @@ private slots:
     void onNetworkError(const QString &error);
     void onItemClicked(QListWidgetItem *item);
     void onSectionClicked(QListWidgetItem *item);
+    void onContentScrolled();
     void onBack();
     void onRefresh();
     void onPrevPage();
@@ -68,6 +69,8 @@ private:
     void rebuildListView();
     void refreshStyle();
     void updateSelectButtonStyle(bool selected);
+    QString buildCombinedHtml(const ProblemDetail &detail) const;
+    void recordSectionPositions();
 
     struct SamplePair {
         QString input;
@@ -101,6 +104,8 @@ private:
     QWidget *m_toolbar = nullptr;
     QFrame *m_separator = nullptr;
     int m_currentSectionIndex = -1;
+    QVector<int> m_sectionYOffsets;
+    bool m_scrollingFromClick = false;
 
     OjViewState m_viewState = OJ_HOMEWORK_LIST;
     QList<HomeworkItem> m_ongoingItems;

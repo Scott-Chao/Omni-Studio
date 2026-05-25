@@ -25,6 +25,9 @@
 #include <QFile>
 #include <QTextStream>
 #include <QStandardPaths>
+#include <QScrollBar>
+#include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
 
 // ===== HomeworkDelegate: draws deadline right-aligned =====
 class HomeworkDelegate : public QStyledItemDelegate {
@@ -52,21 +55,6 @@ public:
         painter->restore();
     }
 };
-
-// ===== HTML wrapping helper =====
-static QString wrapHtml(const QString &body, const QColor &bg, const QColor &fg,
-                        const QColor &preBg, const QColor &border, const QColor &link)
-{
-    QString html = QStringLiteral(
-        "<html><head><meta charset=\"utf-8\"><style>"
-        "body{background:%1;color:%2;font-family:'Microsoft YaHei',sans-serif;font-size:10pt;}"
-        "pre{background:%3;padding:12px;border:1px solid %4;font-family:Consolas,monospace;color:%2;}"
-        "a{color:%5;}"
-        "</style></head><body>").arg(bg.name(), fg.name(), preBg.name(), border.name(), link.name());
-    html += body;
-    html += QStringLiteral("</body></html>");
-    return html;
-}
 
 // ======================================================================
 // Constructor
@@ -300,6 +288,47 @@ void OpenJudgeWidget::setupDetailPage()
 
     layout->addWidget(m_sectionList);
     layout->addWidget(m_sectionContent, 1);
+
+    connect(m_sectionContent->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &OpenJudgeWidget::onContentScrolled);
+}
+
+// ======================================================================
+// Combined HTML builder (all sections in one document)
+// ======================================================================
+
+QString OpenJudgeWidget::buildCombinedHtml(const ProblemDetail &detail) const
+{
+    auto &tm = ThemeManager::instance();
+    const QColor bg = tm.color("editor.background");
+    const QColor fg = tm.color("editor.foreground");
+    const QColor preBg = tm.color("menu.background");
+    const QColor border = tm.color("input.border");
+    const QColor link = tm.color("syntax.keywords");
+    const QColor headingFg = tm.color("judge.ac");
+
+    QString html;
+    html += QStringLiteral(
+        "<html><head><meta charset=\"utf-8\"><style>"
+        "body{background:%1;color:%2;font-family:'Microsoft YaHei',sans-serif;font-size:10pt;}"
+        "pre{background:%3;padding:12px;border:1px solid %4;font-family:Consolas,monospace;color:%2;}"
+        "a{color:%5;}"
+        "h2.oj-section-heading{color:%6;font-size:13pt;margin:16px 0 8px 0;padding-bottom:4px;border-bottom:2px solid %4;}"
+        "hr.oj-section-divider{border:none;border-top:1px solid %4;margin:24px 0 12px 0;}"
+        "</style></head><body><div class=\"oj-problem-content\">")
+        .arg(bg.name(), fg.name(), preBg.name(), border.name(), link.name(), headingFg.name());
+
+    for (int i = 0; i < detail.sections.size(); ++i) {
+        const auto &sec = detail.sections[i];
+        if (i > 0)
+            html += QStringLiteral("<hr class=\"oj-section-divider\">");
+        html += QStringLiteral("<a name=\"section-%1\"></a><h2 class=\"oj-section-heading\">%2</h2>")
+                .arg(i).arg(sec.heading.toHtmlEscaped());
+        html += sec.contentHtml;
+    }
+
+    html += QStringLiteral("</div></body></html>");
+    return html;
 }
 
 // ======================================================================
@@ -317,10 +346,10 @@ void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
 {
     m_sectionList->clear();
     m_sectionContent->clear();
+    m_sectionYOffsets.clear();
 
     for (const auto &sec : detail.sections) {
         auto *item = new QListWidgetItem(sec.heading);
-        item->setData(Qt::UserRole, sec.contentHtml);
         item->setSizeHint(QSize(0, 32));
         m_sectionList->addItem(item);
     }
@@ -328,13 +357,9 @@ void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
     if (!detail.sections.isEmpty()) {
         m_sectionList->setCurrentRow(0);
         m_currentSectionIndex = 0;
-    {
-        auto &tm = ThemeManager::instance();
-        m_sectionContent->setHtml(wrapHtml(detail.sections.first().contentHtml,
-            tm.color("editor.background"), tm.color("editor.foreground"),
-            tm.color("menu.background"), tm.color("input.border"),
-            tm.color("syntax.keywords")));
-    }
+        m_sectionContent->setHtml(buildCombinedHtml(detail));
+        m_sectionContent->scrollToAnchor(QStringLiteral("section-0"));
+        QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
     }
 
     m_stackedWidget->setCurrentIndex(1);
@@ -716,14 +741,57 @@ void OpenJudgeWidget::onItemClicked(QListWidgetItem *item)
 
 void OpenJudgeWidget::onSectionClicked(QListWidgetItem *item)
 {
-    m_currentSectionIndex = m_sectionList->row(item);
-    QString content = item->data(Qt::UserRole).toString();
-    {
-        auto &tm = ThemeManager::instance();
-        m_sectionContent->setHtml(wrapHtml(content,
-            tm.color("editor.background"), tm.color("editor.foreground"),
-            tm.color("menu.background"), tm.color("input.border"),
-            tm.color("syntax.keywords")));
+    int index = m_sectionList->row(item);
+    m_currentSectionIndex = index;
+    m_scrollingFromClick = true;
+    m_sectionContent->scrollToAnchor(QStringLiteral("section-%1").arg(index));
+}
+
+// ======================================================================
+// Scroll-spy: update left sidebar selection based on scroll position
+// ======================================================================
+
+void OpenJudgeWidget::onContentScrolled()
+{
+    if (m_scrollingFromClick) {
+        m_scrollingFromClick = false;
+        return;
+    }
+    if (m_sectionYOffsets.isEmpty()) return;
+
+    int scrollY = m_sectionContent->verticalScrollBar()->value();
+
+    int newIndex = 0;
+    for (int i = 0; i < m_sectionYOffsets.size(); ++i) {
+        if (m_sectionYOffsets[i] <= scrollY + 10)
+            newIndex = i;
+        else
+            break;
+    }
+
+    if (newIndex != m_currentSectionIndex) {
+        m_currentSectionIndex = newIndex;
+        m_sectionList->blockSignals(true);
+        m_sectionList->setCurrentRow(newIndex);
+        m_sectionList->blockSignals(false);
+    }
+}
+
+void OpenJudgeWidget::recordSectionPositions()
+{
+    m_sectionYOffsets.clear();
+    QTextDocument *doc = m_sectionContent->document();
+    if (!doc) return;
+
+    QTextCursor searchFrom(doc);
+    const auto &sections = m_currentProblem.sections;
+    for (int i = 0; i < sections.size(); ++i) {
+        QTextCursor found = doc->find(sections[i].heading, searchFrom);
+        if (!found.isNull()) {
+            QRectF rect = doc->documentLayout()->blockBoundingRect(found.block());
+            m_sectionYOffsets.append(static_cast<int>(rect.top()));
+            searchFrom = found;
+        }
     }
 }
 
@@ -941,13 +1009,12 @@ void OpenJudgeWidget::refreshStyle()
              tm.color("editor.foreground").name()));
 
     // Re-render problem detail content with new theme colors
-    if (m_viewState == OJ_PROBLEM_DETAIL && m_currentSectionIndex >= 0
-        && m_currentSectionIndex < m_currentProblem.sections.size()) {
-        const QString &html = m_currentProblem.sections[m_currentSectionIndex].contentHtml;
-        m_sectionContent->setHtml(wrapHtml(html,
-            tm.color("editor.background"), tm.color("editor.foreground"),
-            tm.color("menu.background"), tm.color("input.border"),
-            tm.color("syntax.keywords")));
+    if (m_viewState == OJ_PROBLEM_DETAIL && !m_currentProblem.sections.isEmpty()) {
+        int savedIndex = qMax(0, m_currentSectionIndex);
+        m_sectionContent->setHtml(buildCombinedHtml(m_currentProblem));
+        m_scrollingFromClick = true;
+        m_sectionContent->scrollToAnchor(QStringLiteral("section-%1").arg(savedIndex));
+        QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
     }
 
 }

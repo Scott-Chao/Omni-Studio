@@ -707,6 +707,26 @@ QString Crawler::stripHtmlTags(const QString &html)
 
 ProblemDetail Crawler::parseProblemDetail(const QString &html)
 {
+    // Helper: escape bare '<' in HTML content that are not real tags.
+    // A real tag starts with '<' followed by a letter, '/', or '!'.
+    // Everything else (e.g. "1 < n <= 52") is text that must be escaped.
+    static const auto fixBareLt = [](const QString &s) {
+        QString out;
+        out.reserve(s.size());
+        for (int i = 0; i < s.size(); ++i) {
+            if (s[i] == QLatin1Char('<') && i + 1 < s.size()) {
+                QChar next = s[i + 1];
+                if (next.isLetter() || next == QLatin1Char('/') || next == QLatin1Char('!'))
+                    out += QLatin1Char('<');   // real tag
+                else
+                    out += QStringLiteral("&lt;");
+            } else {
+                out += s[i];
+            }
+        }
+        return out;
+    };
+
     ProblemDetail detail;
 
     QRegularExpression titleRx(QStringLiteral("<title>([^<]+)</title>"));
@@ -825,6 +845,9 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
 
+            // Escape bare '<' that are text content, not real HTML tags
+            contentHtml = fixBareLt(contentHtml);
+
             detail.sections.append({headings[i].heading, contentHtml.trimmed()});
 
             crawlerLog(QStringLiteral("  section[%1] '%2': rawHtml len=%3, hasDd=%4, contentHtml len=%5, hasPre=%6")
@@ -869,6 +892,9 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
             contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
+
+            // Escape bare '<' that are text content, not real HTML tags
+            contentHtml = fixBareLt(contentHtml);
 
             detail.sections.append({headings[i].heading, contentHtml.trimmed()});
         }
