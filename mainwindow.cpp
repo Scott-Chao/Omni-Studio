@@ -176,6 +176,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Restore saved theme
     ThemeManager::instance().setStyleSheetTarget(this);
+    ThemeManager::instance().loadQss(); // apply QSS to MainWindow unconditionally
     QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
     if (!savedTheme.isEmpty())
         ThemeManager::instance().loadTheme(savedTheme);

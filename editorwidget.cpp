@@ -1472,6 +1472,7 @@ void EditorWidget::applyZoom()
     }
 
     if (m_previewMode && m_previewView) {
+        m_previewView->setZoomFactor(m_zoomFactor);
     }
     if (m_splitPreview && m_splitPreviewView) {
         m_splitPreviewView->setZoomFactor(m_zoomFactor);
@@ -1835,8 +1836,10 @@ void EditorWidget::createSplitPreviewWidgets()
 
     m_splitPreviewView->installEventFilter(this);
     QTimer::singleShot(0, this, [this]() {
-        if (QWidget *fp = m_splitPreviewView->focusProxy())
-            fp->installEventFilter(this);
+        if (m_splitPreviewView) {
+            if (QWidget *fp = m_splitPreviewView->focusProxy())
+                fp->installEventFilter(this);
+        }
     });
 
     m_splitSplitter->addWidget(m_splitPreviewView);
