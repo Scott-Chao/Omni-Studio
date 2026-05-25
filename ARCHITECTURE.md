@@ -4,7 +4,7 @@
 
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
-MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event()
+MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event(); right panel auto-hide via QApplication::focusChanged (no global event filter)
   ├── ThemeManager        → Singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect, system theme 5-min refresh
   ├── ActivityBar         → 48px fixed left bar, 5 SVG icon buttons (Search/AI/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
   ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
@@ -12,7 +12,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │   ├── Breadcrumb bar  → FlowLayout path segments, click-to-navigate
   │   └── Toolbar         → Folder label (auto-elided) + collapse-all + refresh buttons
   ├── TabManager          → QTabWidget, owns EditorWidget tabs (center, right splitter top)
-  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView | CodeEditor | QSplitter(edit+preview) | QPdfView | SmdEditor], six-mode editor
+  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView(lazy) | CodeEditor | QSplitter(edit+preview,lazy) | QPdfView | SmdEditor], six-mode editor, preview WebEngine released on close
   │       ├── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
   │       ├── CodeEditor  → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent
   │       ├── SmdEditor   → QScrollArea-based cell editor for `.smd` files, Jupyter-like command/edit dual mode
@@ -80,11 +80,17 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Diagnostics**: Three sources — (1) `SmdDiagnosticsPanel` for SMD cells, (2) `BottomPanel` DiagnosticsTab for standalone `.cpp`/`.py` via LSP providers, (3) `BottomPanel` + JS wave underlines for MD code blocks via `CompilerErrorParser`. All `CompletionProvider` subclasses emit `diagnosticsUpdated`. C++: clangd → `CppCompletionProvider::parseDiagnostics()`. Python: Jedi `diagnostics` action. MD blocks: `CompilerErrorParser::parseCompileErrors()` / `parsePythonTraceback()` on stderr after ▶ Run. `MainWindow::currentChanged` restores diagnostics from cache on tab switch: code files → LSP provider, `.md` → `loadMdDiagnosticsForCurrentTab()`, others → hide.
 - **Local Judge**: Compile → warmup → per-test execution (1s timeout, 64MB memory limit). Triple-capture memory monitoring. Line-by-line trimmed output comparison. AC/WA/TLE/MLE/RE color-coded table.
 - **OpenJudge integration**: Crawler-based HTTP (cxsjsx.openjudge.cn). Homework browsing → problem detail → sample extraction (paired `<pre>` blocks) → cache to temp → inject into JudgePanel. Submission: POST raw source (percent-encoded, no base64) → poll 30s for result → show SubmitResultPanel.
+- **QSS scope**: Theme swaps apply QSS only to MainWindow (via `ThemeManager::setStyleSheetTarget`) instead of `qApp->setStyleSheet()`, avoiding O(widget_count) repaint on every theme change. Other top-level widgets use QPalette + individual `refreshStyle()`.
+- **Window drag performance**: No `qApp->installEventFilter` — right panel auto-hide uses `QApplication::focusChanged` + `QTimer::singleShot(0)` guard. Maximized window drag defers `showNormal()` to `MouseMove` (via `m_toolbarDragPending`); `MouseButtonRelease` without move clears the flag, preventing accidental un-maximize on click. Left/right panels controlled independently.
+- **ScrollbarHider registration**: Tab switch `findChildren<QAbstractScrollArea*>` runs once per editor. `QSet<EditorWidget*> m_editorScrollAreasRegistered` caches already-registered editors, skipping O(widget_tree_depth) traversal on subsequent switches.
+- **ChatBubble streaming**: Incremental HTML conversion — `m_accumulatedHtml` cache accumulates inline-only (`processInline()`) delta chunks. `isStructuralDelta()` detects code block fences/headings/lists/HR for fallback to full `markdownToHtml()`. `m_inCodeBlock` tracking forces full rebuild inside code blocks. `flushUpdate()` triggers final full rebuild to correct incremental approximation errors.
 
 ## Component Details
 
 ### EditorWidget
-Six-mode QStackedWidget. Page 0 `WikiLinkTextEdit`, page 1 full preview WebEngine, page 2 `CodeEditor`, page 3 QSplitter(edit+preview), page 4 QPdfView, page 5 `SmdEditor`. Modes are mutually exclusive: enabling split preview transfers `m_textEdit` between page 0 and page 3's splitter. PdfView and SmdEdit skip preview/wikilink operations. Preview pipeline shares marked.js + KaTeX + Mermaid across full and split modes. Code blocks are pre-highlighted in C++ (regex-based, matching highlighter colors), base64-encoded into custom fenced blocks. Zoom 0.5–3.0, step 0.1. 300ms debounce clears modified flag on text revert.
+Six-mode QStackedWidget. Page 0 `WikiLinkTextEdit`, page 1 full preview WebEngine (lazy), page 2 `CodeEditor`, page 3 QSplitter(edit+preview, lazy), page 4 QPdfView, page 5 `SmdEditor`. Modes are mutually exclusive: enabling split preview transfers `m_textEdit` between page 0 and page 3's splitter. PdfView and SmdEdit skip preview/wikilink operations. Preview pipeline shares marked.js + KaTeX + Mermaid across full and split modes. Code blocks are pre-highlighted in C++ (regex-based, matching highlighter colors), base64-encoded into custom fenced blocks. Zoom 0.5–3.0, step 0.1. 300ms debounce clears modified flag on text revert.
+
+**Lazy WebEngine**: `m_previewView`/`m_previewContainer`/`m_splitSplitter` are not created in the constructor — `ensurePreviewView()` creates them on first preview demand; `destroyPreviewView()` / `destroySplitPreviewWidgets()` release the Chromium process and widgets when exiting preview mode (via `deleteLater()` after `removeWidget`). `m_previewReady` and `m_splitPreviewReady` flags track initialization state. All pointer accesses are null-guarded, including `loadFinished` callbacks and `refreshPreviewTheme()`. `setCurrentWidget()` replaces hardcoded `setCurrentIndex()` for robustness.
 
 ### PDF export
 Temporary hidden QWebEngineView loads light-themed preview, waits for Mermaid async rendering via JS Promise polling, then calls `printToPdf()`.
@@ -230,6 +236,8 @@ QScrollArea with vertical QVBoxLayout of ChatBubble widgets. addMessage(role, te
 ### ChatBubble (`ai/chatbubble.h/cpp`)
 QWidget per message. Two roles: User (right-aligned, blue bg #1a3a5c) and Assistant (left-aligned, gray bg #2d2d2d). Role label above bubble ("你" blue / "AI 助手" green). Uses QTextBrowser for HTML rendering. Lightweight Markdown→HTML converter (markdownToHtml): supports **bold**, *italic*, `inline code`, [links](url), `#`/`##` headings, `-`/`*` lists, numbered lists, fenced ```code blocks```, `---` horizontal rules. Code blocks styled with #1e1e1e bg. setText()/appendText() update and auto-size height via QTextDocument::size(). **Streaming optimization**: 80ms QTimer debounce in appendText() coalesces rapid SSE chunks into single updateContent() call. setUpdatesEnabled(false) around setHtml() prevents blank flash. updateBrowserHeight() extracted with >1px threshold to prevent infinite resize loops. flushUpdate() forces pending debounced update on streaming finished.
 
+**Incremental HTML streaming**: `m_accumulatedHtml` caches the converted HTML so only the delta chunk (new text since last tick) is processed on each debounce tick via `processSimpleDelta()` (inline-only conversion: bold/italic/code), rather than running full `markdownToHtml()` on the entire accumulated text. `isStructuralDelta()` detects code block fences, headings, lists, and horizontal rules — when a structural marker is found in the delta, falls back to full `markdownToHtml()` for correctness. `m_inCodeBlock` tracks whether the cursor is inside a code block, forcing the full-rebuild path to prevent incorrect `<p>` wrapping of `<pre><code>` blocks. `flushUpdate()` forces one final full rebuild to correct incremental approximation errors (e.g. list-item text split across chunks). `setText()` resets all incremental state (`m_accumulatedHtml.clear()`, `m_lastProcessedLength = 0`, `m_fullRebuildNeeded = false`, `m_inCodeBlock = false`). Theme changes set `m_fullRebuildNeeded = true` to trigger full rebuild on next tick.
+
 ### AiContextManager (`ai/aicontextmanager.h/cpp`)
 Static utility class. collectContext(EditorWidget*) returns ContextBundle: mode (Markdown/Code/Unknown), filePath, fileContent (full when no selection), selectedText, language (via LanguageUtils + extra map for html/css/js/go/rust etc.), cursorLine/Column, plus error analysis fields (errorStatusCode, actualOutput, expectedOutput, inputData, elapsedMs, memoryKb, errorDetail). currentEditorMode(editor) detects mode: SMD cells check active cell type, code files → Code, everything else → Markdown. languageForFile(ext) maps extensions to language strings (markdown, cpp, python, html, javascript, etc.).
 
@@ -265,6 +273,8 @@ Floating overlay help panel, same pattern as SettingsPanel but simpler. Semi-tra
 
 ### ThemeManager (`thememanager.h/cpp`)
 Singleton (QObject) managing VS Code 2026 Dark/Light themes. Built-in `QMap<QString, QColor>` palettes for all UI components (editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar). Theme enum: `Dark=0, Light=1, System=2`. `setTheme()` resolves System via `detectSystemTheme()` (Windows registry → time-based fallback). 5-minute `QTimer` auto-refresh when in System mode. `themeChanged(Theme)` signal emitted on actual change; `applyCurrentTheme()` re-emits for full reload. Semantic color access via `color(key)`/`hex(key)`.
+
+**QSS scope optimization**: `setStyleSheetTarget(QWidget*)` allows limiting `loadQss()` output to a specific widget tree (MainWindow) instead of `qApp->setStyleSheet()`. This avoids Qt re-styling every widget in the application when the theme changes. When target is null, falls back to `qApp->setStyleSheet()` for backward compatibility.
 
 ### CaptionBtn (anonymous namespace in mainwindow.cpp)
 Custom `QPushButton` subclass for system-native title bar icons (minimize/maximize/restore/close). Uses `QApplication::style()->standardIcon(SP_TitleBarMinButton etc.)` for icons. `QPainter::fillRect` self-paints hover background for immediate visual response (no Qt style lag). Used in `setupCustomTitleBar()` for the frameless window's right-side window control buttons.
