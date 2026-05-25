@@ -163,6 +163,11 @@ void OpenJudgeWidget::setupUi()
              btnBg.name(), disabledFg.name()));
     m_selectBtn->setVisible(false);
 
+    m_toggleSidebarBtn = new QPushButton(QStringLiteral("显示栏目"));
+    m_toggleSidebarBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
+    m_toggleSidebarBtn->setVisible(false);
+    connect(m_toggleSidebarBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleSidebar);
+
     m_refreshBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     m_refreshBtn->setEnabled(false);
     m_backBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
@@ -178,6 +183,7 @@ void OpenJudgeWidget::setupUi()
     connect(m_loginBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onLoginLogoutClicked);
 
     toolbarLayout->addWidget(m_selectBtn);
+    toolbarLayout->addWidget(m_toggleSidebarBtn);
     toolbarLayout->addWidget(m_backBtn);
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(m_refreshBtn);
@@ -339,6 +345,7 @@ void OpenJudgeWidget::showListPage()
 {
     m_stackedWidget->setCurrentIndex(0);
     m_selectBtn->setVisible(false);
+    m_toggleSidebarBtn->setVisible(false);
     m_currentSectionIndex = -1;
 }
 
@@ -361,6 +368,12 @@ void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
         m_sectionContent->scrollToAnchor(QStringLiteral("section-0"));
         QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
     }
+
+    // Sidebar hidden by default
+    m_sidebarVisible = false;
+    m_sectionList->setVisible(false);
+    m_toggleSidebarBtn->setVisible(true);
+    m_toggleSidebarBtn->setText(QStringLiteral("显示栏目"));
 
     m_stackedWidget->setCurrentIndex(1);
 }
@@ -747,6 +760,17 @@ void OpenJudgeWidget::onSectionClicked(QListWidgetItem *item)
     m_sectionContent->scrollToAnchor(QStringLiteral("section-%1").arg(index));
 }
 
+void OpenJudgeWidget::onToggleSidebar()
+{
+    m_sidebarVisible = !m_sidebarVisible;
+    m_sectionList->setVisible(m_sidebarVisible);
+    m_toggleSidebarBtn->setText(m_sidebarVisible
+        ? QStringLiteral("隐藏栏目") : QStringLiteral("显示栏目"));
+    // Re-record positions after layout adjusts to the new width
+    if (m_sidebarVisible)
+        QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
+}
+
 // ======================================================================
 // Scroll-spy: update left sidebar selection based on scroll position
 // ======================================================================
@@ -974,6 +998,7 @@ void OpenJudgeWidget::refreshStyle()
     m_loginBtn->setStyleSheet(btnQss);
     m_prevPageBtn->setStyleSheet(btnQss);
     m_nextPageBtn->setStyleSheet(btnQss);
+    m_toggleSidebarBtn->setStyleSheet(btnQss);
     updateSelectButtonStyle(m_currentProblemSelected);
 
     m_listWidget->setStyleSheet(QStringLiteral(

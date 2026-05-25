@@ -60,8 +60,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增/修复
-- OpenJudge 题目详情页面改为滚动浏览
-- 修复爬虫对 `<` 的解析问题
+- OpenJudge 题目详情页面左侧栏目可隐藏
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1003,12 +1002,12 @@
 
 **职责**：
 - `QWidget`（原为独立 `QMainWindow`），作为标签页直接嵌入 `TabManager`（非独立窗口），提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时背景、Toolbar、分隔线、列表控件、章节导航和题目内容实时同步。
-- 顶部工具栏（`m_toolbar`）：[选择此题目] [← 返回] [stretch] [刷新] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。
+- 顶部工具栏（`m_toolbar`）：[选择此题目] [显示栏目/隐藏栏目] [← 返回] [stretch] [刷新] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。"显示栏目/隐藏栏目"按钮（`m_toggleSidebarBtn`）仅在题目详情页可见，点击触发 `onToggleSidebar()` 切换 `m_sectionList` 可见性，文字随状态更新。
 - **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
 - **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
 - 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
-- 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px）+ 右侧连续滚动内容（`QTextBrowser`），无间隔紧凑布局。所有章节（描述、输入、输出、样例等）通过 `buildCombinedHtml()` 拼接为单个 HTML 文档一次性渲染，每节上方添加 `<h2>` 标题（与左侧一致），节间以 `<hr>` 分隔。**联动导航**：点击左侧栏目通过 `scrollToAnchor("section-N")` 跳转到对应位置；滚动右侧内容时通过 `onContentScrolled()` 实现 scroll-spy——根据 `m_sectionYOffsets` 记录的锚点 Y 偏移检测当前可见章节，自动更新左侧高亮（`m_scrollingFromClick` 防反馈锁避免循环触发）。`recordSectionPositions()` 在首次渲染和主题切换后通过 `QTextDocument::find()` 顺序搜索各章节标题，记录 block 像素偏移。主题切换时 `refreshStyle()` 重建全文并恢复当前滚动位置。
+- 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px，**默认隐藏**，通过工具栏"显示栏目"按钮切换可见性）+ 右侧连续滚动内容（`QTextBrowser`），无间隔紧凑布局。所有章节（描述、输入、输出、样例等）通过 `buildCombinedHtml()` 拼接为单个 HTML 文档一次性渲染，每节上方添加 `<h2>` 标题（与左侧一致），节间以 `<hr>` 分隔。**联动导航**：点击左侧栏目通过 `scrollToAnchor("section-N")` 跳转到对应位置；滚动右侧内容时通过 `onContentScrolled()` 实现 scroll-spy——根据 `m_sectionYOffsets` 记录的锚点 Y 偏移检测当前可见章节，自动更新左侧高亮（`m_scrollingFromClick` 防反馈锁避免循环触发）。`recordSectionPositions()` 在首次渲染、主题切换和侧栏显示时通过 `QTextDocument::find()` 顺序搜索各章节标题，记录 block 像素偏移。主题切换时 `refreshStyle()` 重建全文并恢复当前滚动位置。`onToggleSidebar()` 切换侧栏可见性并在显示时重新记录锚点位置以适应宽度变化。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-Cache"`（固定目录），每次写入前清空已有内容，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
 - **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。

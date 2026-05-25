@@ -58,6 +58,7 @@ private slots:
     void onPrevPage();
     void onNextPage();
     void onSelectClicked();
+    void onToggleSidebar();
     void onLoginLogoutClicked();
     void onLogoutClicked();
 
@@ -86,6 +87,7 @@ private:
     QPushButton *m_refreshBtn;
     QPushButton *m_backBtn;
     QPushButton *m_selectBtn;
+    QPushButton *m_toggleSidebarBtn = nullptr;
     QPushButton *m_loginBtn = nullptr;
     QLabel *m_userLabel = nullptr;
     bool m_isLoggedIn = false;
@@ -106,6 +108,7 @@ private:
     int m_currentSectionIndex = -1;
     QVector<int> m_sectionYOffsets;
     bool m_scrollingFromClick = false;
+    bool m_sidebarVisible = false;
 
     OjViewState m_viewState = OJ_HOMEWORK_LIST;
     QList<HomeworkItem> m_ongoingItems;
