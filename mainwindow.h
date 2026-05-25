@@ -10,6 +10,7 @@
 #include "ai/aihistorymanager.h"
 #include <QTabWidget>
 #include <QSplitter>
+#include <QSet>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMap>
@@ -225,6 +226,9 @@ private:
 
     // 快捷键动态映射
     QMap<QString, QAction*> m_shortcutActions;
+
+    // Track which editors have had their scroll areas registered with ScrollbarHider
+    QSet<EditorWidget*> m_editorScrollAreasRegistered;
 
     // 自定义标题栏控件
     TitleBarButton *m_minimizeBtn = nullptr;

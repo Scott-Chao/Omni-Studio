@@ -1004,8 +1004,12 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     // Watch for dynamically created QAbstractScrollAreas (e.g. PDF view in new tabs)
+    // Only scan each editor once — its widget tree is stable after creation.
     connect(m_tabManager, &QTabWidget::currentChanged, this, [this, hider](int) {
         if (auto *editor = m_tabManager->currentEditor()) {
+            if (m_editorScrollAreasRegistered.contains(editor))
+                return;
+            m_editorScrollAreasRegistered.insert(editor);
             const auto areas = editor->findChildren<QAbstractScrollArea*>();
             for (auto *area : areas) {
                 hider->manage(area);
