@@ -175,6 +175,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_leftStack->addWidget(m_explorer); // index 0: 文件浏览器
 
     // Restore saved theme
+    ThemeManager::instance().setStyleSheetTarget(this);
+    ThemeManager::instance().loadQss(); // apply QSS to MainWindow unconditionally
     QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
     if (!savedTheme.isEmpty())
         ThemeManager::instance().loadTheme(savedTheme);
@@ -218,6 +220,25 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         toggleRightPanelAction->setChecked(visible);
     });
+
+    // 用 focusChanged 替代全局 eventFilter 实现点击编辑器时自动隐藏右侧面板
+    // 用 singleShot(0) 避免中间态焦点经过编辑器导致误关（如打开左侧面板时）
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget * /*old*/, QWidget *now) {
+        if (now && m_tabManager && m_tabManager->isAncestorOf(now)
+            && m_dockRightPanel && m_dockRightPanel->isVisible()) {
+            QTimer::singleShot(0, this, [this]() {
+                if (m_dockRightPanel && m_dockRightPanel->isVisible()) {
+                    QWidget *focused = QApplication::focusWidget();
+                    if (focused && m_tabManager && m_tabManager->isAncestorOf(focused))
+                        m_dockRightPanel->hide();
+                }
+            });
+        }
+    });
+
+    // 在 TabManager 上安装事件过滤器，捕获焦点已在内时点击编辑器内任意位置
+    // 也能隐藏右侧面板（focusChanged 在焦点不变时不会触发）。
+    m_tabManager->installEventFilter(this);
 
     toggleRightPanelAction = new QAction(tr("面板"), this);
     toggleRightPanelAction->setCheckable(true);
@@ -984,8 +1005,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_explorer, &FileExplorerWidget::fileRenamed,
             this, &MainWindow::onFileMovedOrRenamed);
-    qApp->installEventFilter(this);
-
     loadSettings();
     checkCrashRecovery(); // 检测崩溃恢复文件
     m_searchPanel->setRootPath(m_explorer->rootPath());
@@ -1008,8 +1027,16 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     // Watch for dynamically created QAbstractScrollAreas (e.g. PDF view in new tabs)
+    // Only scan each editor once — its widget tree is stable after creation.
     connect(m_tabManager, &QTabWidget::currentChanged, this, [this, hider](int) {
         if (auto *editor = m_tabManager->currentEditor()) {
+            if (m_editorScrollAreasRegistered.contains(editor))
+                return;
+            m_editorScrollAreasRegistered.insert(editor);
+            connect(editor, &QObject::destroyed, this, [this](QObject *obj) {
+                m_editorScrollAreasRegistered.remove(
+                    static_cast<EditorWidget*>(obj));
+            });
             const auto areas = editor->findChildren<QAbstractScrollArea*>();
             for (auto *area : areas) {
                 hider->manage(area);
@@ -1499,8 +1526,9 @@ void MainWindow::showLeftPanel(int index)
     m_activityBar->setExplorerActive(index == 0);
     m_activityBar->setSearchActive(index == 1);
     m_activityBar->setJudgeActive(index == 2);
+
     // 打开非文件浏览面板时隐藏右侧面板
-    if (index > 0)
+    if (index > 0 && m_dockRightPanel)
         m_dockRightPanel->hide();
 }
 
@@ -2691,17 +2719,33 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             }
             if (shouldMove && me->button() == Qt::LeftButton) {
                 if (isMaximized()) {
-                    // 最大化拖拽：还原 → 处理事件 → 定位 → 系统拖拽
-                    QPoint gpos = me->globalPosition().toPoint();
-                    QPoint localInWindow = mapFromGlobal(gpos);
-                    showNormal();
-                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-                    move(gpos.x() - localInWindow.x(), gpos.y() - localInWindow.y());
+                    // 最大化时：不立即还原，等 MouseMove 确认是拖拽才还原
+                    m_toolbarDragPending = true;
+                } else {
+                    if (windowHandle())
+                        windowHandle()->startSystemMove();
                 }
-                if (windowHandle())
-                    windowHandle()->startSystemMove();
                 return true;
             }
+        }
+        // 最大化窗口拖拽：检测到实际鼠标移动才还原
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseMove
+            && m_toolbarDragPending && isMaximized()) {
+            m_toolbarDragPending = false;
+            QMouseEvent *me = static_cast<QMouseEvent*>(event);
+            QPoint gpos = me->globalPosition().toPoint();
+            QPoint localInWindow = mapFromGlobal(gpos);
+            showNormal();
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            move(gpos.x() - localInWindow.x(), gpos.y() - localInWindow.y());
+            if (windowHandle())
+                windowHandle()->startSystemMove();
+            return true;
+        }
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonRelease
+            && m_toolbarDragPending) {
+            // 单击不还原，只清除标志
+            m_toolbarDragPending = false;
         }
         if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonDblClick) {
             if (isMaximized())
@@ -2713,21 +2757,16 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     if (event->type() == QEvent::MouseButtonPress) {
-        QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
-        QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
-
-        // Auto-hide right panel when clicking in the editor area
-        if (m_dockRightPanel->isVisible()) {
-            if (btn && btn->defaultAction() == toggleRightPanelAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (!m_dockRightPanel->isAncestorOf(clickedWidget)
-                && m_tabManager && m_tabManager->isAncestorOf(clickedWidget))
+        // 点击编辑器区域时隐藏右侧面板（补全 focusChanged 无法处理焦点不变的场景）
+        if (m_dockRightPanel && m_dockRightPanel->isVisible()
+            && m_tabManager) {
+            QWidget *clickedWidget = qobject_cast<QWidget*>(watched);
+            if (clickedWidget && (watched == m_tabManager || m_tabManager->isAncestorOf(clickedWidget))) {
                 m_dockRightPanel->hide();
+                return true;
+            }
         }
-
         // Close settings/help overlays when clicking overlay background
-        // (Overlays are now top-level Tool windows; clicks on the dimmed area
-        //  outside the panel widget close the overlay.)
         if (watched == m_settingsOverlay && m_settingsOverlay->isVisible()) {
             auto *me = static_cast<QMouseEvent*>(event);
             if (!m_settingsPanel->geometry().contains(me->pos())) {

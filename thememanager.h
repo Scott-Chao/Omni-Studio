@@ -7,6 +7,8 @@
 #include <QMap>
 #include <QStringList>
 
+class QWidget;
+
 class ThemeManager : public QObject
 {
     Q_OBJECT
@@ -25,6 +27,7 @@ public:
     ThemeType currentThemeType() const;
 
     void loadQss();
+    void setStyleSheetTarget(QWidget *w);
 
     void applyPalette();
 
@@ -53,6 +56,7 @@ private:
     QMap<QString, QColor> m_overrides;
     QList<ThemeEntry> m_builtinThemes;
     bool m_loadingTheme = false;
+    QWidget *m_qssTarget = nullptr;
 
     bool loadThemeFromFile(const QString &path, ThemeData &out);
     void initBuiltinThemes();
