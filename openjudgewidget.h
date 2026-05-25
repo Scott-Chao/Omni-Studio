@@ -109,6 +109,8 @@ private:
     };
     QVector<SamplePair> extractSamples(const ProblemDetail &detail);
     QStringList extractPreBlocks(const QString &html);
+    QString samplesCacheDir() const;
+    bool hasCachedSamples() const;
     QString writeSamplesToCache(const QVector<SamplePair> &samples);
 
     Crawler *m_crawler;

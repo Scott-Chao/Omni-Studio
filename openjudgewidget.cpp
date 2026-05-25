@@ -948,12 +948,27 @@ OpenJudgeWidget::extractSamples(const ProblemDetail &detail)
     return samples;
 }
 
+QString OpenJudgeWidget::samplesCacheDir() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+           + QStringLiteral("/SM-OJ-Cache/samples/")
+           + sanitizeFileName(m_currentProblem.title);
+}
+
+bool OpenJudgeWidget::hasCachedSamples() const
+{
+    QDir dir(samplesCacheDir());
+    if (!dir.exists())
+        return false;
+    QStringList inFiles = dir.entryList({QStringLiteral("*.in")}, QDir::Files);
+    return !inFiles.isEmpty();
+}
+
 QString OpenJudgeWidget::writeSamplesToCache(const QVector<SamplePair> &samples)
 {
-    QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    QString cacheDir = tempRoot + QStringLiteral("/SM-OJ-Cache");
+    QString cacheDir = samplesCacheDir();
 
-    // Clear existing contents and recreate
+    // Clear only this problem's cache
     QDir dir(cacheDir);
     if (dir.exists()) {
         dir.removeRecursively();
@@ -990,13 +1005,18 @@ void OpenJudgeWidget::onSelectClicked()
         return;
     }
 
-    QVector<SamplePair> samples = extractSamples(m_currentProblem);
-    if (samples.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("提示"),
-            QStringLiteral("该题目没有找到样例输入/输出数据。"));
-        return;
+    QString folderPath;
+    if (hasCachedSamples()) {
+        folderPath = samplesCacheDir();
+    } else {
+        QVector<SamplePair> samples = extractSamples(m_currentProblem);
+        if (samples.isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("提示"),
+                QStringLiteral("该题目没有找到样例输入/输出数据。"));
+            return;
+        }
+        folderPath = writeSamplesToCache(samples);
     }
-    QString folderPath = writeSamplesToCache(samples);
     emit sampleSelected(folderPath);
 
     m_currentProblemSelected = true;

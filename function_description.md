@@ -61,11 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-OpenJudge IDE 语言默认选择优化，按以下顺序选择：
-- 题目仅一种语言时自动选中
-- 使用该题目的语言记录
-- 全局最后一次提交
-- 语言列表第一项
+- OpenJudge 题目样例缓存改为按题目缓存
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1014,7 +1010,7 @@ OpenJudge IDE 语言默认选择优化，按以下顺序选择：
 - 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
 - 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px，**默认隐藏**，通过工具栏"显示栏目"按钮切换可见性）+ 右侧连续滚动内容（`QTextBrowser`），无间隔紧凑布局。所有章节（描述、输入、输出、样例等）通过 `buildCombinedHtml()` 拼接为单个 HTML 文档一次性渲染，每节上方添加 `<h2>` 标题（与左侧一致），节间以 `<hr>` 分隔。**联动导航**：点击左侧栏目通过 `scrollToAnchor("section-N")` 跳转到对应位置；滚动右侧内容时通过 `onContentScrolled()` 实现 scroll-spy——根据 `m_sectionYOffsets` 记录的锚点 Y 偏移检测当前可见章节，自动更新左侧高亮（`m_scrollingFromClick` 防反馈锁避免循环触发）。`recordSectionPositions()` 在首次渲染、主题切换和侧栏显示时通过 `QTextDocument::find()` 顺序搜索各章节标题，记录 block 像素偏移。主题切换时 `refreshStyle()` 重建全文并恢复当前滚动位置。`onToggleSidebar()` 切换侧栏可见性并在显示时重新记录锚点位置以适应宽度变化。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
-- 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-Cache"`（固定目录），每次写入前清空已有内容，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
+- 样例缓存（`samplesCacheDir()` / `hasCachedSamples()` / `writeSamplesToCache()`）：按题目独立缓存，目录为 `{TempLocation}/SM-OJ-Cache/samples/{sanitizeFileName(title)}/`，参照 IDE 代码缓存的逐题隔离模式。`samplesCacheDir()` 返回当前题目的缓存子目录路径。`hasCachedSamples()` 检测该目录下是否已有 `.in` 文件，避免重复提取。`writeSamplesToCache()` 写入前仅清空当前题目子目录（不影响其他题目的缓存），文件命名 `testN.in` / `testN.out`，返回缓存目录路径。`onSelectClicked()` 选择题目时先通过 `hasCachedSamples()` 检测已有缓存，存在则直接复用，无需重新抓取页面提取样例。
 - **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。
 - "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 校验 `m_currentProblemSelected`，未选中时拒绝提交。
 - **标签页管理**：`TabManager` 通过 `openOpenJudge(settings)` 创建/切换到 OpenJudge 标签页（单例模式），`findOpenJudgeWidget()` 查找已有标签页。关闭标签页时 `closeTab()` 直接移除无需保存提示（非 `EditorWidget` 标签页）。关闭程序时 `closeAllTabs()` 自动关闭。
