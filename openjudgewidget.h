@@ -1,7 +1,7 @@
-#ifndef OPENJUDGEWINDOW_H
-#define OPENJUDGEWINDOW_H
+#ifndef OPENJUDGEWIDGET_H
+#define OPENJUDGEWIDGET_H
 
-#include <QMainWindow>
+#include <QWidget>
 #include "crawler.h"
 
 class QFrame;
@@ -17,11 +17,11 @@ struct SubmissionResult;
 
 enum OjViewState { OJ_HOMEWORK_LIST, OJ_PROBLEM_LIST, OJ_PROBLEM_DETAIL };
 
-class OpenJudgeWindow : public QMainWindow
+class OpenJudgeWidget : public QWidget
 {
     Q_OBJECT
 public:
-    explicit OpenJudgeWindow(SettingsManager *settings, QWidget *parent = nullptr);
+    explicit OpenJudgeWidget(SettingsManager *settings, QWidget *parent = nullptr);
 
     bool isLoggedIn() const { return m_isLoggedIn; }
     bool hasCurrentProblem() const { return !m_currentProblemUrl.isEmpty(); }
@@ -120,4 +120,4 @@ private:
     QString m_pendingPassword;
 };
 
-#endif // OPENJUDGEWINDOW_H
+#endif // OPENJUDGEWIDGET_H

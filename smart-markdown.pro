@@ -52,7 +52,7 @@ SOURCES += \
     judgepanel.cpp \
     keyrecorder.cpp \
     logindialog.cpp \
-    openjudgewindow.cpp \
+    openjudgewidget.cpp \
     outlinepanel.cpp \
     bottompanel.cpp \
     outputpanel.cpp \
@@ -123,7 +123,7 @@ HEADERS += \
     judgepanel.h \
     keyrecorder.h \
     logindialog.h \
-    openjudgewindow.h \
+    openjudgewidget.h \
     outlinepanel.h \
     outlineutils.h \
     bottompanel.h \

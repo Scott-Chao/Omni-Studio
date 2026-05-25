@@ -1,4 +1,4 @@
-#include "openjudgewindow.h"
+#include "openjudgewidget.h"
 #include "logindialog.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
@@ -72,10 +72,9 @@ static QString wrapHtml(const QString &body, const QColor &bg, const QColor &fg,
 // Constructor
 // ======================================================================
 
-OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
-    : QMainWindow(parent)
+OpenJudgeWidget::OpenJudgeWidget(SettingsManager *settings, QWidget *parent)
+    : QWidget(parent)
     , m_crawler(new Crawler(this))
-    , m_settingsManager(settings)
     , m_listWidget(new QListWidget)
     , m_statusLabel(new QLabel)
     , m_refreshBtn(new QPushButton(QStringLiteral("刷新")))
@@ -85,34 +84,31 @@ OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
     , m_detailPage(new QWidget)
     , m_sectionList(new QListWidget)
     , m_sectionContent(new QTextBrowser)
+    , m_settingsManager(settings)
 {
-    setWindowTitle(QStringLiteral("OpenJudge 题目浏览"));
-    resize(ConfigManager::instance().openJudgeWindowWidth(),
-           ConfigManager::instance().openJudgeWindowHeight());
-
     setupUi();
 
     // --- Crawler signals ---
-    connect(m_crawler, &Crawler::loginSuccess, this, &OpenJudgeWindow::onLoginSuccess);
-    connect(m_crawler, &Crawler::loginFailed, this, &OpenJudgeWindow::onLoginFailed);
-    connect(m_crawler, &Crawler::mainPageReady, this, &OpenJudgeWindow::onMainPageReady);
-    connect(m_crawler, &Crawler::pastPageReady, this, &OpenJudgeWindow::onPastPageReady);
-    connect(m_crawler, &Crawler::homeworkProblemsReady, this, &OpenJudgeWindow::onHomeworkProblemsReady);
-    connect(m_crawler, &Crawler::problemDetailReady, this, &OpenJudgeWindow::onProblemDetailReady);
-    connect(m_crawler, &Crawler::networkError, this, &OpenJudgeWindow::onNetworkError);
+    connect(m_crawler, &Crawler::loginSuccess, this, &OpenJudgeWidget::onLoginSuccess);
+    connect(m_crawler, &Crawler::loginFailed, this, &OpenJudgeWidget::onLoginFailed);
+    connect(m_crawler, &Crawler::mainPageReady, this, &OpenJudgeWidget::onMainPageReady);
+    connect(m_crawler, &Crawler::pastPageReady, this, &OpenJudgeWidget::onPastPageReady);
+    connect(m_crawler, &Crawler::homeworkProblemsReady, this, &OpenJudgeWidget::onHomeworkProblemsReady);
+    connect(m_crawler, &Crawler::problemDetailReady, this, &OpenJudgeWidget::onProblemDetailReady);
+    connect(m_crawler, &Crawler::networkError, this, &OpenJudgeWidget::onNetworkError);
 
     // --- UI signals ---
-    connect(m_listWidget, &QListWidget::itemClicked, this, &OpenJudgeWindow::onItemClicked);
-    connect(m_sectionList, &QListWidget::itemClicked, this, &OpenJudgeWindow::onSectionClicked);
-    connect(m_refreshBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onRefresh);
-    connect(m_backBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onBack);
-    connect(m_prevPageBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onPrevPage);
-    connect(m_nextPageBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onNextPage);
-    connect(m_selectBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onSelectClicked);
+    connect(m_listWidget, &QListWidget::itemClicked, this, &OpenJudgeWidget::onItemClicked);
+    connect(m_sectionList, &QListWidget::itemClicked, this, &OpenJudgeWidget::onSectionClicked);
+    connect(m_refreshBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onRefresh);
+    connect(m_backBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onBack);
+    connect(m_prevPageBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onPrevPage);
+    connect(m_nextPageBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onNextPage);
+    connect(m_selectBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onSelectClicked);
 
     // --- Crawler submission signals (forwarded) ---
     connect(m_crawler, &Crawler::submissionResultReady,
-            this, &OpenJudgeWindow::submissionResultReady);
+            this, &OpenJudgeWidget::submissionResultReady);
     connect(m_crawler, &Crawler::submissionFailed, this, [this](const QString &error) {
         m_refreshBtn->setEnabled(true);
         m_statusLabel->setText(QStringLiteral("提交失败"));
@@ -122,14 +118,14 @@ OpenJudgeWindow::OpenJudgeWindow(SettingsManager *settings, QWidget *parent)
         m_statusLabel->setText(QStringLiteral("提交结果获取超时"));
     });
 
-    // Login dialog is triggered by MainWindow::onOpenJudgeRequested after window is shown
+    // Login dialog is triggered by MainWindow::onOpenJudgeRequested after widget is shown
 
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &OpenJudgeWindow::refreshStyle);
+            this, &OpenJudgeWidget::refreshStyle);
 }
 
 // ======================================================================
-// UI Construction — dark theme
+// UI Construction
 // ======================================================================
 
 static QString buttonStyle(const QColor &bg, const QColor &fg, const QColor &border,
@@ -143,7 +139,7 @@ static QString buttonStyle(const QColor &bg, const QColor &fg, const QColor &bor
         .arg(bg.name(), fg.name(), border.name(), hover.name(), disabledFg.name());
 }
 
-void OpenJudgeWindow::setupUi()
+void OpenJudgeWidget::setupUi()
 {
     auto &tm = ThemeManager::instance();
     auto btnBg = tm.color("input.background");
@@ -153,7 +149,7 @@ void OpenJudgeWindow::setupUi()
     auto disabledFg = tm.color("tab.inactiveForeground");
 
     setStyleSheet(QStringLiteral(
-        "QMainWindow { background: %1; }"
+        "OpenJudgeWidget { background: %1; }"
         "QWidget { background: %1; color: %2; }")
         .arg(tm.color("menu.background").name(),
              tm.color("editor.foreground").name()));
@@ -191,7 +187,7 @@ void OpenJudgeWindow::setupUi()
 
     m_loginBtn = new QPushButton(QStringLiteral("登录"));
     m_loginBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
-    connect(m_loginBtn, &QPushButton::clicked, this, &OpenJudgeWindow::onLoginLogoutClicked);
+    connect(m_loginBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onLoginLogoutClicked);
 
     toolbarLayout->addWidget(m_selectBtn);
     toolbarLayout->addWidget(m_backBtn);
@@ -238,15 +234,13 @@ void OpenJudgeWindow::setupUi()
     }
     m_stackedWidget->addWidget(m_detailPage);          // page 1: problem detail
 
-    // --- Central widget ---
-    auto *centralWidget = new QWidget;
-    auto *centralLayout = new QVBoxLayout(centralWidget);
-    centralLayout->setContentsMargins(0, 0, 0, 0);
-    centralLayout->setSpacing(0);
-    centralLayout->addWidget(m_toolbar);
-    centralLayout->addWidget(m_separator);
-    centralLayout->addWidget(m_stackedWidget, 1);
-    setCentralWidget(centralWidget);
+    // --- Main layout (directly on this widget, no centralWidget) ---
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
+    mainLayout->addWidget(m_toolbar);
+    mainLayout->addWidget(m_separator);
+    mainLayout->addWidget(m_stackedWidget, 1);
 
     // --- Style the list ---
     m_listWidget->setFont(QFont("Microsoft YaHei", 10));
@@ -265,7 +259,7 @@ void OpenJudgeWindow::setupUi()
              tm.color("editor.selectionBackground").name()));
 }
 
-void OpenJudgeWindow::setupDetailPage()
+void OpenJudgeWidget::setupDetailPage()
 {
     auto &tm = ThemeManager::instance();
     auto *layout = new QHBoxLayout(m_detailPage);
@@ -312,14 +306,14 @@ void OpenJudgeWindow::setupDetailPage()
 // View switching
 // ======================================================================
 
-void OpenJudgeWindow::showListPage()
+void OpenJudgeWidget::showListPage()
 {
     m_stackedWidget->setCurrentIndex(0);
     m_selectBtn->setVisible(false);
     m_currentSectionIndex = -1;
 }
 
-void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
+void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
 {
     m_sectionList->clear();
     m_sectionContent->clear();
@@ -350,7 +344,7 @@ void OpenJudgeWindow::showDetailPage(const ProblemDetail &detail)
 // Login / auth
 // ======================================================================
 
-bool OpenJudgeWindow::tryAutoLogin()
+bool OpenJudgeWidget::tryAutoLogin()
 {
     if (m_isLoggedIn) return true;
     if (m_autoLoginInProgress) return false;
@@ -369,7 +363,7 @@ bool OpenJudgeWindow::tryAutoLogin()
     return true;
 }
 
-void OpenJudgeWindow::onReLogin()
+void OpenJudgeWidget::onReLogin()
 {
     // Try auto-login first
     if (tryAutoLogin())
@@ -395,7 +389,7 @@ void OpenJudgeWindow::onReLogin()
     }
 }
 
-void OpenJudgeWindow::onLoginSuccess()
+void OpenJudgeWidget::onLoginSuccess()
 {
     m_isLoggedIn = true;
     m_autoLoginInProgress = false;
@@ -415,7 +409,7 @@ void OpenJudgeWindow::onLoginSuccess()
     emit loginStateChanged(true, m_username);
 }
 
-void OpenJudgeWindow::onLoginFailed(const QString &error)
+void OpenJudgeWidget::onLoginFailed(const QString &error)
 {
     bool wasAutoLogin = m_autoLoginInProgress;
     m_isLoggedIn = false;
@@ -440,7 +434,7 @@ void OpenJudgeWindow::onLoginFailed(const QString &error)
     m_refreshBtn->setEnabled(true);
 }
 
-void OpenJudgeWindow::onLoginLogoutClicked()
+void OpenJudgeWidget::onLoginLogoutClicked()
 {
     if (m_isLoggedIn)
         onLogoutClicked();
@@ -448,7 +442,7 @@ void OpenJudgeWindow::onLoginLogoutClicked()
         onReLogin();
 }
 
-void OpenJudgeWindow::onLogoutClicked()
+void OpenJudgeWidget::onLogoutClicked()
 {
     m_isLoggedIn = false;
     m_username.clear();
@@ -486,7 +480,7 @@ void OpenJudgeWindow::onLogoutClicked()
 // Main page (two-section: ongoing + past)
 // ======================================================================
 
-void OpenJudgeWindow::onMainPageReady(const QList<HomeworkItem> &ongoing,
+void OpenJudgeWidget::onMainPageReady(const QList<HomeworkItem> &ongoing,
                                        const QList<HomeworkItem> &past,
                                        const PageInfo &pastPage)
 {
@@ -507,7 +501,7 @@ void OpenJudgeWindow::onMainPageReady(const QList<HomeworkItem> &ongoing,
     }
 }
 
-void OpenJudgeWindow::onPastPageReady(const QList<HomeworkItem> &past,
+void OpenJudgeWidget::onPastPageReady(const QList<HomeworkItem> &past,
                                        const PageInfo &pageInfo)
 {
     m_pastItems = past;
@@ -520,7 +514,7 @@ void OpenJudgeWindow::onPastPageReady(const QList<HomeworkItem> &past,
 // Pagination
 // ======================================================================
 
-void OpenJudgeWindow::onPrevPage()
+void OpenJudgeWidget::onPrevPage()
 {
     if (!m_pastPageInfo.hasPrev) return;
 
@@ -537,7 +531,7 @@ void OpenJudgeWindow::onPrevPage()
     m_crawler->fetchPastPage(url.toString());
 }
 
-void OpenJudgeWindow::onNextPage()
+void OpenJudgeWidget::onNextPage()
 {
     if (!m_pastPageInfo.hasNext) return;
 
@@ -557,7 +551,7 @@ void OpenJudgeWindow::onNextPage()
 // Rebuild two-section list view
 // ======================================================================
 
-void OpenJudgeWindow::rebuildListView()
+void OpenJudgeWidget::rebuildListView()
 {
     showListPage();
     m_listWidget->clear();
@@ -626,7 +620,7 @@ void OpenJudgeWindow::rebuildListView()
 // Homework problems
 // ======================================================================
 
-void OpenJudgeWindow::onHomeworkProblemsReady(const QString &homeworkTitle,
+void OpenJudgeWidget::onHomeworkProblemsReady(const QString &homeworkTitle,
                                                const QList<HomeworkItem> &problems)
 {
     showListPage();
@@ -660,7 +654,7 @@ void OpenJudgeWindow::onHomeworkProblemsReady(const QString &homeworkTitle,
 // Problem detail
 // ======================================================================
 
-void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
+void OpenJudgeWidget::onProblemDetailReady(const ProblemDetail &detail)
 {
     m_currentProblem = detail;
     m_currentProblemSelected = false;
@@ -677,7 +671,7 @@ void OpenJudgeWindow::onProblemDetailReady(const ProblemDetail &detail)
     updateSelectButtonStyle(false);
 }
 
-void OpenJudgeWindow::onNetworkError(const QString &error)
+void OpenJudgeWidget::onNetworkError(const QString &error)
 {
     m_statusLabel->setText(QStringLiteral("网络错误"));
     QMessageBox::critical(this, QStringLiteral("网络错误"),
@@ -690,7 +684,7 @@ void OpenJudgeWindow::onNetworkError(const QString &error)
 // Item / section clicks
 // ======================================================================
 
-void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
+void OpenJudgeWidget::onItemClicked(QListWidgetItem *item)
 {
     QString url = item->data(Qt::UserRole).toString();
     if (url.isEmpty()) return;
@@ -720,7 +714,7 @@ void OpenJudgeWindow::onItemClicked(QListWidgetItem *item)
     }
 }
 
-void OpenJudgeWindow::onSectionClicked(QListWidgetItem *item)
+void OpenJudgeWidget::onSectionClicked(QListWidgetItem *item)
 {
     m_currentSectionIndex = m_sectionList->row(item);
     QString content = item->data(Qt::UserRole).toString();
@@ -737,7 +731,7 @@ void OpenJudgeWindow::onSectionClicked(QListWidgetItem *item)
 // Navigation
 // ======================================================================
 
-void OpenJudgeWindow::onBack()
+void OpenJudgeWidget::onBack()
 {
     if (m_viewState == OJ_PROBLEM_DETAIL) {
         m_viewState = OJ_PROBLEM_LIST;
@@ -757,7 +751,7 @@ void OpenJudgeWindow::onBack()
     }
 }
 
-void OpenJudgeWindow::onRefresh()
+void OpenJudgeWidget::onRefresh()
 {
     m_refreshBtn->setEnabled(false);
     m_refreshBtn->setText(QStringLiteral("加载中..."));
@@ -781,7 +775,7 @@ void OpenJudgeWindow::onRefresh()
 // Sample extraction
 // ======================================================================
 
-QStringList OpenJudgeWindow::extractPreBlocks(const QString &html)
+QStringList OpenJudgeWidget::extractPreBlocks(const QString &html)
 {
     QStringList result;
     QRegularExpression preRx(
@@ -797,8 +791,8 @@ QStringList OpenJudgeWindow::extractPreBlocks(const QString &html)
     return result;
 }
 
-QVector<OpenJudgeWindow::SamplePair>
-OpenJudgeWindow::extractSamples(const ProblemDetail &detail)
+QVector<OpenJudgeWidget::SamplePair>
+OpenJudgeWidget::extractSamples(const ProblemDetail &detail)
 {
     QStringList inputs, outputs;
     for (const auto &sec : detail.sections) {
@@ -819,7 +813,7 @@ OpenJudgeWindow::extractSamples(const ProblemDetail &detail)
     return samples;
 }
 
-QString OpenJudgeWindow::writeSamplesToCache(const QVector<SamplePair> &samples)
+QString OpenJudgeWidget::writeSamplesToCache(const QVector<SamplePair> &samples)
 {
     QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     QString cacheDir = tempRoot + QStringLiteral("/SM-OJ-Cache");
@@ -851,7 +845,7 @@ QString OpenJudgeWindow::writeSamplesToCache(const QVector<SamplePair> &samples)
     return cacheDir;
 }
 
-void OpenJudgeWindow::onSelectClicked()
+void OpenJudgeWidget::onSelectClicked()
 {
     if (m_currentProblemSelected) {
         // Deselect
@@ -875,7 +869,7 @@ void OpenJudgeWindow::onSelectClicked()
     updateSelectButtonStyle(true);
 }
 
-void OpenJudgeWindow::refreshStyle()
+void OpenJudgeWidget::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
@@ -892,7 +886,7 @@ void OpenJudgeWindow::refreshStyle()
     }
 
     setStyleSheet(QStringLiteral(
-        "QMainWindow { background: %1; }"
+        "OpenJudgeWidget { background: %1; }"
         "QWidget { background: %1; color: %2; }")
         .arg(tm.color("menu.background").name(),
              tm.color("editor.foreground").name()));
@@ -958,7 +952,7 @@ void OpenJudgeWindow::refreshStyle()
 
 }
 
-void OpenJudgeWindow::updateSelectButtonStyle(bool selected)
+void OpenJudgeWidget::updateSelectButtonStyle(bool selected)
 {
     auto &tm = ThemeManager::instance();
     if (selected) {
@@ -984,7 +978,7 @@ void OpenJudgeWindow::updateSelectButtonStyle(bool selected)
     }
 }
 
-void OpenJudgeWindow::submitCurrentProblem(const QString &sourceCode, int languageId)
+void OpenJudgeWidget::submitCurrentProblem(const QString &sourceCode, int languageId)
 {
     if (m_currentProblemUrl.isEmpty()) {
         emit submissionFailed(QStringLiteral("请先在 OpenJudge 中选择一道题目"));

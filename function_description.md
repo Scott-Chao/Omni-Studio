@@ -25,9 +25,9 @@
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
 - 异步索引构建：全量扫描（切换目录时）通过 `startAsyncIndexBuild` 在后台线程依次执行文件索引、反向链接扫描与标签索引扫描（Phase 1/2/3），UI 保持响应。增量更新（重命名/删除/另存为）通过 `buildFileIndexAsync` 仅重建文件索引，回调中执行依赖项。两者使用**独立的取消令牌和代际计数器**（`m_scanCancelled`/`m_scanId` 与 `m_fileIdxCancelled`/`m_fileIdxScanId`），增量更新不会取消全量扫描，避免启动时反向链接数据丢失。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
-- OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮打开独立浏览窗口，可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。窗口全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。
-- OpenJudge 登录管理：OpenJudge 浏览窗口工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
-- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 浏览窗口中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。
+- OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮在主窗口标签页中打开 OpenJudge 题目浏览（非独立窗口），可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。OpenJudge 标签页激活时，保存/另存为等文件操作自动禁用（非文件标签页）。
+- OpenJudge 登录管理：OpenJudge 标签页工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
+- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 标签页中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。
 - 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
@@ -59,23 +59,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增/修复 v0.12.8
-
-#### 标题栏按钮改为 Windows 11 原生图标
-- `TitleBarButton` 重构：改用 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生标题栏图标（`SP_TitleBarMinButton` / `SP_TitleBarMaxButton` / `SP_TitleBarNormalButton` / `SP_TitleBarCloseButton`），替代原有的 QPainter 手动绘制方式。由于应用全局使用 Fusion 样式（`main.cpp` 中 `a.setStyle(new CompactTooltipStyle(QStyleFactory::create("Fusion")))`），Fusion 的标准图标为通用跨平台样式而非 Windows 11 原生样式，故通过独立的原生 `windowsvista` style 实例获取图标。
-- `paintEvent` 重构：hover 背景自绘后直接通过 `QIcon::paint()` 居中绘制图标，不再调用 `QPushButton::paintEvent()`，避免 Fusion 样式在按钮周围绘制边框/聚焦框。
-- 按钮尺寸：从 42×28 调整为 46×32，与 Windows 11 原生标题栏按钮尺寸一致。图标尺寸：最小化 28×28（横线图标视觉偏小单独放大），最大化/还原/关闭 16×16。
-- 添加 `setFocusPolicy(Qt::NoFocus)`，防止按钮获取焦点时出现聚焦框。
-
-#### 主题修复
-- 文件树内联重命名编辑器现在正确跟随 VS Code 2026 Dark/Light 主题，高亮不透明度调整
-- 修复 SMD 文件打开时多次切换主题导致闪退的问题
-- SMD 单元格块标题文字颜色调整，提高深色/浅色主题下的对比度
-- 搜索结果高亮随主题切换同步更新
-- 修复切换主题时搜索结果面板文字颜色不更新的问题
-
-#### 搜索修复
-- 搜索框内容变化时，编辑器中的高亮立即清除（而非残留旧匹配）
+### 新增
+- OpenJudge 题目浏览内置到标签页中
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -207,6 +192,7 @@
 - `QStringList allOpenedFilePaths() const`：返回所有已打开的文件路径列表（未保存的新建文件除外），路径统一为正斜杠格式。
 - `void updateEditorFilePath(const QString &oldPath, const QString &newPath)`：当文件在外部被重命名时，更新对应编辑器的内部路径及标签标题。
 - `void updatePathsAfterMove(const QString &oldBase, const QString &newBase)`：当文件或文件夹被移动时，批量更新所有已打开标签页的路径。支持精确匹配（文件本身）和前缀匹配（文件夹内文件），通过调用 `EditorWidget::setFilePath` 同步内部路径。
+- **OpenJudge 集成**：`void openOpenJudge(SettingsManager*)` 创建/切换到 OpenJudge 标签页（单例模式，遍历查找已有 `OpenJudgeWidget` 标签页避免重复创建）。`OpenJudgeWidget* findOpenJudgeWidget() const` 遍历查找返回第一个 OpenJudge 标签页指针，无则返回 `nullptr`。`closeTab()` 对非 `EditorWidget` 标签页（如 OpenJudgeWidget）直接 `removeTab()` + `deleteLater()` 无需保存提示。
 
 **信号**：
 - `void tabCountChanged(int count)`：当标签数量变化时发出（供外部如窗口标题更新使用）。
@@ -216,7 +202,7 @@
 
 **协作关系**：
 - 被 `MainWindow` 持有，主窗口将文件打开、新建、保存等操作直接转发给 `TabManager`。
-- 内部创建和持有 `EditorWidget`，并连接其状态信号以更新标签标题和自动提升。
+- 内部创建和持有 `EditorWidget` 及 `OpenJudgeWidget`，并连接其状态信号以更新标签标题和自动提升。
 - `CustomTabBar` 通过 `qobject_cast<const TabManager*>(parent())` 获取 TabManager 引用，查询 `isPreviewEditor` 以决定斜体渲染。
 - 与 `QMessageBox` 交互，提供自定义的文件保存提示对话框。
 
@@ -884,7 +870,7 @@
 **职责**：
 - 评测面板 UI，嵌入 `QDockWidget`，在右侧停靠区域，默认隐藏。
 - 顶部第一行：文件夹选择行（`QLineEdit` + "浏览..." 按钮）。
-- 顶部第二行："从OpenJudge获取" 按钮，点击 emit `openJudgeRequested()` 信号，由 `MainWindow` 创建/激活 `OpenJudgeWindow`。
+- 顶部第二行："从OpenJudge获取" 按钮，点击 emit `openJudgeRequested()` 信号，由 `MainWindow::onOpenJudgeRequested()` 创建/切换到 OpenJudge 标签页（`TabManager` 内嵌 `OpenJudgeWidget`）。
 - 顶部第三行："提交到OpenJudge" 按钮，点击 emit `submitToOpenJudgeRequested()` 信号，由 `MainWindow::onSubmitToOpenJudge()` 处理。
 - 中部：5 列 `QTableWidget`（#、测试用例、结果、耗时(ms)、内存(KB)），结果列按状态码着色：AC 绿色（`#52C41A`）、WA 红色（`#E74C3C`）、TLE 蓝色（`#3498DB`）、MLE 紫色（`#9B59B6`）、RE 橙色（`#F39C12`）。
 - 中下部：`QPlainTextEdit` 详情区，点击失败行显示状态码、峰值内存、预期输出与实际输出。
@@ -892,7 +878,7 @@
 - 内部持有 `JudgeEngine`，连接所有信号。`runJudge(sourceFile)` 设置源文件和测试目录后启动评测。
 - `setTestFolder(path)` 设置文件夹路径并自动清除已有结果，供 OpenJudge 集成使用。
 - 信号 `runAllRequested()` 由 `MainWindow::onJudgeRunAll()` 触发。
-- 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建单例 OpenJudge 窗口。
+- 信号 `openJudgeRequested()` 由 `MainWindow::onOpenJudgeRequested()` 处理，创建/切换到 OpenJudge 标签页（`TabManager::openOpenJudge()` → `TabManager::findOpenJudgeWidget()` 查找已有标签页避免重复创建）。
 - 信号 `submitToOpenJudgeRequested()` 由 `MainWindow::onSubmitToOpenJudge()` 处理，执行代码提交流程。检查顺序：代码有效性 → 题目选择状态 → 登录状态 → 作业是否进行中，不满足时弹出相应提示。
 - `onTestFinished()` 中非 AC 结果自动调用 `ErrorJournal::instance().recordFailure()` 记入错题本（本地评测）。
 
@@ -969,7 +955,7 @@
 - `fetchProblemDetail(url)` 获取题目详情 HTML，`parseProblemDetail()` 使用双策略（`<dt>/<dd>` 主策略 + `<h3>` 回退策略）提取章节（描述、输入、输出、样例输入、样例输出、提示），保留原始 HTML 结构供渲染。
 - **代码提交**：`submitCode(problemUrl, sourceCode, languageId)` 先 GET 提交页面（`problemUrl/submit/`），解析隐藏字段 contestId、problemNumber 和 language radio 值，手动拼接 POST body（百分号编码，不使用 QUrlQuery 以避免 `+` → 空格问题），POST 到 `/api/solution/submitv2/`。发送原始源码而非 base64 编码，以避免某些竞赛实例的 base64 解码 bug 导致源码为空。
 - **结果轮询**：解析 JSON 响应中的 `redirect` URL 作为 `m_pollStatusUrl`，通过 QTimer（2s 间隔，最多 15 次 = 30s 超时）轮询解决方案页面。`doPollSubmissionStatus()` 提取 body 纯文本，用正则解析 `状态: Accepted`、`时间: 23ms`、`内存: 7272kB`。检测到 CE 时自动获取编译错误详情。
-- 静态工具方法 `decodeHtmlEntities()` 和 `stripHtmlTags()`（public static），供 `OpenJudgeWindow` 的样例提取使用。
+- 静态工具方法 `decodeHtmlEntities()` 和 `stripHtmlTags()`（public static），供 `OpenJudgeWidget` 的样例提取使用。
 - 调试日志写入 `crawler_debug.log`（启动时自动清空），记录 HTML 长度、关键标签匹配数、章节提取结果、POST 数据等。
 - `clearCookies()` 替换 CookieJar 实现清除会话；`stopPolling()` 停止结果轮询定时器。
 
@@ -990,7 +976,7 @@
 - `SubmissionResult`：`runId`（运行编号）、`status`（状态字符串如 "Accepted"/"Wrong Answer"）、`timeMs`（耗时）、`memoryKb`（内存）、`compileError`（CE 详情）。
 
 **协作关系**：
-- 由 `OpenJudgeWindow` 创建并持有，所有信号连接到 `OpenJudgeWindow` 的对应槽方法。
+- 由 `OpenJudgeWidget` 创建并持有，所有信号连接到 `OpenJudgeWidget` 的对应槽方法。
 - 继承自 `QObject`，使用 Qt 父子内存管理。
 
 ---
@@ -1006,17 +992,17 @@
 - `setAutoLoginEnabled(bool)` 设置复选框的初始状态（从配置读取）。
 
 **协作关系**：
-- 由 `OpenJudgeWindow::onReLogin()` 以模态方式弹出，用户选择登录则将凭据传入 `Crawler::login()`。
+- 由 `OpenJudgeWidget::onReLogin()` 以模态方式弹出，用户选择登录则将凭据传入 `Crawler::login()`。
 
 ---
 
-### 23. `OpenJudgeWindow` — OpenJudge 题目浏览窗口
+### 23. `OpenJudgeWidget` — OpenJudge 题目浏览标签页
 
-**文件**：`openjudgewindow.h` / `openjudgewindow.cpp`
+**文件**：`openjudgewidget.h` / `openjudgewidget.cpp`
 
 **职责**：
-- 独立的 `QMainWindow`，提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时窗口背景、Toolbar、分隔线、列表控件、章节导航和题目内容实时同步。
-- 顶部工具栏（`m_toolbar`）：[选择此题目] [← 返回] [stretch] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。
+- `QWidget`（原为独立 `QMainWindow`），作为标签页直接嵌入 `TabManager`（非独立窗口），提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时背景、Toolbar、分隔线、列表控件、章节导航和题目内容实时同步。
+- 顶部工具栏（`m_toolbar`）：[选择此题目] [← 返回] [stretch] [刷新] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。
 - **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
 - **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业支持分页（上一页/下一页），直接加载 `/contests/past` 分页子页面。
@@ -1025,8 +1011,9 @@
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 临时缓存（`writeSamplesToCache()`）：将提取的样例写入 `QStandardPaths::TempLocation + "/SM-OJ-Cache"`（固定目录），每次写入前清空已有内容，文件命名 `testN.in` / `testN.out`，返回缓存目录路径。
 - **代码提交接口**：`submitCurrentProblem(sourceCode, languageId)` 公开方法，按顺序校验：题目是否已选择 → 登录状态 → 作业是否进行中，不满足时通过 `submissionFailed` 信号返回错误。`hasCurrentProblem()` 公开方法供 `MainWindow` 在提交前预检题目选择状态。
-- "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 新增 `m_currentProblemSelected` 校验，未选中时拒绝提交。
-- 窗口为单例：`MainWindow` 通过 `QPointer<OpenJudgeWindow>` 管理，关闭后自动置 null，再次点击重新创建。
+- "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 校验 `m_currentProblemSelected`，未选中时拒绝提交。
+- **标签页管理**：`TabManager` 通过 `openOpenJudge(settings)` 创建/切换到 OpenJudge 标签页（单例模式），`findOpenJudgeWidget()` 查找已有标签页。关闭标签页时 `closeTab()` 直接移除无需保存提示（非 `EditorWidget` 标签页）。关闭程序时 `closeAllTabs()` 自动关闭。
+- **文件操作禁用**：当 OpenJudge 标签页激活时，`MainWindow::currentChanged` 处理程序中自动禁用保存/另存为菜单项（`setEnabled(false)`），因为该标签页不是文件。切换到文件标签页时自动恢复启用状态。
 
 **信号**：
 - `sampleSelected(const QString &folderPath)`：用户选择题目后发出，携带样例缓存目录路径。
@@ -1037,10 +1024,11 @@
 **内部枚举 `OjViewState`**：`OJ_HOMEWORK_LIST`、`OJ_PROBLEM_LIST`、`OJ_PROBLEM_DETAIL`，独立于 web-crawler 的 `ViewState`，避免符号冲突。
 
 **协作关系**：
-- 由 `MainWindow::onOpenJudgeRequested()` 创建（传入 `SettingsManager*`），`sampleSelected` 信号连接到 `MainWindow::onOpenJudgeSampleSelected()`。
+- 由 `MainWindow::onOpenJudgeRequested()` 通过 `TabManager::openOpenJudge()` 创建，`sampleSelected` 信号连接到 `MainWindow::onOpenJudgeSampleSelected()`。
 - 持有 `Crawler` 实例，连接其全部信号到自身槽方法。
 - 调用 `LoginDialog` 进行登录交互，通过 `SettingsManager` 持久化自动登录凭据。
 - 依赖 `Crawler::decodeHtmlEntities()` 静态方法解码 HTML 实体。
+- `TabManager::closeTab()` 通过 `qobject_cast<EditorWidget*>` 区分 OpenJudge 标签页与文件标签页，前者直接移除无需保存对话框。
 
 ---
 

@@ -47,7 +47,7 @@ protected:
 #include "debuglog.h"
 #include "judgepanel.h"
 #include "judgeengine.h"
-#include "openjudgewindow.h"
+#include "openjudgewidget.h"
 #include "submissionpanel.h"
 #include "compilerutils.h"
 #include "languageutils.h"
@@ -849,6 +849,14 @@ MainWindow::MainWindow(QWidget *parent)
         syncFileTreeSelection();
 
         EditorWidget *editor = m_tabManager->currentEditor();
+
+        // Disable save/save-as when OpenJudge tab is active (not a file)
+        bool isOpenJudgeTab = (qobject_cast<OpenJudgeWidget*>(m_tabManager->currentWidget()) != nullptr);
+        if (auto *act = m_shortcutActions.value("save"))
+            act->setEnabled(!isOpenJudgeTab);
+        if (auto *act = m_shortcutActions.value("save_as"))
+            act->setEnabled(!isOpenJudgeTab);
+
         // 连接当前编辑器的诊断面板切换信号
         if (editor) {
             connect(editor, &EditorWidget::diagnosticsToggleRequested,
@@ -1228,8 +1236,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
     m_settings->flushOverrides();
     saveSettings();
     clearRecoveryDirectory(); // 正常关闭，清理恢复目录
-    if (m_openJudgeWindow)
-        m_openJudgeWindow->close();
     event->accept();
 }
 
@@ -2976,32 +2982,36 @@ void MainWindow::onJudgeRunAll()
 
 void MainWindow::onOpenJudgeRequested()
 {
-    bool isNew = false;
-    if (!m_openJudgeWindow) {
-        m_openJudgeWindow = new OpenJudgeWindow(m_settings, nullptr);
-        isNew = true;
-        connect(m_openJudgeWindow, &OpenJudgeWindow::sampleSelected,
+    // Check if OpenJudge tab already exists
+    OpenJudgeWidget *existing = m_tabManager->findOpenJudgeWidget();
+    bool isNew = (existing == nullptr);
+
+    // Open or switch to OpenJudge tab
+    m_tabManager->openOpenJudge(m_settings);
+
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (!oj) return;
+
+    if (isNew) {
+        // Connect signals once
+        connect(oj, &OpenJudgeWidget::sampleSelected,
                 this, &MainWindow::onOpenJudgeSampleSelected);
-        connect(m_openJudgeWindow, &OpenJudgeWindow::loginStateChanged,
+        connect(oj, &OpenJudgeWidget::loginStateChanged,
                 this, &MainWindow::onOpenJudgeLoginStateChanged);
-        connect(m_openJudgeWindow, &OpenJudgeWindow::submissionResultReady,
+        connect(oj, &OpenJudgeWidget::submissionResultReady,
                 this, &MainWindow::onSubmissionResultReady);
-        connect(m_openJudgeWindow, &OpenJudgeWindow::submissionFailed,
+        connect(oj, &OpenJudgeWidget::submissionFailed,
                 this, [this](const QString &error) {
             QMessageBox::warning(this, tr("提交失败"), error);
         });
     }
-    // Restore from minimized state
-    m_openJudgeWindow->setWindowState(m_openJudgeWindow->windowState() & ~Qt::WindowMinimized);
-    m_openJudgeWindow->show();
-    m_openJudgeWindow->raise();
-    m_openJudgeWindow->activateWindow();
 
-    // Show login dialog if not logged in (after window is visible)
-    if (isNew || !m_openJudgeWindow->isLoggedIn()) {
+    // Show login dialog if not logged in (after tab is visible)
+    if (isNew || !oj->isLoggedIn()) {
         QTimer::singleShot(200, this, [this]() {
-            if (m_openJudgeWindow && !m_openJudgeWindow->isLoggedIn())
-                m_openJudgeWindow->onReLogin();
+            OpenJudgeWidget *w = m_tabManager->findOpenJudgeWidget();
+            if (w && !w->isLoggedIn())
+                w->onReLogin();
         });
     }
 }
@@ -3030,10 +3040,11 @@ void MainWindow::onSubmitToOpenJudge()
         return;
     }
 
-    // 3. Check if OpenJudge window exists and has a problem selected
-    if (!m_openJudgeWindow || !m_openJudgeWindow->hasCurrentProblem()) {
-        // Trigger auto-login / show window so user can select a problem
-        bool autoLoginInitiated = m_openJudgeWindow && m_openJudgeWindow->tryAutoLogin();
+    // 3. Check if OpenJudge tab exists and has a problem selected
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (!oj || !oj->hasCurrentProblem()) {
+        // Trigger auto-login / show tab so user can select a problem
+        bool autoLoginInitiated = oj && oj->tryAutoLogin();
         if (!autoLoginInitiated) {
             onOpenJudgeRequested();
         }
@@ -3043,8 +3054,8 @@ void MainWindow::onSubmitToOpenJudge()
     }
 
     // 4. Check login status
-    if (!m_openJudgeWindow->isLoggedIn()) {
-        bool autoLoginInitiated = m_openJudgeWindow->tryAutoLogin();
+    if (!oj->isLoggedIn()) {
+        bool autoLoginInitiated = oj->tryAutoLogin();
         if (!autoLoginInitiated) {
             onOpenJudgeRequested();
         }
@@ -3075,8 +3086,8 @@ void MainWindow::onSubmitToOpenJudge()
     m_lastSubmitSourceFile = filePath;
     m_lastSubmitSourceCode = code;
 
-    // Submit through OpenJudgeWindow
-    m_openJudgeWindow->submitCurrentProblem(code, langId);
+    // Submit through OpenJudgeWidget
+    oj->submitCurrentProblem(code, langId);
 
     // 5. Show a brief status message in the judge panel
     showLeftPanel(2);
@@ -3141,12 +3152,9 @@ void MainWindow::runLocalTestsForOJError()
     QString testFolder = m_judgePanel->testFolder();
     if (testFolder.isEmpty()) {
         // No sample data available — fall back to recording without I/O
-        QString problemName;
-        QString problemUrl;
-        if (m_openJudgeWindow) {
-            problemName = m_openJudgeWindow->currentProblemTitle();
-            problemUrl = m_openJudgeWindow->currentProblemUrl();
-        }
+        OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+        QString problemName = oj ? oj->currentProblemTitle() : QString();
+        QString problemUrl = oj ? oj->currentProblemUrl() : QString();
         SubmissionResult fallback;
         fallback.status = m_ojErrorStatus;
         ErrorJournal::instance().recordOpenJudgeFailure(
@@ -3159,12 +3167,9 @@ void MainWindow::runLocalTestsForOJError()
     QStringList inFiles = testDir.entryList({QStringLiteral("*.in")}, QDir::Files);
     if (inFiles.isEmpty()) {
         // No test cases — fall back to recording without I/O
-        QString problemName;
-        QString problemUrl;
-        if (m_openJudgeWindow) {
-            problemName = m_openJudgeWindow->currentProblemTitle();
-            problemUrl = m_openJudgeWindow->currentProblemUrl();
-        }
+        OpenJudgeWidget *oj2 = m_tabManager->findOpenJudgeWidget();
+        QString problemName = oj2 ? oj2->currentProblemTitle() : QString();
+        QString problemUrl = oj2 ? oj2->currentProblemUrl() : QString();
         SubmissionResult fallback;
         fallback.status = m_ojErrorStatus;
         ErrorJournal::instance().recordOpenJudgeFailure(
@@ -3196,12 +3201,9 @@ void MainWindow::onOJErrorLocalTestsFinished(int passed, int total)
     if (!m_ojErrorJudgeEngine)
         return;
 
-    QString problemName;
-    QString problemUrl;
-    if (m_openJudgeWindow) {
-        problemName = m_openJudgeWindow->currentProblemTitle();
-        problemUrl = m_openJudgeWindow->currentProblemUrl();
-    }
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    QString problemName = oj ? oj->currentProblemTitle() : QString();
+    QString problemUrl = oj ? oj->currentProblemUrl() : QString();
 
     const auto &results = m_ojErrorJudgeEngine->results();
     bool anyRecorded = false;

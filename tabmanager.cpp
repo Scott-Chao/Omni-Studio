@@ -1,4 +1,6 @@
 #include "tabmanager.h"
+#include "openjudgewidget.h"
+#include "settingsmanager.h"
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -147,7 +149,14 @@ void TabManager::closeCurrentTab()
 bool TabManager::closeTab(int index)
 {
     EditorWidget *editor = qobject_cast<EditorWidget*>(widget(index));
-    if (!editor) return true;
+    if (!editor) {
+        // Non-EditorWidget tab (e.g. OpenJudgeWidget): remove directly
+        QWidget *w = widget(index);
+        removeTab(index);
+        if (w) w->deleteLater();
+        emit tabCountChanged(count());
+        return true;
+    }
 
     if (editor->isModified()) {
         QString fileName = editor->currentFilePath().isEmpty()
@@ -470,5 +479,36 @@ void TabManager::updatePathsAfterMove(const QString &oldBase, const QString &new
         // 更新编辑器内部路径（会触发 filePathChanged 信号，从而更新标签标题等）
         editor->setFilePath(newPath);
     }
+}
+
+// ======================================================================
+// OpenJudge integration
+// ======================================================================
+
+void TabManager::openOpenJudge(SettingsManager *settings)
+{
+    // Check if OpenJudge tab already exists
+    for (int i = 0; i < count(); ++i) {
+        OpenJudgeWidget *oj = qobject_cast<OpenJudgeWidget*>(widget(i));
+        if (oj) {
+            setCurrentIndex(i);
+            return;
+        }
+    }
+
+    // Create new OpenJudge tab
+    OpenJudgeWidget *ojWidget = new OpenJudgeWidget(settings, this);
+    addTab(ojWidget, QStringLiteral("OpenJudge"));
+    setCurrentWidget(ojWidget);
+    emit tabCountChanged(count());
+}
+
+OpenJudgeWidget* TabManager::findOpenJudgeWidget() const
+{
+    for (int i = 0; i < count(); ++i) {
+        OpenJudgeWidget *oj = qobject_cast<OpenJudgeWidget*>(widget(i));
+        if (oj) return oj;
+    }
+    return nullptr;
 }
 

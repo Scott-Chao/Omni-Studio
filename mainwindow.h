@@ -34,7 +34,7 @@ class ProcessRunner;
 class BottomPanel;
 class OutputPanel;
 class JudgePanel;
-class OpenJudgeWindow;
+class OpenJudgeWidget;
 class SubmitResultPanel;
 struct SubmissionResult;
 class JudgeEngine;
@@ -182,8 +182,7 @@ private:
     int m_savedLeftPanelWidth = 220;
     QAction *m_toggleExplorerAction = nullptr;
 
-    // OpenJudge 窗口（单例）
-    QPointer<OpenJudgeWindow> m_openJudgeWindow;
+    // OpenJudge 标签页（通过 TabManager 管理，不再独立窗口）
     // 提交结果面板
     SubmitResultPanel *m_submitResultPanel = nullptr;
     // 最近一次 OpenJudge 提交的上下文（用于错题本记录）

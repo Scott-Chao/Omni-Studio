@@ -52,7 +52,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   │   ├── OutputPanel     → dark-terminal output widget with stop/clear buttons
   │   └── DiagnosticSection → reusable QWidget (header with ▾/▸ toggle + count badge), shared by BottomPanel and SmdDiagnosticsPanel
   ├── SmdDiagnostic        → standalone struct header (`smddiagnostic.h`): cellIndex, startLine/Col, endLine/Col, message, severity (1=Error, 2=Warning). Shared by all diagnostic producers/consumers.
-  ├── OpenJudgeWindow     → QMainWindow singleton, browse OpenJudge homework→problems→detail, submit code
+  ├── OpenJudgeWidget     → QWidget (non-EditorWidget tab in TabManager), browse OpenJudge homework→problems→detail, submit code
   │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn
   ├── SubmitResultPanel   → QWidget, dark-themed submission result display
   ├── LoginDialog         → QDialog, username/password + auto-login checkbox
@@ -79,7 +79,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 - **Compile & run**: F5/F6/F7 → auto-save unsaved to temp → ProcessRunner (g++/MSVC for C/C++, python for .py). stdin via OutputPanel (child of BottomPanel) event filter (echoes keystrokes, Enter sends line, paste splits multi-line with 20ms timer). Compilation blocks input; 50ms delay before enabling input on run start.
 - **Diagnostics**: Three sources — (1) `SmdDiagnosticsPanel` for SMD cells, (2) `BottomPanel` DiagnosticsTab for standalone `.cpp`/`.py` via LSP providers, (3) `BottomPanel` + JS wave underlines for MD code blocks via `CompilerErrorParser`. All `CompletionProvider` subclasses emit `diagnosticsUpdated`. C++: clangd → `CppCompletionProvider::parseDiagnostics()`. Python: Jedi `diagnostics` action. MD blocks: `CompilerErrorParser::parseCompileErrors()` / `parsePythonTraceback()` on stderr after ▶ Run. `MainWindow::currentChanged` restores diagnostics from cache on tab switch: code files → LSP provider, `.md` → `loadMdDiagnosticsForCurrentTab()`, others → hide.
 - **Local Judge**: Compile → warmup → per-test execution (1s timeout, 64MB memory limit). Triple-capture memory monitoring. Line-by-line trimmed output comparison. AC/WA/TLE/MLE/RE color-coded table.
-- **OpenJudge integration**: Crawler-based HTTP (cxsjsx.openjudge.cn). Homework browsing → problem detail → sample extraction (paired `<pre>` blocks) → cache to temp → inject into JudgePanel. Submission: POST raw source (percent-encoded, no base64) → poll 30s for result → show SubmitResultPanel.
+- **OpenJudge integration**: Embedded tab via OpenJudgeWidget (non-EditorWidget, managed by TabManager). Crawler-based HTTP (cxsjsx.openjudge.cn). Homework browsing → problem detail → sample extraction (paired `<pre>` blocks) → cache to temp → inject into JudgePanel. Submission: POST raw source (percent-encoded, no base64) → poll 30s for result → show SubmitResultPanel. Tab close removes directly (no save prompt). Save/save-as disabled when tab active.
 
 ## Component Details
 
@@ -209,8 +209,8 @@ Singleton managing persistent error records from Judge failures. `ErrorRecord` s
 ### ErrorListPanel (`ai/errorlistpanel.h/cpp`)
 QWidget with two views: list (filtered error records) and detail (expanded record info). Filter bar: status ComboBox (全部/WA/RE/TLE/MLE) + keyword search LineEdit. List items show status icon (AC green/RE red/TLE yellow/MLE purple), problem name, source file, timestamp, tags. Detail view: problem header (status/time/memory), file info, I/O comparison (input/expected/actual in monospace), AI analysis section (QTextBrowser with Markdown rendering), action buttons (重新分析/删除/已阅/返回列表). Delete-all, delete-one, mark-reviewed all go through ErrorJournal. Signals: errorClicked, deleteRecordRequested, deleteAllRequested.
 
-### OpenJudgeWindow (`openjudgewindow.h/cpp`)
-Independent QMainWindow for browsing. Three states: homework list → problem list → problem detail. Sample extraction via \<pre\> pairing. Auto-login via SettingsManager (base64-obfuscated). Managed as QPointer singleton in MainWindow.
+### OpenJudgeWidget (`openjudgewidget.h/cpp`)
+QWidget embedded as a non-EditorWidget tab in TabManager. Three states: homework list → problem list → problem detail. Sample extraction via \<pre\> pairing. Auto-login via SettingsManager (base64-obfuscated). TabManager::openOpenJudge() creates/switches to the singleton tab; findOpenJudgeWidget() locates it. closeTab() removes directly without save prompts (qobject_cast<EditorWidget*> returns nullptr). When active, MainWindow disables save/save-as actions.
 
 ### Crawler (`crawler.h/cpp`)
 HTTP crawler for cxsjsx.openjudge.cn. QNetworkAccessManager + cookie jar. Login via JSON API. Submit posts raw source (percent-encoded, avoids `+`→space corruption), polls 30s for result. Debug log to `crawler_debug.log`.

@@ -32,6 +32,9 @@ private:
     int  m_dragOffsetX = 0; // 鼠标在标签内的横向偏移（相对于标签左边缘）
 };
 
+class SettingsManager;
+class OpenJudgeWidget;
+
 class TabManager : public QTabWidget
 {
     Q_OBJECT
@@ -54,6 +57,10 @@ public:
     // 关闭所有标签页，若任一取消则返回 false
     bool closeAllTabs();
     void updatePathsAfterMove(const QString &oldBase, const QString &newBase); // 拖动文件改变路径后更新
+
+    // OpenJudge 集成
+    void openOpenJudge(SettingsManager *settings);
+    OpenJudgeWidget* findOpenJudgeWidget() const;
 
 public:
     EditorWidget* findEditorByPath(const QString &filePath) const;

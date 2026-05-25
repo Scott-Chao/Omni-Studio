@@ -62,7 +62,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
   ├── PromptTemplates        → header-only prompt builder per AiAction, actionsForMode()
   ├── SearchPanel            → full-text search (left dock, tabbed with Judge)
   ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock, tabbed with Search)
-  ├── OpenJudgeWindow        → separate QMainWindow for OpenJudge browsing + submission
+  ├── OpenJudgeWidget        → QWidget embedded as tab in TabManager for OpenJudge browsing + submission
   ├── BottomPanel            → unified bottom panel (Output + Diagnostics tabs), replaces standalone OutputPanel
   │   ├── OutputPanel        → terminal-style stdout/stderr (tab 0)
   │   └── DiagnosticsTab     → error/warning list (tab 1), per-file via CodeEditor / MD block diagnostics
@@ -89,7 +89,7 @@ MainWindow                   → frameless orchestrator, owns all widgets
 - **Split preview**: QSplitter with edit left + WebEngine right, 500ms debounce, mutually exclusive with full preview.
 - **Preview code block run**: marked renderer adds ▶ Run button on fenced code blocks; clicks navigate `runblock:execute` → C++ intercepts → saves temp file → ProcessRunner compiles/runs.
 - **Local Judge**: Compile → warmup → per-test-case execution with 1s timeout + 64MB memory limit. Line-by-line trimmed output comparison.
-- **OpenJudge**: Crawler-based HTTP (cxsjsx.openjudge.cn) for homework browsing, auto-login, sample extraction, code submission with 30s status polling.
+- **OpenJudge**: Embedded tab (OpenJudgeWidget) with Crawler-based HTTP (cxsjsx.openjudge.cn) for homework browsing, auto-login, sample extraction, code submission with 30s status polling. TabManager manages the widget as a non-EditorWidget tab — `closeTab()` removes it directly without save prompts. When the OpenJudge tab is active, save/save-as actions are disabled (not a file).
 - **stdin in BottomPanel**: Terminal-mode event filter captures keystrokes via OutputPanel (now a child tab of BottomPanel), buffers input, sends line-by-line on Enter. Paste splits multi-line with 20ms timer.
 - **Theme system**: `ThemeManager` singleton manages VS Code 2026 Dark/Light palettes via `QMap<QString, QColor>`. `setTheme(Dark|Light|System)`. System mode reads Windows registry `AppsUseLightTheme`, falls back to time-based (6:00–18:00 → Light). 5-min auto-refresh timer. `themeChanged(Theme)` signal re-applies QSS/Palette across all widgets. Semantic color keys like `"editor.background"`, `"panel.border"`, `"activitybar.background"`, accessed via `color(key)` / `hex(key)`.
 - **Conversation history**: `AiHistoryManager` singleton persists conversations as JSON files (`conv_{uuid}.json`) with an `index.json` manifest in `{exeDir}/ai_history/`. `AiHistoryListWidget` (tab in AiPanel) provides search, date-grouping (今天/昨天/更早), active conversation green dot, and right-click context menu (rename/delete/export Markdown). History filtered by `sourceFile` to show only conversations relevant to the current editor file.
