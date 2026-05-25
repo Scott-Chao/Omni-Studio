@@ -1418,6 +1418,26 @@ void OpenJudgeWidget::onToggleIdeMode()
 
     if (m_ideMode) {
         // ENTER IDE mode
+
+        // Auto-select problem if not already selected
+        if (!m_currentProblemSelected) {
+            QString folderPath;
+            if (hasCachedSamples()) {
+                folderPath = samplesCacheDir();
+            } else {
+                QVector<SamplePair> samples = extractSamples(m_currentProblem);
+                if (!samples.isEmpty()) {
+                    folderPath = writeSamplesToCache(samples);
+                }
+            }
+            if (!folderPath.isEmpty()) {
+                emit sampleSelected(folderPath);
+                m_currentProblemSelected = true;
+                m_selectBtn->setText(QStringLiteral("已选择"));
+                updateSelectButtonStyle(true);
+            }
+        }
+
         // Lazy-create editor on first use
         if (!m_ideEditorContainer) {
             setupIdeMode();

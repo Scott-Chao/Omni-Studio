@@ -60,8 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- OpenJudge 题目样例缓存改为按题目缓存
+### 新增
+- OpenJudge 打开 IDE 时，自动选中题目
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1015,7 +1015,7 @@
 - "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 校验 `m_currentProblemSelected`，未选中时拒绝提交。
 - **标签页管理**：`TabManager` 通过 `openOpenJudge(settings)` 创建/切换到 OpenJudge 标签页（单例模式），`findOpenJudgeWidget()` 查找已有标签页。关闭标签页时 `closeTab()` 直接移除无需保存提示（非 `EditorWidget` 标签页）。关闭程序时 `closeAllTabs()` 自动关闭。
 - **文件操作禁用**：当 OpenJudge 标签页激活时，`MainWindow::currentChanged` 处理程序中自动禁用保存/另存为菜单项（`setEnabled(false)`），因为该标签页不是文件。切换到文件标签页时自动恢复启用状态。
-- **IDE 模式**：题目详情页工具栏新增"IDE"切换按钮（可检入/检出，位于"显示栏目"与"← 返回"之间），语言选择下拉框（C/C++/Python）仅在 IDE 模式下可见。IDE 模式下将题目内容区域改为水平 `QSplitter`：左侧为 `m_sectionContent`（题目内容），右侧为嵌入式 `CodeEditor`（`m_ideCodeEditor`）+ 边框分隔线。分隔条拖拽范围通过 `splitterMoved` 信号钳制在 3:7 ~ 7:3 比例。编辑器首次进入 IDE 模式时延迟创建（`setupIdeMode()`），配置语法高亮、LSP 后端和主题联动，`diagnosticsToggleRequested` 通过 `ideDiagnosticsToggleRequested()` 信号转发至 `MainWindow::toggleDiagnosticsInCodeEditor()`。代码缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，`saveIdeCodeToCache()` 在退出、切换语言时调用，`loadIdeCodeFromCache()` 在进入时恢复。"IDE"按钮仅在题目详情页可见（`m_viewState == OJ_PROBLEM_DETAIL`），切换回列表页或查看其他题目时自动退出 IDE 模式并保存代码。语言选择器切换时先保存旧语言代码到缓存（文件扩展名随之变化），再加载新语言缓存文件，编辑器语法高亮和 LSP 后端同步切换。`ideCode()` 返回编辑器当前文本，`currentLanguageId()` 返回当前选择的 OpenJudge 语言 ID，`isIdeMode()` 供 `MainWindow` 判断 IDE 模式状态。
+- **IDE 模式**：题目详情页工具栏新增"IDE"切换按钮（可检入/检出，位于"显示栏目"与"← 返回"之间），语言选择下拉框（C/C++/Python）仅在 IDE 模式下可见。IDE 模式下将题目内容区域改为水平 `QSplitter`：左侧为 `m_sectionContent`（题目内容），右侧为嵌入式 `CodeEditor`（`m_ideCodeEditor`）+ 边框分隔线。分隔条拖拽范围通过 `splitterMoved` 信号钳制在 3:7 ~ 7:3 比例。编辑器首次进入 IDE 模式时延迟创建（`setupIdeMode()`），配置语法高亮、LSP 后端和主题联动，`diagnosticsToggleRequested` 通过 `ideDiagnosticsToggleRequested()` 信号转发至 `MainWindow::toggleDiagnosticsInCodeEditor()`。代码缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，`saveIdeCodeToCache()` 在退出、切换语言时调用，`loadIdeCodeFromCache()` 在进入时恢复。**打开 IDE 自动选择题目**：`onToggleIdeMode()` 进入 IDE 模式时，若题目尚未选择（`!m_currentProblemSelected`），自动调用 `hasCachedSamples()` 检测已有缓存或通过 `extractSamples()` + `writeSamplesToCache()` 提取样例，emit `sampleSelected(folderPath)` 并将按钮设为"已选择"状态，无需手动点击选择题目。关闭 IDE 不会自动取消选择。切换到其他题目后 `onProblemDetailReady()` 重置选择状态，再次打开 IDE 时自动选择新题目。"IDE"按钮仅在题目详情页可见（`m_viewState == OJ_PROBLEM_DETAIL`），切换回列表页或查看其他题目时自动退出 IDE 模式并保存代码。语言选择器切换时先保存旧语言代码到缓存（文件扩展名随之变化），再加载新语言缓存文件，编辑器语法高亮和 LSP 后端同步切换。`ideCode()` 返回编辑器当前文本，`currentLanguageId()` 返回当前选择的 OpenJudge 语言 ID，`isIdeMode()` 供 `MainWindow` 判断 IDE 模式状态。
 
 **信号**：
 - `sampleSelected(const QString &folderPath)`：用户选择题目后发出，携带样例缓存目录路径。
