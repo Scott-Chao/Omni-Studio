@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.9）
+## 功能说明文档（v0.12.10）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,15 +60,15 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-- OpenJudge IDE 模式下增加 显示/隐藏题目 按钮
-
-### 修复 v0.12.9（性能优化）
-- **QSS 作用域从 qApp 缩小到 MainWindow**：`ThemeManager::setStyleSheetTarget(MainWindow*)` 将样式表作用域从全局 qApp 限定为仅 MainWindow 对象树，避免 `qApp->setStyleSheet()` 强制 Qt 重新样式化所有应用控件。其他顶层控件（QToolTip 等）通过 QPalette + 各自的 `refreshStyle()` 保证主题色正确。
-- **QWebEngineView 懒创建，关闭预览时释放**：`EditorWidget::ensurePreviewView()` 在首次进入预览模式时按需创建 WebEngineView；`destroyPreviewView()` / `destroySplitPreviewWidgets()` 在退出预览模式时释放 Chromium 进程和控件（`deleteLater()`）。每个编辑器构造时不再创建 WebEngine 实例，消除 GPU 进程冷启动造成的窗口抖动，关闭预览时释放内存。同时修复 `m_previewView` 未初始化为 `nullptr` 导致的野指针崩溃、`loadFinished` 回调未判空、硬编码 `setCurrentIndex` 改为 `setCurrentWidget`。
-- **移除 qApp 全局事件过滤器**：`MainWindow` 不再调用 `qApp->installEventFilter(this)` 拦截全应用所有事件。右侧面板自动隐藏改用 `QApplication::focusChanged` 信号 + `QTimer::singleShot(0)` 防止中间态焦点经过编辑器时误关。左右面板独立控制——`showLeftPanel` 不再强制关闭右侧面板。最大化窗口拖拽使用 `m_toolbarDragPending` 标志：仅在 `MouseMove` 确认拖拽意图后才调用 `showNormal()`，`MouseButtonRelease` 时仅清除标志，避免单击误触还原。
-- **Tab 切换时避免 findChildren 重复遍历**：每个 `EditorWidget` 的子控件树在创建后即稳定，使用 `QSet<EditorWidget*> m_editorScrollAreasRegistered` 记录已注册过的编辑器。`findChildren<QAbstractScrollArea*>` 在首次注册后跳过，后续 Tab 切换直接返回，避免 O(widget_tree_depth) 的重复遍历。
-- **ChatBubble 流式渲染改为增量 HTML 转换**：缓存 `m_accumulatedHtml`，每次 80ms debounce tick 只对 delta 增量文本做 `processInline()` 轻量转换（粗体/斜体/行内代码）后追加，避免全量 `markdownToHtml()`。`isStructuralDelta()` 检测代码块围栏、标题、列表和水平线——当 delta 中出现结构标记时退回到全量 `markdownToHtml()` 保证正确性。`m_inCodeBlock` 状态追踪代码块内部，强制走全量路径避免 `<p>` 错误包裹 `<pre><code>` 块。
+### 新增 v0.12.10
+OpenJudge 功能增强
+- **OpenJudge 题目浏览内置到标签页**：OpenJudge 题目浏览从独立窗口改为嵌入主窗口的标签页（`OpenJudgeWidget`），由 `TabManager` 管理为非 `EditorWidget` 标签页。关闭标签页时直接移除无需保存提示，激活时自动禁用保存/另存为菜单项。
+- **题目详情页连续滚动浏览**：题目详情页面改为左侧章节导航（`m_sectionList`，100px，默认隐藏）+ 右侧 `QTextBrowser` 全文连续滚动，所有章节拼接为单个 HTML 文档一次性渲染。左侧栏目联动右侧内容（scroll-spy），点击跳转 → `scrollToAnchor`，滚动右侧 → 自动检测当前章节并高亮左侧导航项（`m_scrollingFromClick` 防反馈锁）。
+- **题目详情页左侧栏目可隐藏**：工具栏"显示栏目"按钮（`m_toggleSidebarBtn`，仅题目详情页可见），点击切换左侧章节导航的显示/隐藏，重新记录锚点位置以适配宽度变化。
+- **OpenJudge IDE 模式**：题目详情页工具栏新增"IDE"切换按钮和语言选择下拉框（C/C++/Python）。IDE 模式下将题目内容区域改为水平 `QSplitter`：左侧题目内容 + 右侧嵌入式 `CodeEditor`（`m_ideCodeEditor`），支持语法高亮、LSP 后端和诊断。分隔条拖拽范围钳制在 3:7 ~ 7:3。编辑器首次使用时延迟创建（`setupIdeMode()`）。代码按题目缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出或切换语言时自动保存（`saveIdeCodeToCache()`），再次进入时恢复（`loadIdeCodeFromCache()`）。语言选择器切换时先保存旧代码再加载新语言缓存，编辑器语法高亮和 LSP 后端同步切换。编译运行、评测、提交均使用 IDE 嵌入编辑器内容。
+- **IDE 模式下题目显示/隐藏**：工具栏"隐藏题目"按钮（`m_toggleProblemBtn`，仅 IDE 模式可见），隐藏左侧题目内容使编辑器铺满整个页面，再次点击恢复并还原分割比例。退出 IDE 时自动恢复题目可见性。
+- **打开 IDE 自动选中题目**：进入 IDE 模式时，若题目尚未选择，自动检测已有样例缓存或提取样例写入缓存，emit `sampleSelected(folderPath)`，无需手动点击"选择此题目"。关闭 IDE 不取消选择。切换到其他题目后再次打开 IDE 时自动选择新题目。
+- **题目样例按题目独立缓存**：样例缓存从固定的 `SM-OJ-Cache/` 全局目录改为 `SM-OJ-Cache/samples/{题目标题}/` 逐题目隔离目录（`samplesCacheDir()`）。`hasCachedSamples()` 检测已有缓存避免重复提取。`writeSamplesToCache()` 仅清空当前题目子目录，不影响其他题目。选择题目时优先复用已有缓存。
 
 ### 1. `MainWindow` - 主窗口控制器
 
