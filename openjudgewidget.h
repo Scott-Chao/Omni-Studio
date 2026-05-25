@@ -71,6 +71,7 @@ private slots:
     void onNextPage();
     void onSelectClicked();
     void onToggleSidebar();
+    void onToggleProblem();
     void onToggleIdeMode();
     void onIdeLanguageChanged(int index);
     void onLoginLogoutClicked();
@@ -143,12 +144,15 @@ private:
     bool m_sidebarVisible = false;
 
     // IDE mode
+    QPushButton *m_toggleProblemBtn = nullptr;
     QPushButton *m_ideBtn = nullptr;
     QComboBox *m_langCombo = nullptr;
     QSplitter *m_ideSplitter = nullptr;
     QWidget *m_ideEditorContainer = nullptr;
     CodeEditor *m_ideCodeEditor = nullptr;
     bool m_ideMode = false;
+    bool m_problemVisible = true;
+    QList<int> m_savedSplitterSizes;
     bool m_ideLangChanging = false;
     int m_currentLangId = 1;       // OJ language ID (default: G++)
     QString m_currentCodeLangId;   // CodeEditor language ID (e.g. "cpp")

@@ -172,6 +172,11 @@ void OpenJudgeWidget::setupUi()
     m_toggleSidebarBtn->setVisible(false);
     connect(m_toggleSidebarBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleSidebar);
 
+    m_toggleProblemBtn = new QPushButton(QStringLiteral("隐藏题目"));
+    m_toggleProblemBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
+    m_toggleProblemBtn->setVisible(false);
+    connect(m_toggleProblemBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleProblem);
+
     m_ideBtn = new QPushButton(QStringLiteral("IDE"));
     m_ideBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     m_ideBtn->setCheckable(true);
@@ -207,6 +212,7 @@ void OpenJudgeWidget::setupUi()
 
     toolbarLayout->addWidget(m_selectBtn);
     toolbarLayout->addWidget(m_toggleSidebarBtn);
+    toolbarLayout->addWidget(m_toggleProblemBtn);
     toolbarLayout->addWidget(m_ideBtn);
     toolbarLayout->addWidget(m_langCombo);
     toolbarLayout->addWidget(m_backBtn);
@@ -380,6 +386,7 @@ void OpenJudgeWidget::showListPage()
     m_stackedWidget->setCurrentIndex(0);
     m_selectBtn->setVisible(false);
     m_toggleSidebarBtn->setVisible(false);
+    m_toggleProblemBtn->setVisible(false);
     m_ideBtn->setVisible(false);
     m_langCombo->setVisible(false);
     m_currentSectionIndex = -1;
@@ -814,6 +821,23 @@ void OpenJudgeWidget::onToggleSidebar()
         QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
 }
 
+void OpenJudgeWidget::onToggleProblem()
+{
+    m_problemVisible = !m_problemVisible;
+    if (m_problemVisible) {
+        // Restore problem
+        m_sectionContent->show();
+        if (!m_savedSplitterSizes.isEmpty())
+            m_ideSplitter->setSizes(m_savedSplitterSizes);
+        m_toggleProblemBtn->setText(QStringLiteral("隐藏题目"));
+    } else {
+        // Hide problem, editor fills entire area
+        m_savedSplitterSizes = m_ideSplitter->sizes();
+        m_sectionContent->hide();
+        m_toggleProblemBtn->setText(QStringLiteral("显示题目"));
+    }
+}
+
 // ======================================================================
 // Scroll-spy: update left sidebar selection based on scroll position
 // ======================================================================
@@ -1062,6 +1086,7 @@ void OpenJudgeWidget::refreshStyle()
     m_prevPageBtn->setStyleSheet(btnQss);
     m_nextPageBtn->setStyleSheet(btnQss);
     m_toggleSidebarBtn->setStyleSheet(btnQss);
+    m_toggleProblemBtn->setStyleSheet(btnQss);
     m_ideBtn->setStyleSheet(btnQss);
     updateSelectButtonStyle(m_currentProblemSelected);
 
@@ -1453,6 +1478,7 @@ void OpenJudgeWidget::onToggleIdeMode()
 
         // Show language combo
         m_langCombo->setVisible(true);
+        m_toggleProblemBtn->setVisible(true);
         m_ideBtn->setChecked(true);
 
         // Load cached code for this problem
@@ -1472,6 +1498,13 @@ void OpenJudgeWidget::onToggleIdeMode()
 
         // Hide language combo
         m_langCombo->setVisible(false);
+        m_toggleProblemBtn->setVisible(false);
+        // Restore problem visibility if hidden
+        if (!m_problemVisible) {
+            m_sectionContent->show();
+            m_problemVisible = true;
+            m_toggleProblemBtn->setText(QStringLiteral("隐藏题目"));
+        }
         m_ideBtn->setChecked(false);
     }
 }
