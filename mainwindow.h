@@ -232,6 +232,7 @@ private:
     TitleBarButton *m_closeBtn = nullptr;
     QWidget *m_toolbarSpacer = nullptr;
     QToolBar *m_toolBar = nullptr;
+    bool m_toolbarDragPending = false;  // 最大化时单击→拖拽区分标志
     QToolButton *m_fileMenuBtn = nullptr;
     QMenu *m_fileMenu = nullptr;
     void setupCustomTitleBar();

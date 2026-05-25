@@ -220,6 +220,21 @@ MainWindow::MainWindow(QWidget *parent)
         toggleRightPanelAction->setChecked(visible);
     });
 
+    // 用 focusChanged 替代全局 eventFilter 实现点击编辑器时自动隐藏右侧面板
+    // 用 singleShot(0) 避免中间态焦点经过编辑器导致误关（如打开左侧面板时）
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget * /*old*/, QWidget *now) {
+        if (now && m_tabManager && m_tabManager->isAncestorOf(now)
+            && m_dockRightPanel && m_dockRightPanel->isVisible()) {
+            QTimer::singleShot(0, this, [this]() {
+                if (m_dockRightPanel && m_dockRightPanel->isVisible()) {
+                    QWidget *focused = QApplication::focusWidget();
+                    if (focused && m_tabManager && m_tabManager->isAncestorOf(focused))
+                        m_dockRightPanel->hide();
+                }
+            });
+        }
+    });
+
     toggleRightPanelAction = new QAction(tr("面板"), this);
     toggleRightPanelAction->setCheckable(true);
     toggleRightPanelAction->setToolTip(tr("显示/隐藏右侧面板 (历史/大纲/标签/反链)"));
@@ -967,8 +982,6 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_explorer, &FileExplorerWidget::fileRenamed,
             this, &MainWindow::onFileMovedOrRenamed);
-    qApp->installEventFilter(this);
-
     loadSettings();
     checkCrashRecovery(); // 检测崩溃恢复文件
     m_searchPanel->setRootPath(m_explorer->rootPath());
@@ -1470,9 +1483,6 @@ void MainWindow::showLeftPanel(int index)
     m_activityBar->setExplorerActive(index == 0);
     m_activityBar->setSearchActive(index == 1);
     m_activityBar->setJudgeActive(index == 2);
-    // 打开非文件浏览面板时隐藏右侧面板
-    if (index > 0)
-        m_dockRightPanel->hide();
 }
 
 void MainWindow::toggleLeftPanel()
@@ -2582,17 +2592,33 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             }
             if (shouldMove && me->button() == Qt::LeftButton) {
                 if (isMaximized()) {
-                    // 最大化拖拽：还原 → 处理事件 → 定位 → 系统拖拽
-                    QPoint gpos = me->globalPosition().toPoint();
-                    QPoint localInWindow = mapFromGlobal(gpos);
-                    showNormal();
-                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-                    move(gpos.x() - localInWindow.x(), gpos.y() - localInWindow.y());
+                    // 最大化时：不立即还原，等 MouseMove 确认是拖拽才还原
+                    m_toolbarDragPending = true;
+                } else {
+                    if (windowHandle())
+                        windowHandle()->startSystemMove();
                 }
-                if (windowHandle())
-                    windowHandle()->startSystemMove();
                 return true;
             }
+        }
+        // 最大化窗口拖拽：检测到实际鼠标移动才还原
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseMove
+            && m_toolbarDragPending && isMaximized()) {
+            m_toolbarDragPending = false;
+            QMouseEvent *me = static_cast<QMouseEvent*>(event);
+            QPoint gpos = me->globalPosition().toPoint();
+            QPoint localInWindow = mapFromGlobal(gpos);
+            showNormal();
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            move(gpos.x() - localInWindow.x(), gpos.y() - localInWindow.y());
+            if (windowHandle())
+                windowHandle()->startSystemMove();
+            return true;
+        }
+        if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonRelease
+            && m_toolbarDragPending) {
+            // 单击不还原，只清除标志
+            m_toolbarDragPending = false;
         }
         if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonDblClick) {
             if (isMaximized())
@@ -2604,21 +2630,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     if (event->type() == QEvent::MouseButtonPress) {
-        QWidget *clickedWidget = QApplication::widgetAt(QCursor::pos());
-        QToolButton *btn = qobject_cast<QToolButton*>(clickedWidget);
-
-        // Auto-hide right panel when clicking in the editor area
-        if (m_dockRightPanel->isVisible()) {
-            if (btn && btn->defaultAction() == toggleRightPanelAction)
-                return QMainWindow::eventFilter(watched, event);
-            if (!m_dockRightPanel->isAncestorOf(clickedWidget)
-                && m_tabManager && m_tabManager->isAncestorOf(clickedWidget))
-                m_dockRightPanel->hide();
-        }
-
         // Close settings/help overlays when clicking overlay background
-        // (Overlays are now top-level Tool windows; clicks on the dimmed area
-        //  outside the panel widget close the overlay.)
         if (watched == m_settingsOverlay && m_settingsOverlay->isVisible()) {
             auto *me = static_cast<QMouseEvent*>(event);
             if (!m_settingsPanel->geometry().contains(me->pos())) {
