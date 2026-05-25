@@ -236,6 +236,10 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // 在 TabManager 上安装事件过滤器，捕获焦点已在内时点击编辑器内任意位置
+    // 也能隐藏右侧面板（focusChanged 在焦点不变时不会触发）。
+    m_tabManager->installEventFilter(this);
+
     toggleRightPanelAction = new QAction(tr("面板"), this);
     toggleRightPanelAction->setCheckable(true);
     toggleRightPanelAction->setToolTip(tr("显示/隐藏右侧面板 (历史/大纲/标签/反链)"));
@@ -1488,6 +1492,10 @@ void MainWindow::showLeftPanel(int index)
     m_activityBar->setExplorerActive(index == 0);
     m_activityBar->setSearchActive(index == 1);
     m_activityBar->setJudgeActive(index == 2);
+
+    // 打开非文件浏览面板时隐藏右侧面板
+    if (index > 0 && m_dockRightPanel)
+        m_dockRightPanel->hide();
 }
 
 void MainWindow::toggleLeftPanel()
@@ -2635,6 +2643,15 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     if (event->type() == QEvent::MouseButtonPress) {
+        // 点击编辑器区域时隐藏右侧面板（补全 focusChanged 无法处理焦点不变的场景）
+        if (m_dockRightPanel && m_dockRightPanel->isVisible()
+            && m_tabManager) {
+            QWidget *clickedWidget = qobject_cast<QWidget*>(watched);
+            if (clickedWidget && (watched == m_tabManager || m_tabManager->isAncestorOf(clickedWidget))) {
+                m_dockRightPanel->hide();
+                return true;
+            }
+        }
         // Close settings/help overlays when clicking overlay background
         if (watched == m_settingsOverlay && m_settingsOverlay->isVisible()) {
             auto *me = static_cast<QMouseEvent*>(event);

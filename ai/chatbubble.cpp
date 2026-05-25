@@ -215,10 +215,10 @@ bool ChatBubble::isStructuralDelta(const QString &delta) const
     if (m_inCodeBlock)
         return true;
 
-    // Per-line structural markers: headings, lists, horizontal rules
+    // Per-line structural markers: headings, lists, horizontal rules, blockquotes
     QStringList lines = delta.split(QStringLiteral("\n"));
     static const QRegularExpression structuralRe(
-        QStringLiteral("^(#{1,6}\\s+|[*\\-]\\s+|\\d+\\.\\s+|-{3,}\\s*$)")
+        QStringLiteral("^\\s*(#{1,6}\\s+|[*\\-]\\s+|\\d+\\.\\s+|-{3,}\\s*$|>\\s*)")
     );
     for (const QString &line : lines) {
         if (structuralRe.match(line).hasMatch())
@@ -413,17 +413,15 @@ void ChatBubble::updateContent()
             // Incremental: only process new text since last conversion
             QString delta = m_text.mid(m_lastProcessedLength);
             if (!delta.isEmpty()) {
-                // Track code block state from delta (count fence occurrences
-                // so one chunk containing both open+close doesn't desync).
-                // Must update BEFORE isStructuralDelta() which reads it.
-                int fenceCount = 0;
-                int fi = 0;
-                while ((fi = delta.indexOf(QStringLiteral("```"), fi)) != -1) {
-                    fenceCount++;
-                    fi += 3;
-                }
-                if (fenceCount % 2 == 1)
+                // Recalculate code block state from full text so that fence
+                // markers split across chunk boundaries (e.g. delta 1 = "``",
+                // delta 2 = "`\n") are correctly detected.
+                m_inCodeBlock = false;
+                int fenceIdx = 0;
+                while ((fenceIdx = m_text.indexOf(QStringLiteral("```"), fenceIdx)) != -1) {
                     m_inCodeBlock = !m_inCodeBlock;
+                    fenceIdx += 3;
+                }
 
                 if (isStructuralDelta(delta)) {
                     // Structural boundary → full rebuild for correctness
