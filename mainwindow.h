@@ -10,6 +10,7 @@
 #include "ai/aihistorymanager.h"
 #include <QTabWidget>
 #include <QSplitter>
+#include <QSet>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMap>
@@ -228,12 +229,16 @@ private:
     // 快捷键动态映射
     QMap<QString, QAction*> m_shortcutActions;
 
+    // Track which editors have had their scroll areas registered with ScrollbarHider
+    QSet<EditorWidget*> m_editorScrollAreasRegistered;
+
     // 自定义标题栏控件
     TitleBarButton *m_minimizeBtn = nullptr;
     TitleBarButton *m_maximizeBtn = nullptr;
     TitleBarButton *m_closeBtn = nullptr;
     QWidget *m_toolbarSpacer = nullptr;
     QToolBar *m_toolBar = nullptr;
+    bool m_toolbarDragPending = false;  // 最大化时单击→拖拽区分标志
     QToolButton *m_fileMenuBtn = nullptr;
     QMenu *m_fileMenu = nullptr;
     void setupCustomTitleBar();

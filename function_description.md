@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.8）
+## 功能说明文档（v0.12.9）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -63,6 +63,13 @@
 ### 新增
 - OpenJudge IDE 模式下增加 显示/隐藏题目 按钮
 
+### 修复 v0.12.9（性能优化）
+- **QSS 作用域从 qApp 缩小到 MainWindow**：`ThemeManager::setStyleSheetTarget(MainWindow*)` 将样式表作用域从全局 qApp 限定为仅 MainWindow 对象树，避免 `qApp->setStyleSheet()` 强制 Qt 重新样式化所有应用控件。其他顶层控件（QToolTip 等）通过 QPalette + 各自的 `refreshStyle()` 保证主题色正确。
+- **QWebEngineView 懒创建，关闭预览时释放**：`EditorWidget::ensurePreviewView()` 在首次进入预览模式时按需创建 WebEngineView；`destroyPreviewView()` / `destroySplitPreviewWidgets()` 在退出预览模式时释放 Chromium 进程和控件（`deleteLater()`）。每个编辑器构造时不再创建 WebEngine 实例，消除 GPU 进程冷启动造成的窗口抖动，关闭预览时释放内存。同时修复 `m_previewView` 未初始化为 `nullptr` 导致的野指针崩溃、`loadFinished` 回调未判空、硬编码 `setCurrentIndex` 改为 `setCurrentWidget`。
+- **移除 qApp 全局事件过滤器**：`MainWindow` 不再调用 `qApp->installEventFilter(this)` 拦截全应用所有事件。右侧面板自动隐藏改用 `QApplication::focusChanged` 信号 + `QTimer::singleShot(0)` 防止中间态焦点经过编辑器时误关。左右面板独立控制——`showLeftPanel` 不再强制关闭右侧面板。最大化窗口拖拽使用 `m_toolbarDragPending` 标志：仅在 `MouseMove` 确认拖拽意图后才调用 `showNormal()`，`MouseButtonRelease` 时仅清除标志，避免单击误触还原。
+- **Tab 切换时避免 findChildren 重复遍历**：每个 `EditorWidget` 的子控件树在创建后即稳定，使用 `QSet<EditorWidget*> m_editorScrollAreasRegistered` 记录已注册过的编辑器。`findChildren<QAbstractScrollArea*>` 在首次注册后跳过，后续 Tab 切换直接返回，避免 O(widget_tree_depth) 的重复遍历。
+- **ChatBubble 流式渲染改为增量 HTML 转换**：缓存 `m_accumulatedHtml`，每次 80ms debounce tick 只对 delta 增量文本做 `processInline()` 轻量转换（粗体/斜体/行内代码）后追加，避免全量 `markdownToHtml()`。`isStructuralDelta()` 检测代码块围栏、标题、列表和水平线——当 delta 中出现结构标记时退回到全量 `markdownToHtml()` 保证正确性。`m_inCodeBlock` 状态追踪代码块内部，强制走全量路径避免 `<p>` 错误包裹 `<pre><code>` 块。
+
 ### 1. `MainWindow` - 主窗口控制器
 
 **文件**：`mainwindow.h` / `mainwindow.cpp`
@@ -74,7 +81,7 @@
 - 协调文件树与标签管理器的双向联动：用户**单击**文件树中的文件时，以预览模式（临时标签页）打开，多次单击复用同一标签页；**双击**文件时永久打开（或提升已有预览标签页）；编辑预览标签页内容后自动提升为永久。切换标签页时文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
 - 处理窗口关闭事件，调用 `TabManager::closeAllTabs()` 检查所有未保存的文件，并根据用户选择决定是否退出。
-- 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式边框干扰，hover 背景自绘 `QPainter::fillRect`）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原、最大化状态拖拽自动还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。构造函数中通过 `DwmSetWindowAttribute`（`DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`）向 DWM 请求系统级圆角，确保在 Fusion 样式下 Windows 11 窗口圆角依然生效（最大化时自动关闭）。
+- 管理自定义标题栏（`setupCustomTitleBar()`）：隐藏系统原生标题栏（`FramelessWindowHint` + `WS_THICKFRAME`），将工具栏改造为标题栏。工具栏右侧添加最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式边框干扰，hover 背景自绘 `QPainter::fillRect`）。工具栏空白区域拖拽移动窗口、双击切换最大化/还原。最大化状态拖拽使用 `m_toolbarDragPending` 标志区分单击和拖拽——`MouseButtonPress` 仅设标志，`MouseMove` 时才调用 `showNormal()` 还原窗口，`MouseButtonRelease` 清除标志，避免最大化的窗口因单击误触发还原。通过 `nativeEvent`（`WM_NCHITTEST`）和 `event()`（`startSystemResize`）双重机制支持窗口边缘缩放（10px），`WM_NCCREATE` 确保 `WS_THICKFRAME` 样式不被覆盖以支持 Aero Snap。构造函数中通过 `DwmSetWindowAttribute`（`DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`）向 DWM 请求系统级圆角，确保在 Fusion 样式下 Windows 11 窗口圆角依然生效（最大化时自动关闭）。
 - 管理工具栏，包括文件操作（新建、保存、另存为、导出PDF）、帮助按钮（F1，位于 spacer 与面板按钮之间）、预览模式切换（全屏预览 / 分屏预览，均仅`.md`文件可见且互斥）、以及字体缩放控件（−、百分比标签、+、重置）。导出PDF按钮仅 `.md` 文件可见。
 - 支持以下快捷键：
   - `Ctrl+N` 新建、`Ctrl+S` 保存、`Ctrl+Shift+S` 另存为、`Ctrl+E` 导出PDF（仅 `.md`）、`Ctrl+D` 切换底部诊断面板（仅代码文件）、`Ctrl+T` .md ↔ .smd 转换（仅 `.md` / `.smd` 文件）、`Ctrl+Shift+P` 全屏预览切换（仅 `.md`）、`Ctrl+P` 分屏预览切换（仅 `.md`，与全屏预览互斥）
@@ -92,9 +99,9 @@
   - `Delete`：在文件树中选中文件夹/文件时，直接触发删除操作（非重命名状态）
 - 处理文件树的右键菜单请求：协调文件树的新建文件夹、重命名、删除操作。删除前检查是否有未保存的文件（或子文件），弹出确认对话框，强制关闭相关标签页后再执行删除，确保数据安全。
 - 管理历史记录面板（`QDockWidget` + `HistoryPanel`），在工具栏最左侧提供显示/隐藏面板的按钮（状态与面板可见性联动）。
-  在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。并通过全局事件过滤器实现点击面板外部自动隐藏。
+  在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板，而非全局事件过滤器。
 - 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
-  通过全局事件过滤器实现点击面板外部自动隐藏；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。
+  通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。`showLeftPanel` 不再强制关闭右侧面板。
 - 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时自动管理诊断 provider 连接：切换到代码文件时清空旧诊断、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
@@ -160,7 +167,8 @@
   - 在文件删除时调用 `BacklinkIndex::onFileDeleted` 清理索引。
   - 工具栏显示/隐藏按钮通过 `m_dockBacklinks->toggleViewAction()` 实现，行为与历史面板一致。
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
-- 安装全局事件过滤器，当历史面板或反链面板可见时，若鼠标点击发生在面板外部，则自动隐藏对应面板。工具栏按钮点击不触发隐藏，由 toggle 动作自行处理。
+- 右侧面板自动隐藏通过 `QApplication::focusChanged` 信号 + `QTimer::singleShot(0)` 防误触实现（取代了全局事件过滤器），编辑器获得焦点时自动隐藏右侧面板。`showLeftPanel` 不再强制关闭右侧面板，左右面板独立控制。
+- Tab 切换时通过 `m_editorScrollAreasRegistered`（`QSet<EditorWidget*>`）缓存已注册过滚动条的编辑器，`findChildren<QAbstractScrollArea*>` 每个编辑器只遍历一次，后续切换跳过 O(widget_tree_depth) 的重复遍历。
 
 ---
 
@@ -218,8 +226,8 @@
 - Markdown 编辑模式使用 `WikiLinkTextEdit`（`QTextEdit` 子类，内嵌 `QCompleter` 支持 `[[` 自动补全）；全屏预览模式使用 `QWebEngineView` 加载内置 HTML 模板，通过 marked.js 将 Markdown 转为 HTML，并支持 KaTeX 数学公式渲染和 Mermaid 图表渲染；PDF 阅读模式使用 `QPdfView` + `QPdfDocument` 直接渲染 PDF 页面。
 - **分屏预览模式**：新增的第 4 种布局模式，通过 `QSplitter(Qt::Horizontal)` 将编辑器区域分为左右两部分——左侧为 Markdown 源码编辑器（复用 `m_textEdit`），右侧为第二个独立的 `QWebEngineView` 渲染预览。分屏预览与全屏预览互斥，切换标签页时保留各自状态。右侧预览采用可配置的防抖机制延迟刷新（默认 500ms，可通过设置面板调节），仅在文本变化后更新。分屏比例从 `SettingsManager` 覆盖值读取（默认 50%，可通过设置面板调节），设置变更时实时调整分隔条位置。复用与全屏预览完全相同的 `preparePreviewContent()` 管线、`PreviewPage` 链接拦截和信号转发逻辑。
 - 代码编辑模式使用 `CodeEditor`（`QPlainTextEdit` 子类），提供行号显示、语法高亮、自动缩进、括号补全、智能退格等功能。打开文件时根据扩展名自动判断编辑模式：已知代码扩展名（如 `.cpp`、`.h`）切换到代码模式，其余使用 Markdown 编辑模式。
-- 预览引擎采用延迟初始化策略：`QWebEngineView` 在构造时仅创建外壳，首次切换预览模式时才通过 `setHtml()` 加载模板页面，避免构造时 GPU 进程冷启动造成窗口抖动。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。分屏预览的 `QWebEngineView` 同样采用延迟初始化（仅在首次进入分屏模式时创建），并共享同一套预处理和更新管线。
-- 六种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`），索引 4 = `QPdfView`（PDF 阅读，使用 `QPdfDocument` 加载），索引 5 = `SmdEditor`（SMD 单元格编辑器）。
+- 预览引擎采用**懒创建 + 释放策略**：`m_previewView`、`m_previewContainer` 和 `m_splitSplitter` 在构造函数中完全不再创建（初始化为 `nullptr`），而是分别通过 `ensurePreviewView()` / `setSplitPreviewMode(true)` 在首次进入全屏/分屏预览模式时按需创建，避免构造时 Chromium GPU 进程冷启动造成窗口抖动。退出预览模式时通过 `destroyPreviewView()` / `destroySplitPreviewWidgets()` 释放 WebEngine 控件和关联的 Chromium 进程（`removeWidget` + `deleteLater`）。暗色容器 Widget（`m_previewContainer`，背景色 `#2d2d2d`）包裹 `QWebEngineView`，配合 `QWebEnginePage::setBackgroundColor()` 确保页面加载期间始终显示暗色背景。后续预览更新通过 `updatePreviewContent()` 将完整 Markdown 内容 Base64 编码后传入 JS 端 `renderFromBase64()`（使用 `TextDecoder` 正确处理 UTF-8 多字节字符），避免嵌入 JS 字符串时的转义问题。分屏预览的 `QWebEngineView` 同样采用懒创建，并共享同一套预处理和更新管线。
+- 六种模式通过内部 `QStackedWidget` 切换：索引 0 = `WikiLinkTextEdit`（Markdown 编辑），索引 1 = `m_previewContainer`（暗色容器 > `QWebEngineView`，懒创建），索引 2 = `CodeEditor`（代码编辑），索引 3 = `QSplitter`（左 `m_textEdit` + 右分屏预览 `QWebEngineView`，懒创建），索引 4 = `QPdfView`（PDF 阅读，使用 `QPdfDocument` 加载），索引 5 = `SmdEditor`（SMD 单元格编辑器）。模式切换统一使用 `setCurrentWidget()` 而非硬编码 `setCurrentIndex()`。
 - 管理当前编辑文件的路径和修改状态。
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
@@ -274,8 +282,8 @@
 **协作关系**：
 - 被 `TabManager` 创建和管理，`TabManager` 连接其信号以更新标签标题。
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
-- 在构造函数中对 `m_textEdit` 的 **viewport**、`m_codeEditor` 的 **viewport** 和 `m_previewView` 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`。其中 `m_previewView` 额外通过 `QTimer::singleShot` 延迟安装到其 `focusProxy()`（Chromium 内部输入控件），并在首次页面 `loadFinished` 后重新安装，确保预览区的 Ctrl+滚轮缩放也能被正确拦截。
-- 构造函数不再调用 `initPreviewEngine()`，WebEngine 页面加载延迟至首次 `setPreviewMode(true)` 时执行，避免打开文件时 GPU 进程冷启动造成窗口抖动。
+- 在构造函数中对 `m_textEdit` 的 **viewport** 和 `m_codeEditor` 的 **viewport** 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`。`m_previewView` 的事件过滤器在 `ensurePreviewView()` 创建时安装，通过 `QTimer::singleShot` 延迟安装到其 `focusProxy()`（Chromium 内部输入控件），并在首次页面 `loadFinished` 后重新安装，确保预览区的 Ctrl+滚轮缩放也能被正确拦截。
+- WebEngine 视图采用懒创建（`ensurePreviewView()`）并在退出预览时释放（`destroyPreviewView()` / `destroySplitPreviewWidgets()`），避免无预览时占用 Chromium 进程内存。所有 WebEngine 指针访问均做 null 检查，`loadFinished` 回调包含 `m_previewView` 判空保护，`refreshPreviewTheme()` 在无预览时静默跳过。
 - `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 `QWebEngineView::setZoomFactor()` 缩放整个预览页面（含 SVG 图表和数学公式）。
 
 ---
@@ -1532,12 +1540,13 @@
 - `void refreshSystemTheme()`：System 模式下重新检测。
 - `QColor color(const QString &key) const` / `QString hex(const QString &key) const`：语义化颜色查询。
 - `bool applyCurrentTheme()`：重新发射 `themeChanged` 信号。
+- `void setStyleSheetTarget(QWidget *w)`：设置 QSS 作用目标。`loadQss()` 将样式表应用到指定 widget 树而非 `qApp`，避免 Qt 重新样式化整个应用程序。为 `nullptr` 时回退到 `qApp->setStyleSheet()`。
 
 **信号**：
 - `themeChanged(ThemeManager::Theme newTheme)`：主题变更时发出，各组件在槽中重新应用 QSS/Palette。
 
 **协作关系**：
-- 由 `MainWindow` 在构造时调用 `ThemeManager::instance().setTheme(...)` 初始化。
+- 由 `MainWindow` 在构造时调用 `ThemeManager::instance().setTheme(...)` 初始化，同时调用 `setStyleSheetTarget(this)` 将 QSS 作用域限定在 MainWindow 对象树内。
 - `MainWindow::onAppearanceSettingChanged("theme", val)` 中调用 `setTheme(static_cast<Theme>(val))`。
 - `ConfigManager` 提供 `theme` 默认值（0=Dark）。
 - 各 widget 的 `setupStyles()`/`reloadColors()` 连接 `themeChanged` 信号实现响应。

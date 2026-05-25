@@ -138,8 +138,8 @@ private:
 
     QStackedWidget *m_stackedWidget;
     WikiLinkTextEdit *m_textEdit; // 源码编辑
-    QWebEngineView *m_previewView; // 渲染预览
-    QWidget *m_previewContainer; // 暗色容器，遮挡 WebEngine 白底
+    QWebEngineView *m_previewView = nullptr; // 渲染预览（懒创建）
+    QWidget *m_previewContainer = nullptr; // 暗色容器，遮挡 WebEngine 白底
     CodeEditor *m_codeEditor; // 代码编辑
     QString m_filePath;
     QString m_lastSearchHighlightText;
@@ -168,6 +168,9 @@ private:
     QTimer m_splitDebounceTimer;
 
 private:
+    void ensurePreviewView();    // 懒创建 m_previewView + m_previewContainer
+    void destroyPreviewView();   // 销毁并释放预览视图
+    void destroySplitPreviewWidgets(); // 销毁分屏预览控件
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
     QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
     QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色

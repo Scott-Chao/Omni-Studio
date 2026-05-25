@@ -117,46 +117,14 @@ EditorWidget::EditorWidget(QWidget *parent)
 {
     // 创建编辑器和预览控件
     m_textEdit = new WikiLinkTextEdit(this);
-
-    m_previewView = new QWebEngineView(this);
-    // 阻止 Windows 原生窗口用白色画刷擦除背景，让暗色容器透过来
-    m_previewView->setAttribute(Qt::WA_NoSystemBackground, true);
-    PreviewPage *previewPage = new PreviewPage(this);
-    previewPage->onWikiLinkClicked = [this](const QString &fileName) {
-        emit wikiLinkClicked(fileName);
-    };
-    previewPage->onRunCodeBlock = [this](const QString &language, const QString &code, int blockIndex) {
-        emit runCodeBlockRequested(language, code, blockIndex);
-    };
-    previewPage->onTagClicked = [this](const QString &tag) {
-        emit tagClicked(tag);
-    };
-    m_previewView->setPage(previewPage);
-
     m_textEdit->viewport()->installEventFilter(this);
-    m_previewView->installEventFilter(this);
-    QTimer::singleShot(0, this, [this]() {
-        if (QWidget *fp = m_previewView->focusProxy())
-            fp->installEventFilter(this);
-    });
 
     m_codeEditor = new CodeEditor(this);
     m_codeEditor->viewport()->installEventFilter(this);
 
-    // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
-    m_previewContainer = new QWidget(this);
-    m_previewContainer->installEventFilter(this);
-    m_previewContainer->setStyleSheet(
-        QString("background-color: %1;")
-            .arg(ThemeManager::instance().color("preview.containerBackground").name()));
-    QVBoxLayout *containerLayout = new QVBoxLayout(m_previewContainer);
-    containerLayout->setContentsMargins(0, 0, 0, 0);
-    containerLayout->addWidget(m_previewView);
-
-    // 堆叠布局：索引0=编辑，索引1=预览容器
+    // 堆叠布局：索引0=编辑，索引1=预览容器（懒创建），索引2=代码编辑...
     m_stackedWidget = new QStackedWidget(this);
     m_stackedWidget->addWidget(m_textEdit);
-    m_stackedWidget->addWidget(m_previewContainer);
     m_stackedWidget->addWidget(m_codeEditor);
 
     // PDF 视图
@@ -259,6 +227,80 @@ EditorWidget::EditorWidget(QWidget *parent)
             this, &EditorWidget::reloadEditorColors);
 }
 
+// ---- 懒创建预览视图 ----
+
+void EditorWidget::ensurePreviewView()
+{
+    if (m_previewView)
+        return;
+
+    m_previewView = new QWebEngineView(this);
+    m_previewView->setAttribute(Qt::WA_NoSystemBackground, true);
+
+    PreviewPage *previewPage = new PreviewPage(m_previewView);
+    previewPage->onWikiLinkClicked = [this](const QString &fileName) {
+        emit wikiLinkClicked(fileName);
+    };
+    previewPage->onRunCodeBlock = [this](const QString &language, const QString &code, int blockIndex) {
+        emit runCodeBlockRequested(language, code, blockIndex);
+    };
+    previewPage->onTagClicked = [this](const QString &tag) {
+        emit tagClicked(tag);
+    };
+    m_previewView->setPage(previewPage);
+
+    m_previewView->installEventFilter(this);
+    QTimer::singleShot(0, this, [this]() {
+        if (m_previewView) {
+            if (QWidget *fp = m_previewView->focusProxy())
+                fp->installEventFilter(this);
+        }
+    });
+
+    // 暗色遮罩容器：在 WebEngine 渲染完成前遮挡白底
+    m_previewContainer = new QWidget(this);
+    m_previewContainer->installEventFilter(this);
+    m_previewContainer->setStyleSheet(
+        QString("background-color: %1;")
+            .arg(ThemeManager::instance().color("preview.containerBackground").name()));
+    QVBoxLayout *containerLayout = new QVBoxLayout(m_previewContainer);
+    containerLayout->setContentsMargins(0, 0, 0, 0);
+    containerLayout->addWidget(m_previewView);
+
+    // 插入到 stacked widget 索引 1（m_textEdit 之后，m_codeEditor 之前）
+    m_stackedWidget->insertWidget(1, m_previewContainer);
+}
+
+void EditorWidget::destroyPreviewView()
+{
+    if (!m_previewView && !m_previewContainer)
+        return;
+
+    m_previewReady = false;
+    if (m_previewContainer) {
+        m_stackedWidget->removeWidget(m_previewContainer);
+        m_previewContainer->deleteLater();
+        m_previewContainer = nullptr;
+    }
+    m_previewView = nullptr;
+}
+
+void EditorWidget::destroySplitPreviewWidgets()
+{
+    if (!m_splitSplitter)
+        return;
+
+    m_splitPreviewReady = false;
+    m_lastSplitPreviewContent.clear();
+
+    m_stackedWidget->removeWidget(m_splitSplitter);
+    m_splitSplitter->deleteLater();
+    m_splitSplitter = nullptr;
+    m_splitPreviewView = nullptr;
+    m_splitPreviewPage = nullptr;
+    m_splitTextWrapper = nullptr;
+}
+
 void EditorWidget::setPreviewMode(bool preview)
 {
     if (m_editorMode == CodeEdit || m_editorMode == PdfView || m_editorMode == SmdEdit) {
@@ -274,6 +316,7 @@ void EditorWidget::setPreviewMode(bool preview)
     m_previewMode = preview;
 
     if (m_previewMode) {
+        ensurePreviewView();
         if (!m_previewReady) {
             // 首次预览：加载完整模板（setHtml），延迟到 loadFinished 再切换
             m_previewView->page()->setBackgroundColor(
@@ -303,7 +346,9 @@ void EditorWidget::setPreviewMode(bool preview)
 
             connect(m_previewView->page(), &QWebEnginePage::loadFinished, this,
                 [this](bool ok) {
-                    disconnect(m_previewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
+                    if (!m_previewView) return;
+                    auto *page = m_previewView->page();
+                    disconnect(page, &QWebEnginePage::loadFinished, this, nullptr);
                     if (!ok) {
                         return;
                     }
@@ -313,7 +358,7 @@ void EditorWidget::setPreviewMode(bool preview)
                     m_previewView->setMinimumSize(0, 0);
                     m_previewView->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
 
-                    m_stackedWidget->setCurrentIndex(1);
+                    m_stackedWidget->setCurrentWidget(m_previewContainer);
 
                     // WebEngine 内部的 focus proxy 在页面加载后才确定，
                     // 需要在其上安装事件过滤器才能捕获预览区的 Ctrl+滚轮缩放
@@ -323,12 +368,13 @@ void EditorWidget::setPreviewMode(bool preview)
                 });
         } else {
             updatePreviewContent([this]() {
-                m_stackedWidget->setCurrentIndex(1);
+                m_stackedWidget->setCurrentWidget(m_previewContainer);
                 applyZoom();
             });
         }
     } else {
-        m_stackedWidget->setCurrentIndex(0);
+        m_stackedWidget->setCurrentWidget(m_textEdit);
+        destroyPreviewView();
         applyZoom();
     }
 }
@@ -748,17 +794,17 @@ QString EditorWidget::previewThemeJs()
 
 void EditorWidget::refreshPreviewTheme()
 {
-    // 更新 web engine 背景色（跟随当前主题）
     auto &tm = ThemeManager::instance();
-    m_previewView->page()->setBackgroundColor(
-        tm.color("preview.webEngineBackground"));
+    if (m_previewView) {
+        m_previewView->page()->setBackgroundColor(
+            tm.color("preview.webEngineBackground"));
+    }
+    if (m_previewReady && m_previewView && m_previewView->page()) {
+        m_previewView->page()->runJavaScript(previewThemeJs());
+    }
     if (m_splitPreviewView) {
         m_splitPreviewView->page()->setBackgroundColor(
             tm.color("preview.webEngineBackground"));
-    }
-    // 同步 CSS 变量到预览页面
-    if (m_previewReady && m_previewView->page()) {
-        m_previewView->page()->runJavaScript(previewThemeJs());
     }
     if (m_splitPreviewReady && m_splitPreviewView) {
         m_splitPreviewView->page()->runJavaScript(previewThemeJs());
@@ -899,6 +945,10 @@ QString EditorWidget::injectHeadingAnchors(const QString &markdown)
 
 void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
 {
+    if (!m_previewView) {
+        if (onFinished) onFinished();
+        return;
+    }
     QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
     QString rawMarkdown = m_textEdit->toPlainText();
 
@@ -987,8 +1037,12 @@ bool EditorWidget::loadFile(const QString &filePath)
             m_stackedWidget->insertWidget(0, m_textEdit);
             m_splitPreview = false;
             m_lastSplitPreviewContent.clear();
+            destroySplitPreviewWidgets();
         }
-        m_previewMode = false;
+        if (m_previewMode) {
+            m_previewMode = false;
+            destroyPreviewView();
+        }
         m_stackedWidget->setCurrentIndex(m_stackedWidget->indexOf(m_pdfView));
         applyZoom();
         setModified(false);
@@ -1006,8 +1060,12 @@ bool EditorWidget::loadFile(const QString &filePath)
             m_stackedWidget->insertWidget(0, m_textEdit);
             m_splitPreview = false;
             m_lastSplitPreviewContent.clear();
+            destroySplitPreviewWidgets();
         }
-        m_previewMode = false;
+        if (m_previewMode) {
+            m_previewMode = false;
+            destroyPreviewView();
+        }
         m_stackedWidget->setCurrentWidget(m_smdEditor);
         m_smdEditor->loadFile(filePath);
         applyZoom();
@@ -1040,6 +1098,7 @@ bool EditorWidget::loadFile(const QString &filePath)
     // 退出全屏预览
     if (m_previewMode) {
         m_previewMode = false;
+        destroyPreviewView();
     }
 
     // Auto-detect code file and switch mode BEFORE setting text,
@@ -1050,11 +1109,11 @@ bool EditorWidget::loadFile(const QString &filePath)
         m_codeEditor->setDocumentUri(QStringLiteral("file:///") + filePath);
         debugLog(QString("EditorWidget: CodeEdit mode, uri=file:///%1").arg(filePath));
         m_codeEditor->setLanguage(lang);
-        m_stackedWidget->setCurrentIndex(2);
+        m_stackedWidget->setCurrentWidget(m_codeEditor);
             } else {
         m_editorMode = MarkdownEdit;
         if (m_stackedWidget->currentIndex() != 0)
-            m_stackedWidget->setCurrentIndex(0);
+            m_stackedWidget->setCurrentWidget(m_textEdit);
             }
 
     m_loading = true;  // suppress modificationChanged during setPlainText
@@ -1366,13 +1425,17 @@ void EditorWidget::reloadEditorColors()
     }
 
     // Update preview container background
-    m_previewContainer->setStyleSheet(
-        QString("background-color: %1;")
-            .arg(tm.color("preview.containerBackground").name()));
+    if (m_previewContainer) {
+        m_previewContainer->setStyleSheet(
+            QString("background-color: %1;")
+                .arg(tm.color("preview.containerBackground").name()));
+    }
 
     // Update web engine background
-    m_previewView->page()->setBackgroundColor(
-        tm.color("preview.webEngineBackground"));
+    if (m_previewView) {
+        m_previewView->page()->setBackgroundColor(
+            tm.color("preview.webEngineBackground"));
+    }
 
     // Update split preview background if active
     if (m_splitPreviewView) {
@@ -1382,7 +1445,7 @@ void EditorWidget::reloadEditorColors()
 
     // Push CSS variable updates to preview HTML via JavaScript
     QString js = previewThemeJs();
-    if (m_previewReady && m_previewView->page()) {
+    if (m_previewReady && m_previewView && m_previewView->page()) {
         m_previewView->page()->runJavaScript(js);
     }
     if (m_splitPreviewReady && m_splitPreviewView) {
@@ -1428,7 +1491,7 @@ void EditorWidget::applyZoom()
         cursor.mergeCharFormat(fmt);
     }
 
-    if (m_previewMode) {
+    if (m_previewMode && m_previewView) {
         m_previewView->setZoomFactor(m_zoomFactor);
     }
     if (m_splitPreview && m_splitPreviewView) {
@@ -1597,12 +1660,12 @@ void EditorWidget::setFilePath(const QString &newPath) {
             m_editorMode = CodeEdit;
                         m_codeEditor->setDocumentUri(QStringLiteral("file:///") + normalized);
             m_codeEditor->setLanguage(lang);
-            m_stackedWidget->setCurrentIndex(2);
+            m_stackedWidget->setCurrentWidget(m_codeEditor);
             applyZoom();
         } else {
             m_editorMode = MarkdownEdit;
                         if (m_stackedWidget->currentIndex() != 0)
-                m_stackedWidget->setCurrentIndex(0);
+                m_stackedWidget->setCurrentWidget(m_textEdit);
         }
     }
 
@@ -1694,6 +1757,7 @@ void EditorWidget::navigateToLine(int lineNumber)
     bool hasPreview = m_previewMode || m_splitPreview;
     if (hasPreview) {
         QWebEngineView *view = m_splitPreview ? m_splitPreviewView : m_previewView;
+        if (!view) return;
         QString js = QStringLiteral(
             "var el = document.getElementById('hl-%1');"
             "if (el) {"
@@ -1795,8 +1859,10 @@ void EditorWidget::createSplitPreviewWidgets()
 
     m_splitPreviewView->installEventFilter(this);
     QTimer::singleShot(0, this, [this]() {
-        if (QWidget *fp = m_splitPreviewView->focusProxy())
-            fp->installEventFilter(this);
+        if (m_splitPreviewView) {
+            if (QWidget *fp = m_splitPreviewView->focusProxy())
+                fp->installEventFilter(this);
+        }
     });
 
     m_splitSplitter->addWidget(m_splitPreviewView);
@@ -1867,7 +1933,9 @@ void EditorWidget::setSplitPreviewMode(bool split)
 
                 connect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this,
                     [this](bool ok) {
-                        disconnect(m_splitPreviewView->page(), &QWebEnginePage::loadFinished, this, nullptr);
+                        if (!m_splitPreviewView) return;
+                        auto *page = m_splitPreviewView->page();
+                        disconnect(page, &QWebEnginePage::loadFinished, this, nullptr);
                         if (!ok) return;
                         m_splitPreviewReady = true;
 
@@ -1892,6 +1960,7 @@ void EditorWidget::setSplitPreviewMode(bool split)
         m_splitTextWrapper->layout()->removeWidget(m_textEdit);
         m_stackedWidget->insertWidget(0, m_textEdit);
         m_stackedWidget->setCurrentWidget(m_textEdit);
+        destroySplitPreviewWidgets();
         applyZoom();
     }
 }

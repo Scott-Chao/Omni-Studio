@@ -39,11 +39,26 @@ private:
     void resizeEvent(QResizeEvent *event) override;
     QString messageStyleSheet() const;
 
+    // Incremental streaming helpers
+    bool isStructuralDelta(const QString &delta) const;
+    QString processSimpleDelta(const QString &delta, const QColor &textColor,
+                                const QColor &codeBg, const QColor &codeFg,
+                                const QColor &linkColor) const;
+
     Role m_role;
     QString m_text;
     QTextBrowser *m_browser;
     QLabel *m_roleLabel;
     QTimer *m_updateTimer;
+
+    // Incremental HTML cache — avoids re-running markdownToHtml on full text
+    // on every streaming tick. m_accumulatedHtml grows by converting only the
+    // delta chunk; full markdownToHtml rebuild happens only on structural
+    // boundaries (code blocks, headings, lists) and theme changes.
+    QString m_accumulatedHtml;
+    int m_lastProcessedLength = 0;
+    bool m_fullRebuildNeeded = false;
+    bool m_inCodeBlock = false;
 
     static constexpr int UPDATE_INTERVAL_MS = 80;
 };

@@ -202,6 +202,52 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
     return html;
 }
 
+// ── Incremental streaming helpers ───────────────────────────
+
+bool ChatBubble::isStructuralDelta(const QString &delta) const
+{
+    // Code block fences — the only multi-line structural marker
+    if (delta.contains(QStringLiteral("```")))
+        return true;
+
+    // Inside a code block: every delta must go through full markdownToHtml
+    // for correct <pre><code> rendering (simple <p> wrapping would be wrong).
+    if (m_inCodeBlock)
+        return true;
+
+    // Per-line structural markers: headings, lists, horizontal rules, blockquotes
+    QStringList lines = delta.split(QStringLiteral("\n"));
+    static const QRegularExpression structuralRe(
+        QStringLiteral("^\\s*(#{1,6}\\s+|[*\\-]\\s+|\\d+\\.\\s+|-{3,}\\s*$|>\\s*)")
+    );
+    for (const QString &line : lines) {
+        if (structuralRe.match(line).hasMatch())
+            return true;
+    }
+    return false;
+}
+
+QString ChatBubble::processSimpleDelta(const QString &delta,
+                                        const QColor &textColor,
+                                        const QColor &codeBg,
+                                        const QColor &codeFg,
+                                        const QColor &linkColor) const
+{
+    if (delta.isEmpty())
+        return {};
+
+    QString html;
+    QStringList lines = delta.split(QStringLiteral("\n"));
+    for (const QString &line : lines) {
+        if (line.trimmed().isEmpty())
+            continue;
+        html += QStringLiteral("<p style=\"color:%1; margin:4px 0;\">%2</p>\n")
+                    .arg(textColor.name(),
+                         processInline(line, codeBg, codeFg, linkColor));
+    }
+    return html;
+}
+
 // ── ChatBubble ─────────────────────────────────────────────────────
 
 ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
@@ -298,12 +344,17 @@ void ChatBubble::refreshStyle()
 
     m_browser->setStyleSheet(messageStyleSheet());
 
+    m_fullRebuildNeeded = true;
     updateContent();
 }
 
 void ChatBubble::setText(const QString &text)
 {
     m_text = text;
+    m_accumulatedHtml.clear();
+    m_lastProcessedLength = 0;
+    m_fullRebuildNeeded = false;
+    m_inCodeBlock = false;
     updateContent();
 }
 
@@ -321,6 +372,10 @@ void ChatBubble::flushUpdate()
         m_updateTimer->stop();
         updateContent();
     }
+    // Final full rebuild to correct any incremental approximation
+    // (e.g. list-item text split across chunks that was treated as <p>).
+    m_fullRebuildNeeded = true;
+    updateContent();
 }
 
 void ChatBubble::updateContent()
@@ -338,11 +393,51 @@ void ChatBubble::updateContent()
     m_browser->setUpdatesEnabled(false);
 
     if (m_role == Assistant) {
-        QString html = markdownToHtml(m_text, textColor, codeBg, codeFg,
-                                       linkColor, selectionBg, headingColor);
-        html = QStringLiteral(
+        if (m_fullRebuildNeeded || m_accumulatedHtml.isEmpty()) {
+            // Full rebuild: theme change, first-time, or final flush
+            m_accumulatedHtml = markdownToHtml(m_text, textColor, codeBg, codeFg,
+                                               linkColor, selectionBg, headingColor);
+            m_lastProcessedLength = m_text.length();
+            m_fullRebuildNeeded = false;
+
+            // Recalculate code block state from full text so subsequent
+            // incremental deltas inside a code block are correctly detected
+            // as structural.
+            m_inCodeBlock = false;
+            int fenceIdx = 0;
+            while ((fenceIdx = m_text.indexOf(QStringLiteral("```"), fenceIdx)) != -1) {
+                m_inCodeBlock = !m_inCodeBlock;
+                fenceIdx += 3;
+            }
+        } else {
+            // Incremental: only process new text since last conversion
+            QString delta = m_text.mid(m_lastProcessedLength);
+            if (!delta.isEmpty()) {
+                // Recalculate code block state from full text so that fence
+                // markers split across chunk boundaries (e.g. delta 1 = "``",
+                // delta 2 = "`\n") are correctly detected.
+                m_inCodeBlock = false;
+                int fenceIdx = 0;
+                while ((fenceIdx = m_text.indexOf(QStringLiteral("```"), fenceIdx)) != -1) {
+                    m_inCodeBlock = !m_inCodeBlock;
+                    fenceIdx += 3;
+                }
+
+                if (isStructuralDelta(delta)) {
+                    // Structural boundary → full rebuild for correctness
+                    m_accumulatedHtml = markdownToHtml(m_text, textColor, codeBg, codeFg,
+                                                       linkColor, selectionBg, headingColor);
+                } else {
+                    // Simple text continuation → inline-only conversion
+                    m_accumulatedHtml += processSimpleDelta(delta, textColor, codeBg, codeFg, linkColor);
+                }
+                m_lastProcessedLength = m_text.length();
+            }
+        }
+
+        QString html = QStringLiteral(
             "<div style=\"color:%1; font-size:13px; line-height:1.5;\">%2</div>"
-        ).arg(textColor.name(), html);
+        ).arg(textColor.name(), m_accumulatedHtml);
         m_browser->setHtml(html);
     } else {
         QString escaped = m_text.toHtmlEscaped();
