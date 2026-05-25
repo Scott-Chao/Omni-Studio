@@ -286,8 +286,11 @@ void CodeEditor::triggerCompletion()
 
 void CodeEditor::createCompletionProvider(const QString &langId)
 {
-    // Delete old provider
+    // Delete old provider — disconnect signals first to prevent stale callbacks
     if (m_completionProvider) {
+        disconnect(m_completionProvider, nullptr, this, nullptr);
+        disconnect(m_completionProvider, nullptr, m_hoverManager, nullptr);
+        disconnect(m_completionProvider, nullptr, m_signatureHelpManager, nullptr);
         m_completionProvider->deleteLater();
         m_completionProvider = nullptr;
     }

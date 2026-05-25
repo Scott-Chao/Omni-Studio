@@ -60,13 +60,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-OpenJudge IDE 模式
-- 题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。
-- IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。
-- 分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C/C++/Python），切换语言时自动重建编辑器语法高亮与 LSP 后端。
-- 代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。
-
+### 修复
+- OpenJudge IDE 语言选项精简
+- 修复快速切换 OpenJudge IDE 语言导致闪退的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -627,7 +623,7 @@ OpenJudge IDE 模式
 - `diagnosticsToggleRequested()`：用户按下诊断面板快捷键时发出。
 
 **LSP 补全集成**：
-- 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。
+- 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。替换旧 provider 前先断开其所有信号（`this`、`m_hoverManager`、`m_signatureHelpManager`），然后 `deleteLater()`，防止旧 LSP 进程的异步信号在延迟删除期间回调到已更新的 `m_completionProvider` 造成状态错乱。
   - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
   - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
   - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。

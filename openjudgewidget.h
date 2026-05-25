@@ -144,6 +144,7 @@ private:
     QWidget *m_ideEditorContainer = nullptr;
     CodeEditor *m_ideCodeEditor = nullptr;
     bool m_ideMode = false;
+    bool m_ideLangChanging = false;
     int m_currentLangId = 1;       // OJ language ID (default: G++)
     QString m_currentCodeLangId;   // CodeEditor language ID (e.g. "cpp")
 

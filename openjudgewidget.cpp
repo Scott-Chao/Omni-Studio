@@ -1163,7 +1163,6 @@ void OpenJudgeWidget::submitCurrentProblem(const QString &sourceCode, int langua
 QVector<OpenJudgeWidget::OjLangOption> OpenJudgeWidget::ideLanguageOptions() const
 {
     return {
-        {QStringLiteral("C (GCC)"),    0, QStringLiteral("c"),      QStringLiteral(".c")},
         {QStringLiteral("C++ (G++)"),  1, QStringLiteral("cpp"),    QStringLiteral(".cpp")},
         {QStringLiteral("Python 3"),   6, QStringLiteral("python"), QStringLiteral(".py")},
     };
@@ -1258,6 +1257,7 @@ void OpenJudgeWidget::setupIdeMode()
 
     // Populate language combo
     const auto opts = ideLanguageOptions();
+    m_langCombo->blockSignals(true);
     for (const auto &opt : opts)
         m_langCombo->addItem(opt.display, opt.ojId);
 
@@ -1265,6 +1265,7 @@ void OpenJudgeWidget::setupIdeMode()
     int defaultIdx = m_langCombo->findData(1);
     if (defaultIdx >= 0)
         m_langCombo->setCurrentIndex(defaultIdx);
+    m_langCombo->blockSignals(false);
 
     // Apply initial language
     m_currentLangId = m_langCombo->currentData().toInt();
@@ -1350,12 +1351,14 @@ void OpenJudgeWidget::onToggleIdeMode()
 
 void OpenJudgeWidget::onIdeLanguageChanged(int index)
 {
-    if (index < 0 || !m_ideCodeEditor)
+    if (index < 0 || !m_ideCodeEditor || m_ideLangChanging)
         return;
 
     int newOjId = m_langCombo->itemData(index).toInt();
     if (newOjId == m_currentLangId)
         return;
+
+    m_ideLangChanging = true;
 
     // Save current code under old extension
     saveIdeCodeToCache();
@@ -1374,4 +1377,6 @@ void OpenJudgeWidget::onIdeLanguageChanged(int index)
 
     // Delete old cache file if different extension
     loadIdeCodeFromCache();
+
+    m_ideLangChanging = false;
 }
