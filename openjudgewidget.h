@@ -90,6 +90,9 @@ private:
     void setupIdeMode();
     void loadIdeCodeFromCache();
     QString ideCacheDir() const;
+    QString ideLangCacheFilePath() const;
+    void saveLastIdeLanguage(int langId = -1);
+    int loadLastIdeLanguage() const;
     QString sanitizeFileName(const QString &name) const;
 
     struct OjLangOption {

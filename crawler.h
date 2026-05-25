@@ -23,6 +23,7 @@ struct ProblemSection {
 struct ProblemDetail {
     QString title;
     QList<ProblemSection> sections;
+    QList<int> availableLanguages; // OJ language IDs allowed for this problem
 };
 
 struct PageInfo {

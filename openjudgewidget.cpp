@@ -25,6 +25,8 @@
 #include <QRegularExpression>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QStandardPaths>
 #include <QScrollBar>
@@ -1153,6 +1155,7 @@ void OpenJudgeWidget::submitCurrentProblem(const QString &sourceCode, int langua
         return;
     }
     m_statusLabel->setText(QStringLiteral("正在提交..."));
+    saveLastIdeLanguage(languageId);
     m_crawler->submitCode(m_currentProblemUrl, sourceCode, languageId);
 }
 
@@ -1198,6 +1201,70 @@ QString OpenJudgeWidget::ideCacheFilePath() const
         ? QStringLiteral("untitled")
         : sanitizeFileName(m_currentProblem.title);
     return ideCacheDir() + QStringLiteral("/") + baseName + ext;
+}
+
+QString OpenJudgeWidget::ideLangCacheFilePath() const
+{
+    return ideCacheDir() + QStringLiteral("/lang_prefs.json");
+}
+
+void OpenJudgeWidget::saveLastIdeLanguage(int langId)
+{
+    if (m_currentProblem.title.isEmpty())
+        return;
+
+    int id = (langId >= 0) ? langId : m_currentLangId;
+
+    QDir().mkpath(ideCacheDir());
+    QString path = ideLangCacheFilePath();
+
+    // Read existing prefs
+    QJsonObject root;
+    QFile readFile(path);
+    if (readFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
+        if (doc.isObject())
+            root = doc.object();
+        readFile.close();
+    }
+
+    // Save both per-problem and global keys
+    root[sanitizeFileName(m_currentProblem.title)] = id;
+    root[QStringLiteral("__global__")] = id;
+
+    QFile writeFile(path);
+    if (writeFile.open(QIODevice::WriteOnly)) {
+        writeFile.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    }
+}
+
+int OpenJudgeWidget::loadLastIdeLanguage() const
+{
+    if (m_currentProblem.title.isEmpty())
+        return -1;
+
+    QString path = ideLangCacheFilePath();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return -1;
+
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+    if (!doc.isObject())
+        return -1;
+
+    QJsonObject root = doc.object();
+
+    // Per-problem preference takes priority
+    QString key = sanitizeFileName(m_currentProblem.title);
+    if (root.contains(key))
+        return root[key].toInt(-1);
+
+    // Fall back to global last-submitted language
+    if (root.contains(QStringLiteral("__global__")))
+        return root[QStringLiteral("__global__")].toInt(-1);
+
+    return -1;
 }
 
 QString OpenJudgeWidget::ideCode() const
@@ -1261,8 +1328,28 @@ void OpenJudgeWidget::setupIdeMode()
     for (const auto &opt : opts)
         m_langCombo->addItem(opt.display, opt.ojId);
 
-    // Select default language (C++ = 1)
-    int defaultIdx = m_langCombo->findData(1);
+    // Determine default language:
+    // 1. If problem has exactly one available (supported) language → use it
+    // 2. Else if there's a last-used language (per-problem or global) → use it
+    // 3. Otherwise → first option (C++)
+    int defaultOjId = opts.first().ojId;
+    const auto &avail = m_currentProblem.availableLanguages;
+    QList<int> supportedAvail;
+    for (int langId : avail) {
+        if (m_langCombo->findData(langId) >= 0)
+            supportedAvail.append(langId);
+    }
+    if (supportedAvail.size() == 1) {
+        defaultOjId = supportedAvail.first();
+    } else {
+        int lastLang = loadLastIdeLanguage();
+        if (lastLang > 0 && m_langCombo->findData(lastLang) >= 0) {
+            // If problem declares available languages, respect that constraint
+            if (supportedAvail.isEmpty() || supportedAvail.contains(lastLang))
+                defaultOjId = lastLang;
+        }
+    }
+    int defaultIdx = m_langCombo->findData(defaultOjId);
     if (defaultIdx >= 0)
         m_langCombo->setCurrentIndex(defaultIdx);
     m_langCombo->blockSignals(false);
@@ -1377,6 +1464,8 @@ void OpenJudgeWidget::onIdeLanguageChanged(int index)
 
     // Delete old cache file if different extension
     loadIdeCodeFromCache();
+
+    saveLastIdeLanguage();
 
     m_ideLangChanging = false;
 }

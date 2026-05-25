@@ -740,36 +740,70 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
         .arg(html.contains(QStringLiteral("<h3")))
         .arg(html.contains(QStringLiteral("<pre"))));
 
-    // Log form elements on the problem page (may contain language select for submit)
+    // Helper: map OJ language string identifiers to internal numeric IDs
+    static const auto mapOJLangName = [](const QString &s) -> int {
+        // Try numeric first
+        bool ok = false;
+        int num = s.toInt(&ok);
+        if (ok && num >= 0) return num;
+        // String identifiers used by cxsjsx.openjudge.cn
+        QString lower = s.trimmed().toLower();
+        if (lower == QStringLiteral("c") || lower == QStringLiteral("gcc"))
+            return 0;
+        if (lower == QStringLiteral("c++") || lower == QStringLiteral("g++") || lower == QStringLiteral("cpp"))
+            return 1;
+        if (lower == QStringLiteral("python3") || lower == QStringLiteral("python") || lower == QStringLiteral("py"))
+            return 6;
+        return -1;
+    };
+
+    // Extract language options from the problem page submit form
     {
-        QRegularExpression selRx(QStringLiteral("<select[^>]*>(.*?)</select>"),
+        // Try <select name="language"> first
+        QRegularExpression selRx(QStringLiteral("<select[^>]*name=\"language\"[^>]*>(.*?)</select>"),
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
-        QRegularExpressionMatchIterator selIt = selRx.globalMatch(html);
-        while (selIt.hasNext()) {
-            QRegularExpressionMatch selM = selIt.next();
-            QRegularExpression nameRx(QStringLiteral("name=\"([^\"]+)\""),
-                QRegularExpression::CaseInsensitiveOption);
-            QRegularExpressionMatch nameM = nameRx.match(selM.captured(0));
-            QString selName = nameM.hasMatch() ? nameM.captured(1) : "(unnamed)";
-            crawlerLog(QStringLiteral("  PROBLEM PAGE select name='%1'").arg(selName));
+        QRegularExpressionMatch selM = selRx.match(html);
+        if (selM.hasMatch()) {
+            crawlerLog(QStringLiteral("  PROBLEM PAGE select name='language'"));
             QRegularExpression optRx(QStringLiteral("<option[^>]*value=\"([^\"]*)\"[^>]*>([^<]+)"),
                 QRegularExpression::CaseInsensitiveOption);
-            QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(0));
+            QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(1));
             while (optIt.hasNext()) {
                 QRegularExpressionMatch optM = optIt.next();
-                bool selected = optM.captured(0).contains(QLatin1String("selected"));
-                crawlerLog(QStringLiteral("    option value='%1'%2 text='%3'")
-                    .arg(optM.captured(1), selected ? QStringLiteral(" [SELECTED]") : QString(), optM.captured(2).trimmed()));
+                int id = mapOJLangName(optM.captured(1));
+                if (id >= 0 && !detail.availableLanguages.contains(id)) {
+                    detail.availableLanguages.append(id);
+                    crawlerLog(QStringLiteral("    option value='%1' mapped to id=%2 text='%3'")
+                        .arg(optM.captured(1)).arg(id).arg(optM.captured(2).trimmed()));
+                }
+            }
+        } else {
+            // Try radio buttons: <input name="language" type="radio" value="...">
+            QRegularExpression radioRx(QStringLiteral(
+                "<input[^>]*name=\"language\"[^>]*type=\"radio\"[^>]*value=\"([^\"]+)\"[^>]*>"),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatchIterator radioIt = radioRx.globalMatch(html);
+            while (radioIt.hasNext()) {
+                QRegularExpressionMatch radioM = radioIt.next();
+                int id = mapOJLangName(radioM.captured(1));
+                if (id >= 0 && !detail.availableLanguages.contains(id)) {
+                    detail.availableLanguages.append(id);
+                    crawlerLog(QStringLiteral("  PROBLEM PAGE language radio value='%1' mapped to id=%2")
+                        .arg(radioM.captured(1)).arg(id));
+                }
             }
         }
-        QRegularExpression formRx(QStringLiteral("<form[^>]*action=\"([^\"]*)\"[^>]*method=\"([^\"]*)\""),
-            QRegularExpression::CaseInsensitiveOption);
-        QRegularExpressionMatchIterator formIt = formRx.globalMatch(html);
-        while (formIt.hasNext()) {
-            QRegularExpressionMatch formM = formIt.next();
-            if (!formM.captured(1).contains(QLatin1String("search")))
-                crawlerLog(QStringLiteral("  PROBLEM PAGE form action='%1' method=%2")
-                    .arg(formM.captured(1)).arg(formM.captured(2)));
+        // Log other form elements
+        {
+            QRegularExpression formRx(QStringLiteral("<form[^>]*action=\"([^\"]*)\"[^>]*method=\"([^\"]*)\""),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatchIterator formIt = formRx.globalMatch(html);
+            while (formIt.hasNext()) {
+                QRegularExpressionMatch formM = formIt.next();
+                if (!formM.captured(1).contains(QLatin1String("search")))
+                    crawlerLog(QStringLiteral("  PROBLEM PAGE form action='%1' method=%2")
+                        .arg(formM.captured(1)).arg(formM.captured(2)));
+            }
         }
     }
 

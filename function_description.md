@@ -28,7 +28,7 @@
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮在主窗口标签页中打开 OpenJudge 题目浏览（非独立窗口），可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。OpenJudge 标签页激活时，保存/另存为等文件操作自动禁用（非文件标签页）。
 - OpenJudge 登录管理：OpenJudge 标签页工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 标签页中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。**IDE 模式下**：提交内容来自 IDE 内置编辑器，语言由语言选择器指定，无需依赖外部代码文件。
-- OpenJudge IDE 模式：题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C/C++/Python），切换语言时自动重建编辑器语法高亮与 LSP 后端。代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。IDE 模式下编译运行（F5/F6/F7）、本地评测、OpenJudge 提交均使用编辑器当前内容。`Ctrl+D` 可切换底部诊断面板。
+- OpenJudge IDE 模式：题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C++/Python），语言默认选择逻辑：①题目仅支持一种 IDE 语言时自动选中该语言；②否则优先使用该题目上次提交/切换的语言（`lang_prefs.json` 按题目持久化）；③兜底选第一项（C++）。语言切换通过 `m_ideLangChanging` 布尔守卫防止重入，避免快速切换导致 LSP 子进程堆积和信号竞争引发卡死闪退；`setupIdeMode()` 填充下拉框时使用 `blockSignals(true)` 阻止 `currentIndexChanged` 误触发。题目可用语言由 `Crawler::parseProblemDetail()` 从问题页 HTML 解析（`<select name="language">` 或 `<input type="radio" name="language">`），通过 `mapOJLangName` 将 OJ 字符串标识（如 `"Python3"`、`"G++"`）映射为内部数值 ID，存入 `ProblemDetail::availableLanguages`。代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。IDE 模式下编译运行（F5/F6/F7）、本地评测、OpenJudge 提交均使用编辑器当前内容。`Ctrl+D` 可切换底部诊断面板。
 - 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
@@ -61,8 +61,11 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- OpenJudge IDE 语言选项精简
-- 修复快速切换 OpenJudge IDE 语言导致闪退的问题
+OpenJudge IDE 语言默认选择优化，按以下顺序选择：
+- 题目仅一种语言时自动选中
+- 使用该题目的语言记录
+- 全局最后一次提交
+- 语言列表第一项
 
 ### 1. `MainWindow` - 主窗口控制器
 
