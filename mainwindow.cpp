@@ -2822,6 +2822,28 @@ void MainWindow::onFileMovedOrRenamed(const QString &oldPath, const QString &new
 
 void MainWindow::onCompile()
 {
+    // IDE mode: use OpenJudge embedded editor
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (oj && oj->isIdeMode()) {
+        oj->saveIdeCodeToCache();
+        QString filePath = oj->ideCacheFilePath();
+        if (filePath.isEmpty())
+            return;
+        QString ext = QFileInfo(filePath).suffix().toLower();
+        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+            showOutputPanel();
+            m_bottomPanel->outputPanel()->clearOutput();
+            m_bottomPanel->outputPanel()->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
+            m_bottomPanel->outputPanel()->setStatus(tr("提示"), false);
+            return;
+        }
+        showOutputPanel();
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
+        m_processRunner->startCompile(filePath);
+        return;
+    }
+
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || !editor->isCodeEdit())
         return;
@@ -2852,6 +2874,32 @@ void MainWindow::onCompile()
 
 void MainWindow::onRun()
 {
+    // IDE mode: use OpenJudge embedded editor
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (oj && oj->isIdeMode()) {
+        oj->saveIdeCodeToCache();
+        QString filePath = oj->ideCacheFilePath();
+        if (filePath.isEmpty())
+            return;
+        QString ext = QFileInfo(filePath).suffix().toLower();
+        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+            showOutputPanel();
+            m_bottomPanel->outputPanel()->clearOutput();
+            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
+            m_processRunner->startRunPython(filePath);
+            return;
+        }
+        if (m_processRunner->lastExecutable().isEmpty()) {
+            onCompileAndRun();
+            return;
+        }
+        showOutputPanel();
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
+        m_processRunner->startRun(m_processRunner->lastExecutable());
+        return;
+    }
+
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor)
         return;
@@ -2866,7 +2914,7 @@ void MainWindow::onRun()
                     return;
             }
             showOutputPanel();
-    
+
             m_bottomPanel->outputPanel()->clearOutput();
             m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
             m_processRunner->startRunPython(filePath);
@@ -2889,6 +2937,28 @@ void MainWindow::onRun()
 
 void MainWindow::onCompileAndRun()
 {
+    // IDE mode: use OpenJudge embedded editor
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (oj && oj->isIdeMode()) {
+        oj->saveIdeCodeToCache();
+        QString filePath = oj->ideCacheFilePath();
+        if (filePath.isEmpty())
+            return;
+        QString ext = QFileInfo(filePath).suffix().toLower();
+        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+            showOutputPanel();
+            m_bottomPanel->outputPanel()->clearOutput();
+            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
+            m_processRunner->startRunPython(filePath);
+            return;
+        }
+        showOutputPanel();
+        m_bottomPanel->outputPanel()->clearOutput();
+        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
+        m_processRunner->startCompileAndRun(filePath);
+        return;
+    }
+
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || !editor->isCodeEdit())
         return;
@@ -2954,19 +3024,30 @@ void MainWindow::onRunFinished(int exitCode)
 
 void MainWindow::onJudgeRunAll()
 {
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit()) {
-        QMessageBox::information(this, tr("提示"),
-                                  tr("请打开一个代码文件进行评测。"));
-        return;
-    }
+    QString filePath;
 
-    // Save current code to file (or temp file if unsaved)
-    QString filePath = editor->currentFilePath();
-    if (filePath.isEmpty() || editor->isModified()) {
-        filePath = saveCodeToTempFile(editor);
+    // IDE mode: use OpenJudge embedded editor
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (oj && oj->isIdeMode()) {
+        oj->saveIdeCodeToCache();
+        filePath = oj->ideCacheFilePath();
         if (filePath.isEmpty())
             return;
+    } else {
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (!editor || !editor->isCodeEdit()) {
+            QMessageBox::information(this, tr("提示"),
+                                      tr("请打开一个代码文件进行评测。"));
+            return;
+        }
+
+        // Save current code to file (or temp file if unsaved)
+        filePath = editor->currentFilePath();
+        if (filePath.isEmpty() || editor->isModified()) {
+            filePath = saveCodeToTempFile(editor);
+            if (filePath.isEmpty())
+                return;
+        }
     }
 
     // Ensure test folder is set
@@ -3004,6 +3085,8 @@ void MainWindow::onOpenJudgeRequested()
                 this, [this](const QString &error) {
             QMessageBox::warning(this, tr("提交失败"), error);
         });
+        connect(oj, &OpenJudgeWidget::ideDiagnosticsToggleRequested,
+                this, &MainWindow::toggleDiagnosticsInCodeEditor);
     }
 
     // Show login dialog if not logged in (after tab is visible)
@@ -3024,26 +3107,9 @@ void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
 
 void MainWindow::onSubmitToOpenJudge()
 {
-    // 1. Check if there's a code file open
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit()) {
-        QMessageBox::information(this, tr("提示"),
-            tr("请打开一个代码文件进行提交"));
-        return;
-    }
-
-    // 2. Get code and determine language
-    QString code = editor->toPlainText();
-    if (code.trimmed().isEmpty()) {
-        QMessageBox::information(this, tr("提示"),
-            tr("代码内容为空"));
-        return;
-    }
-
-    // 3. Check if OpenJudge tab exists and has a problem selected
+    // Check if OpenJudge tab exists and has a problem selected
     OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
     if (!oj || !oj->hasCurrentProblem()) {
-        // Trigger auto-login / show tab so user can select a problem
         bool autoLoginInitiated = oj && oj->tryAutoLogin();
         if (!autoLoginInitiated) {
             onOpenJudgeRequested();
@@ -3053,7 +3119,7 @@ void MainWindow::onSubmitToOpenJudge()
         return;
     }
 
-    // 4. Check login status
+    // Check login status
     if (!oj->isLoggedIn()) {
         bool autoLoginInitiated = oj->tryAutoLogin();
         if (!autoLoginInitiated) {
@@ -3065,22 +3131,51 @@ void MainWindow::onSubmitToOpenJudge()
         return;
     }
 
-    // Save unsaved content first
-    QString filePath = editor->currentFilePath();
-    if (filePath.isEmpty() || editor->isModified()) {
-        filePath = saveCodeToTempFile(editor);
-        if (filePath.isEmpty()) {
-            QMessageBox::warning(this, tr("错误"),
-                tr("无法保存代码文件"));
+    QString code;
+    QString filePath;
+    int langId;
+
+    // IDE mode: submit from embedded editor
+    if (oj->isIdeMode()) {
+        code = oj->ideCode();
+        if (code.trimmed().isEmpty()) {
+            QMessageBox::information(this, tr("提示"),
+                tr("代码内容为空"));
             return;
         }
+        oj->saveIdeCodeToCache();
+        filePath = oj->ideCacheFilePath();
+        langId = oj->currentLanguageId();
+    } else {
+        // Normal mode: submit from current editor tab
+        EditorWidget *editor = m_tabManager->currentEditor();
+        if (!editor || !editor->isCodeEdit()) {
+            QMessageBox::information(this, tr("提示"),
+                tr("请打开一个代码文件进行提交"));
+            return;
+        }
+
+        code = editor->toPlainText();
+        if (code.trimmed().isEmpty()) {
+            QMessageBox::information(this, tr("提示"),
+                tr("代码内容为空"));
+            return;
+        }
+
+        filePath = editor->currentFilePath();
+        if (filePath.isEmpty() || editor->isModified()) {
+            filePath = saveCodeToTempFile(editor);
+            if (filePath.isEmpty()) {
+                QMessageBox::warning(this, tr("错误"),
+                    tr("无法保存代码文件"));
+                return;
+            }
+        }
+
+        QString ext = QFileInfo(filePath).suffix().toLower();
+        QMap<QString, int> langMap = ConfigManager::instance().openJudgeSubmissionLanguageMap();
+        langId = langMap.value("." + ext, 1); // default: G++
     }
-
-    QString ext = QFileInfo(filePath).suffix().toLower();
-
-    // Map to OpenJudge language IDs (from config)
-    QMap<QString, int> langMap = ConfigManager::instance().openJudgeSubmissionLanguageMap();
-    int langId = langMap.value("." + ext, 1); // default: G++
 
     // Save submission context for error journal (in case of failure)
     m_lastSubmitSourceFile = filePath;
@@ -3089,7 +3184,7 @@ void MainWindow::onSubmitToOpenJudge()
     // Submit through OpenJudgeWidget
     oj->submitCurrentProblem(code, langId);
 
-    // 5. Show a brief status message in the judge panel
+    // Show a brief status message in the judge panel
     showLeftPanel(2);
 }
 
@@ -3298,6 +3393,19 @@ void MainWindow::showOutputPanel()
 
 void MainWindow::toggleDiagnosticsInCodeEditor()
 {
+    // IDE mode: toggle diagnostics for embedded editor
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    if (oj && oj->isIdeMode()) {
+        if (!m_bottomPanel->isVisible()
+            || m_bottomPanel->currentTab() != BottomPanel::DiagnosticsTab) {
+            showOutputPanel();
+            m_bottomPanel->showDiagnosticsTab();
+        } else {
+            m_bottomPanel->hide();
+        }
+        return;
+    }
+
     EditorWidget *editor = m_tabManager->currentEditor();
     if (!editor || !editor->isCodeEdit())
         return;

@@ -4,11 +4,14 @@
 #include <QWidget>
 #include "crawler.h"
 
+class CodeEditor;
+class QComboBox;
 class QFrame;
 class QListWidget;
 class QListWidgetItem;
 class QLabel;
 class QPushButton;
+class QSplitter;
 class QStackedWidget;
 class QTextBrowser;
 class SettingsManager;
@@ -32,11 +35,20 @@ public:
     void onReLogin();
     bool tryAutoLogin();
 
+    // IDE mode
+    bool isIdeMode() const { return m_ideMode; }
+    CodeEditor *ideCodeEditor() const { return m_ideCodeEditor; }
+    QString ideCode() const;
+    int currentLanguageId() const { return m_currentLangId; }
+    QString ideCacheFilePath() const;
+    void saveIdeCodeToCache();
+
 signals:
     void sampleSelected(const QString &folderPath);
     void loginStateChanged(bool loggedIn, const QString &username);
     void submissionResultReady(const SubmissionResult &result);
     void submissionFailed(const QString &error);
+    void ideDiagnosticsToggleRequested();
 
 private slots:
     void onLoginSuccess();
@@ -59,6 +71,8 @@ private slots:
     void onNextPage();
     void onSelectClicked();
     void onToggleSidebar();
+    void onToggleIdeMode();
+    void onIdeLanguageChanged(int index);
     void onLoginLogoutClicked();
     void onLogoutClicked();
 
@@ -72,6 +86,19 @@ private:
     void updateSelectButtonStyle(bool selected);
     QString buildCombinedHtml(const ProblemDetail &detail) const;
     void recordSectionPositions();
+
+    void setupIdeMode();
+    void loadIdeCodeFromCache();
+    QString ideCacheDir() const;
+    QString sanitizeFileName(const QString &name) const;
+
+    struct OjLangOption {
+        QString display;
+        int ojId;
+        QString codeLang;
+        QString ext;
+    };
+    QVector<OjLangOption> ideLanguageOptions() const;
 
     struct SamplePair {
         QString input;
@@ -109,6 +136,16 @@ private:
     QVector<int> m_sectionYOffsets;
     bool m_scrollingFromClick = false;
     bool m_sidebarVisible = false;
+
+    // IDE mode
+    QPushButton *m_ideBtn = nullptr;
+    QComboBox *m_langCombo = nullptr;
+    QSplitter *m_ideSplitter = nullptr;
+    QWidget *m_ideEditorContainer = nullptr;
+    CodeEditor *m_ideCodeEditor = nullptr;
+    bool m_ideMode = false;
+    int m_currentLangId = 1;       // OJ language ID (default: G++)
+    QString m_currentCodeLangId;   // CodeEditor language ID (e.g. "cpp")
 
     OjViewState m_viewState = OJ_HOMEWORK_LIST;
     QList<HomeworkItem> m_ongoingItems;

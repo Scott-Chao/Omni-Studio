@@ -1,9 +1,11 @@
 #include "openjudgewidget.h"
+#include "codeeditor.h"
 #include "logindialog.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
 #include "thememanager.h"
 
+#include <QComboBox>
 #include <QFrame>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -168,6 +170,25 @@ void OpenJudgeWidget::setupUi()
     m_toggleSidebarBtn->setVisible(false);
     connect(m_toggleSidebarBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleSidebar);
 
+    m_ideBtn = new QPushButton(QStringLiteral("IDE"));
+    m_ideBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
+    m_ideBtn->setCheckable(true);
+    m_ideBtn->setVisible(false);
+    connect(m_ideBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleIdeMode);
+
+    m_langCombo = new QComboBox;
+    m_langCombo->setStyleSheet(QStringLiteral(
+        "QComboBox { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 2px; padding: 2px 6px; } "
+        "QComboBox::drop-down { border: none; } "
+        "QComboBox QAbstractItemView { background: %1; color: %2; "
+        "selection-background-color: %4; }")
+        .arg(btnBg.name(), btnFg.name(), btnBorder.name(),
+             tm.color("editor.selectionBackground").name()));
+    m_langCombo->setVisible(false);
+    connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &OpenJudgeWidget::onIdeLanguageChanged);
+
     m_refreshBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
     m_refreshBtn->setEnabled(false);
     m_backBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
@@ -184,6 +205,8 @@ void OpenJudgeWidget::setupUi()
 
     toolbarLayout->addWidget(m_selectBtn);
     toolbarLayout->addWidget(m_toggleSidebarBtn);
+    toolbarLayout->addWidget(m_ideBtn);
+    toolbarLayout->addWidget(m_langCombo);
     toolbarLayout->addWidget(m_backBtn);
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(m_refreshBtn);
@@ -292,8 +315,13 @@ void OpenJudgeWidget::setupDetailPage()
              tm.color("input.border").name(),
              tm.color("editor.foreground").name()));
 
+    // IDE splitter: always present. Left = problem, Right = editor (created lazily)
+    m_ideSplitter = new QSplitter(Qt::Horizontal);
+    m_ideSplitter->setChildrenCollapsible(false);
+    m_ideSplitter->addWidget(m_sectionContent);
+
     layout->addWidget(m_sectionList);
-    layout->addWidget(m_sectionContent, 1);
+    layout->addWidget(m_ideSplitter, 1);
 
     connect(m_sectionContent->verticalScrollBar(), &QScrollBar::valueChanged,
             this, &OpenJudgeWidget::onContentScrolled);
@@ -343,9 +371,15 @@ QString OpenJudgeWidget::buildCombinedHtml(const ProblemDetail &detail) const
 
 void OpenJudgeWidget::showListPage()
 {
+    // Exit IDE mode if active
+    if (m_ideMode) {
+        onToggleIdeMode();
+    }
     m_stackedWidget->setCurrentIndex(0);
     m_selectBtn->setVisible(false);
     m_toggleSidebarBtn->setVisible(false);
+    m_ideBtn->setVisible(false);
+    m_langCombo->setVisible(false);
     m_currentSectionIndex = -1;
 }
 
@@ -369,12 +403,19 @@ void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
         QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
     }
 
+    // Exit IDE mode when switching to a new problem
+    if (m_ideMode) {
+        onToggleIdeMode();
+    }
+
     // Sidebar hidden by default
     m_sidebarVisible = false;
     m_sectionList->setVisible(false);
     m_toggleSidebarBtn->setVisible(true);
     m_toggleSidebarBtn->setText(QStringLiteral("显示栏目"));
 
+    m_ideBtn->setVisible(true);
+    m_currentLangId = 1; // default to C++ (G++)
     m_stackedWidget->setCurrentIndex(1);
 }
 
@@ -999,6 +1040,7 @@ void OpenJudgeWidget::refreshStyle()
     m_prevPageBtn->setStyleSheet(btnQss);
     m_nextPageBtn->setStyleSheet(btnQss);
     m_toggleSidebarBtn->setStyleSheet(btnQss);
+    m_ideBtn->setStyleSheet(btnQss);
     updateSelectButtonStyle(m_currentProblemSelected);
 
     m_listWidget->setStyleSheet(QStringLiteral(
@@ -1032,6 +1074,28 @@ void OpenJudgeWidget::refreshStyle()
         .arg(tm.color("menu.background").name(),
              tm.color("input.border").name(),
              tm.color("editor.foreground").name()));
+
+    // IDE editor container border
+    if (m_ideEditorContainer) {
+        m_ideEditorContainer->setStyleSheet(QStringLiteral(
+            "#ojIdeEditorContainer { background: %1; border-left: 1px solid %2; }")
+            .arg(tm.color("editor.background").name(),
+                 tm.color("input.border").name()));
+    }
+
+    // Language combo
+    if (m_langCombo) {
+        m_langCombo->setStyleSheet(QStringLiteral(
+            "QComboBox { background: %1; color: %2; border: 1px solid %3; "
+            "border-radius: 2px; padding: 2px 6px; } "
+            "QComboBox::drop-down { border: none; } "
+            "QComboBox QAbstractItemView { background: %1; color: %2; "
+            "selection-background-color: %4; }")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 tm.color("editor.selectionBackground").name()));
+    }
 
     // Re-render problem detail content with new theme colors
     if (m_viewState == OJ_PROBLEM_DETAIL && !m_currentProblem.sections.isEmpty()) {
@@ -1090,4 +1154,224 @@ void OpenJudgeWidget::submitCurrentProblem(const QString &sourceCode, int langua
     }
     m_statusLabel->setText(QStringLiteral("正在提交..."));
     m_crawler->submitCode(m_currentProblemUrl, sourceCode, languageId);
+}
+
+// ======================================================================
+// IDE Mode
+// ======================================================================
+
+QVector<OpenJudgeWidget::OjLangOption> OpenJudgeWidget::ideLanguageOptions() const
+{
+    return {
+        {QStringLiteral("C (GCC)"),    0, QStringLiteral("c"),      QStringLiteral(".c")},
+        {QStringLiteral("C++ (G++)"),  1, QStringLiteral("cpp"),    QStringLiteral(".cpp")},
+        {QStringLiteral("Python 3"),   6, QStringLiteral("python"), QStringLiteral(".py")},
+    };
+}
+
+QString OpenJudgeWidget::sanitizeFileName(const QString &name) const
+{
+    QString result = name;
+    static const QRegularExpression invalid(QStringLiteral("[\\\\/:*?\"<>|]"));
+    result.replace(invalid, QStringLiteral("_"));
+    if (result.length() > 64)
+        result = result.left(64);
+    return result;
+}
+
+QString OpenJudgeWidget::ideCacheDir() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+           + QStringLiteral("/SM-OJ-Cache/oj_ide");
+}
+
+QString OpenJudgeWidget::ideCacheFilePath() const
+{
+    auto opts = ideLanguageOptions();
+    QString ext = QStringLiteral(".cpp");
+    for (const auto &opt : opts) {
+        if (opt.ojId == m_currentLangId) {
+            ext = opt.ext;
+            break;
+        }
+    }
+    QString baseName = m_currentProblem.title.isEmpty()
+        ? QStringLiteral("untitled")
+        : sanitizeFileName(m_currentProblem.title);
+    return ideCacheDir() + QStringLiteral("/") + baseName + ext;
+}
+
+QString OpenJudgeWidget::ideCode() const
+{
+    if (m_ideCodeEditor)
+        return m_ideCodeEditor->toPlainText();
+    return QString();
+}
+
+void OpenJudgeWidget::saveIdeCodeToCache()
+{
+    if (!m_ideCodeEditor)
+        return;
+    QDir().mkpath(ideCacheDir());
+    QString path = ideCacheFilePath();
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << m_ideCodeEditor->toPlainText();
+    }
+}
+
+void OpenJudgeWidget::loadIdeCodeFromCache()
+{
+    if (!m_ideCodeEditor)
+        return;
+    QString path = ideCacheFilePath();
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&file);
+        m_ideCodeEditor->setPlainText(in.readAll());
+        m_ideCodeEditor->document()->setModified(false);
+    }
+}
+
+void OpenJudgeWidget::setupIdeMode()
+{
+    // Create editor container with code editor
+    m_ideEditorContainer = new QWidget;
+    m_ideEditorContainer->setObjectName(QStringLiteral("ojIdeEditorContainer"));
+    auto &tm = ThemeManager::instance();
+    m_ideEditorContainer->setStyleSheet(QStringLiteral(
+        "#ojIdeEditorContainer { background: %1; border-left: 1px solid %2; }")
+        .arg(tm.color("editor.background").name(),
+             tm.color("input.border").name()));
+
+    auto *editorLayout = new QVBoxLayout(m_ideEditorContainer);
+    editorLayout->setContentsMargins(0, 0, 0, 0);
+    editorLayout->setSpacing(0);
+
+    m_ideCodeEditor = new CodeEditor;
+    m_ideCodeEditor->setIndentWidth(4);
+    connect(&tm, &ThemeManager::themeChanged, m_ideCodeEditor, &CodeEditor::reloadColors);
+    connect(m_ideCodeEditor, &CodeEditor::diagnosticsToggleRequested,
+            this, &OpenJudgeWidget::ideDiagnosticsToggleRequested);
+    editorLayout->addWidget(m_ideCodeEditor, 1);
+
+    // Populate language combo
+    const auto opts = ideLanguageOptions();
+    for (const auto &opt : opts)
+        m_langCombo->addItem(opt.display, opt.ojId);
+
+    // Select default language (C++ = 1)
+    int defaultIdx = m_langCombo->findData(1);
+    if (defaultIdx >= 0)
+        m_langCombo->setCurrentIndex(defaultIdx);
+
+    // Apply initial language
+    m_currentLangId = m_langCombo->currentData().toInt();
+    QString codeLang = QStringLiteral("cpp");
+    for (const auto &opt : opts) {
+        if (opt.ojId == m_currentLangId) {
+            codeLang = opt.codeLang;
+            break;
+        }
+    }
+    m_currentCodeLangId = codeLang;
+    m_ideCodeEditor->setLanguage(codeLang);
+
+    // Splitter ratio clamp (3:7 ~ 7:3)
+    connect(m_ideSplitter, &QSplitter::splitterMoved, this, [this](int, int) {
+        QList<int> sizes = m_ideSplitter->sizes();
+        if (sizes.size() < 2)
+            return;
+        int total = sizes.at(0) + sizes.at(1);
+        if (total <= 0)
+            return;
+        double ratio = (double)sizes.at(0) / total;
+        if (ratio < 0.3) {
+            sizes[0] = (int)(total * 0.3);
+            sizes[1] = total - sizes[0];
+            m_ideSplitter->setSizes(sizes);
+        } else if (ratio > 0.7) {
+            sizes[0] = (int)(total * 0.7);
+            sizes[1] = total - sizes[0];
+            m_ideSplitter->setSizes(sizes);
+        }
+    });
+}
+
+void OpenJudgeWidget::onToggleIdeMode()
+{
+    if (m_currentProblemUrl.isEmpty() || m_currentProblem.sections.isEmpty()) {
+        m_ideBtn->setChecked(false);
+        return;
+    }
+
+    m_ideMode = !m_ideMode;
+
+    if (m_ideMode) {
+        // ENTER IDE mode
+        // Lazy-create editor on first use
+        if (!m_ideEditorContainer) {
+            setupIdeMode();
+        }
+
+        // Add editor container to splitter (right side of problem)
+        m_ideSplitter->addWidget(m_ideEditorContainer);
+        m_ideEditorContainer->show();
+
+        // Set initial split (50:50)
+        int total = m_ideSplitter->width();
+        m_ideSplitter->setSizes({total / 2, total / 2});
+
+        // Show language combo
+        m_langCombo->setVisible(true);
+        m_ideBtn->setChecked(true);
+
+        // Load cached code for this problem
+        loadIdeCodeFromCache();
+        if (m_ideCodeEditor) {
+            m_ideCodeEditor->setFocus();
+        }
+    } else {
+        // EXIT IDE mode
+        // Save code to cache
+        saveIdeCodeToCache();
+
+        // Hide editor from splitter
+        if (m_ideEditorContainer) {
+            m_ideEditorContainer->hide();
+        }
+
+        // Hide language combo
+        m_langCombo->setVisible(false);
+        m_ideBtn->setChecked(false);
+    }
+}
+
+void OpenJudgeWidget::onIdeLanguageChanged(int index)
+{
+    if (index < 0 || !m_ideCodeEditor)
+        return;
+
+    int newOjId = m_langCombo->itemData(index).toInt();
+    if (newOjId == m_currentLangId)
+        return;
+
+    // Save current code under old extension
+    saveIdeCodeToCache();
+
+    m_currentLangId = newOjId;
+
+    // Update editor language
+    const auto opts = ideLanguageOptions();
+    for (const auto &opt : opts) {
+        if (opt.ojId == m_currentLangId) {
+            m_currentCodeLangId = opt.codeLang;
+            m_ideCodeEditor->setLanguage(opt.codeLang);
+            break;
+        }
+    }
+
+    // Delete old cache file if different extension
+    loadIdeCodeFromCache();
 }

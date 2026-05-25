@@ -21,13 +21,14 @@
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
 - 文件树预览标签页：单击文件以临时标签页（斜体标题）预览，多次单击复用同一标签页；双击永久打开；编辑临时标签页内容后自动提升为永久标签页。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。**OpenJudge IDE 模式下**，编译运行使用 IDE 嵌入编辑器中的代码（通过 `oj->ideCacheFilePath()` 获取临时文件），语言由 IDE 语言选择器决定，其余流程与普通代码编辑模式一致。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
 - 异步索引构建：全量扫描（切换目录时）通过 `startAsyncIndexBuild` 在后台线程依次执行文件索引、反向链接扫描与标签索引扫描（Phase 1/2/3），UI 保持响应。增量更新（重命名/删除/另存为）通过 `buildFileIndexAsync` 仅重建文件索引，回调中执行依赖项。两者使用**独立的取消令牌和代际计数器**（`m_scanCancelled`/`m_scanId` 与 `m_fileIdxCancelled`/`m_fileIdxScanId`），增量更新不会取消全量扫描，避免启动时反向链接数据丢失。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
 - OpenJudge 题目爬虫集成：通过评测面板的"从OpenJudge获取"按钮在主窗口标签页中打开 OpenJudge 题目浏览（非独立窗口），可登录 OpenJudge 或跳过登录直接浏览。支持作业列表（进行中 + 已结束）→ 题目列表 → 题目详情的三级导航，已结束的作业支持分页浏览。题目详情页左侧章节导航，右侧渲染题目内容。全面接入主题系统，切换主题时工具栏、章节导航、题目内容等所有 UI 元素即时同步。点击"选择此题目"自动提取样例输入/输出并写入临时缓存目录，回填至评测面板的测试用例文件夹。OpenJudge 标签页激活时，保存/另存为等文件操作自动禁用（非文件标签页）。
 - OpenJudge 登录管理：OpenJudge 标签页工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
-- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 标签页中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。
+- OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 标签页中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。**IDE 模式下**：提交内容来自 IDE 内置编辑器，语言由语言选择器指定，无需依赖外部代码文件。
+- OpenJudge IDE 模式：题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C/C++/Python），切换语言时自动重建编辑器语法高亮与 LSP 后端。代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。IDE 模式下编译运行（F5/F6/F7）、本地评测、OpenJudge 提交均使用编辑器当前内容。`Ctrl+D` 可切换底部诊断面板。
 - 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
@@ -59,8 +60,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增/修复
-- OpenJudge 题目详情页面左侧栏目可隐藏
+### 新增
+OpenJudge IDE 模式
+- 题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。
+- IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。
+- 分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C/C++/Python），切换语言时自动重建编辑器语法高亮与 LSP 后端。
+- 代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。
+
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1014,17 +1020,21 @@
 - "选择此题目"按钮支持选中/取消选中切换：选中时 `m_currentProblemSelected = true`，emit `sampleSelected(folderPath)` 信号，按钮变"已选择"（`#4A9BE0`）；取消选中时仅恢复按钮状态，不触发信号。切换题目时 `onProblemDetailReady()` 自动重置 `m_currentProblemSelected = false`。`submitCurrentProblem()` 校验 `m_currentProblemSelected`，未选中时拒绝提交。
 - **标签页管理**：`TabManager` 通过 `openOpenJudge(settings)` 创建/切换到 OpenJudge 标签页（单例模式），`findOpenJudgeWidget()` 查找已有标签页。关闭标签页时 `closeTab()` 直接移除无需保存提示（非 `EditorWidget` 标签页）。关闭程序时 `closeAllTabs()` 自动关闭。
 - **文件操作禁用**：当 OpenJudge 标签页激活时，`MainWindow::currentChanged` 处理程序中自动禁用保存/另存为菜单项（`setEnabled(false)`），因为该标签页不是文件。切换到文件标签页时自动恢复启用状态。
+- **IDE 模式**：题目详情页工具栏新增"IDE"切换按钮（可检入/检出，位于"显示栏目"与"← 返回"之间），语言选择下拉框（C/C++/Python）仅在 IDE 模式下可见。IDE 模式下将题目内容区域改为水平 `QSplitter`：左侧为 `m_sectionContent`（题目内容），右侧为嵌入式 `CodeEditor`（`m_ideCodeEditor`）+ 边框分隔线。分隔条拖拽范围通过 `splitterMoved` 信号钳制在 3:7 ~ 7:3 比例。编辑器首次进入 IDE 模式时延迟创建（`setupIdeMode()`），配置语法高亮、LSP 后端和主题联动，`diagnosticsToggleRequested` 通过 `ideDiagnosticsToggleRequested()` 信号转发至 `MainWindow::toggleDiagnosticsInCodeEditor()`。代码缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，`saveIdeCodeToCache()` 在退出、切换语言时调用，`loadIdeCodeFromCache()` 在进入时恢复。"IDE"按钮仅在题目详情页可见（`m_viewState == OJ_PROBLEM_DETAIL`），切换回列表页或查看其他题目时自动退出 IDE 模式并保存代码。语言选择器切换时先保存旧语言代码到缓存（文件扩展名随之变化），再加载新语言缓存文件，编辑器语法高亮和 LSP 后端同步切换。`ideCode()` 返回编辑器当前文本，`currentLanguageId()` 返回当前选择的 OpenJudge 语言 ID，`isIdeMode()` 供 `MainWindow` 判断 IDE 模式状态。
 
 **信号**：
 - `sampleSelected(const QString &folderPath)`：用户选择题目后发出，携带样例缓存目录路径。
 - `loginStateChanged(bool loggedIn, const QString &username)`：登录/登出状态变化时发出。
 - `submissionResultReady(const SubmissionResult &result)`：转发自 `Crawler`。
 - `submissionFailed(const QString &error)`：转发自 `Crawler`。
+- `ideDiagnosticsToggleRequested()`：IDE 模式下 `Ctrl+D` 触发，转发自嵌入式 `CodeEditor`，连接至 `MainWindow::toggleDiagnosticsInCodeEditor()`。
 
 **内部枚举 `OjViewState`**：`OJ_HOMEWORK_LIST`、`OJ_PROBLEM_LIST`、`OJ_PROBLEM_DETAIL`，独立于 web-crawler 的 `ViewState`，避免符号冲突。
 
 **协作关系**：
 - 由 `MainWindow::onOpenJudgeRequested()` 通过 `TabManager::openOpenJudge()` 创建，`sampleSelected` 信号连接到 `MainWindow::onOpenJudgeSampleSelected()`。
+- `ideDiagnosticsToggleRequested` 信号连接到 `MainWindow::toggleDiagnosticsInCodeEditor()`。
+- `MainWindow` 的编译运行（`onCompile`/`onRun`/`onCompileAndRun`）、评测（`onJudgeRunAll`）和提交（`onSubmitToOpenJudge`）方法均检查 `oj->isIdeMode()`，在 IDE 模式下使用嵌入编辑器的代码内容。
 - 持有 `Crawler` 实例，连接其全部信号到自身槽方法。
 - 调用 `LoginDialog` 进行登录交互，通过 `SettingsManager` 持久化自动登录凭据。
 - 依赖 `Crawler::decodeHtmlEntities()` 静态方法解码 HTML 实体。
