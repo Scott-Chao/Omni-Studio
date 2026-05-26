@@ -149,6 +149,7 @@ private:
     enum class PyPending { None, Completion, Hover, SignatureHelp, Diagnostics, SemanticTokens };
     PyPending m_pyPending = PyPending::None;
     int m_pyRequestingCell = -1;
+    bool m_pyTokensPending = false;
 
     // Per-cell diagnostics
     QMap<int, QList<SmdDiagnostic>> m_diagnostics;

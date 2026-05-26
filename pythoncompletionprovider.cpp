@@ -143,6 +143,11 @@ void PythonCompletionProvider::openDocument(const QString &uri, const QString &l
 
 void PythonCompletionProvider::updateText(const QString &text)
 {
+    // Guard: rehighlight() can trigger QTextDocument::contentsChanged
+    // which calls us again with identical text — skip to avoid an
+    // infinite request loop.
+    if (text == m_lastDiagnosticsText)
+        return;
     m_lastDiagnosticsText = text;
     m_diagnosticsTimer.start();
     m_semanticTokensTimer.start();
@@ -154,6 +159,22 @@ void PythonCompletionProvider::onDiagnosticsDebounce()
 }
 
 // ---- Request sending ----
+
+static QString sanitizeForPython(const QString &s)
+{
+    QString out = s;
+    out.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    out.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    for (int i = 0; i < out.size(); ++i) {
+        QChar ch = out.at(i);
+        if (ch.isLowSurrogate() && (i == 0 || !out.at(i - 1).isHighSurrogate()))
+            out[i] = QChar(QChar::ReplacementCharacter);
+        else if (ch.isHighSurrogate()
+                 && (i + 1 >= out.size() || !out.at(i + 1).isLowSurrogate()))
+            out[i] = QChar(QChar::ReplacementCharacter);
+    }
+    return out;
+}
 
 void PythonCompletionProvider::sendRequest(const QString &action, const QString &text, int cursorPos)
 {
@@ -236,8 +257,10 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
     m_pendingRequest = PendingRequest::None;
     m_timeoutTimer.stop();
 
+    // Sanitize lone surrogates before sending to Python
+    QString safeText = sanitizeForPython(text);
     // Base64-encode the code to avoid JSON escaping issues (matching SMD cell format)
-    QByteArray codeBase64 = text.toUtf8().toBase64();
+    QByteArray codeBase64 = safeText.toUtf8().toBase64();
 
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("diagnostics");
@@ -272,14 +295,17 @@ void PythonCompletionProvider::requestSemanticTokens()
         return;
     }
 
-    QString text = m_lastDiagnosticsText;
+    QString text = sanitizeForPython(m_lastDiagnosticsText);
     // Skip large files to avoid performance issues
     if (text.length() > 200 * 1024)
         return;
 
+    // Base64-encode to avoid JSON escaping issues with lone surrogates
+    QByteArray codeBase64 = text.toUtf8().toBase64();
+
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("tokens");
-    req[QStringLiteral("code")] = text;
+    req[QStringLiteral("code")] = QString::fromLatin1(codeBase64);
     QJsonArray cursor;
     cursor.append(0);
     cursor.append(0);

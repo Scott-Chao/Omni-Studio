@@ -148,25 +148,25 @@ def handle_tokens(script, code):
             name_type[n.name] = (prio, token_type)
 
     # 2. Regex-scan the source for every occurrence of each name.
+    code_lines = code.split('\n')
     tokens = []
-    seen = set()  # (line, startChar) for dedup
+    seen = set()
     for name_str, (_prio, ttype) in name_type.items():
-        for m in re.finditer(r'\b' + re.escape(name_str) + r'\b', code):
-            start = m.start()
-            # Compute 0-based line/col from byte offset
-            line_0based = code[:start].count('\n')
-            line_start = code.rfind('\n', 0, start) + 1
-            col_0based = start - max(line_start, 0)
-            key = (line_0based, col_0based)
-            if key in seen:
-                continue
-            seen.add(key)
-            tokens.append({
-                "line": line_0based,
-                "startChar": col_0based,
-                "length": len(name_str),
-                "type": ttype,
-            })
+        escaped = re.escape(name_str)
+        pattern = re.compile(r'\b' + escaped + r'\b')
+        for line_idx, line_text in enumerate(code_lines):
+            for m in pattern.finditer(line_text):
+                col_0based = m.start()
+                key = (line_idx, col_0based)
+                if key in seen:
+                    continue
+                seen.add(key)
+                tokens.append({
+                    "line": line_idx,
+                    "startChar": col_0based,
+                    "length": len(name_str),
+                    "type": ttype,
+                })
     return tokens
 
 
@@ -250,6 +250,11 @@ def main():
                 cells = req.get("cells", [])
                 data = handle_diagnostics(cells)
             elif action == "tokens":
+                # code is base64-encoded to avoid JSON escaping issues
+                try:
+                    code = base64.b64decode(code).decode("utf-8")
+                except Exception:
+                    code = ""
                 script = jedi.Script(code=code, path="untitled.py")
                 data = handle_tokens(script, code)
             elif action in ("complete", "hover", "signature"):

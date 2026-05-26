@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增
-- Python 独立文件完整语义高亮（函数/类/参数/变量/属性/导入模块），基于 Jedi `get_names(all_scopes=True)` + 正则引用扫描
+- SMD Python Cell 支持完整语义高亮
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -756,9 +756,11 @@
 - **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。确保 semantic 高亮不会覆盖关键字、字符串等基本语法着色。
 
 **Token 来源**（Jedi 子进程，非 LSP）：
-- `PythonCompletionProvider` 将文件代码发送至 `completion_helper.py` 的 `tokens` action，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过 `re.finditer(r'\b<name>\b', code)` 正则扫描源代码中每个名称的所有引用位置，生成语义 token 列表返回。
+- `PythonCompletionProvider` 将文件代码经 `sanitizeForPython()` 规范化（替换 `\r\n`/`\r` → `\n`、替换孤立 surrogate 为 U+FFFD）后，通过 **base64 编码**发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。
+- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
 - Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > parameter > property > variable > module）选择。
 - Token 以 fire-and-forget 模式发送（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，确保在 Jedi 解析耗时 >500ms 时响应不会因超时被丢弃。
+- `updateText()` 添加了**内容未变则跳过**的防护（`if (text == m_lastDiagnosticsText) return;`），防止 `rehighlight()` 触发的 `QTextDocument::contentsChanged` 信号导致无限循环请求。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"python"` 语言的高亮器实现。
@@ -1450,8 +1452,9 @@
 - 补全/悬停/签名请求：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`。
 - **Python 语义标记**（新增）：
   - `m_pySemanticTokensTimer`（300ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后以及 `syncVirtualDoc()` 中启动，防抖触发 `requestPythonSemanticTokens()`。
-  - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，发送 `{"action":"tokens","code":...}` 至 `completion_helper.py`。响应中包含虚拟行号的语义 token 列表。
-  - `processPythonResponse()` 的 `PyPending::SemanticTokens` 分支：解析 token 列表后通过 `m_pyServer.cellRanges` 将虚拟行号映射回 cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
+  - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，**base64 编码**后发送 `{"action":"tokens","code":"<base64>"}` 至 `completion_helper.py`，避免 JSON 序列化时孤立 surrogate 破坏换行符。采用 fire-and-forget 模式（`m_pyTokensPending` 标志），不占用 `m_pyTimeoutTimer`，确保长文档 Jedi 解析耗时 >1s 时响应不被丢弃。
+  - `processPythonResponse()` 中**优先检测 tokens 响应**（`m_pyTokensPending` 且 data[0] 含 `"line"` + `"type"` 字段），晚于其他请求超时时仍能正确处理。响应通过 `cellRanges` 映射虚拟行号 → cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
+  - `cellContentChanged()` 添加了**内容未变则跳过**的防护：`rehighlight()` 可触发 `QTextDocument::contentsChanged` 冒泡为 spurious contentChanged → 重启定时器 → 再次请求 → 无限循环。该防护比较缓存内容与传入内容，相同则直接返回，阻止循环。
 - **Python 诊断**（新增）：
   - `m_pyDiagnosticsTimer`（500ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后启动，防抖触发 `requestPythonDiagnostics()`。
   - `requestPythonDiagnostics()`：遍历 `m_pyServer.cellOrder`，对每个 Python cell 的代码调用 `sanitizeForPython()`（规范化 `\r\n`/`\r` → `\n`、替换孤立 surrogate），通过 **base64 编码**发送 `{"action":"diagnostics","cells":[{cellIndex,code}]}` 以避免 JSON 换行转义问题。
@@ -1480,7 +1483,7 @@
   - **语义高亮**：`sendInitialize()` 声明 `capabilities.textDocument.semanticTokens` 能力；初始化响应中提取 `legend`（tokenTypes/tokenModifiers 列表）存入 `m_tokenTypeLegend`/`m_tokenModifierLegend`。`updateText()` 发送 `didChange` 后启动 300ms 防抖定时器 `m_semanticTokensTimer`，到期后发送 `textDocument/semanticTokens/full` 请求。`parseSemanticTokens()` 解码 LSP delta-encoded 数据（每 5 个 int = 一组 token），根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串，emit `semanticTokensReady`。
 - **Python 独立文件**（`PythonCompletionProvider`）：
   - **诊断**：`sendDiagnosticsRequest()` 将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
-  - **语义高亮**：`requestSemanticTokens()` 通过 300ms 防抖定时器触发，向 `completion_helper.py` 发送 `tokens` action。采用 fire-and-forget 模式（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，避免 Jedi 解析耗时较长（>500ms）导致响应被超时丢弃。`processResponse()` 中通过检测响应数据是否包含 `"line"` + `"type"` 字段来识别 tokens 响应，确保迟到响应仍被正确处理。`openDocument()` 和 `updateText()` 均启动防抖定时器，首次打开时通过 `serverReady` → `CodeEditor::onServerReady()` → `openDocument()` 链路在进程就绪后自动触发 tokens 请求。
+  - **语义高亮**：`requestSemanticTokens()` 通过 300ms 防抖定时器触发，代码经 `sanitizeForPython()` 处理（规范化行尾 + 替换孤立 surrogate）后 base64 编码发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。采用 fire-and-forget 模式（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，避免 Jedi 解析耗时较长（>500ms）导致响应被超时丢弃。`processResponse()` 中通过检测响应数据是否包含 `"line"` + `"type"` 字段来识别 tokens 响应，确保迟到响应仍被正确处理。`openDocument()` 和 `updateText()` 均启动防抖定时器，首次打开时通过 `serverReady` → `CodeEditor::onServerReady()` → `openDocument()` 链路在进程就绪后自动触发 tokens 请求。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
 - `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
 - `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell/semanticTokensReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。

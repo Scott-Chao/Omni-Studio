@@ -5,7 +5,6 @@
 #include "cppsyntaxhighlighter.h"
 #include "pythonsyntaxhighlighter.h"
 #include "smddiagnostic.h"
-#include "debuglog.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -166,8 +165,6 @@ void CodeEditor::reloadShortcuts()
     m_toggleComment = QKeySequence(sm.value("shortcuts.toggle_comment", "Ctrl+/").toString());
     m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics",
         ConfigManager::instance().shortcut("toggle_diagnostics", "Ctrl+D")).toString());
-    debugLog(QString("CodeEditor::reloadShortcuts toggle_diagnostics=%1")
-        .arg(m_toggleDiagnostics.toString()));
 }
 
 void CodeEditor::setIndentWidth(int width)
@@ -609,7 +606,6 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
     // Debug: trace Ctrl+D
     if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
-        debugLog("CodeEditor::keyPressEvent: Ctrl+D received!");
     }
 
     // ---- Completion popup key routing ----
@@ -693,7 +689,6 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     }
 
     if (matchShortcut(m_toggleDiagnostics)) {
-        debugLog("CodeEditor: toggleDiagnostics shortcut matched");
         emit diagnosticsToggleRequested();
         return;
     }
@@ -1226,7 +1221,6 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
             QKeyEvent *ke = static_cast<QKeyEvent *>(event);
             Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
             if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
-                debugLog("CodeEditor::eventFilter: ShortcutOverride accepted");
                 event->accept();
                 return true;
             }
@@ -1235,7 +1229,6 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
             QKeyEvent *ke = static_cast<QKeyEvent *>(event);
             Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
             if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
-                debugLog("CodeEditor::eventFilter: KeyPress -> emit");
                 emit diagnosticsToggleRequested();
                 return true;
             }
