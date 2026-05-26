@@ -60,8 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- 修复打开文件时变量名高亮不触发的问题
+### 新增
+- cpp 代码高亮参数规则扩展为"参数/变量/属性"
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -687,22 +687,23 @@
 **职责**：
 - 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
 - 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名）。
-- 高亮规则具体颜色方案：
-  - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。
+- 高亮规则具体颜色方案及**应用优先级**（低→高，后应用者覆盖前者）：
+  - **函数/方法调用**（`#DCDCAA`，金色，**最先应用/最低优先级**）：Regex fallback 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符。最先应用以作为 fallback，后续关键字/类型规则会覆盖属于关键字或类型的标识符（如 `for (`、`while (`、`if (` → 蓝色；`vector(` → 青色）。
+  - **`::` 作用域解析**（`#4EC9B0`，青色）：`\b(\w+)(?=\s*::)` 高亮 `::` 前的命名空间/类限定符。置于 `#include` 规则之前，确保 include 路径内 `::` 的匹配被后续 include 规则覆盖。
+  - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。覆盖函数调用规则，使带括号的关键字保持蓝色。
   - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
-  - **`#include` 头文件路径**（`#CE9178`，字符串色）：`#include <vector>` 中的 `<vector>` 和 `#include "myheader.h"` 中的 `"myheader.h"` 头文件名单独高亮，通过 0 宽断言和捕获组（`captureGroup = 1`）仅着色括号/引号内的路径部分。
   - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。同时匹配声明中的类/结构体/枚举名（`class|struct|enum Name`）。
   - **字符串**（`#CE9178`）：双引号字符串、单引号字符字面量、原始字符串字面量，均支持转义字符。
   - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
-  - **函数/方法调用**（`#DCDCAA`，金色）：Regex fallback 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符，仅在关键字/类型规则之后应用以保持优先级。LSP Semantic Tokens 就绪后提供更精确的函数名/方法名分类。
-  - **参数**（`#9CDCFE`，浅蓝）：由 LSP Semantic Tokens `parameter` 类型提供，正则无法识别。
+  - **`#include` 头文件路径**（`#CE9178`，字符串色，**最后应用/最高 Regex 优先级**）：`#include <vector>` 中的 `<vector>` 和 `#include "myheader.h"` 中的 `"myheader.h"` 头文件名单独高亮，通过捕获组（`captureGroup = 1`）仅着色括号/引号内的路径部分。置于所有其他 regex 规则之后，覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一。
+  - **参数/变量/属性**（`#9CDCFE`，浅蓝）：以前仅 LSP Semantic Tokens 的 `parameter` 类型提供（正则无法识别）；现已扩展为同时支持 `variable` 和 `property` 类型，匹配 VS Code 统一变量/参数的着色方案。
   - **单行注释**（`#6A9955`）：`// ...`，通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `"..."` 字符串和 `'...'` 字符字面量状态，仅在字符串外检测到 `//` 时应用注释格式，避免误将字符串内的 `//` 着色为注释。
-  - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。
+  - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。注释扫描在所有 regex 规则之后执行，确保覆盖字符串/数字/关键字等内容。
 
 **语义高亮 (Semantic Tokens) 叠加机制**：
 - `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 LSP semantic tokens，按行号（0-based block number）索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
 - `clearSemanticTokens()`：清空 semantic tokens 并重绘。
-- `formatForTokenType(const QString &type)`：将 LSP token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`，`parameter` → `m_parameterFormat`，`class`/`struct`/`enum`/`type` → `m_typeFormat`，`macro` → `m_preprocessorFormat`，其余（`namespace`/`variable`/`property`）返回空格式不额外高亮以避免视觉噪音。
+- `formatForTokenType(const QString &type)`：将 LSP token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`，`parameter`/`variable`/`property` → `m_parameterFormat`，`class`/`struct`/`enum`/`type` → `m_typeFormat`，`macro` → `m_preprocessorFormat`，`namespace` 返回空格式不额外高亮以避免视觉噪音。
 - **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。这确保 LSP 高亮不会覆盖关键字、注释等基本语法着色。
 
 **内部结构 `HighlightingRule` 增强**：

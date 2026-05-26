@@ -7,6 +7,31 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
 {
     const auto &cfg = ConfigManager::instance();
 
+    // --- Function call heuristic (regex fallback, before semantic tokens kick in) ---
+    // Applied first so keyword/type rules can override it for built-in keywords/type constructors
+    m_functionFormat.setForeground(cfg.syntaxFunctions());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
+        rule.format = m_functionFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+
+    // --- Type format (teal) ---
+    // Must be initialized before :: scope rule which also uses m_typeFormat
+    m_typeFormat.setForeground(cfg.syntaxTypes());
+
+    // --- :: scope resolution (highlight namespace/class qualifier) ---
+    // Placed before #include rules so include paths overwrite :: inside angle brackets
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*::)"));
+        rule.format = m_typeFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+
     // --- Keyword format (blue) ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
@@ -27,25 +52,6 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- #include header path ---
-    m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
-    {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+<([^>]+)>"));
-        rule.format = m_includeHeaderFormat;
-        rule.captureGroup = 1;
-        m_rules.append(rule);
-    }
-    {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+\"([^\"]+)\""));
-        rule.format = m_includeHeaderFormat;
-        rule.captureGroup = 1;
-        m_rules.append(rule);
-    }
-
-    // --- Type format (teal) ---
-    m_typeFormat.setForeground(cfg.syntaxTypes());
     for (const QString &t : cppCommonTypes()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(t));
@@ -74,6 +80,24 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
+    // --- #include header path ---
+    // Placed after all other regex rules so it overwrites keyword/type/:: matches inside <>
+    m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+<([^>]+)>"));
+        rule.format = m_includeHeaderFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+\"([^\"]+)\""));
+        rule.format = m_includeHeaderFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+
     // --- String format (orange-brown) ---
     m_stringFormat.setForeground(cfg.syntaxStrings());
     {
@@ -97,16 +121,6 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         rule.pattern = QRegularExpression(
             QStringLiteral(R"(R"([^(]*)\([^)]*\)\1")"));
         rule.format = m_stringFormat;
-        m_rules.append(rule);
-    }
-
-    // --- Function call heuristic (regex fallback, before semantic tokens kick in) ---
-    m_functionFormat.setForeground(cfg.syntaxFunctions());
-    {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
-        rule.format = m_functionFormat;
-        rule.captureGroup = 1;
         m_rules.append(rule);
     }
 
@@ -158,8 +172,10 @@ QTextCharFormat CppSyntaxHighlighter::formatForTokenType(const QString &type) co
     if (type == QStringLiteral("macro")) {
         return m_preprocessorFormat;
     }
+    if (type == QStringLiteral("variable") || type == QStringLiteral("property")) {
+        return m_parameterFormat;
+    }
     // namespace — keep default (no highlight) to avoid visual noise
-    // variable, property — keep default
     return QTextCharFormat();
 }
 
