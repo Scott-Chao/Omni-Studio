@@ -1,4 +1,5 @@
 #include "configmanager.h"
+#include "thememanager.h"
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFile>
@@ -717,16 +718,45 @@ QColor ConfigManager::previewContainerBackground() const { return colorValue("ap
 QColor ConfigManager::previewWebEngineBackground() const { return colorValue("appearance.colors.preview.webengine_background", QColor("#2d2d2d")); }
 
 // ---- Syntax Highlighting ----
-QColor ConfigManager::syntaxKeywords() const { return colorValue("appearance.colors.syntax_highlight.keywords", QColor("#569CD6")); }
-QColor ConfigManager::syntaxPreprocessor() const { return colorValue("appearance.colors.syntax_highlight.preprocessor", QColor("#C586C0")); }
-QColor ConfigManager::syntaxTypes() const { return colorValue("appearance.colors.syntax_highlight.types", QColor("#4EC9B0")); }
-QColor ConfigManager::syntaxNumbers() const { return colorValue("appearance.colors.syntax_highlight.numbers", QColor("#B5CEA8")); }
-QColor ConfigManager::syntaxStrings() const { return colorValue("appearance.colors.syntax_highlight.strings", QColor("#CE9178")); }
-QColor ConfigManager::syntaxComments() const { return colorValue("appearance.colors.syntax_highlight.comments", QColor("#6A9955")); }
-QColor ConfigManager::syntaxPythonDecorators() const { return colorValue("appearance.colors.syntax_highlight.python_decorators", QColor("#C586C0")); }
-QColor ConfigManager::syntaxPythonSelfCls() const { return colorValue("appearance.colors.syntax_highlight.python_self_cls", QColor("#DCDCDC")); }
-QColor ConfigManager::syntaxFunctions() const { return colorValue("appearance.colors.syntax_highlight.functions", QColor("#DCDCAA")); }
-QColor ConfigManager::syntaxParameters() const { return colorValue("appearance.colors.syntax_highlight.parameters", QColor("#9CDCFE")); }
+// Resolve via ThemeManager theme JSON first, falling back to per-theme
+// hardcoded defaults when the JSON token is missing (stale QRC, etc.).
+
+namespace {
+
+inline bool isLight()
+{ return ThemeManager::instance().currentThemeType() == ThemeManager::Light; }
+
+QColor syntaxThemeOr(const char *token, const QColor &dark, const QColor &light)
+{
+    QColor c = ThemeManager::instance().color(QString::fromLatin1(token));
+    if (c.isValid()) return c;
+    return isLight() ? light : dark;
+}
+
+} // anonymous namespace
+
+QColor ConfigManager::syntaxKeywords() const
+    { return syntaxThemeOr("syntax.keywords", QColor("#569CD6"), QColor("#0000ff")); }
+QColor ConfigManager::syntaxControlKeywords() const
+    { return syntaxThemeOr("syntax.controlKeywords", QColor("#c792ea"), QColor("#0000ff")); }
+QColor ConfigManager::syntaxPreprocessor() const
+    { return syntaxThemeOr("syntax.preprocessor", QColor("#C586C0"), QColor("#800080")); }
+QColor ConfigManager::syntaxTypes() const
+    { return syntaxThemeOr("syntax.types", QColor("#4EC9B0"), QColor("#267f99")); }
+QColor ConfigManager::syntaxNumbers() const
+    { return syntaxThemeOr("syntax.numbers", QColor("#B5CEA8"), QColor("#098658")); }
+QColor ConfigManager::syntaxStrings() const
+    { return syntaxThemeOr("syntax.strings", QColor("#CE9178"), QColor("#a31515")); }
+QColor ConfigManager::syntaxComments() const
+    { return syntaxThemeOr("syntax.comments", QColor("#6A9955"), QColor("#008000")); }
+QColor ConfigManager::syntaxPythonDecorators() const
+    { return syntaxThemeOr("syntax.pythonDecorators", QColor("#C586C0"), QColor("#800080")); }
+QColor ConfigManager::syntaxPythonSelfCls() const
+    { return syntaxThemeOr("syntax.pythonSelfCls", QColor("#DCDCDC"), QColor("#000080")); }
+QColor ConfigManager::syntaxFunctions() const
+    { return syntaxThemeOr("syntax.functions", QColor("#DCDCAA"), QColor("#6b3a00")); }
+QColor ConfigManager::syntaxParameters() const
+    { return syntaxThemeOr("syntax.parameters", QColor("#9CDCFE"), QColor("#001080")); }
 
 // ---- Judge Status Colors ----
 QColor ConfigManager::judgeColorAc() const { return colorValue("appearance.colors.judge_status.ac", QColor("#52C41A")); }

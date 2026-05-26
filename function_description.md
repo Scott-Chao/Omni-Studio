@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增
-- cpp 代码高亮参数规则扩展为"参数/变量/属性"
+- 代码高亮颜色配置迁移到主题配置中
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -685,20 +685,31 @@
 **文件**：`cppsyntaxhighlighter.h` / `cppsyntaxhighlighter.cpp`
 
 **职责**：
-- 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
-- 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名）。
-- 高亮规则具体颜色方案及**应用优先级**（低→高，后应用者覆盖前者）：
-  - **函数/方法调用**（`#DCDCAA`，金色，**最先应用/最低优先级**）：Regex fallback 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符。最先应用以作为 fallback，后续关键字/类型规则会覆盖属于关键字或类型的标识符（如 `for (`、`while (`、`if (` → 蓝色；`vector(` → 青色）。
-  - **`::` 作用域解析**（`#4EC9B0`，青色）：`\b(\w+)(?=\s*::)` 高亮 `::` 前的命名空间/类限定符。置于 `#include` 规则之前，确保 include 路径内 `::` 的匹配被后续 include 规则覆盖。
-  - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。覆盖函数调用规则，使带括号的关键字保持蓝色。
-  - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
-  - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。同时匹配声明中的类/结构体/枚举名（`class|struct|enum Name`）。
-  - **字符串**（`#CE9178`）：双引号字符串、单引号字符字面量、原始字符串字面量，均支持转义字符。
-  - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
-  - **`#include` 头文件路径**（`#CE9178`，字符串色，**最后应用/最高 Regex 优先级**）：`#include <vector>` 中的 `<vector>` 和 `#include "myheader.h"` 中的 `"myheader.h"` 头文件名单独高亮，通过捕获组（`captureGroup = 1`）仅着色括号/引号内的路径部分。置于所有其他 regex 规则之后，覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一。
-  - **参数/变量/属性**（`#9CDCFE`，浅蓝）：以前仅 LSP Semantic Tokens 的 `parameter` 类型提供（正则无法识别）；现已扩展为同时支持 `variable` 和 `property` 类型，匹配 VS Code 统一变量/参数的着色方案。
-  - **单行注释**（`#6A9955`）：`// ...`，通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `"..."` 字符串和 `'...'` 字符字面量状态，仅在字符串外检测到 `//` 时应用注释格式，避免误将字符串内的 `//` 着色为注释。
-  - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。注释扫描在所有 regex 规则之后执行，确保覆盖字符串/数字/关键字等内容。
+- 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行语法高亮，颜色**跟随当前 ThemeManager 主题（深色/浅色）自动切换**。
+- 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名/变量名）。
+- **颜色来源链**：`ConfigManager::syntaxXxx()` → `syntaxThemeOr(token, darkFallback, lightFallback)` → 优先从 `ThemeManager::color("syntax.xxx")` 读取当前主题 JSON，缺失则按 `currentThemeType()` 选择深色/浅色硬编码默认值。
+- **主题切换实时刷新**：构造函数末尾连接 `ThemeManager::themeChanged` 信号 → `initFormats()` 重建全部 Regex 规则 + `rehighlight()` 重绘。所有格式初始化逻辑抽取为 `initFormats()` 私有方法，构造函数和信号槽共用。
+- 高亮规则及应用优先级（低→高，后应用者覆盖前者）：
+
+| 优先级 | 规则 | Theme 键 | 深色默认 | 浅色默认 |
+|--------|------|----------|----------|----------|
+| 1 (最低) | **函数/方法调用** `\b(\w+)(?=\s*\()` | `syntax.functions` | `#dcdcaa` 金 | `#6b3a00` 深棕 |
+| 2 | **`::` 作用域** `\b(\w+)(?=\s*::)` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
+| 3 | **关键字**（所有，粗体） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
+| 4 | **控制流关键字** `if/for/while/return` 等（粗体，覆盖普通关键字） | `syntax.controlKeywords` | `#c792ea` 紫 | `#0000ff` 蓝 |
+| 5 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#C586C0` 紫 | `#800080` 紫 |
+| 6 | **类型** `\btype\b` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
+| 7 | class/struct/enum 声明名 | `syntax.types` | 同上 | 同上 |
+| 8 | **数字** | `syntax.numbers` | `#B5CEA8` 绿 | `#098658` 绿 |
+| 9 (最高 Regex) | **`#include` 路径** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| 10 | **字符串/字符** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| — | **参数/变量/属性** (LSP) | `syntax.parameters` | `#9CDCFE` 青 | `#001080` 深蓝 |
+| — | **单行/多行注释** | `syntax.comments` | `#6A9955` 绿 | `#008000` 绿 |
+
+- **函数调用规则最先应用**作为 fallback，后续关键字规则覆盖 `for (`/`while (`/`if (` 等，使控制流关键字在深色模式下保持紫色而非函数金色。
+- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static` 等，蓝色）规则先应用；控制流关键字（`if`/`for`/`while`/`return`/`switch` 等 14 个，深色紫色/浅色蓝色）规则随后覆盖。
+- `#include` 路径规则在所有 regex 规则中**最后应用**（最高优先级），覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一为字符串色。
+- 注释通过 `highlightBlock` 中的字符扫描在**所有 regex 规则之后**执行，跟踪字符串/字符状态避免误着色。
 
 **语义高亮 (Semantic Tokens) 叠加机制**：
 - `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 LSP semantic tokens，按行号（0-based block number）索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
@@ -721,17 +732,19 @@
 **文件**：`pythonsyntaxhighlighter.h` / `pythonsyntaxhighlighter.cpp`
 
 **职责**：
-- 深色主题 Python 语法高亮，继承 `QSyntaxHighlighter`。
-- 关键字（`def`/`class`/`if`/`for`/`while`/`import` 等）：蓝色 `#569CD6` 加粗。
-- 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：青色 `#4EC9B0`。
-- 常量（`True`/`False`/`None`）：蓝色加粗。
-- 装饰器（`@` 开头）：紫色 `#C586C0`。
-- `self`/`cls`：黄色 `#DCDCAA`。
-- 字符串（普通、f-string、raw string，含前缀 `f`/`r`/`b`/`u`）：橙色 `#CE9178`。
-- 数字：绿色 `#B5CEA8`。
-- **函数调用**（`#DCDCAA`，金色）：Regex 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符。先于内置函数规则应用，确保 `print()`/`len()` 等以函数色而非内置色显示。
-- **注释**（`# 行`）：绿色 `#6A9955`。注释通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `'...'` 和 `"..."` 字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。这确保了注释内部的数字、字符串、关键字等内容不会被其他规则错误高亮（例如 `# {1:[2]}` 中 `1` 和 `2` 不会被错误着色为数字），同时字符串内部的 `#` 不会被误当作注释（例如 `x = "# not a comment"`）。
-- 三引号字符串（`"""` / `'''`）：绿色，支持跨行块状态跟踪。
+- Python 语法高亮，继承 `QSyntaxHighlighter`，颜色**跟随当前 ThemeManager 主题自动切换**。
+- 关键字（所有）：`syntax.keywords` 配色（深色蓝色 `#569CD6` / 浅色蓝色 `#0000ff`，加粗）。
+- **控制流关键字**（`if`/`elif`/`else`/`for`/`while`/`try`/`except`/`finally`/`with`/`return`/`yield`/`break`/`continue`/`raise`/`assert`/`pass`/`match`/`case`，18 个）：`syntax.controlKeywords` 配色（深色紫色 `#c792ea` / 浅色蓝色 `#0000ff`，加粗），规则置于普通关键字之后以覆盖。
+- 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：`syntax.types` 配色。
+- 常量（`True`/`False`/`None`，已包含在 pyKeywords 中）：随普通关键字配色。
+- 装饰器（`@` 开头）：`syntax.pythonDecorators` 配色。
+- `self`/`cls`：`syntax.pythonSelfCls` 配色。
+- 字符串（普通、f-string、raw string，含前缀）：`syntax.strings` 配色。
+- 数字：`syntax.numbers` 配色。
+- **函数调用**：`syntax.functions` 配色，Regex `\b(\w+)(?=\s*\()` 最先应用，确保 `print()`/`len()` 等以函数色而非内置色显示。
+- **注释**（`#`）：`syntax.comments` 配色。通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。
+- 三引号字符串（`"""` / `'''`）：`syntax.comments` 配色，支持跨行块状态跟踪。
+- **主题切换刷新**：连接 `ThemeManager::themeChanged` → `initFormats()` + `rehighlight()`，与 `CppSyntaxHighlighter` 机制相同。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"python"` 语言的高亮器实现。

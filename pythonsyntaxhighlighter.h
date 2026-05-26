@@ -23,6 +23,7 @@ private:
     QVector<HighlightingRule> m_rules;
 
     QTextCharFormat m_keywordFormat;
+    QTextCharFormat m_controlKeywordFormat;
     QTextCharFormat m_builtinFormat;
     QTextCharFormat m_decoratorFormat;
     QTextCharFormat m_selfFormat;
@@ -36,6 +37,8 @@ private:
     QRegularExpression m_tripleSingleEnd;
     QRegularExpression m_tripleDoubleStart;
     QRegularExpression m_tripleDoubleEnd;
+
+    void initFormats();
 };
 
 #endif // PYTHONSYNTAXHIGHLIGHTER_H

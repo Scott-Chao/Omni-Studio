@@ -38,6 +38,20 @@ inline const QStringList &cppKeywords()
     return keywords;
 }
 
+// Control-flow / branching keywords — highlighted differently from other keywords
+// (e.g. purple instead of blue in dark mode)
+inline const QStringList &cppControlKeywords()
+{
+    static const QStringList keywords = {
+        QStringLiteral("if"), QStringLiteral("else"), QStringLiteral("for"),
+        QStringLiteral("while"), QStringLiteral("do"), QStringLiteral("switch"),
+        QStringLiteral("case"), QStringLiteral("default"), QStringLiteral("break"),
+        QStringLiteral("continue"), QStringLiteral("return"), QStringLiteral("goto"),
+        QStringLiteral("try"), QStringLiteral("catch"), QStringLiteral("throw"),
+    };
+    return keywords;
+}
+
 inline const QStringList &cppCommonTypes()
 {
     static const QStringList types = {

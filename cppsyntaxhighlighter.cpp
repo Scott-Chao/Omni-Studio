@@ -1,11 +1,26 @@
 #include "cppsyntaxhighlighter.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include "cppkeywords.h"
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
+    initFormats();
+
+    // Rebuild rules and re-highlight when the theme changes
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]() {
+        initFormats();
+        rehighlight();
+    });
+}
+
+void CppSyntaxHighlighter::initFormats()
+{
     const auto &cfg = ConfigManager::instance();
+
+    // Reset rule list — all rules will be re-created with current theme colors
+    m_rules.clear();
 
     // --- Function call heuristic (regex fallback, before semantic tokens kick in) ---
     // Applied first so keyword/type rules can override it for built-in keywords/type constructors
@@ -19,11 +34,9 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     }
 
     // --- Type format (teal) ---
-    // Must be initialized before :: scope rule which also uses m_typeFormat
     m_typeFormat.setForeground(cfg.syntaxTypes());
 
     // --- :: scope resolution (highlight namespace/class qualifier) ---
-    // Placed before #include rules so include paths overwrite :: inside angle brackets
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*::)"));
@@ -32,7 +45,7 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Keyword format (blue) ---
+    // --- Keyword format ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
@@ -40,6 +53,16 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
         rule.format = m_keywordFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Control-flow keyword format (purple in dark, overrides regular keyword blue) ---
+    m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
+    m_controlKeywordFormat.setFontWeight(QFont::Bold);
+    for (const QString &kw : cppControlKeywords()) {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
+        rule.format = m_controlKeywordFormat;
         m_rules.append(rule);
     }
 
@@ -73,15 +96,14 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
-            QStringLiteral("\\b0[xX][0-9a-fA-F]+[']?[0-9a-fA-F]*\\b"  // hex
-                           "|\\b0[bB][01]+[']?[01]*\\b"                  // binary
+            QStringLiteral("\\b0[xX][0-9a-fA-F]+[']?[0-9a-fA-F]*\\b"
+                           "|\\b0[bB][01]+[']?[01]*\\b"
                            "|\\b[0-9]+[']?[0-9]*(?:\\.[0-9]+[']?[0-9]*)?(?:[eE][+-]?[0-9]+)?(?:f|F|l|L|u|U|ll|LL|ull|ULL)?\\b"));
         rule.format = m_numberFormat;
         m_rules.append(rule);
     }
 
     // --- #include header path ---
-    // Placed after all other regex rules so it overwrites keyword/type/:: matches inside <>
     m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
@@ -98,39 +120,32 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- String format (orange-brown) ---
+    // --- String / char / raw string format ---
     m_stringFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(
-            QStringLiteral(R"("(?:[^"\\]|\\.)*")"));
+        rule.pattern = QRegularExpression(QStringLiteral(R"("(?:[^"\\]|\\.)*")"));
         rule.format = m_stringFormat;
         m_rules.append(rule);
     }
-    // Char literals
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(
-            QStringLiteral(R"('(?:[^'\\]|\\.)'|'(?:\\.)')"));
+        rule.pattern = QRegularExpression(QStringLiteral(R"('(?:[^'\\]|\\.)'|'(?:\\.)')"));
         rule.format = m_stringFormat;
         m_rules.append(rule);
     }
-    // Raw string literals
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(
-            QStringLiteral(R"(R"([^(]*)\([^)]*\)\1")"));
+        rule.pattern = QRegularExpression(QStringLiteral(R"(R"([^(]*)\([^)]*\)\1")"));
         rule.format = m_stringFormat;
         m_rules.append(rule);
     }
 
-    // --- Parameter format ---
+    // --- Parameter format (also used for variables/properties from LSP) ---
     m_parameterFormat.setForeground(cfg.syntaxParameters());
 
-    // --- Single-line comment format (applied in highlightBlock via string-aware scanner) ---
+    // --- Comment formats ---
     m_singleLineCommentFormat.setForeground(cfg.syntaxComments());
-
-    // --- Multi-line comment (block state tracking) ---
     m_multiLineCommentFormat.setForeground(cfg.syntaxComments());
     m_commentStartExpr = QRegularExpression(QStringLiteral("/\\*"));
     m_commentEndExpr = QRegularExpression(QStringLiteral("\\*/"));

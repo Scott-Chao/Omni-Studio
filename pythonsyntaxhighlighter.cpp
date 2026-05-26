@@ -1,13 +1,26 @@
 #include "pythonsyntaxhighlighter.h"
 #include "pykeywords.h"
 #include "configmanager.h"
+#include "thememanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
-    const auto &cfg = ConfigManager::instance();
+    initFormats();
 
-    // --- Comment format (dim green, applied in highlightBlock via string-aware scanner) ---
+    // Rebuild rules and re-highlight when the theme changes
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]() {
+        initFormats();
+        rehighlight();
+    });
+}
+
+void PythonSyntaxHighlighter::initFormats()
+{
+    const auto &cfg = ConfigManager::instance();
+    m_rules.clear();
+
+    // --- Comment format (applied in highlightBlock via string-aware scanner) ---
     m_commentFormat.setForeground(cfg.syntaxComments());
 
     // --- Decorator format (purple) ---
@@ -19,7 +32,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Self/cls format (yellow) ---
+    // --- Self/cls format ---
     m_selfFormat.setForeground(cfg.syntaxPythonSelfCls());
     {
         HighlightingRule rule;
@@ -34,7 +47,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Keyword format (blue, bold) ---
+    // --- Keyword format (bold) ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
@@ -45,10 +58,27 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Constants format (blue, bold) ---
-    // True, False, None already included in pyKeywords()
+    // --- Control-flow keyword format (overrides regular keyword color) ---
+    m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
+    m_controlKeywordFormat.setFontWeight(QFont::Bold);
+    {
+        const QStringList ctrl = {
+            QStringLiteral("if"), QStringLiteral("elif"), QStringLiteral("else"),
+            QStringLiteral("for"), QStringLiteral("while"), QStringLiteral("try"),
+            QStringLiteral("except"), QStringLiteral("finally"), QStringLiteral("with"),
+            QStringLiteral("return"), QStringLiteral("yield"), QStringLiteral("break"),
+            QStringLiteral("continue"), QStringLiteral("raise"), QStringLiteral("assert"),
+            QStringLiteral("pass"), QStringLiteral("match"), QStringLiteral("case"),
+        };
+        for (const QString &kw : ctrl) {
+            HighlightingRule rule;
+            rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
+            rule.format = m_controlKeywordFormat;
+            m_rules.append(rule);
+        }
+    }
 
-    // --- Builtin format (teal) ---
+    // --- Builtin format ---
     m_builtinFormat.setForeground(cfg.syntaxTypes());
     for (const QString &b : pyBuiltins()) {
         HighlightingRule rule;
@@ -57,7 +87,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Function call format (gold) ---
+    // --- Function call format ---
     m_functionFormat.setForeground(cfg.syntaxFunctions());
     {
         HighlightingRule rule;
@@ -66,23 +96,21 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Number format (green) ---
+    // --- Number format ---
     m_numberFormat.setForeground(cfg.syntaxNumbers());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral(
-            "\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b|"   // hex
-            "\\b0[bB][01](?:[01_]*[01])?\\b|"                          // binary
-            "\\b0[oO][0-7](?:[0-7_]*[0-7])?\\b|"                       // octal
-            "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)?[jJ]?\\b"));  // int/float/complex
+            "\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b|"
+            "\\b0[bB][01](?:[01_]*[01])?\\b|"
+            "\\b0[oO][0-7](?:[0-7_]*[0-7])?\\b|"
+            "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)?[jJ]?\\b"));
         rule.format = m_numberFormat;
         m_rules.append(rule);
     }
 
-    // --- String format (orange-brown) ---
+    // --- String format ---
     m_stringFormat.setForeground(cfg.syntaxStrings());
-
-    // Double-quoted strings with optional prefix: f, r, b, u, fr, rf, br, rb
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -90,7 +118,6 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         rule.format = m_stringFormat;
         m_rules.append(rule);
     }
-    // Single-quoted strings with optional prefix
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -125,7 +152,6 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         for (int i = 0; i < text.length(); ++i) {
             if (!inString) {
                 if (text[i] == u'\'' || text[i] == u'"') {
-                    // Skip triple-quoted strings (handled separately below)
                     if (i + 2 < text.length() && text[i] == text[i+1] && text[i] == text[i+2]) {
                         i += 2;
                         continue;
@@ -137,24 +163,20 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
                     break;
                 }
             } else {
-                if (text[i] == u'\\') {
-                    ++i; // skip escaped character
-                    continue;
-                }
+                if (text[i] == u'\\') { ++i; continue; }
                 if (text[i] == stringChar)
                     inString = false;
             }
         }
     }
 
-    // Multi-line triple-quoted string handling — string-aware: skip triple quotes inside single-line strings
+    // Multi-line triple-quoted string handling
     setCurrentBlockState(0);
 
     int searchFrom = 0;
     int prevState = previousBlockState();
 
     if (prevState == 1 || prevState == 2) {
-        // Continuing a triple-quoted string from the previous block
         int state = prevState;
         QString closing = (state == 1) ? QStringLiteral("\"\"\"") : QStringLiteral("'''");
         int endIdx = text.indexOf(closing);
@@ -167,7 +189,6 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         searchFrom = endIdx + 3;
     }
 
-    // Search for new triple-quoted strings in this block — skip positions inside single-line strings
     bool inString = false;
     QChar stringChar;
     for (int i = searchFrom; i < text.length(); ++i) {
@@ -192,10 +213,7 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
                 stringChar = text[i];
             }
         } else {
-            if (text[i] == u'\\') {
-                ++i;
-                continue;
-            }
+            if (text[i] == u'\\') { ++i; continue; }
             if (text[i] == stringChar)
                 inString = false;
         }

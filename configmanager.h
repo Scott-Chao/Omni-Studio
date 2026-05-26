@@ -177,6 +177,7 @@ public:
 
     // ---- Syntax Highlighting ----
     QColor syntaxKeywords() const;
+    QColor syntaxControlKeywords() const;
     QColor syntaxPreprocessor() const;
     QColor syntaxTypes() const;
     QColor syntaxNumbers() const;

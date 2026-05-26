@@ -26,11 +26,12 @@ private:
     struct HighlightingRule {
         QRegularExpression pattern;
         QTextCharFormat format;
-        int captureGroup = 0; // 0 = entire match, 1+ = specific capture group
+        int captureGroup = 0;
     };
     QVector<HighlightingRule> m_rules;
 
     QTextCharFormat m_keywordFormat;
+    QTextCharFormat m_controlKeywordFormat;
     QTextCharFormat m_preprocessorFormat;
     QTextCharFormat m_typeFormat;
     QTextCharFormat m_stringFormat;
@@ -44,10 +45,10 @@ private:
     QRegularExpression m_commentStartExpr;
     QRegularExpression m_commentEndExpr;
 
-    // Semantic tokens indexed by block number (0-based)
     QMap<int, QList<SemanticToken>> m_semanticTokens;
 
     QTextCharFormat formatForTokenType(const QString &type) const;
+    void initFormats();
 };
 
 #endif // CPPSYNTAXHIGHLIGHTER_H
