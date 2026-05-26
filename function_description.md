@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.11）
+## 功能说明文档（v0.12.12）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,11 +60,12 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.12.11
-OpenJudge UI 优化
-- **移除列表项焦点矩形框**：原列表项（作业/题目列表、章节导航）点击选中蓝色高亮时，内部还会出现一个虚线焦点矩形框。改为通过自定义 `QStyledItemDelegate` 在 `paint()` 中清除 `QStyle::State_HasFocus` 标志，阻止原生 Windows 风格绘制 `PE_FrameFocusRect`。`HomeworkDelegate`（作业/题目列表）和新增的 `NoFocusDelegate`（章节导航列表）均采用此方案。
-- **标题项完全不可选中**：主界面"进行中的作业"、"已结束的作业"等区域标题的 `Qt::ItemIsSelectable` 已移除，但点击仍会获得键盘焦点并短暂显示焦点指示。现通过 `m_listWidget` 上安装 `eventFilter()`，拦截 `QEvent::MouseButtonPress` 事件：当点击项的用户角色数据为空（即标题项或分隔项）时直接返回 `true` 消费事件，Qt 不再处理该点击，标题项无任何视觉变化。普通题目/作业项不受影响。
-- **IDE 按钮高亮状态**：工具栏"IDE"按钮已设为可检入（`setCheckable(true)`），现为其样式表新增 `QPushButton:checked` 伪状态：IDE 模式激活时按钮背景变为蓝色（`editor.selectionBackground`）、文字白色粗体，关闭时恢复默认外观，与"选择此题目"按钮的选中态设计一致。
+### 新增 v0.12.12
+OpenJudge IDE 运行支持
+- **IDE 模式下主工具栏运行按钮**：OpenJudge IDE 模式激活时，主窗口顶部工具栏自动显示运行相关按钮（编译 F6 / 运行 F7 / 编译运行 F5 下拉菜单），与代码文件打开时一致。通过新增的 `MainWindow::updateRunActions()` 统一方法检测 `editor->isCodeEdit()` 或 `oj->isIdeMode()` 任一条件满足即显示按钮。`OpenJudgeWidget` 新增 `ideModeChanged(bool)` 信号，在进入/退出 IDE 模式时发出，确保无需切换标签页即可实时更新按钮状态。编译运行、评测、提交操作已支持 IDE 模式（此前已实现）。
+- **退出 IDE 自动关闭输出面板**：`MainWindow` 中 `ideModeChanged` 信号连接在 IDE 关闭时自动停止正在运行的进程并隐藏底部输出面板（`BottomPanel`），覆盖点击 IDE 按钮退出、切换到其他题目（`showDetailPage` 自动退出 IDE）、返回列表页（`showListPage` 自动退出 IDE）等所有退出 IDE 的场景。标签页切换到非代码/非 IDE 标签页时通过 `currentChanged` 处理器隐藏底部面板（已有逻辑）。
+- **IDE 语言选择修复**：修复切换题目后 IDE 语言不正确的问题。将语言选择逻辑从 `setupIdeMode()`（仅首次调用）提取为独立的 `selectIdeLanguage()` 方法，每次进入 IDE 模式时重新评估当前题目的最佳语言（①题目仅支持一种 IDE 语言时自动选中，②否则按题目缓存的语言偏好，③兜底选 C++）。更新下拉框时使用 `blockSignals(true)` 屏蔽 `currentIndexChanged` 信号，避免 `onIdeLanguageChanged()` 将旧编辑器残留代码误保存到新题目的缓存文件中。
+- **IDE 切换语言时清空编辑器**：`loadIdeCodeFromCache()` 在目标语言缓存文件不存在时调用 `m_ideCodeEditor->clear()` 清空编辑器，避免从 Python 切换到 C++ 时编辑器仍残留 Python 代码。
 
 ### 1. `MainWindow` - 主窗口控制器
 

@@ -1392,7 +1392,59 @@ void OpenJudgeWidget::loadIdeCodeFromCache()
         QTextStream in(&file);
         m_ideCodeEditor->setPlainText(in.readAll());
         m_ideCodeEditor->document()->setModified(false);
+    } else {
+        m_ideCodeEditor->clear();
+        m_ideCodeEditor->document()->setModified(false);
     }
+}
+
+void OpenJudgeWidget::selectIdeLanguage()
+{
+    if (!m_langCombo || !m_ideCodeEditor)
+        return;
+
+    const auto opts = ideLanguageOptions();
+
+    // Determine best language:
+    // 1. If problem has exactly one available (supported) language → use it
+    // 2. Else if there's a last-used language (per-problem or global) → use it
+    // 3. Otherwise → first option (C++)
+    int defaultOjId = opts.first().ojId;
+    const auto &avail = m_currentProblem.availableLanguages;
+    QList<int> supportedAvail;
+    for (int langId : avail) {
+        if (m_langCombo->findData(langId) >= 0)
+            supportedAvail.append(langId);
+    }
+    if (supportedAvail.size() == 1) {
+        defaultOjId = supportedAvail.first();
+    } else {
+        int lastLang = loadLastIdeLanguage();
+        if (lastLang > 0 && m_langCombo->findData(lastLang) >= 0) {
+            if (supportedAvail.isEmpty() || supportedAvail.contains(lastLang))
+                defaultOjId = lastLang;
+        }
+    }
+
+    // Update combo (block signals to avoid triggering onIdeLanguageChanged)
+    int defaultIdx = m_langCombo->findData(defaultOjId);
+    if (defaultIdx >= 0) {
+        m_langCombo->blockSignals(true);
+        m_langCombo->setCurrentIndex(defaultIdx);
+        m_langCombo->blockSignals(false);
+    }
+
+    // Apply language to editor
+    m_currentLangId = defaultOjId;
+    QString codeLang = QStringLiteral("cpp");
+    for (const auto &opt : opts) {
+        if (opt.ojId == m_currentLangId) {
+            codeLang = opt.codeLang;
+            break;
+        }
+    }
+    m_currentCodeLangId = codeLang;
+    m_ideCodeEditor->setLanguage(codeLang);
 }
 
 void OpenJudgeWidget::setupIdeMode()
@@ -1417,49 +1469,15 @@ void OpenJudgeWidget::setupIdeMode()
             this, &OpenJudgeWidget::ideDiagnosticsToggleRequested);
     editorLayout->addWidget(m_ideCodeEditor, 1);
 
-    // Populate language combo
+    // Populate language combo (once)
     const auto opts = ideLanguageOptions();
     m_langCombo->blockSignals(true);
     for (const auto &opt : opts)
         m_langCombo->addItem(opt.display, opt.ojId);
-
-    // Determine default language:
-    // 1. If problem has exactly one available (supported) language → use it
-    // 2. Else if there's a last-used language (per-problem or global) → use it
-    // 3. Otherwise → first option (C++)
-    int defaultOjId = opts.first().ojId;
-    const auto &avail = m_currentProblem.availableLanguages;
-    QList<int> supportedAvail;
-    for (int langId : avail) {
-        if (m_langCombo->findData(langId) >= 0)
-            supportedAvail.append(langId);
-    }
-    if (supportedAvail.size() == 1) {
-        defaultOjId = supportedAvail.first();
-    } else {
-        int lastLang = loadLastIdeLanguage();
-        if (lastLang > 0 && m_langCombo->findData(lastLang) >= 0) {
-            // If problem declares available languages, respect that constraint
-            if (supportedAvail.isEmpty() || supportedAvail.contains(lastLang))
-                defaultOjId = lastLang;
-        }
-    }
-    int defaultIdx = m_langCombo->findData(defaultOjId);
-    if (defaultIdx >= 0)
-        m_langCombo->setCurrentIndex(defaultIdx);
     m_langCombo->blockSignals(false);
 
-    // Apply initial language
-    m_currentLangId = m_langCombo->currentData().toInt();
-    QString codeLang = QStringLiteral("cpp");
-    for (const auto &opt : opts) {
-        if (opt.ojId == m_currentLangId) {
-            codeLang = opt.codeLang;
-            break;
-        }
-    }
-    m_currentCodeLangId = codeLang;
-    m_ideCodeEditor->setLanguage(codeLang);
+    // Select language for current problem
+    selectIdeLanguage();
 
     // Splitter ratio clamp (3:7 ~ 7:3)
     connect(m_ideSplitter, &QSplitter::splitterMoved, this, [this](int, int) {
@@ -1516,6 +1534,9 @@ void OpenJudgeWidget::onToggleIdeMode()
         // Lazy-create editor on first use
         if (!m_ideEditorContainer) {
             setupIdeMode();
+        } else {
+            // Re-evaluate language for current problem (may differ from previous)
+            selectIdeLanguage();
         }
 
         // Add editor container to splitter (right side of problem)
@@ -1530,8 +1551,9 @@ void OpenJudgeWidget::onToggleIdeMode()
         m_langCombo->setVisible(true);
         m_toggleProblemBtn->setVisible(true);
         m_ideBtn->setChecked(true);
+        emit ideModeChanged(true);
 
-        // Load cached code for this problem
+        // Load cached code for this problem (after language selection)
         loadIdeCodeFromCache();
         if (m_ideCodeEditor) {
             m_ideCodeEditor->setFocus();
@@ -1556,6 +1578,7 @@ void OpenJudgeWidget::onToggleIdeMode()
             m_toggleProblemBtn->setText(QStringLiteral("隐藏题目"));
         }
         m_ideBtn->setChecked(false);
+        emit ideModeChanged(false);
     }
 }
 

@@ -128,6 +128,7 @@ private:
     QAction *m_exportPdfAction = nullptr;
     void updatePreviewActionState();
     void updateSplitPreviewActionState();
+    void updateRunActions();
     // 右侧统一面板（历史/大纲/标签/反链）
     RightPanelContainer *m_rightPanel;
     QDockWidget *m_dockRightPanel;

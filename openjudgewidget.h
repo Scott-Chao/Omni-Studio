@@ -49,6 +49,7 @@ signals:
     void submissionResultReady(const SubmissionResult &result);
     void submissionFailed(const QString &error);
     void ideDiagnosticsToggleRequested();
+    void ideModeChanged(bool ideMode);
 
 private slots:
     void onLoginSuccess();
@@ -90,6 +91,7 @@ private:
     void recordSectionPositions();
 
     void setupIdeMode();
+    void selectIdeLanguage();
     void loadIdeCodeFromCache();
     QString ideCacheDir() const;
     QString ideLangCacheFilePath() const;

@@ -373,13 +373,8 @@ MainWindow::MainWindow(QWidget *parent)
         EditorWidget *editor = m_tabManager->currentEditor();
         if (editor)
             editor->setFocus();
-        // Re-enable buttons based on current tab
-        bool isCode = editor && editor->isCodeEdit();
-        m_compileAction->setEnabled(isCode);
-        m_runAction->setEnabled(isCode);
-        m_compileRunAction->setEnabled(isCode);
-        if (m_runToolAction)
-            m_runToolAction->setEnabled(isCode);
+        // Re-enable buttons based on current tab (code file or OpenJudge IDE mode)
+        updateRunActions();
         // Clear MD code block state if stopped mid-run
         if (m_isRunningCodeBlock) {
             m_isRunningCodeBlock = false;
@@ -905,16 +900,8 @@ MainWindow::MainWindow(QWidget *parent)
         filterAiHistoryByCurrentFile();
         updateCurrentEditorCompletions();
 
-        // 更新编译运行按钮状态
-        bool isCode = editor && editor->isCodeEdit();
-        bool running = m_processRunner->isRunning();
-        m_compileAction->setEnabled(isCode && !running);
-        m_runAction->setEnabled(isCode && !running);
-        m_compileRunAction->setEnabled(isCode && !running);
-        if (m_runToolAction) {
-            m_runToolAction->setVisible(isCode);
-            m_runToolAction->setEnabled(isCode && !running);
-        }
+        // 更新编译运行按钮状态（代码文件 或 OpenJudge IDE 模式）
+        updateRunActions();
 
         // 导出PDF 仅对 .md 文件启用（按钮可见 + 快捷键生效）
         bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
@@ -1078,14 +1065,8 @@ void MainWindow::onFileSelected(const QString &filePath)
     updatePreviewActionState();
     updateSplitPreviewActionState();
     addToRecentFiles(filePath);
-    // 更新运行按钮显隐
-    if (auto *ed = m_tabManager->currentEditor()) {
-        bool isCode = ed->isCodeEdit();
-        if (m_runToolAction) {
-            m_runToolAction->setVisible(isCode);
-            m_runToolAction->setEnabled(isCode);
-        }
-    }
+    // 更新运行按钮显隐（代码文件 或 OpenJudge IDE 模式）
+    updateRunActions();
     // openPreview may reuse the existing preview tab without changing
     // the current index, so currentChanged is NOT emitted. Explicitly
     // refresh side panels whose content depends on the active file.
@@ -2137,6 +2118,21 @@ void MainWindow::updateSplitPreviewActionState()
     }
 }
 
+void MainWindow::updateRunActions()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
+    bool isCode = (editor && editor->isCodeEdit()) || (oj && oj->isIdeMode());
+    bool running = m_processRunner->isRunning();
+    m_compileAction->setEnabled(isCode && !running);
+    m_runAction->setEnabled(isCode && !running);
+    m_compileRunAction->setEnabled(isCode && !running);
+    if (m_runToolAction) {
+        m_runToolAction->setVisible(isCode);
+        m_runToolAction->setEnabled(isCode && !running);
+    }
+}
+
 void MainWindow::addToRecentFiles(const QString &filePath)
 {
     QString cleanPath = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
@@ -3126,6 +3122,15 @@ void MainWindow::onOpenJudgeRequested()
         });
         connect(oj, &OpenJudgeWidget::ideDiagnosticsToggleRequested,
                 this, &MainWindow::toggleDiagnosticsInCodeEditor);
+        connect(oj, &OpenJudgeWidget::ideModeChanged,
+                this, [this](bool ideMode) {
+            updateRunActions();
+            if (!ideMode) {
+                if (m_processRunner->isRunning())
+                    onStopProcess();
+                m_bottomPanel->hide();
+            }
+        });
     }
 
     // Show login dialog if not logged in (after tab is visible)
