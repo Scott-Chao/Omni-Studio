@@ -80,6 +80,7 @@ private slots:
 private:
     void setupUi();
     void setupDetailPage();
+    bool eventFilter(QObject *obj, QEvent *event) override;
     void showListPage();
     void showDetailPage(const ProblemDetail &detail);
     void rebuildListView();

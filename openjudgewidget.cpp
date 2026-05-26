@@ -32,6 +32,7 @@
 #include <QScrollBar>
 #include <QAbstractTextDocumentLayout>
 #include <QTextBlock>
+#include <QMouseEvent>
 
 // ===== HomeworkDelegate: draws deadline right-aligned =====
 class HomeworkDelegate : public QStyledItemDelegate {
@@ -41,7 +42,9 @@ public:
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
                const QModelIndex &index) const override
     {
-        QStyledItemDelegate::paint(painter, option, index);
+        QStyleOptionViewItem opt = option;
+        opt.state &= ~QStyle::State_HasFocus;
+        QStyledItemDelegate::paint(painter, opt, index);
 
         QString deadline = index.data(Qt::UserRole + 1).toString();
         if (deadline.isEmpty())
@@ -57,6 +60,20 @@ public:
         QString elided = painter->fontMetrics().elidedText(deadline, Qt::ElideLeft, r.width() / 2);
         painter->drawText(r, Qt::AlignRight | Qt::AlignVCenter, elided);
         painter->restore();
+    }
+};
+
+// ===== NoFocusDelegate: prevents focus rect drawing =====
+class NoFocusDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        opt.state &= ~QStyle::State_HasFocus;
+        QStyledItemDelegate::paint(painter, opt, index);
     }
 };
 
@@ -114,6 +131,8 @@ OpenJudgeWidget::OpenJudgeWidget(SettingsManager *settings, QWidget *parent)
 
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             this, &OpenJudgeWidget::refreshStyle);
+
+    m_listWidget->installEventFilter(this);
 }
 
 // ======================================================================
@@ -178,7 +197,14 @@ void OpenJudgeWidget::setupUi()
     connect(m_toggleProblemBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleProblem);
 
     m_ideBtn = new QPushButton(QStringLiteral("IDE"));
-    m_ideBtn->setStyleSheet(buttonStyle(btnBg, btnFg, btnBorder, btnHover, disabledFg));
+    m_ideBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; padding: 4px 12px; } "
+        "QPushButton:hover { background: %4; } "
+        "QPushButton:checked { background: %5; color: white; font-weight: bold; } "
+        "QPushButton:disabled { color: %6; }")
+        .arg(btnBg.name(), btnFg.name(), btnBorder.name(), btnHover.name(),
+             tm.color("editor.selectionBackground").name(), disabledFg.name()));
     m_ideBtn->setCheckable(true);
     m_ideBtn->setVisible(false);
     connect(m_ideBtn, &QPushButton::clicked, this, &OpenJudgeWidget::onToggleIdeMode);
@@ -275,7 +301,7 @@ void OpenJudgeWidget::setupUi()
     m_listWidget->setItemDelegate(new HomeworkDelegate(m_listWidget));
     m_listWidget->setStyleSheet(QStringLiteral(
         "QListWidget { color: %1; background: %2; border: none; }"
-        "QListWidget::item { padding: 6px 12px; }"
+        "QListWidget::item { padding: 6px 12px; outline: none; }"
         "QListWidget::item:hover { background: %3; }"
         "QListWidget::item:selected { background: %4; color: white; }")
         .arg(tm.color("editor.foreground").name(),
@@ -295,12 +321,13 @@ void OpenJudgeWidget::setupDetailPage()
     m_sectionList->setFont(QFont("Microsoft YaHei", 10));
     m_sectionList->setFixedWidth(ConfigManager::instance().openJudgeSectionListWidth());
     m_sectionList->setSpacing(2);
+    m_sectionList->setItemDelegate(new NoFocusDelegate(m_sectionList));
     m_sectionList->setCursor(Qt::PointingHandCursor);
     m_sectionList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_sectionList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_sectionList->setStyleSheet(QStringLiteral(
         "QListWidget { color: %1; background: %2; border: none; }"
-        "QListWidget::item { padding: 6px 8px; }"
+        "QListWidget::item { padding: 6px 8px; outline: none; }"
         "QListWidget::item:hover { background: %3; }"
         "QListWidget::item:selected { background: %4; color: white; }")
         .arg(tm.color("editor.foreground").name(),
@@ -772,10 +799,26 @@ void OpenJudgeWidget::onNetworkError(const QString &error)
 // Item / section clicks
 // ======================================================================
 
+bool OpenJudgeWidget::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_listWidget && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
+        QListWidgetItem *item = m_listWidget->itemAt(mouseEvent->pos());
+        if (item && item->data(Qt::UserRole).toString().isEmpty()) {
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, event);
+}
+
 void OpenJudgeWidget::onItemClicked(QListWidgetItem *item)
 {
     QString url = item->data(Qt::UserRole).toString();
-    if (url.isEmpty()) return;
+    if (url.isEmpty()) {
+        m_listWidget->clearFocus();
+        m_listWidget->clearSelection();
+        return;
+    }
 
     if (m_viewState == OJ_HOMEWORK_LIST) {
         m_currentHomeworkUrl = url;
@@ -1087,12 +1130,19 @@ void OpenJudgeWidget::refreshStyle()
     m_nextPageBtn->setStyleSheet(btnQss);
     m_toggleSidebarBtn->setStyleSheet(btnQss);
     m_toggleProblemBtn->setStyleSheet(btnQss);
-    m_ideBtn->setStyleSheet(btnQss);
+    m_ideBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; padding: 4px 12px; } "
+        "QPushButton:hover { background: %4; } "
+        "QPushButton:checked { background: %5; color: white; font-weight: bold; } "
+        "QPushButton:disabled { color: %6; }")
+        .arg(btnBg.name(), btnFg.name(), btnBorder.name(), btnHover.name(),
+             tm.color("editor.selectionBackground").name(), disabledFg.name()));
     updateSelectButtonStyle(m_currentProblemSelected);
 
     m_listWidget->setStyleSheet(QStringLiteral(
         "QListWidget { color: %1; background: %2; border: none; }"
-        "QListWidget::item { padding: 6px 12px; }"
+        "QListWidget::item { padding: 6px 12px; outline: none; }"
         "QListWidget::item:hover { background: %3; }"
         "QListWidget::item:selected { background: %4; color: white; }")
         .arg(tm.color("editor.foreground").name(),
@@ -1102,7 +1152,7 @@ void OpenJudgeWidget::refreshStyle()
 
     m_sectionList->setStyleSheet(QStringLiteral(
         "QListWidget { color: %1; background: %2; border: none; }"
-        "QListWidget::item { padding: 6px 8px; }"
+        "QListWidget::item { padding: 6px 8px; outline: none; }"
         "QListWidget::item:hover { background: %3; }"
         "QListWidget::item:selected { background: %4; color: white; }")
         .arg(tm.color("editor.foreground").name(),

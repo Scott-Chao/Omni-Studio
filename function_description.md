@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.10）
+## 功能说明文档（v0.12.11）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,15 +60,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.12.10
-OpenJudge 功能增强
-- **OpenJudge 题目浏览内置到标签页**：OpenJudge 题目浏览从独立窗口改为嵌入主窗口的标签页（`OpenJudgeWidget`），由 `TabManager` 管理为非 `EditorWidget` 标签页。关闭标签页时直接移除无需保存提示，激活时自动禁用保存/另存为菜单项。
-- **题目详情页连续滚动浏览**：题目详情页面改为左侧章节导航（`m_sectionList`，100px，默认隐藏）+ 右侧 `QTextBrowser` 全文连续滚动，所有章节拼接为单个 HTML 文档一次性渲染。左侧栏目联动右侧内容（scroll-spy），点击跳转 → `scrollToAnchor`，滚动右侧 → 自动检测当前章节并高亮左侧导航项（`m_scrollingFromClick` 防反馈锁）。
-- **题目详情页左侧栏目可隐藏**：工具栏"显示栏目"按钮（`m_toggleSidebarBtn`，仅题目详情页可见），点击切换左侧章节导航的显示/隐藏，重新记录锚点位置以适配宽度变化。
-- **OpenJudge IDE 模式**：题目详情页工具栏新增"IDE"切换按钮和语言选择下拉框（C/C++/Python）。IDE 模式下将题目内容区域改为水平 `QSplitter`：左侧题目内容 + 右侧嵌入式 `CodeEditor`（`m_ideCodeEditor`），支持语法高亮、LSP 后端和诊断。分隔条拖拽范围钳制在 3:7 ~ 7:3。编辑器首次使用时延迟创建（`setupIdeMode()`）。代码按题目缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出或切换语言时自动保存（`saveIdeCodeToCache()`），再次进入时恢复（`loadIdeCodeFromCache()`）。语言选择器切换时先保存旧代码再加载新语言缓存，编辑器语法高亮和 LSP 后端同步切换。编译运行、评测、提交均使用 IDE 嵌入编辑器内容。
-- **IDE 模式下题目显示/隐藏**：工具栏"隐藏题目"按钮（`m_toggleProblemBtn`，仅 IDE 模式可见），隐藏左侧题目内容使编辑器铺满整个页面，再次点击恢复并还原分割比例。退出 IDE 时自动恢复题目可见性。
-- **打开 IDE 自动选中题目**：进入 IDE 模式时，若题目尚未选择，自动检测已有样例缓存或提取样例写入缓存，emit `sampleSelected(folderPath)`，无需手动点击"选择此题目"。关闭 IDE 不取消选择。切换到其他题目后再次打开 IDE 时自动选择新题目。
-- **题目样例按题目独立缓存**：样例缓存从固定的 `SM-OJ-Cache/` 全局目录改为 `SM-OJ-Cache/samples/{题目标题}/` 逐题目隔离目录（`samplesCacheDir()`）。`hasCachedSamples()` 检测已有缓存避免重复提取。`writeSamplesToCache()` 仅清空当前题目子目录，不影响其他题目。选择题目时优先复用已有缓存。
+### 新增 v0.12.11
+OpenJudge UI 优化
+- **移除列表项焦点矩形框**：原列表项（作业/题目列表、章节导航）点击选中蓝色高亮时，内部还会出现一个虚线焦点矩形框。改为通过自定义 `QStyledItemDelegate` 在 `paint()` 中清除 `QStyle::State_HasFocus` 标志，阻止原生 Windows 风格绘制 `PE_FrameFocusRect`。`HomeworkDelegate`（作业/题目列表）和新增的 `NoFocusDelegate`（章节导航列表）均采用此方案。
+- **标题项完全不可选中**：主界面"进行中的作业"、"已结束的作业"等区域标题的 `Qt::ItemIsSelectable` 已移除，但点击仍会获得键盘焦点并短暂显示焦点指示。现通过 `m_listWidget` 上安装 `eventFilter()`，拦截 `QEvent::MouseButtonPress` 事件：当点击项的用户角色数据为空（即标题项或分隔项）时直接返回 `true` 消费事件，Qt 不再处理该点击，标题项无任何视觉变化。普通题目/作业项不受影响。
+- **IDE 按钮高亮状态**：工具栏"IDE"按钮已设为可检入（`setCheckable(true)`），现为其样式表新增 `QPushButton:checked` 伪状态：IDE 模式激活时按钮背景变为蓝色（`editor.selectionBackground`）、文字白色粗体，关闭时恢复默认外观，与"选择此题目"按钮的选中态设计一致。
 
 ### 1. `MainWindow` - 主窗口控制器
 
