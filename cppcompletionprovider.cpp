@@ -288,18 +288,21 @@ void CppCompletionProvider::openDocument(const QString &uri, const QString &lang
     m_documentUri = uri;
     m_documentLanguageId = languageId;
     m_documentVersion = 1;
+    m_pendingText = text;
     debugLog(QString("CppCompletionProvider::openDocument uri=%1 lang=%2 len=%3 initialized=%4")
         .arg(uri, languageId).arg(text.length()).arg(m_initialized));
 
     if (!m_initialized) {
-        // Server not ready yet — save text so onServerReady can pick it up
-        m_pendingText = text;
+        // Server not ready yet — save text and flag so onServerReady can pick it up
         m_pendingOpen = true;
         return;
     }
 
     sendDidOpen(text);
     m_documentOpen = true;
+
+    // Request initial semantic tokens (debounced, same as after edits)
+    m_semanticTokensTimer.start();
 }
 
 void CppCompletionProvider::updateText(const QString &text)

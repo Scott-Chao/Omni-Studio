@@ -60,19 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-Regex 即时高亮 + LSP Semantic Tokens 语义高亮混合策略
-- Regex 增强（即时生效，不依赖 LSP）
-  - #include <header> 和 "header" 中的头文件名单独高亮
-  - 函数调用启发式匹配（name( 识别为函数色）
-  - 类/结构体/枚举声明名高亮
-  - Python 同步新增函数调用高亮
-- LSP Semantic Tokens（300ms debounce，提供精确语义高亮）
-  - CompletionProvider 新增 SemanticToken 结构体和 semanticTokensReady 信号
-  - CppCompletionProvider 向 clangd 请求 textDocument/semanticTokens/full，解码 delta-encoded 数据
-  - CppSyntaxHighlighter接收tokens，在highlightBlock中叠加显示——跳过已被注释/字符串/关键字覆盖的位置
-  - 支持 token 类型：函数/方法（金色）、参数（浅蓝）、类/结构体/枚举（复用类型色）、宏（复用预处理色）
-
+### 修复
+- 修复打开文件时变量名高亮不触发的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
