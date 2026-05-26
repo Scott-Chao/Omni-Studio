@@ -61,11 +61,9 @@ protected:
 #include "ai/aicontextmanager.h"
 #include "ai/prompttemplates.h"
 #include "ai/aiprovider.h"
-#include "ai/aiproviderfactory.h"
-#include "ai/anthropicprovider.h"
-#include "ai/openaiprovider.h"
 #include "ai/aihistorylistwidget.h"
 #include "ai/errorjournal.h"
+#include "ai/airequesthandler.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include "codeeditor.h"
@@ -741,6 +739,15 @@ MainWindow::MainWindow(QWidget *parent)
     });
     addAction(m_toggleAiAction);
 
+    // AI request handler
+    m_aiHandler = new AiRequestHandler(this);
+    m_aiHandler->setAiPanel(m_aiPanel);
+    m_aiHandler->setTabManager(m_tabManager);
+    m_aiHandler->setSettingsManager(m_settings);
+    connect(m_aiHandler, &AiRequestHandler::streamingStateChanged, this, [this](bool streaming) {
+        m_aiPanel->setInputEnabled(!streaming);
+    });
+
     // Build shortcut action map for dynamic rebinding
     m_shortcutActions["toggle_right_panel"] = toggleRightPanelAction;
     m_shortcutActions["toggle_history"] = m_toggleHistoryAction;
@@ -767,27 +774,25 @@ MainWindow::MainWindow(QWidget *parent)
 
     // AI 端到端信号连接
     connect(m_aiPanel, &AiPanel::sendMessage, this, [this](const QString &text) {
-        startAiRequest(AiAction::FreeChat, text);
+        m_aiHandler->startAiRequest(AiAction::FreeChat, text);
     });
     connect(m_aiPanel, &AiPanel::actionTriggered, this, [this](int actionIndex) {
-        startAiRequest(static_cast<AiAction>(actionIndex));
+        m_aiHandler->startAiRequest(static_cast<AiAction>(actionIndex));
     });
     connect(m_aiPanel, &AiPanel::clearRequested, this, [this]() {
-        abortAiRequest();
-        m_aiHistory.clear();
-        AiHistoryManager::instance().clearCurrentConversation();
+        m_aiHandler->clearConversation();
     });
     connect(m_aiPanel, &AiPanel::newConversationRequested, this, [this]() {
-        abortAiRequest();
-        m_aiHistory.clear();
-        AiHistoryManager::instance().createConversation(tr("新对话"), {});
+        m_aiHandler->newConversation();
     });
 
     // ── History list widget connections ──
     {
         auto *historyWidget = m_aiPanel->historyListWidget();
-        connect(historyWidget, &AiHistoryListWidget::conversationSelected,
-                this, &MainWindow::loadAiConversation);
+        connect(historyWidget, &AiHistoryListWidget::conversationSelected, this, [this](const QString &convId) {
+            m_aiHandler->loadAiConversation(convId);
+            filterAiHistoryByCurrentFile();
+        });
         connect(historyWidget, &AiHistoryListWidget::renameRequested, this, [this](const QString &convId) {
             auto &mgr = AiHistoryManager::instance();
             AiConversation conv = mgr.conversationById(convId);
@@ -805,10 +810,9 @@ MainWindow::MainWindow(QWidget *parent)
             auto result = QMessageBox::question(this, tr("删除对话"),
                 tr("确定要删除「%1」吗？").arg(conv.title));
             if (result == QMessageBox::Yes) {
-                // If deleting the current conversation, clear state
                 if (convId == mgr.currentConversationId()) {
                     m_aiPanel->clearChat();
-                    m_aiHistory.clear();
+                    m_aiHandler->clearHistory();
                 }
                 mgr.deleteConversation(convId);
             }
@@ -834,7 +838,6 @@ MainWindow::MainWindow(QWidget *parent)
     // ── Refresh history list when history tab becomes visible ──
     connect(m_aiPanel, &AiPanel::historyListVisibilityChanged, this, [this](bool) {
         filterAiHistoryByCurrentFile();
-        // Update active dot
         m_aiPanel->historyListWidget()->setActiveConversationId(
             AiHistoryManager::instance().currentConversationId());
     });
@@ -1542,314 +1545,6 @@ void MainWindow::updateAiActionBar()
 
     const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
     m_aiPanel->setActionList(actionsForMode(mode));
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Context window management for multi-turn conversation history.
-// m_aiHistory stores the FULL, unpruned conversation.
-// Each API call gets a token-aware windowed COPY.
-// ═══════════════════════════════════════════════════════════════════════
-
-// Rough token estimation: CJK ≈1 token/char, ASCII ≈1 token/4 chars, +overhead
-static int estimateTokens(const QString &text)
-{
-    if (text.isEmpty())
-        return 0;
-    int cjk = 0, ascii = 0;
-    for (const QChar &c : text) {
-        if (c.unicode() >= 0x2E80)
-            ++cjk;
-        else if (c.unicode() < 0x80)
-            ++ascii;
-    }
-    return cjk + ascii / 4 + 2;
-}
-
-// Model → max context window token limit (conservative values from official docs)
-static int modelContextLimit(const QString &model)
-{
-    struct Entry { const char *prefix; int limit; };
-    static const Entry entries[] = {
-        {"claude-3-opus-20240229", 200000},
-        {"claude-3-opus-4-7",      200000},
-        {"claude-sonnet-4-6",      200000},
-        {"claude-haiku-4-5",       200000},
-        {"claude-3-5-sonnet",      200000},
-        {"claude-3-5-haiku",       200000},
-        {"claude-3-sonnet",        200000},
-        {"claude-3-haiku",         200000},
-        {"claude-2",               100000},
-        {"claude",                 200000},
-        {"gpt-4-turbo",            128000},
-        {"gpt-4o-mini",            128000},
-        {"gpt-4o",                 128000},
-        {"gpt-4",                   8192},
-        {"gpt-3.5-turbo",           16385},
-        {"deepseek-chat",           65536},
-        {"deepseek-reasoner",       65536},
-        {"gemini",                 1048576},
-        {nullptr, 0}
-    };
-    for (const Entry *e = entries; e->prefix; ++e) {
-        if (model.contains(QLatin1String(e->prefix)))
-            return e->limit;
-    }
-    return 128000; // generous fallback for unknown / future models
-}
-
-// Build a token-aware window: keep the newest messages that fit within budget.
-// Never prunes the original history — works on a copy.
-static QList<Message> pruneContextWindow(const QList<Message> &history,
-                                         const QString &model,
-                                         int maxResponseTokens,
-                                         const QString &systemPrompt)
-{
-    const int contextLimit = modelContextLimit(model);
-    const int systemTokens = estimateTokens(systemPrompt);
-
-    // Budget = total context - response allocation - system prompt - safety margin
-    int available = contextLimit - maxResponseTokens - systemTokens;
-    available = qMax(available * 9 / 10, 2048); // 10% safety, min 2048
-
-    QList<Message> window;
-    int totalTokens = 0;
-    // Walk backwards (newest first) to keep the most recent context
-    for (int i = history.size() - 1; i >= 0; --i) {
-        const int msgTokens = estimateTokens(history[i].content) + 8; // +JSON overhead
-        if (totalTokens + msgTokens > available && !window.isEmpty())
-            break;
-        window.prepend(history[i]);
-        totalTokens += msgTokens;
-    }
-    return window;
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-
-void MainWindow::startAiRequest(AiAction action, const QString &freeQuery)
-{
-    // 1. Abort any ongoing request
-    if (m_aiStreaming) {
-        abortAiRequest();
-    }
-
-    m_aiStreaming = true;
-
-    // 2. Collect context from current editor
-    EditorWidget *editor = m_tabManager->currentEditor();
-    ContextBundle ctx;
-    if (editor)
-        ctx = AiContextManager::collectContext(editor);
-
-    // 4. Build prompt
-    PromptBundle prompt = buildPrompt(action, ctx, freeQuery);
-
-    // 5. Read AI settings
-    const QString apiKey = m_settings->aiApiKey();
-    if (apiKey.isEmpty()) {
-        m_aiPanel->addAssistantMessage(tr("请先在设置 → AI 服务中配置 API Key"));
-        m_aiStreaming = false;
-        return;
-    }
-
-    const QString providerType = m_settings->value("ai.provider_type",
-        ConfigManager::instance().aiProviderType()).toString();
-    const QString model = m_settings->value("ai.model",
-        ConfigManager::instance().aiModel()).toString();
-    const QString endpoint = m_settings->value("ai.endpoint",
-        ConfigManager::instance().aiEndpoint()).toString();
-    const int maxTokens = m_settings->value("ai.max_tokens",
-        ConfigManager::instance().aiMaxTokens()).toInt();
-
-    // 6. Create provider (always recreate to pick up settings changes)
-    if (m_aiProvider) {
-        m_aiProvider->disconnect();
-        m_aiProvider->deleteLater();
-        m_aiProvider = nullptr;
-    }
-
-    AiProviderFactory::ProviderType type = AiProviderFactory::typeFromString(providerType);
-    m_aiProvider = AiProviderFactory::createProvider(type, this);
-
-    // 7. Configure provider
-    m_aiProvider->setApiKey(apiKey);
-    m_aiProvider->setModel(model);
-    m_aiProvider->setMaxTokens(maxTokens);
-    m_aiProvider->setSystemPrompt(prompt.systemPrompt);
-
-    if (auto *anthropic = qobject_cast<AnthropicProvider*>(m_aiProvider)) {
-        anthropic->setEndpoint(endpoint);
-    } else if (auto *openai = qobject_cast<OpenAiProvider*>(m_aiProvider)) {
-        openai->setEndpoint(endpoint);
-    }
-
-    // 8. Connect provider signals
-    connect(m_aiProvider, &AiProvider::partialResponse,
-            this, &MainWindow::onAiPartialResponse);
-    connect(m_aiProvider, &AiProvider::finished,
-            this, &MainWindow::onAiFinished);
-    connect(m_aiProvider, &AiProvider::error,
-            this, &MainWindow::onAiError);
-
-    // 9. Display user message in chat
-    QString userDisplayText;
-    if (action == AiAction::FreeChat) {
-        userDisplayText = freeQuery;
-        m_aiPanel->addUserMessage(freeQuery);
-    } else {
-        const ActionInfo *info = findActionInfo(action);
-        userDisplayText = info ? tr(info->label) : tr("AI 操作");
-        if (!ctx.selectedText.isEmpty()) {
-            userDisplayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
-        }
-        m_aiPanel->addUserMessage(userDisplayText);
-    }
-
-    // 9b. Persist user message to AiHistoryManager
-    {
-        auto &mgr = AiHistoryManager::instance();
-        // Create conversation on first message if none exists
-        if (mgr.currentConversationId().isEmpty()) {
-            QString convTitle;
-            if (action == AiAction::FreeChat) {
-                convTitle = freeQuery.left(30).trimmed();
-                if (convTitle.isEmpty()) convTitle = tr("新对话");
-            } else {
-                const ActionInfo *info = findActionInfo(action);
-                convTitle = info ? tr(info->label) : tr("AI 操作");
-            }
-            QString filePath = (action != AiAction::FreeChat) ? ctx.filePath : QString();
-            mgr.createConversation(convTitle, filePath);
-        }
-
-        AiMessage histMsg;
-        histMsg.role = MessageRole::User;
-        histMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
-        histMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
-        mgr.appendMessage(mgr.currentConversationId(), histMsg);
-    }
-
-    // 10. Add empty assistant bubble as streaming target
-    m_aiPanel->addAssistantMessage(QString());
-
-    // 11. Append current user message to canonical full history (unpruned)
-    Message userMsg;
-    userMsg.role = MessageRole::User;
-    userMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
-    m_aiHistory.append(userMsg);
-
-    // 12. Build token-aware context window for the API call (copy, never modify m_aiHistory)
-    QList<Message> messages = pruneContextWindow(m_aiHistory, model, maxTokens, prompt.systemPrompt);
-
-    // 13. Disable input and start streaming
-    m_aiPanel->setInputEnabled(false);
-    m_aiProvider->chatStream(messages);
-}
-
-void MainWindow::abortAiRequest()
-{
-    if (m_aiProvider) {
-        m_aiProvider->cancel();
-        m_aiProvider->disconnect();
-    }
-    m_aiStreaming = false;
-    m_aiPanel->setInputEnabled(true);
-}
-
-void MainWindow::onAiPartialResponse(const QString &text)
-{
-    if (text.isEmpty())
-        return;
-    m_aiPanel->appendToLastAssistant(text);
-}
-
-void MainWindow::onAiFinished()
-{
-    // Flush any pending debounced content update so the final
-    // assistant response text is fully rendered before persisting.
-    m_aiPanel->flushPendingUpdates();
-
-    // Persist assistant response to AiHistoryManager
-    {
-        auto &mgr = AiHistoryManager::instance();
-        if (!mgr.currentConversationId().isEmpty()) {
-            QString content = m_aiPanel->lastAssistantContent();
-            if (!content.isEmpty()) {
-                AiMessage assistantMsg;
-                assistantMsg.role = MessageRole::Assistant;
-                assistantMsg.content = content;
-                assistantMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
-                mgr.appendMessage(mgr.currentConversationId(), assistantMsg);
-            }
-        }
-    }
-
-    // Save assistant response to in-memory history for subsequent turns
-    if (!m_aiHistory.isEmpty()) {
-        QString content = m_aiPanel->lastAssistantContent();
-        if (!content.isEmpty()) {
-            Message assistantMsg;
-            assistantMsg.role = MessageRole::Assistant;
-            assistantMsg.content = content;
-            m_aiHistory.append(assistantMsg);
-        }
-    }
-
-    m_aiStreaming = false;
-    m_aiPanel->setInputEnabled(true);
-}
-
-void MainWindow::onAiError(const QString &message)
-{
-    // Append error to existing streaming bubble, or create a new one
-    if (m_aiPanel->hasStreamingTarget()) {
-        m_aiPanel->appendToLastAssistant(
-            QStringLiteral("**") + tr("错误") + QStringLiteral("：**") + message);
-    } else {
-        m_aiPanel->addAssistantMessage(tr("错误：") + message);
-    }
-
-    m_aiStreaming = false;
-    m_aiPanel->setInputEnabled(true);
-}
-
-// ── History list integration ─────────────────────────────────────
-
-void MainWindow::loadAiConversation(const QString &convId)
-{
-    // Abort any ongoing request
-    if (m_aiStreaming)
-        abortAiRequest();
-
-    // Clear current state
-    m_aiPanel->clearChat();
-    m_aiHistory.clear();
-
-    auto &mgr = AiHistoryManager::instance();
-
-    // Set as current conversation
-    mgr.setCurrentConversation(convId);
-
-    // Load and display messages
-    const QList<AiMessage> messages = mgr.loadMessages(convId);
-    for (const auto &aiMsg : messages) {
-        if (aiMsg.role == MessageRole::Assistant)
-            m_aiPanel->addAssistantMessage(aiMsg.content);
-        else
-            m_aiPanel->addUserMessage(aiMsg.content);
-
-        // Rebuild m_aiHistory for API context
-        Message msg;
-        msg.role = aiMsg.role;
-        msg.content = aiMsg.content;
-        m_aiHistory.append(msg);
-    }
-
-    // Update active dot in history list
-    filterAiHistoryByCurrentFile();
-
-    // Switch back to chat tab
-    m_aiPanel->setCurrentTab(AiPanel::ChatTab);
 }
 
 void MainWindow::filterAiHistoryByCurrentFile()

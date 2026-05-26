@@ -5,8 +5,6 @@
 #include <QList>
 #include <QMap>
 #include "smddiagnostic.h"
-#include "ai/aiprovider.h"
-#include "ai/prompttemplates.h"
 #include "ai/aihistorymanager.h"
 #include <QTabWidget>
 #include <QSplitter>
@@ -44,6 +42,7 @@ class QStackedWidget;
 class SettingsPanel;
 class HelpPanel;
 class AiPanel;
+class AiRequestHandler;
 class TitleBarButton;
 
 QT_BEGIN_NAMESPACE
@@ -211,17 +210,13 @@ private:
     QAction *m_helpAction = nullptr;
 
     // AI 助手
+    void updateAiActionBar();
+    void filterAiHistoryByCurrentFile();
     AiPanel *m_aiPanel = nullptr;
     QDockWidget *m_dockAi = nullptr;
     QAction *m_toggleAiAction = nullptr;
-    AiProvider *m_aiProvider = nullptr;
-    QList<Message> m_aiHistory;
-    bool m_aiStreaming = false;
+    AiRequestHandler *m_aiHandler = nullptr;
 
-    void startAiRequest(AiAction action, const QString &freeQuery = QString());
-    void abortAiRequest();
-    void loadAiConversation(const QString &convId);
-    void filterAiHistoryByCurrentFile();
     void showRightPanel(int panelIndex);
 
     // .md ↔ .smd 转换
@@ -272,10 +267,6 @@ private:
     void onPreviewSettingChanged(const QString &key, const QVariant &value);
     void onSearchSettingChanged(const QString &key, const QVariant &value);
     void onAiSettingChanged(const QString &key, const QVariant &value);
-    void updateAiActionBar();
-    void onAiPartialResponse(const QString &text);
-    void onAiFinished();
-    void onAiError(const QString &message);
     void onResetToDefaults();
     void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
     QString saveCodeToTempFile(EditorWidget *editor);

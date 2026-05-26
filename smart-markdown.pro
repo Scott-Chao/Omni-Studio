@@ -28,6 +28,7 @@ SOURCES += \
     ai/errorlistpanel.cpp \
     ai/aihistorylistwidget.cpp \
     ai/aihistorymanager.cpp \
+    ai/airequesthandler.cpp \
     ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
@@ -94,6 +95,7 @@ HEADERS += \
     ai/errorlistpanel.h \
     ai/aihistorylistwidget.h \
     ai/aihistorymanager.h \
+    ai/airequesthandler.h \
     ai/openaiprovider.h \
     ai/prompttemplates.h \
     activitybar.h \
