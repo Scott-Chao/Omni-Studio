@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.12）
+## 功能说明文档（v0.12.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,12 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.12.12
-OpenJudge IDE 运行支持
-- **IDE 模式下主工具栏运行按钮**：OpenJudge IDE 模式激活时，主窗口顶部工具栏自动显示运行相关按钮（编译 F6 / 运行 F7 / 编译运行 F5 下拉菜单），与代码文件打开时一致。通过新增的 `MainWindow::updateRunActions()` 统一方法检测 `editor->isCodeEdit()` 或 `oj->isIdeMode()` 任一条件满足即显示按钮。`OpenJudgeWidget` 新增 `ideModeChanged(bool)` 信号，在进入/退出 IDE 模式时发出，确保无需切换标签页即可实时更新按钮状态。编译运行、评测、提交操作已支持 IDE 模式（此前已实现）。
-- **退出 IDE 自动关闭输出面板**：`MainWindow` 中 `ideModeChanged` 信号连接在 IDE 关闭时自动停止正在运行的进程并隐藏底部输出面板（`BottomPanel`），覆盖点击 IDE 按钮退出、切换到其他题目（`showDetailPage` 自动退出 IDE）、返回列表页（`showListPage` 自动退出 IDE）等所有退出 IDE 的场景。标签页切换到非代码/非 IDE 标签页时通过 `currentChanged` 处理器隐藏底部面板（已有逻辑）。
-- **IDE 语言选择修复**：修复切换题目后 IDE 语言不正确的问题。将语言选择逻辑从 `setupIdeMode()`（仅首次调用）提取为独立的 `selectIdeLanguage()` 方法，每次进入 IDE 模式时重新评估当前题目的最佳语言（①题目仅支持一种 IDE 语言时自动选中，②否则按题目缓存的语言偏好，③兜底选 C++）。更新下拉框时使用 `blockSignals(true)` 屏蔽 `currentIndexChanged` 信号，避免 `onIdeLanguageChanged()` 将旧编辑器残留代码误保存到新题目的缓存文件中。
-- **IDE 切换语言时清空编辑器**：`loadIdeCodeFromCache()` 在目标语言缓存文件不存在时调用 `m_ideCodeEditor->clear()` 清空编辑器，避免从 Python 切换到 C++ 时编辑器仍残留 Python 代码。
+### 修复 v0.12.13
+- OpenJudge 爬虫解析文本时移除网页的内联样式，防止与主题冲突
 
 ### 1. `MainWindow` - 主窗口控制器
 

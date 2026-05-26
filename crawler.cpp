@@ -879,6 +879,14 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
 
+            // Strip inline color/font-family/font-size that conflict with theming
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bcolor\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-family\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-size\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
+
             // Escape bare '<' that are text content, not real HTML tags
             contentHtml = fixBareLt(contentHtml);
 
@@ -926,6 +934,14 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
             contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
                 QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
+
+            // Strip inline color/font-family/font-size that conflict with theming
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bcolor\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-family\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
+            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-size\\s*:\\s*[^;\"]+;?"),
+                QRegularExpression::CaseInsensitiveOption), QString());
 
             // Escape bare '<' that are text content, not real HTML tags
             contentHtml = fixBareLt(contentHtml);
