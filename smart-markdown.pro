@@ -65,6 +65,7 @@ SOURCES += \
     searchpanel.cpp \
     settingspanel.cpp \
     helppanel.cpp \
+    indexmanager.cpp \
     smdcell.cpp \
     smddiagnosticspanel.cpp \
     smdeditor.cpp \
@@ -140,6 +141,7 @@ HEADERS += \
     searchpanel.h \
     settingspanel.h \
     helppanel.h \
+    indexmanager.h \
     smdcell.h \
     smddiagnosticspanel.h \
     smdeditor.h \

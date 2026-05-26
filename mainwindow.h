@@ -13,9 +13,7 @@
 #include <QLabel>
 #include <QMap>
 #include <QPointer>
-#include <atomic>
 #include <functional>
-#include <memory>
 
 class ActivityBar;
 class TabManager;
@@ -27,7 +25,6 @@ class QPushButton;
 class QToolButton;
 class QMenu;
 class RightPanelContainer;
-class BacklinkIndex;
 class SearchPanel;
 class ProcessRunner;
 class BottomPanel;
@@ -37,12 +34,12 @@ class OpenJudgeWidget;
 class SubmitResultPanel;
 struct SubmissionResult;
 class JudgeEngine;
-class TagIndex;
 class QStackedWidget;
 class SettingsPanel;
 class HelpPanel;
 class AiPanel;
 class AiRequestHandler;
+class IndexManager;
 class TitleBarButton;
 
 QT_BEGIN_NAMESPACE
@@ -140,7 +137,6 @@ private:
     void refreshBacklinks();
     void refreshTags();
     void onTagClicked(const QString &tag);
-    BacklinkIndex *m_backlinkIndex;
     // 搜索面板
     SearchPanel *m_searchPanel;
     QAction *toggleSearchAction;
@@ -193,8 +189,8 @@ private:
     JudgeEngine *m_ojErrorJudgeEngine = nullptr;
     QString m_ojErrorStatus;
 
-    // 标签系统
-    TagIndex *m_tagIndex;
+    // 索引管理器
+    IndexManager *m_indexManager = nullptr;
 
     // 大纲面板 —— 移至 RightPanelContainer
     void refreshOutline();
@@ -281,16 +277,6 @@ private:
     void cleanStaleRecoveryFiles();
     void clearRecoveryDirectory();
 
-    // 键：文件名（不带路径，不带后缀，如 "笔记"）
-    // 值：该文件名对应的所有绝对路径列表（处理同名文件）
-    QMap<QString, QStringList> m_fileIndex;
-    std::shared_ptr<std::atomic<bool>> m_scanCancelled;      // startAsyncIndexBuild (full)
-    std::atomic<uint64_t> m_scanId{0};
-    std::shared_ptr<std::atomic<bool>> m_fileIdxCancelled;   // buildFileIndexAsync (file only)
-    std::atomic<uint64_t> m_fileIdxScanId{0};
-    std::atomic<int> m_wikiLinkUpdateId{0};
-    QString findWikiTarget(const QString &fileName); // 向上递归搜索目标文件
-    void updateCurrentEditorCompletions(); // 更新当前编辑器的 WikiLink 补全列表
 
 };
 #endif // MAINWINDOW_H
