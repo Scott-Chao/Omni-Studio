@@ -14,6 +14,10 @@ CppCompletionProvider::CppCompletionProvider(QObject *parent)
     m_requestTimer.setSingleShot(true);
     connect(&m_requestTimer, &QTimer::timeout, this, &CppCompletionProvider::onRequestTimeout);
 
+    m_semanticTokensTimer.setSingleShot(true);
+    m_semanticTokensTimer.setInterval(300);
+    connect(&m_semanticTokensTimer, &QTimer::timeout, this, &CppCompletionProvider::requestSemanticTokens);
+
     startServer();
 }
 
@@ -36,12 +40,14 @@ void CppCompletionProvider::shutdown()
     }
 
     m_requestTimer.stop();
+    m_semanticTokensTimer.stop();
     m_initialized = false;
     m_documentOpen = false;
     m_pendingRequest = PendingRequest::None;
     m_completionRequestId = -1;
     m_hoverRequestId = -1;
     m_signatureHelpRequestId = -1;
+    m_semanticTokensRequestId = -1;
 }
 
 void CppCompletionProvider::startServer()
@@ -92,7 +98,15 @@ void CppCompletionProvider::sendInitialize()
     QJsonObject params;
     params[QStringLiteral("processId")] = QJsonValue::Null;
     params[QStringLiteral("rootUri")] = QJsonValue::Null;
-    params[QStringLiteral("capabilities")] = QJsonObject();
+
+    QJsonObject textDocument;
+    QJsonObject semanticTokens;
+    semanticTokens[QStringLiteral("dynamicRegistration")] = true;
+    textDocument[QStringLiteral("semanticTokens")] = semanticTokens;
+
+    QJsonObject capabilities;
+    capabilities[QStringLiteral("textDocument")] = textDocument;
+    params[QStringLiteral("capabilities")] = capabilities;
 
     m_initRequestId = m_client->sendRequest(QStringLiteral("initialize"), params);
 }
@@ -107,7 +121,19 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
     m_pendingRequest = PendingRequest::None;
 
     if (id == m_initRequestId) {
-        Q_UNUSED(result);
+        // Extract semantic tokens legend from init response
+        QJsonObject capabilities = result.value(QStringLiteral("capabilities")).toObject();
+        QJsonObject semanticTokensProvider = capabilities.value(QStringLiteral("semanticTokensProvider")).toObject();
+        QJsonObject legend = semanticTokensProvider.value(QStringLiteral("legend")).toObject();
+        QJsonArray tokenTypes = legend.value(QStringLiteral("tokenTypes")).toArray();
+        QJsonArray tokenModifiers = legend.value(QStringLiteral("tokenModifiers")).toArray();
+        m_tokenTypeLegend.clear();
+        m_tokenModifierLegend.clear();
+        for (const QJsonValue &v : tokenTypes)
+            m_tokenTypeLegend.append(v.toString());
+        for (const QJsonValue &v : tokenModifiers)
+            m_tokenModifierLegend.append(v.toString());
+
         qDebug() << "CppCompletionProvider: clangd initialized successfully";
         debugLog("CppCompletionProvider: clangd initialized");
 
@@ -159,6 +185,13 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         qDebug() << "CppCompletionProvider: signatureHelp returned" << signatures.size() << "signatures";
 
         emit signatureHelpReady(signatures, activeIndex);
+
+    } else if (id == m_semanticTokensRequestId) {
+        m_semanticTokensRequestId = -1;
+
+        QList<SemanticToken> tokens = parseSemanticTokens(result);
+        if (!tokens.isEmpty())
+            emit semanticTokensReady(tokens);
     }
 }
 
@@ -282,6 +315,9 @@ void CppCompletionProvider::updateText(const QString &text)
 
     m_documentVersion++;
     sendDidChange(text);
+
+    // Schedule debounced semantic tokens request (300ms after last change)
+    m_semanticTokensTimer.start();
 }
 
 void CppCompletionProvider::sendDidOpen(const QString &text)
@@ -596,6 +632,81 @@ void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursor
     m_requestTimer.start(500);
 }
 
+// ---- Semantic Tokens ----
+
+void CppCompletionProvider::requestSemanticTokens()
+{
+    if (!m_initialized || m_documentUri.isEmpty() || !m_client)
+        return;
+
+    // Skip for very large files (>200KB) to avoid performance issues
+    if (m_pendingText.length() > 200 * 1024)
+        return;
+
+    QJsonObject textDocument;
+    textDocument[QStringLiteral("uri")] = m_documentUri;
+
+    QJsonObject params;
+    params[QStringLiteral("textDocument")] = textDocument;
+
+    m_semanticTokensRequestId = m_client->sendRequest(
+        QStringLiteral("textDocument/semanticTokens/full"), params);
+
+    m_pendingRequest = PendingRequest::SemanticTokens;
+    m_requestTimer.start(3000); // longer timeout for semantic tokens
+}
+
+QList<SemanticToken> CppCompletionProvider::parseSemanticTokens(const QJsonObject &result)
+{
+    QList<SemanticToken> tokens;
+
+    QJsonArray data = result.value(QStringLiteral("data")).toArray();
+    if (data.isEmpty())
+        return tokens;
+
+    const int tokenTypesCount = m_tokenTypeLegend.size();
+    const int tokenModifiersCount = m_tokenModifierLegend.size();
+
+    tokens.reserve(data.size() / 5);
+
+    int line = 0;
+    int startChar = 0;
+
+    for (int i = 0; i + 4 < data.size(); i += 5) {
+        int deltaLine = data[i].toInt();
+        int deltaStart = data[i + 1].toInt();
+        int length = data[i + 2].toInt();
+        int tokenType = data[i + 3].toInt();
+        int tokenModifiers = data[i + 4].toInt();
+
+        if (deltaLine > 0) {
+            line += deltaLine;
+            startChar = deltaStart;
+        } else {
+            startChar += deltaStart;
+        }
+
+        SemanticToken token;
+        token.line = line;
+        token.startChar = startChar;
+        token.length = length;
+        token.type = (tokenType >= 0 && tokenType < tokenTypesCount)
+            ? m_tokenTypeLegend.at(tokenType) : QString();
+
+        // Decode modifiers bitmask
+        if (tokenModifiers > 0 && tokenModifiersCount > 0) {
+            for (int bit = 0; bit < tokenModifiersCount; ++bit) {
+                if (tokenModifiers & (1 << bit))
+                    token.modifiers.append(m_tokenModifierLegend.at(bit));
+            }
+        }
+
+        tokens.append(token);
+    }
+
+    return tokens;
+}
+
 // ---- Request timeout ----
 
 void CppCompletionProvider::onRequestTimeout()
@@ -620,6 +731,9 @@ void CppCompletionProvider::onRequestTimeout()
     case PendingRequest::SignatureHelp:
         m_signatureHelpRequestId = -1;
         emit signatureHelpReady({}, 0);
+        break;
+    case PendingRequest::SemanticTokens:
+        m_semanticTokensRequestId = -1;
         break;
     default:
         break;

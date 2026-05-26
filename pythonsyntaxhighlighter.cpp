@@ -57,6 +57,15 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
+    // --- Function call format (gold) ---
+    m_functionFormat.setForeground(cfg.syntaxFunctions());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
+        rule.format = m_functionFormat;
+        m_rules.append(rule);
+    }
+
     // --- Number format (green) ---
     m_numberFormat.setForeground(cfg.syntaxNumbers());
     {

@@ -1,4 +1,4 @@
-﻿#include "cppsyntaxhighlighter.h"
+#include "cppsyntaxhighlighter.h"
 #include "configmanager.h"
 #include "cppkeywords.h"
 
@@ -27,12 +27,38 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
+    // --- #include header path ---
+    m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+<([^>]+)>"));
+        rule.format = m_includeHeaderFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+\"([^\"]+)\""));
+        rule.format = m_includeHeaderFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+
     // --- Type format (teal) ---
     m_typeFormat.setForeground(cfg.syntaxTypes());
     for (const QString &t : cppCommonTypes()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(t));
         rule.format = m_typeFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Class/struct/enum declaration names ---
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(?:class|struct|enum(?:\\s+class)?)\\s+(\\w+)"));
+        rule.format = m_typeFormat;
+        rule.captureGroup = 1;
         m_rules.append(rule);
     }
 
@@ -74,7 +100,20 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Single-line comment format (dim green, applied in highlightBlock via string-aware scanner) ---
+    // --- Function call heuristic (regex fallback, before semantic tokens kick in) ---
+    m_functionFormat.setForeground(cfg.syntaxFunctions());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
+        rule.format = m_functionFormat;
+        rule.captureGroup = 1;
+        m_rules.append(rule);
+    }
+
+    // --- Parameter format ---
+    m_parameterFormat.setForeground(cfg.syntaxParameters());
+
+    // --- Single-line comment format (applied in highlightBlock via string-aware scanner) ---
     m_singleLineCommentFormat.setForeground(cfg.syntaxComments());
 
     // --- Multi-line comment (block state tracking) ---
@@ -83,14 +122,64 @@ CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     m_commentEndExpr = QRegularExpression(QStringLiteral("\\*/"));
 }
 
+void CppSyntaxHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)
+{
+    m_semanticTokens.clear();
+    for (const auto &token : tokens) {
+        m_semanticTokens[token.line].append(token);
+    }
+    rehighlight();
+}
+
+void CppSyntaxHighlighter::clearSemanticTokens()
+{
+    m_semanticTokens.clear();
+    rehighlight();
+}
+
+QTextCharFormat CppSyntaxHighlighter::formatForTokenType(const QString &type) const
+{
+    // Map LSP semantic token types to formats.
+    // Types already handled by regex rules (keywords, types, strings, comments, numbers)
+    // are skipped — we only override with formats that add new information.
+    if (type == QStringLiteral("function") || type == QStringLiteral("method")) {
+        return m_functionFormat;
+    }
+    if (type == QStringLiteral("parameter")) {
+        return m_parameterFormat;
+    }
+    // For types like class/struct/enum/type/typeParameter — reuse typeFormat
+    if (type == QStringLiteral("class") || type == QStringLiteral("struct")
+        || type == QStringLiteral("enum") || type == QStringLiteral("enumMember")
+        || type == QStringLiteral("type") || type == QStringLiteral("typeParameter")) {
+        return m_typeFormat;
+    }
+    // macro → preprocessor color
+    if (type == QStringLiteral("macro")) {
+        return m_preprocessorFormat;
+    }
+    // namespace — keep default (no highlight) to avoid visual noise
+    // variable, property — keep default
+    return QTextCharFormat();
+}
+
 void CppSyntaxHighlighter::highlightBlock(const QString &text)
 {
-    // Apply single-line rules first
+    // Apply regex rules first
     for (const HighlightingRule &rule : m_rules) {
         QRegularExpressionMatchIterator it = rule.pattern.globalMatch(text);
         while (it.hasNext()) {
             QRegularExpressionMatch match = it.next();
-            setFormat(match.capturedStart(), match.capturedLength(), rule.format);
+            int start, len;
+            if (rule.captureGroup > 0) {
+                start = match.capturedStart(rule.captureGroup);
+                len = match.capturedLength(rule.captureGroup);
+                if (start < 0) continue;
+            } else {
+                start = match.capturedStart();
+                len = match.capturedLength();
+            }
+            setFormat(start, len, rule.format);
         }
     }
 
@@ -142,6 +231,28 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
         }
     }
 
-    // Apply preprocessor format last so it overrides keyword/type inside # lines
-    // (already in m_rules, but re-apply to ensure it paints over)
+    // Apply semantic tokens on top of regex rules.
+    // Only apply where no format has been set yet (to preserve keyword/comment/string highlights).
+    int blockNumber = currentBlock().blockNumber();
+    auto it = m_semanticTokens.find(blockNumber);
+    if (it != m_semanticTokens.end()) {
+        for (const SemanticToken &token : it.value()) {
+            QTextCharFormat fmt = formatForTokenType(token.type);
+            if (!fmt.isValid() || fmt == QTextCharFormat())
+                continue;
+
+            // Only apply where there's no existing format (except the default)
+            // Check a midpoint character to detect if a comment/string/other format is already there
+            int midPoint = token.startChar + token.length / 2;
+            if (midPoint < text.length()) {
+                QTextCharFormat existing = format(midPoint);
+                // If the position already has a foreground set (not the default text color),
+                // skip to avoid overriding keywords, strings, comments, etc.
+                if (existing.hasProperty(QTextFormat::ForegroundBrush))
+                    continue;
+            }
+
+            setFormat(token.startChar, token.length, fmt);
+        }
+    }
 }

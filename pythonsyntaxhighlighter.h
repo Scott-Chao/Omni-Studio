@@ -28,6 +28,7 @@ private:
     QTextCharFormat m_selfFormat;
     QTextCharFormat m_stringFormat;
     QTextCharFormat m_numberFormat;
+    QTextCharFormat m_functionFormat;
     QTextCharFormat m_commentFormat;
     QTextCharFormat m_tripleFormat;
 

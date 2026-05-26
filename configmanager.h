@@ -184,6 +184,8 @@ public:
     QColor syntaxComments() const;
     QColor syntaxPythonDecorators() const;
     QColor syntaxPythonSelfCls() const;
+    QColor syntaxFunctions() const;
+    QColor syntaxParameters() const;
 
     // ---- Judge Status Colors ----
     QColor judgeColorAc() const;

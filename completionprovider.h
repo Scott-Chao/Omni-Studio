@@ -8,6 +8,14 @@
 
 #include "smddiagnostic.h"
 
+struct SemanticToken {
+    int line = 0;       // 0-based line number
+    int startChar = 0;  // 0-based character offset within the line
+    int length = 0;
+    QString type;       // "function", "method", "class", "parameter", "variable", etc.
+    QStringList modifiers;
+};
+
 struct CompletionItem {
     QString name;           // 符号名
     QString type;           // "function", "class", "variable", "method", "keyword"
@@ -58,6 +66,7 @@ signals:
     void hoverReady(HoverInfo info);
     void signatureHelpReady(QList<SignatureInfo> signatures, int activeIndex);
     void diagnosticsUpdated(QList<SmdDiagnostic> diagnostics);
+    void semanticTokensReady(QList<SemanticToken> tokens);
 };
 
 #endif // COMPLETIONPROVIDER_H

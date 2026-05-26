@@ -465,6 +465,8 @@ QJsonObject ConfigManager::buildDefaultConfig()
     syntax["comments"] = "#6A9955";
     syntax["python_decorators"] = "#C586C0";
     syntax["python_self_cls"] = "#DCDCDC";
+    syntax["functions"] = "#DCDCAA";
+    syntax["parameters"] = "#9CDCFE";
     colors["syntax_highlight"] = syntax;
 
     QJsonObject judgeColors;
@@ -723,6 +725,8 @@ QColor ConfigManager::syntaxStrings() const { return colorValue("appearance.colo
 QColor ConfigManager::syntaxComments() const { return colorValue("appearance.colors.syntax_highlight.comments", QColor("#6A9955")); }
 QColor ConfigManager::syntaxPythonDecorators() const { return colorValue("appearance.colors.syntax_highlight.python_decorators", QColor("#C586C0")); }
 QColor ConfigManager::syntaxPythonSelfCls() const { return colorValue("appearance.colors.syntax_highlight.python_self_cls", QColor("#DCDCDC")); }
+QColor ConfigManager::syntaxFunctions() const { return colorValue("appearance.colors.syntax_highlight.functions", QColor("#DCDCAA")); }
+QColor ConfigManager::syntaxParameters() const { return colorValue("appearance.colors.syntax_highlight.parameters", QColor("#9CDCFE")); }
 
 // ---- Judge Status Colors ----
 QColor ConfigManager::judgeColorAc() const { return colorValue("appearance.colors.judge_status.ac", QColor("#52C41A")); }

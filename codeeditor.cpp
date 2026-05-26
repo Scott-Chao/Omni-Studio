@@ -2,6 +2,7 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
+#include "cppsyntaxhighlighter.h"
 #include "smddiagnostic.h"
 #include "debuglog.h"
 #include "completionpopup.h"
@@ -321,6 +322,14 @@ void CodeEditor::createCompletionProvider(const QString &langId)
             this, &CodeEditor::onCompletionsReady);
     connect(m_completionProvider, &CompletionProvider::diagnosticsUpdated,
             this, &CodeEditor::setDiagnostics);
+    connect(m_completionProvider, &CompletionProvider::semanticTokensReady,
+            this, [this](const QList<SemanticToken> &tokens) {
+        if (m_highlighter) {
+            auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter);
+            if (cppHL)
+                cppHL->setSemanticTokens(tokens);
+        }
+    });
 
     // Notify hover and signature managers of the new provider
     m_hoverManager->setProvider(m_completionProvider);

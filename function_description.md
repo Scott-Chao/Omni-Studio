@@ -60,8 +60,19 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- 修复代码编辑器中，鼠标离开文本块悬停依然出现相关说明的问题
+### 新增
+Regex 即时高亮 + LSP Semantic Tokens 语义高亮混合策略
+- Regex 增强（即时生效，不依赖 LSP）
+  - #include <header> 和 "header" 中的头文件名单独高亮
+  - 函数调用启发式匹配（name( 识别为函数色）
+  - 类/结构体/枚举声明名高亮
+  - Python 同步新增函数调用高亮
+- LSP Semantic Tokens（300ms debounce，提供精确语义高亮）
+  - CompletionProvider 新增 SemanticToken 结构体和 semanticTokensReady 信号
+  - CppCompletionProvider 向 clangd 请求 textDocument/semanticTokens/full，解码 delta-encoded 数据
+  - CppSyntaxHighlighter接收tokens，在highlightBlock中叠加显示——跳过已被注释/字符串/关键字覆盖的位置
+  - 支持 token 类型：函数/方法（金色）、参数（浅蓝）、类/结构体/枚举（复用类型色）、宏（复用预处理色）
+
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -628,6 +639,7 @@
   - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
   - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
   - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
+  - **语义高亮转发**：`createCompletionProvider()` 连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda `qobject_cast<CppSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`。仅 C++ 高亮器接受 semantic tokens，Python 高亮器不受影响。
 - SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
 - 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
 
@@ -685,18 +697,32 @@
 
 **职责**：
 - 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
+- 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名）。
 - 高亮规则具体颜色方案：
   - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。
   - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
-  - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。
+  - **`#include` 头文件路径**（`#CE9178`，字符串色）：`#include <vector>` 中的 `<vector>` 和 `#include "myheader.h"` 中的 `"myheader.h"` 头文件名单独高亮，通过 0 宽断言和捕获组（`captureGroup = 1`）仅着色括号/引号内的路径部分。
+  - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。同时匹配声明中的类/结构体/枚举名（`class|struct|enum Name`）。
   - **字符串**（`#CE9178`）：双引号字符串、单引号字符字面量、原始字符串字面量，均支持转义字符。
   - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
+  - **函数/方法调用**（`#DCDCAA`，金色）：Regex fallback 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符，仅在关键字/类型规则之后应用以保持优先级。LSP Semantic Tokens 就绪后提供更精确的函数名/方法名分类。
+  - **参数**（`#9CDCFE`，浅蓝）：由 LSP Semantic Tokens `parameter` 类型提供，正则无法识别。
   - **单行注释**（`#6A9955`）：`// ...`，通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `"..."` 字符串和 `'...'` 字符字面量状态，仅在字符串外检测到 `//` 时应用注释格式，避免误将字符串内的 `//` 着色为注释。
   - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。
+
+**语义高亮 (Semantic Tokens) 叠加机制**：
+- `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 LSP semantic tokens，按行号（0-based block number）索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
+- `clearSemanticTokens()`：清空 semantic tokens 并重绘。
+- `formatForTokenType(const QString &type)`：将 LSP token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`，`parameter` → `m_parameterFormat`，`class`/`struct`/`enum`/`type` → `m_typeFormat`，`macro` → `m_preprocessorFormat`，其余（`namespace`/`variable`/`property`）返回空格式不额外高亮以避免视觉噪音。
+- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。这确保 LSP 高亮不会覆盖关键字、注释等基本语法着色。
+
+**内部结构 `HighlightingRule` 增强**：
+- 新增 `int captureGroup` 字段（默认 0 = 完整匹配），支持只高亮正则捕获组对应的子串。`#include` 头文件路径和函数调用规则使用此特性。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"cpp"` 语言的高亮器实现。
 - 被 `CodeEditor::setLanguage()` 调用并安装到 `QTextDocument` 上。
+- `CodeEditor::createCompletionProvider()` 连接 `CppCompletionProvider::semanticTokensReady` 信号，通过 `qobject_cast<CppSyntaxHighlighter*>` 转发至 `setSemanticTokens()`。
 
 ---
 
@@ -713,6 +739,7 @@
 - `self`/`cls`：黄色 `#DCDCAA`。
 - 字符串（普通、f-string、raw string，含前缀 `f`/`r`/`b`/`u`）：橙色 `#CE9178`。
 - 数字：绿色 `#B5CEA8`。
+- **函数调用**（`#DCDCAA`，金色）：Regex 规则 `\b(\w+)(?=\s*\()` 即时匹配后跟 `(` 的标识符。先于内置函数规则应用，确保 `print()`/`len()` 等以函数色而非内置色显示。
 - **注释**（`# 行`）：绿色 `#6A9955`。注释通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `'...'` 和 `"..."` 字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。这确保了注释内部的数字、字符串、关键字等内容不会被其他规则错误高亮（例如 `# {1:[2]}` 中 `1` 和 `2` 不会被错误着色为数字），同时字符串内部的 `#` 不会被误当作注释（例如 `x = "# not a comment"`）。
 - 三引号字符串（`"""` / `'''`）：绿色，支持跨行块状态跟踪。
 
@@ -1422,7 +1449,10 @@
 
 **独立文件诊断**（`.cpp`/`.py`，非 SMD）：
 - `CompletionProvider` 基类新增 `diagnosticsUpdated(QList<SmdDiagnostic>)` 信号（`completionprovider.h`），统一所有 provider 的诊断接口。
+- 新增 `SemanticToken` 结构体（`completionprovider.h`）：`int line`（0-based 行号）、`int startChar`（行内 0-based 字符偏移）、`int length`（token 长度）、`QString type`（LSP token 类型如 `"function"`/`"method"`/`"parameter"`/`"class"` 等）、`QStringList modifiers`（修饰符如 `"declaration"`/`"definition"`）。
+- 新增 `semanticTokensReady(QList<SemanticToken>)` 信号（`completionprovider.h`），供 CppCompletionProvider 发射 LSP semantic tokens 至 CodeEditor → CppSyntaxHighlighter。
 - **C++ 独立文件**（`CppCompletionProvider`）：`onNotificationReceived()` 处理 clangd 的 `textDocument/publishDiagnostics` 通知，`parseDiagnostics()` 将 LSP 诊断 JSON 转换为 `SmdDiagnostic` 列表（`cellIndex = 0` 表示平面文件），emit `diagnosticsUpdated`。
+  - **语义高亮**：`sendInitialize()` 声明 `capabilities.textDocument.semanticTokens` 能力；初始化响应中提取 `legend`（tokenTypes/tokenModifiers 列表）存入 `m_tokenTypeLegend`/`m_tokenModifierLegend`。`updateText()` 发送 `didChange` 后启动 300ms 防抖定时器 `m_semanticTokensTimer`，到期后发送 `textDocument/semanticTokens/full` 请求。`parseSemanticTokens()` 解码 LSP delta-encoded 数据（每 5 个 int = 一组 token），根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串，emit `semanticTokensReady`。
 - **Python 独立文件**（`PythonCompletionProvider`）：新增 `sendDiagnosticsRequest()`，将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
 - `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
