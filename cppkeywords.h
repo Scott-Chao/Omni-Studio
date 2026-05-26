@@ -52,19 +52,25 @@ inline const QStringList &cppControlKeywords()
     return keywords;
 }
 
-inline const QStringList &cppCommonTypes()
+// Built-in / primitive types — highlighted in keyword color (blue), no bold
+inline const QStringList &cppPrimitiveTypes()
 {
     static const QStringList types = {
-        // Primitive types
         QStringLiteral("bool"), QStringLiteral("char"), QStringLiteral("char16_t"),
         QStringLiteral("char32_t"), QStringLiteral("char8_t"), QStringLiteral("double"),
         QStringLiteral("float"), QStringLiteral("int"), QStringLiteral("long"),
         QStringLiteral("short"), QStringLiteral("wchar_t"),
-        // Size / fixed-width
         QStringLiteral("size_t"), QStringLiteral("ssize_t"), QStringLiteral("ptrdiff_t"),
         QStringLiteral("int8_t"), QStringLiteral("int16_t"), QStringLiteral("int32_t"),
         QStringLiteral("int64_t"), QStringLiteral("uint8_t"), QStringLiteral("uint16_t"),
         QStringLiteral("uint32_t"), QStringLiteral("uint64_t"),
+    };
+    return types;
+}
+
+inline const QStringList &cppCommonTypes()
+{
+    static const QStringList types = {
         // Namespace
         QStringLiteral("std"),
         // Strings
@@ -94,7 +100,6 @@ inline const QStringList &cppCommonTypes()
         QStringLiteral("istream"), QStringLiteral("ostream"), QStringLiteral("iostream"),
         QStringLiteral("fstream"), QStringLiteral("sstream"), QStringLiteral("stringstream"),
         QStringLiteral("ifstream"), QStringLiteral("ofstream"),
-        QStringLiteral("cout"), QStringLiteral("cin"), QStringLiteral("endl"),
         // Qt core
         QStringLiteral("QString"), QStringLiteral("QStringList"), QStringLiteral("QVariant"),
         // Qt containers

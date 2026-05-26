@@ -32,6 +32,7 @@ private:
 
     QTextCharFormat m_keywordFormat;
     QTextCharFormat m_controlKeywordFormat;
+    QTextCharFormat m_primitiveTypeFormat;
     QTextCharFormat m_preprocessorFormat;
     QTextCharFormat m_typeFormat;
     QTextCharFormat m_stringFormat;

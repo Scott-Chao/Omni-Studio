@@ -66,6 +66,15 @@ void CppSyntaxHighlighter::initFormats()
         m_rules.append(rule);
     }
 
+    // --- Primitive type format (blue, keyword color but no bold) ---
+    m_primitiveTypeFormat.setForeground(cfg.syntaxKeywords());
+    for (const QString &t : cppPrimitiveTypes()) {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(t));
+        rule.format = m_primitiveTypeFormat;
+        m_rules.append(rule);
+    }
+
     // --- Preprocessor format (purple) ---
     m_preprocessorFormat.setForeground(cfg.syntaxPreprocessor());
     {
