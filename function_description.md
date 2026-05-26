@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.13）
+## 功能说明文档（v0.12.14）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,8 +60,10 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.12.13
-- OpenJudge 爬虫解析文本时移除网页的内联样式，防止与主题冲突
+### 重构 v0.12.14
+- **提取 `AiRequestHandler`**：将 AI 请求管理（`startAiRequest`、`abortAiRequest`、`loadAiConversation`、token 估算、context 裁剪等）从 `MainWindow` 提取到独立的 `AiRequestHandler` 类，MainWindow 减少约 340 行。
+- **提取 `IndexManager`**：将索引管理（`startAsyncIndexBuild`、`buildFileIndexAsync`、backlink/tag 索引操作、`findWikiTarget` 等）提取到独立的 `IndexManager` 类，MainWindow 减少约 190 行。
+- **提取 `CrashRecoveryManager`**：将崩溃恢复文件清理逻辑提取到独立的 `CrashRecoveryManager` 类，`checkCrashRecovery` 仍留在 MainWindow（涉及 UI 对话框）。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -101,7 +103,7 @@
 - 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
-- 项目索引管理：负责维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。索引构建支持异步模式（`startAsyncIndexBuild()`），在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器（`std::atomic<uint64_t> m_scanId`）和取消标志（`std::shared_ptr<std::atomic<bool>> m_scanCancelled`）防止过期结果覆盖和进行中扫描浪费资源。
+- 项目索引管理：委托给 `IndexManager` 类。`startAsyncIndexBuild()` 转发至 `IndexManager`，在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器和取消标志防止过期结果覆盖。维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。
 - 响应文件树拖拽移动事件：连接 `FileExplorerWidget::fileRenamed` 信号到新槽 `onFileMovedOrRenamed`，统一执行路径更新与索引同步。
 - `.md` ↔ `.smd` 双向转换：通过 `m_convertMdSmdAction`（快捷键 `Ctrl+T`）触发 `onConvertMdSmd()`。对当前 `.md` 或 `.smd` 文件调用 `convertMdToSmd()` / `convertSmdToMd()`，生成对应格式文件并写入磁盘（目标未打开时）或直接更新内存内容（目标已打开时）。转换使用 `SmdFormat::fromMarkdownWithMapping()` / `toMarkdownWithMapping()`，保留光标位置（通过行→单元格映射），源文件修改状态保持不变。
 
@@ -1692,6 +1694,64 @@
 - `MainWindow` 连接所有信号处理实际操作：重命名调用 `QInputDialog::getText`，删除调用 `QMessageBox::question` 确认，导出调用 `QFileDialog::getSaveFileName`。
 - `AiHistoryManager::conversationListChanged` 信号触发 `MainWindow::filterAiHistoryByCurrentFile()` 刷新列表。
 - 切换到历史标签页时（`AiPanel::historyListVisibilityChanged`），同样刷新列表并更新活跃对话绿色圆点。
+
+### 39. `AiRequestHandler` — AI 请求管理器
+
+**文件**：`ai/airequesthandler.h` / `ai/airequesthandler.cpp`
+
+**职责**：
+- 封装 AI 请求的完整生命周期：创建 provider、流式请求、响应处理、历史管理。
+- 负责 token 估算（`estimateTokens`，CJK ≈1 tok/char，ASCII ≈1 tok/4 chars）、模型 context 窗口限制（`modelContextLimit`）和上下文裁剪（`pruneContextWindow`，保留最近消息在 budget 内）。
+- 管理 `m_aiProvider`（每次请求重新创建以拾取设置变更）、`m_aiHistory`（完整未裁剪历史）和 `m_aiStreaming` 状态。
+- 支持多轮续聊：所有操作均保留历史，每次 API 调用前通过 `pruneContextWindow()` 创建 token 感知的窗口副本。
+
+**主要接口**：
+- `void startAiRequest(AiAction action, const QString &freeQuery)`：收集编辑器上下文 → 构建 prompt → 创建 provider → 配置 → 流式请求。自动持久化用户消息至 `AiHistoryManager`。
+- `void abortAiRequest()`：取消进行中的请求。
+- `void loadAiConversation(const QString &convId)`：从 `AiHistoryManager` 加载历史对话，重建 UI 和 `m_aiHistory`。
+- `void clearConversation()` / `void newConversation()`：清空或新建对话。
+- 信号 `streamingStateChanged(bool)`：通知 MainWindow 更新 UI 状态。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，接收 `AiPanel`、`TabManager`、`SettingsManager` 依赖注入。
+- `AiPanel` 的 `sendMessage`/`actionTriggered`/`clearRequested`/`newConversationRequested` 信号通过 MainWindow 路由到 handler。
+
+### 40. `IndexManager` — 索引管理器
+
+**文件**：`indexmanager.h` / `indexmanager.cpp`
+
+**职责**：
+- 管理文件索引（`m_fileIndex`：baseName → 路径列表）、反向链接索引（`BacklinkIndex`）和标签索引（`TagIndex`）。
+- 提供异步全量索引构建（`startAsyncIndexBuild`，Phase 1/2/3 在后台线程依次执行）和轻量文件索引构建（`buildFileIndexAsync`，仅 Phase 1）。
+- 增量更新操作：`onFileRenamedInIndex` 迁移 backlink/tag 索引路径，`onFileDeletedInIndex` 清理索引。
+- Wiki 链接解析：`findWikiTarget` 按精确路径 → 当前目录 → 全局索引的顺序搜索，同名文件按路径距离就近匹配。
+- 提供代际计数器和取消令牌，防止过期结果覆盖。
+
+**主要接口**：
+- `void startAsyncIndexBuild(const QString &rootPath)` / `void buildFileIndexAsync(const QString &rootPath, std::function<void()> onComplete)`
+- `void onFileRenamedInIndex(const QString &oldPath, const QString &newPath)` / `void onFileDeletedInIndex(const QString &path)`
+- `QString findWikiTarget(const QString &fileName, const QString &rootPath, const QString &currentDir) const`
+- `void updateCurrentEditorCompletions(EditorWidget *editor) const`
+- 信号 `fileIndexReady()` / `fullIndexReady()`
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，接收 `TabManager` 依赖注入（用于重命名时更新编辑器标签路径）。
+- `MainWindow` 连接 `fullIndexReady` 信号刷新反链面板、标签面板和补全列表。
+
+### 41. `CrashRecoveryManager` — 崩溃恢复管理器
+
+**文件**：`crashrecoverymanager.h` / `crashrecoverymanager.cpp`
+
+**职责**：
+- 管理临时恢复文件的清理生命周期（`SM-Recovery` 目录）。
+- `cleanStaleRecoveryFiles()`：删除超过配置时限（`autoSaveRecoveryMaxAgeHours`）的过期恢复文件。
+- `clearRecoveryDirectory()`：删除整个恢复目录（正常关闭时调用）。
+- `hasRecoveryFiles()`：检查是否有待恢复的文件。
+- `recoveryDirectoryPath()` 静态方法：返回恢复目录的完整路径。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有。
+- `MainWindow::checkCrashRecovery()` 负责 UI 交互（QMessageBox 对话框 + TabManager 文件恢复），底层文件操作委托给该类。
 
 
 ### 配置存储说明
