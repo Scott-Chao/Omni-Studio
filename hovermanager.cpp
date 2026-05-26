@@ -53,11 +53,18 @@ bool HoverManager::eventFilter(QObject *obj, QEvent *event)
         int newPos = cursor.position();
 
         if (m_tooltipShowing) {
+            if (!m_editor->isPositionOverText(m_mousePos)) {
+                hideHover();
+                return false;
+            }
             if (newPos == m_hoverCursorPos)
                 return false; // still on the same symbol, keep tooltip
             hideHover();
             // fall through to re-arm timer for the new position
         }
+
+        if (!m_editor->isPositionOverText(m_mousePos))
+            return false;
 
         // Ctrl held → bypass the 400ms delay
         if (me->modifiers() & Qt::ControlModifier) {
@@ -136,6 +143,9 @@ bool HoverManager::tryShowDiagnosticToolTip(const QPoint &viewportPos)
 
 void HoverManager::requestHoverAt(const QPoint &viewportPos)
 {
+    if (!m_editor->isPositionOverText(viewportPos))
+        return;
+
     QTextCursor cursor = m_editor->cursorForPosition(viewportPos);
     m_hoverCursorPos = cursor.position();
 
@@ -153,6 +163,9 @@ void HoverManager::requestHoverAt(const QPoint &viewportPos)
 void HoverManager::onHoverReady(HoverInfo info)
 {
     if (info.signature.isEmpty() && info.doc.isEmpty())
+        return;
+
+    if (!m_editor->isPositionOverText(m_mousePos))
         return;
 
     // Guard: cursor may have moved while the request was in flight

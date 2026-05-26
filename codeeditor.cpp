@@ -13,6 +13,7 @@
 #include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextLayout>
 #include <QTextDocument>
 #include <QKeyEvent>
 #include <QSyntaxHighlighter>
@@ -544,6 +545,40 @@ const SmdDiagnostic* CodeEditor::diagnosticAt(int line, int col) const
         return &d;
     }
     return nullptr;
+}
+
+bool CodeEditor::isPositionOverText(const QPoint &viewportPos) const
+{
+    QTextBlock block = firstVisibleBlock();
+    QPointF offset = contentOffset();
+
+    while (block.isValid()) {
+        QRectF geo = blockBoundingGeometry(block).translated(offset);
+
+        if (geo.top() > viewportPos.y())
+            break;
+
+        if (viewportPos.y() >= geo.top() && viewportPos.y() <= geo.bottom()) {
+            QTextLayout *layout = block.layout();
+            if (!layout)
+                return false;
+
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                QTextLine line = layout->lineAt(i);
+                qreal lineTop = geo.top() + line.y();
+                if (viewportPos.y() >= lineTop && viewportPos.y() <= lineTop + line.height()) {
+                    QRectF nr = line.naturalTextRect();
+                    return viewportPos.x() <= geo.left() + nr.right();
+                }
+            }
+
+            return false;
+        }
+
+        block = block.next();
+    }
+
+    return false;
 }
 
 // ---- Key handling ----

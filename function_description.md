@@ -60,10 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 重构 v0.12.14
-- **提取 `AiRequestHandler`**：将 AI 请求管理（`startAiRequest`、`abortAiRequest`、`loadAiConversation`、token 估算、context 裁剪等）从 `MainWindow` 提取到独立的 `AiRequestHandler` 类，MainWindow 减少约 340 行。
-- **提取 `IndexManager`**：将索引管理（`startAsyncIndexBuild`、`buildFileIndexAsync`、backlink/tag 索引操作、`findWikiTarget` 等）提取到独立的 `IndexManager` 类，MainWindow 减少约 190 行。
-- **提取 `CrashRecoveryManager`**：将崩溃恢复文件清理逻辑提取到独立的 `CrashRecoveryManager` 类，`checkCrashRecovery` 仍留在 MainWindow（涉及 UI 对话框）。
+### 修复
+- 修复代码编辑器中，鼠标离开文本块悬停依然出现相关说明的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -586,7 +584,7 @@
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
-- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。诊断提示（错误/警告）和 LSP 悬停提示均应用紧凑样式（`padding: 0px 4px; margin: 0px;`），与全局 `QToolTip` 样式一致。全局 tooltip 通过 `CompactTooltipStyle`（`main.cpp` 中的 QProxyStyle 子类，`PM_ToolTipLabelFrameWidth = 0`）进一步消除 Qt Fusion 样式的额外内框边距。鼠标移动/离开/点击/滚轮时关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。诊断提示（错误/警告）和 LSP 悬停提示均应用紧凑样式（`padding: 0px 4px; margin: 0px;`），与全局 `QToolTip` 样式一致。全局 tooltip 通过 `CompactTooltipStyle`（`main.cpp` 中的 QProxyStyle 子类，`PM_ToolTipLabelFrameWidth = 0`）进一步消除 Qt Fusion 样式的额外内框边距。鼠标移出文本区域、离开编辑器、点击或滚轮时关闭。
 - **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
@@ -614,6 +612,7 @@
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
 - `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
+- `bool isPositionOverText(const QPoint &viewportPos) const`：判断视口坐标是否落在实际文本内容区域内，遍历可见 `QTextBlock` 并逐行比较 `QTextLine::naturalTextRect()` 真实文本宽度，杜绝行尾/文档末尾空白区域误触悬停。供 `HoverManager` 在 `MouseMove`、`requestHoverAt` 和 `onHoverReady` 中调用。
 
 **诊断面板快捷键**（`toggle_diagnostics`，默认 `Ctrl+D`）：
 - `reloadShortcuts()` 从 `SettingsManager` / `ConfigManager` 加载 `m_toggleDiagnostics` QKeySequence。

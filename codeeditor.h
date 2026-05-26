@@ -51,6 +51,7 @@ public:
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth() const;
+    bool isPositionOverText(const QPoint &viewportPos) const;
 
 signals:
     void diagnosticsToggleRequested();
