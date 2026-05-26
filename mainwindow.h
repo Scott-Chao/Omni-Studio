@@ -273,10 +273,14 @@ private:
     void convertMdToSmd(EditorWidget *editor, const QFileInfo &fi);
     void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
 
+    void updateCurrentEditorCompletions();
+
     // 崩溃恢复
     void checkCrashRecovery();
     CrashRecoveryManager *m_crashRecovery = nullptr;
 
+    // Wiki 链接解析
+    QString findWikiTarget(const QString &fileName);
 
 };
 #endif // MAINWINDOW_H
