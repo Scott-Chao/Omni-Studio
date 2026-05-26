@@ -33,6 +33,7 @@ private slots:
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
     void onTimeout();
     void onDiagnosticsDebounce();
+    void requestSemanticTokens();
 
 private:
     void startProcess();
@@ -45,10 +46,12 @@ private:
     QProcess *m_process = nullptr;
     QTimer m_timeoutTimer;
     QTimer m_diagnosticsTimer;
+    QTimer m_semanticTokensTimer;
     QString m_lastDiagnosticsText;
     bool m_jediAvailable = true;
+    bool m_tokensPending = false;
 
-    enum class PendingRequest { None, Completion, Hover, SignatureHelp, Diagnostics };
+    enum class PendingRequest { None, Completion, Hover, SignatureHelp, Diagnostics, SemanticTokens };
     PendingRequest m_pendingRequest = PendingRequest::None;
 };
 

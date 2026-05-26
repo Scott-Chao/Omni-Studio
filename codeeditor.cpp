@@ -3,6 +3,7 @@
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
 #include "cppsyntaxhighlighter.h"
+#include "pythonsyntaxhighlighter.h"
 #include "smddiagnostic.h"
 #include "debuglog.h"
 #include "completionpopup.h"
@@ -325,9 +326,10 @@ void CodeEditor::createCompletionProvider(const QString &langId)
     connect(m_completionProvider, &CompletionProvider::semanticTokensReady,
             this, [this](const QList<SemanticToken> &tokens) {
         if (m_highlighter) {
-            auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter);
-            if (cppHL)
+            if (auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter))
                 cppHL->setSemanticTokens(tokens);
+            else if (auto *pyHL = qobject_cast<PythonSyntaxHighlighter*>(m_highlighter))
+                pyHL->setSemanticTokens(tokens);
         }
         emit semanticTokensApplied();
     });
@@ -363,9 +365,10 @@ void CodeEditor::setCompletionProvider(CompletionProvider *provider)
         connect(provider, &CompletionProvider::semanticTokensReady,
                 this, [this](const QList<SemanticToken> &tokens) {
             if (m_highlighter) {
-                auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter);
-                if (cppHL)
+                if (auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter))
                     cppHL->setSemanticTokens(tokens);
+                else if (auto *pyHL = qobject_cast<PythonSyntaxHighlighter*>(m_highlighter))
+                    pyHL->setSemanticTokens(tokens);
             }
             emit semanticTokensApplied();
         });

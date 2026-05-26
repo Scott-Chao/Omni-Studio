@@ -96,6 +96,9 @@ void PythonSyntaxHighlighter::initFormats()
         m_rules.append(rule);
     }
 
+    // --- Parameter/variable/property format (used by semantic tokens overlay) ---
+    m_parameterFormat.setForeground(cfg.syntaxParameters());
+
     // --- Number format ---
     m_numberFormat.setForeground(cfg.syntaxNumbers());
     {
@@ -132,6 +135,40 @@ void PythonSyntaxHighlighter::initFormats()
     m_tripleDoubleEnd   = QRegularExpression(QStringLiteral("\"\"\""));
     m_tripleSingleStart = QRegularExpression(QStringLiteral("'''"));
     m_tripleSingleEnd   = QRegularExpression(QStringLiteral("'''"));
+}
+
+void PythonSyntaxHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)
+{
+    m_semanticTokens.clear();
+    for (const auto &token : tokens) {
+        m_semanticTokens[token.line].append(token);
+    }
+    rehighlight();
+}
+
+void PythonSyntaxHighlighter::clearSemanticTokens()
+{
+    m_semanticTokens.clear();
+    rehighlight();
+}
+
+QTextCharFormat PythonSyntaxHighlighter::formatForTokenType(const QString &type) const
+{
+    if (type == QStringLiteral("function") || type == QStringLiteral("method")) {
+        return m_functionFormat;
+    }
+    if (type == QStringLiteral("parameter")) {
+        return m_parameterFormat;
+    }
+    if (type == QStringLiteral("class") || type == QStringLiteral("type")
+        || type == QStringLiteral("module")) {
+        return m_builtinFormat;
+    }
+    if (type == QStringLiteral("variable") || type == QStringLiteral("property")) {
+        return m_parameterFormat;
+    }
+    // namespace, module — keep default to avoid visual noise
+    return QTextCharFormat();
 }
 
 void PythonSyntaxHighlighter::highlightBlock(const QString &text)
@@ -216,6 +253,27 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
             if (text[i] == u'\\') { ++i; continue; }
             if (text[i] == stringChar)
                 inString = false;
+        }
+    }
+
+    // Apply semantic tokens on top of regex rules.
+    // Only apply where no format has been set yet (to preserve keyword/comment/string highlights).
+    int blockNumber = currentBlock().blockNumber();
+    auto it = m_semanticTokens.find(blockNumber);
+    if (it != m_semanticTokens.end()) {
+        for (const SemanticToken &token : it.value()) {
+            QTextCharFormat fmt = formatForTokenType(token.type);
+            if (!fmt.isValid() || fmt == QTextCharFormat())
+                continue;
+
+            int midPoint = token.startChar + token.length / 2;
+            if (midPoint < text.length()) {
+                QTextCharFormat existing = format(midPoint);
+                if (existing.hasProperty(QTextFormat::ForegroundBrush))
+                    continue;
+            }
+
+            setFormat(token.startChar, token.length, fmt);
         }
     }
 }

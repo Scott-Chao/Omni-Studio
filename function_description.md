@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增
-- SMD Cpp Cell 支持完整高亮
+- Python 独立文件完整语义高亮（函数/类/参数/变量/属性/导入模块），基于 Jedi `get_names(all_scopes=True)` + 正则引用扫描
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -629,7 +629,7 @@
   - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
   - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
   - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
-  - **语义高亮转发**：`createCompletionProvider()` 和 `setCompletionProvider()` 均连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda `qobject_cast<CppSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`。仅 C++ 高亮器接受 semantic tokens，Python 高亮器不受影响。每次应用 semantic tokens 后 emit `semanticTokensApplied()` 信号，供 SmdCell 连接以触发 `updateEditorHeight()` 重新计算 cell 高度。
+  - **语义高亮转发**：`createCompletionProvider()` 和 `setCompletionProvider()` 均连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda 分别 `qobject_cast<CppSyntaxHighlighter*>` / `qobject_cast<PythonSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`，C++ 和 Python 高亮器均接受 semantic tokens。每次应用 semantic tokens 后 emit `semanticTokensApplied()` 信号，供 SmdCell 连接以触发 `updateEditorHeight()` 重新计算 cell 高度。
 - SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
 - 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
 
@@ -748,6 +748,17 @@
 - **注释**（`#`）：`syntax.comments` 配色。通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。
 - 三引号字符串（`"""` / `'''`）：`syntax.comments` 配色，支持跨行块状态跟踪。
 - **主题切换刷新**：连接 `ThemeManager::themeChanged` → `initFormats()` + `rehighlight()`，与 `CppSyntaxHighlighter` 机制相同。
+
+**语义高亮 (Semantic Tokens) 叠加机制**（与 `CppSyntaxHighlighter` 相同的架构）：
+- `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 Python semantic tokens，按行号索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
+- `clearSemanticTokens()`：清空 semantic tokens 并重绘。
+- `formatForTokenType(const QString &type)`：将 token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`（`syntax.functions` 黄色），`class`/`type`/`module` → `m_builtinFormat`（`syntax.types` 青色/绿色），`parameter`/`variable`/`property` → `m_parameterFormat`（`syntax.parameters` 浅蓝色），`namespace` 返回空格式不额外高亮以避免视觉噪音。
+- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。确保 semantic 高亮不会覆盖关键字、字符串等基本语法着色。
+
+**Token 来源**（Jedi 子进程，非 LSP）：
+- `PythonCompletionProvider` 将文件代码发送至 `completion_helper.py` 的 `tokens` action，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过 `re.finditer(r'\b<name>\b', code)` 正则扫描源代码中每个名称的所有引用位置，生成语义 token 列表返回。
+- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > parameter > property > variable > module）选择。
+- Token 以 fire-and-forget 模式发送（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，确保在 Jedi 解析耗时 >500ms 时响应不会因超时被丢弃。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"python"` 语言的高亮器实现。
@@ -1434,15 +1445,19 @@
 - `onCppRequestFailed()`：semantic tokens 请求失败时静默忽略（非关键功能，仅回退到 regex-only 高亮）。
 - 崩溃自动重启（1s 延迟的 `QTimer::singleShot`）。
 
-**Python 后端**（Jedi + 诊断）：
-- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断请求。
+**Python 后端**（Jedi + 诊断 + 语义标记）：
+- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断和语义标记请求。
 - 补全/悬停/签名请求：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`。
+- **Python 语义标记**（新增）：
+  - `m_pySemanticTokensTimer`（300ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后以及 `syncVirtualDoc()` 中启动，防抖触发 `requestPythonSemanticTokens()`。
+  - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，发送 `{"action":"tokens","code":...}` 至 `completion_helper.py`。响应中包含虚拟行号的语义 token 列表。
+  - `processPythonResponse()` 的 `PyPending::SemanticTokens` 分支：解析 token 列表后通过 `m_pyServer.cellRanges` 将虚拟行号映射回 cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
 - **Python 诊断**（新增）：
   - `m_pyDiagnosticsTimer`（500ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后启动，防抖触发 `requestPythonDiagnostics()`。
   - `requestPythonDiagnostics()`：遍历 `m_pyServer.cellOrder`，对每个 Python cell 的代码调用 `sanitizeForPython()`（规范化 `\r\n`/`\r` → `\n`、替换孤立 surrogate），通过 **base64 编码**发送 `{"action":"diagnostics","cells":[{cellIndex,code}]}` 以避免 JSON 换行转义问题。
   - `completion_helper.py` 的 `handle_diagnostics(cells)` 对每个 cell 代码独立调用 `compile()`，返回 cell 本地行号（0-based）的诊断列表，无需虚拟文档坐标映射。
   - 响应在 `processPythonResponse()` 的 `PyPending::Diagnostics` 分支直接构建 `SmdDiagnostic` 并发射 `diagnosticsUpdated`，绕过 `processDiagnostics()`（后者为虚拟文档坐标映射设计）。过期诊断仅清除同语言（`m_pyCellContents.contains(ci)`）cell 的条目。
-  - `PyPending` 枚举新增 `Diagnostics` 值；超时/错误时不主动清除诊断（静默忽略）。
+  - `PyPending` 枚举新增 `Diagnostics`、`SemanticTokens` 值；超时/错误时语义标记 emit 空列表清除旧高亮，诊断不主动清除。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
@@ -1460,10 +1475,12 @@
 **独立文件诊断**（`.cpp`/`.py`，非 SMD）：
 - `CompletionProvider` 基类新增 `diagnosticsUpdated(QList<SmdDiagnostic>)` 信号（`completionprovider.h`），统一所有 provider 的诊断接口。
 - 新增 `SemanticToken` 结构体（`completionprovider.h`）：`int line`（0-based 行号）、`int startChar`（行内 0-based 字符偏移）、`int length`（token 长度）、`QString type`（LSP token 类型如 `"function"`/`"method"`/`"parameter"`/`"class"` 等）、`QStringList modifiers`（修饰符如 `"declaration"`/`"definition"`）。
-- 新增 `semanticTokensReady(QList<SemanticToken>)` 信号（`completionprovider.h`），供 CppCompletionProvider 发射 LSP semantic tokens 至 CodeEditor → CppSyntaxHighlighter。
+- 新增 `semanticTokensReady(QList<SemanticToken>)` 信号（`completionprovider.h`），供 `CppCompletionProvider`（LSP 语义标记）和 `PythonCompletionProvider`（Jedi 语义标记）发射 semantic tokens 至 CodeEditor → CppSyntaxHighlighter / PythonSyntaxHighlighter。
 - **C++ 独立文件**（`CppCompletionProvider`）：`onNotificationReceived()` 处理 clangd 的 `textDocument/publishDiagnostics` 通知，`parseDiagnostics()` 将 LSP 诊断 JSON 转换为 `SmdDiagnostic` 列表（`cellIndex = 0` 表示平面文件），emit `diagnosticsUpdated`。
   - **语义高亮**：`sendInitialize()` 声明 `capabilities.textDocument.semanticTokens` 能力；初始化响应中提取 `legend`（tokenTypes/tokenModifiers 列表）存入 `m_tokenTypeLegend`/`m_tokenModifierLegend`。`updateText()` 发送 `didChange` 后启动 300ms 防抖定时器 `m_semanticTokensTimer`，到期后发送 `textDocument/semanticTokens/full` 请求。`parseSemanticTokens()` 解码 LSP delta-encoded 数据（每 5 个 int = 一组 token），根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串，emit `semanticTokensReady`。
-- **Python 独立文件**（`PythonCompletionProvider`）：新增 `sendDiagnosticsRequest()`，将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
+- **Python 独立文件**（`PythonCompletionProvider`）：
+  - **诊断**：`sendDiagnosticsRequest()` 将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
+  - **语义高亮**：`requestSemanticTokens()` 通过 300ms 防抖定时器触发，向 `completion_helper.py` 发送 `tokens` action。采用 fire-and-forget 模式（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，避免 Jedi 解析耗时较长（>500ms）导致响应被超时丢弃。`processResponse()` 中通过检测响应数据是否包含 `"line"` + `"type"` 字段来识别 tokens 响应，确保迟到响应仍被正确处理。`openDocument()` 和 `updateText()` 均启动防抖定时器，首次打开时通过 `serverReady` → `CodeEditor::onServerReady()` → `openDocument()` 链路在进程就绪后自动触发 tokens 请求。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
 - `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
 - `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell/semanticTokensReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。

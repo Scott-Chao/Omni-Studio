@@ -125,6 +125,12 @@ SmdLspManager::SmdLspManager(QObject *parent)
     connect(m_cppSemanticTokensTimer, &QTimer::timeout,
             this, &SmdLspManager::requestCppSemanticTokens);
 
+    m_pySemanticTokensTimer = new QTimer(this);
+    m_pySemanticTokensTimer->setSingleShot(true);
+    m_pySemanticTokensTimer->setInterval(300);
+    connect(m_pySemanticTokensTimer, &QTimer::timeout,
+            this, &SmdLspManager::requestPythonSemanticTokens);
+
     // Forward per-cell results to the appropriate adapter
     connect(this, &SmdLspManager::completionReadyForCell, this,
             [this](int cellIndex, QList<CompletionItem> items) {
@@ -159,6 +165,9 @@ void SmdLspManager::shutdown()
 
     if (m_cppSemanticTokensTimer) {
         m_cppSemanticTokensTimer->stop();
+    }
+    if (m_pySemanticTokensTimer) {
+        m_pySemanticTokensTimer->stop();
     }
 
     disconnect();
@@ -392,7 +401,10 @@ void SmdLspManager::syncVirtualDoc(const QString &langId)
         // Schedule debounced semantic tokens request after content change
         m_cppSemanticTokensTimer->start();
     }
-    // Python is stateless — no sync needed
+    // Python is stateless, but schedule semantic tokens refresh
+    if (langId == QStringLiteral("python") && m_pyServer.initialized) {
+        m_pySemanticTokensTimer->start();
+    }
 }
 
 void SmdLspManager::requestCppSemanticTokens()
@@ -1059,9 +1071,11 @@ void SmdLspManager::startPythonProcess()
     connect(m_pyProcess, &QProcess::started, this, [this]() {
         m_pyServer.initialized = true;
         emit serverReady(QStringLiteral("python"));
-        // Request initial diagnostics if there are Python cells
-        if (!m_pyServer.cellOrder.isEmpty())
+        // Request initial diagnostics and semantic tokens if there are Python cells
+        if (!m_pyServer.cellOrder.isEmpty()) {
             m_pyDiagnosticsTimer.start();
+            m_pySemanticTokensTimer->start();
+        }
     });
     connect(m_pyProcess, &QProcess::readyReadStandardOutput,
             this, &SmdLspManager::onPyReadyRead);
@@ -1176,6 +1190,33 @@ void SmdLspManager::requestPythonDiagnostics()
     m_pyTimeoutTimer.start(500);
 }
 
+void SmdLspManager::requestPythonSemanticTokens()
+{
+    if (m_shuttingDown || !m_pyServer.initialized) return;
+    if (!m_pyProcess || m_pyProcess->state() != QProcess::Running) return;
+    if (m_pyCellContents.isEmpty()) return;
+
+    // Concatenate all Python cells into a virtual document
+    QString code = pythonVirtualDoc();
+    // Skip large documents to avoid performance issues
+    if (code.length() > 200 * 1024) return;
+
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("tokens");
+    req[QStringLiteral("code")] = code;
+    QJsonArray cursor;
+    cursor.append(0);
+    cursor.append(0);
+    req[QStringLiteral("cursor")] = cursor;
+
+    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+    m_pyProcess->write(payload);
+
+    m_pyPending = PyPending::SemanticTokens;
+    m_pyRequestingCell = -1;  // covers all Python cells
+    m_pyTimeoutTimer.start(1000);  // longer timeout for full-document parsing
+}
+
 void SmdLspManager::onPyReadyRead()
 {
     if (m_shuttingDown || !m_pyProcess) return;
@@ -1287,6 +1328,40 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
         }
         break;
     }
+    case PyPending::SemanticTokens: {
+        QList<SemanticToken> allTokens;
+        QJsonArray arr = dataVal.toArray();
+        for (const QJsonValue &v : arr) {
+            QJsonObject obj = v.toObject();
+            SemanticToken t;
+            t.line = obj.value(QStringLiteral("line")).toInt();
+            t.startChar = obj.value(QStringLiteral("startChar")).toInt();
+            t.length = obj.value(QStringLiteral("length")).toInt();
+            t.type = obj.value(QStringLiteral("type")).toString();
+            allTokens.append(t);
+        }
+
+        // Map virtual line numbers back to cell-local line numbers
+        QMap<int, QList<SemanticToken>> tokensByCell;
+        for (const SemanticToken &token : allTokens) {
+            for (auto it = m_pyServer.cellRanges.begin();
+                 it != m_pyServer.cellRanges.end(); ++it) {
+                int ci = it.key();
+                CellRange cr = it.value();
+                if (token.line >= cr.firstVirtualLine
+                    && token.line < cr.firstVirtualLine + cr.localLineCount) {
+                    SemanticToken localToken = token;
+                    localToken.line = token.line - cr.firstVirtualLine;
+                    tokensByCell[ci].append(localToken);
+                    break;
+                }
+            }
+        }
+
+        for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
+            emit semanticTokensReadyForCell(it.key(), it.value());
+        break;
+    }
     default:
         break;
     }
@@ -1313,6 +1388,11 @@ void SmdLspManager::emitPythonEmptyResults()
     case PyPending::Diagnostics:
         // On timeout/error, don't clear diagnostics — the Python helper
         // may just be busy. Only clear when we get an explicit empty result.
+        break;
+    case PyPending::SemanticTokens:
+        // Emit empty tokens for all Python cells to clear stale highlighting
+        for (int ci : m_pyServer.cellOrder)
+            emit semanticTokensReadyForCell(ci, {});
         break;
     default:
         break;
