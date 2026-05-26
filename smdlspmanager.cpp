@@ -100,8 +100,11 @@ void SmdLspManager::LanguageServer::reset()
     completionRequestId = -1;
     hoverRequestId = -1;
     signatureHelpRequestId = -1;
+    semanticTokensRequestId = -1;
     pendingType = None;
     requestingCellIndex = -1;
+    tokenTypeLegend.clear();
+    tokenModifierLegend.clear();
 }
 
 // ─── Constructor / Destructor ────────────────────────────────────────
@@ -115,6 +118,12 @@ SmdLspManager::SmdLspManager(QObject *parent)
     m_pyDiagnosticsTimer.setSingleShot(true);
     m_pyDiagnosticsTimer.setInterval(500);
     connect(&m_pyDiagnosticsTimer, &QTimer::timeout, this, &SmdLspManager::requestPythonDiagnostics);
+
+    m_cppSemanticTokensTimer = new QTimer(this);
+    m_cppSemanticTokensTimer->setSingleShot(true);
+    m_cppSemanticTokensTimer->setInterval(300);
+    connect(m_cppSemanticTokensTimer, &QTimer::timeout,
+            this, &SmdLspManager::requestCppSemanticTokens);
 
     // Forward per-cell results to the appropriate adapter
     connect(this, &SmdLspManager::completionReadyForCell, this,
@@ -132,6 +141,11 @@ SmdLspManager::SmdLspManager(QObject *parent)
                 if (auto *adapter = m_adapters.value(cellIndex))
                     emit adapter->signatureHelpReady(signatures, activeIndex);
             });
+    connect(this, &SmdLspManager::semanticTokensReadyForCell, this,
+            [this](int cellIndex, QList<SemanticToken> tokens) {
+                if (auto *adapter = m_adapters.value(cellIndex))
+                    emit adapter->semanticTokensReady(tokens);
+            });
 }
 
 SmdLspManager::~SmdLspManager()
@@ -142,6 +156,11 @@ SmdLspManager::~SmdLspManager()
 void SmdLspManager::shutdown()
 {
     m_shuttingDown = true;
+
+    if (m_cppSemanticTokensTimer) {
+        m_cppSemanticTokensTimer->stop();
+    }
+
     disconnect();
 
     m_cppServer.reset();
@@ -369,8 +388,80 @@ void SmdLspManager::syncVirtualDoc(const QString &langId)
         params[QStringLiteral("contentChanges")] = contentChanges;
 
         srv->client->sendNotification(QStringLiteral("textDocument/didChange"), params);
+
+        // Schedule debounced semantic tokens request after content change
+        m_cppSemanticTokensTimer->start();
     }
     // Python is stateless — no sync needed
+}
+
+void SmdLspManager::requestCppSemanticTokens()
+{
+    if (m_shuttingDown || !m_cppServer.client || !m_cppServer.initialized)
+        return;
+    if (m_cppServer.virtualDocUri.isEmpty())
+        return;
+
+    QJsonObject textDocument;
+    textDocument[QStringLiteral("uri")] = m_cppServer.virtualDocUri;
+
+    QJsonObject params;
+    params[QStringLiteral("textDocument")] = textDocument;
+
+    m_cppServer.semanticTokensRequestId =
+        m_cppServer.client->sendRequest(
+            QStringLiteral("textDocument/semanticTokens/full"), params);
+}
+
+QList<SemanticToken> SmdLspManager::parseSemanticTokens(const QJsonObject &result)
+{
+    QList<SemanticToken> tokens;
+
+    QJsonArray data = result.value(QStringLiteral("data")).toArray();
+    if (data.isEmpty())
+        return tokens;
+
+    const int typeCount = m_cppServer.tokenTypeLegend.size();
+    const int modifierCount = m_cppServer.tokenModifierLegend.size();
+
+    tokens.reserve(data.size() / 5);
+
+    int line = 0;
+    int startChar = 0;
+
+    for (int i = 0; i + 4 < data.size(); i += 5) {
+        int deltaLine = data[i].toInt();
+        int deltaStart = data[i + 1].toInt();
+        int length = data[i + 2].toInt();
+        int tokenType = data[i + 3].toInt();
+        int tokenModifiers = data[i + 4].toInt();
+
+        if (deltaLine > 0) {
+            line += deltaLine;
+            startChar = deltaStart;
+        } else {
+            startChar += deltaStart;
+        }
+
+        SemanticToken token;
+        token.line = line;
+        token.startChar = startChar;
+        token.length = length;
+        token.type = (tokenType >= 0 && tokenType < typeCount)
+            ? m_cppServer.tokenTypeLegend.at(tokenType) : QString();
+
+        if (tokenModifiers > 0 && modifierCount > 0) {
+            for (int bit = 0; bit < modifierCount; ++bit) {
+                if (tokenModifiers & (1 << bit))
+                    token.modifiers.append(
+                        m_cppServer.tokenModifierLegend.at(bit));
+            }
+        }
+
+        tokens.append(token);
+    }
+
+    return tokens;
 }
 
 void SmdLspManager::cellLocalToVirtual(int cellIndex, int localLine, int localCol,
@@ -439,7 +530,15 @@ void SmdLspManager::sendInitialize(const QString &langId)
     QJsonObject params;
     params[QStringLiteral("processId")] = QJsonValue::Null;
     params[QStringLiteral("rootUri")] = QJsonValue::Null;
-    params[QStringLiteral("capabilities")] = QJsonObject();
+
+    QJsonObject textDocument;
+    QJsonObject semanticTokens;
+    semanticTokens[QStringLiteral("dynamicRegistration")] = true;
+    textDocument[QStringLiteral("semanticTokens")] = semanticTokens;
+
+    QJsonObject capabilities;
+    capabilities[QStringLiteral("textDocument")] = textDocument;
+    params[QStringLiteral("capabilities")] = capabilities;
 
     int id = srv->client->sendRequest(QStringLiteral("initialize"), params);
     Q_UNUSED(id);
@@ -450,7 +549,19 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
     if (m_shuttingDown || !m_cppServer.client) return;
 
     if (!m_cppServer.initialized) {
-        // Assume initialize response
+        // Extract semantic tokens legend from server capabilities
+        QJsonObject serverCaps = result.value(QStringLiteral("capabilities")).toObject();
+        QJsonObject tokenProvider = serverCaps.value(QStringLiteral("semanticTokensProvider")).toObject();
+        QJsonObject legend = tokenProvider.value(QStringLiteral("legend")).toObject();
+        QJsonArray tokenTypes = legend.value(QStringLiteral("tokenTypes")).toArray();
+        QJsonArray tokenModifiers = legend.value(QStringLiteral("tokenModifiers")).toArray();
+        m_cppServer.tokenTypeLegend.clear();
+        m_cppServer.tokenModifierLegend.clear();
+        for (const QJsonValue &v : tokenTypes)
+            m_cppServer.tokenTypeLegend.append(v.toString());
+        for (const QJsonValue &v : tokenModifiers)
+            m_cppServer.tokenModifierLegend.append(v.toString());
+
         m_cppServer.client->sendNotification(QStringLiteral("initialized"), QJsonObject());
         m_cppServer.initialized = true;
 
@@ -471,6 +582,9 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
             QStringLiteral("textDocument/didOpen"), params);
 
         emit serverReady(QStringLiteral("cpp"));
+
+        // Request initial semantic tokens after didOpen is processed
+        m_cppSemanticTokensTimer->start();
         return;
     }
 
@@ -588,6 +702,32 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
         if (activeSig >= 0 && activeSig < signatures.size())
             signatures[activeSig].activeParameter = activeParam;
         emit signatureHelpReadyForCell(cellIndex, signatures, activeSig);
+    } else if (id == m_cppServer.semanticTokensRequestId) {
+        m_cppServer.semanticTokensRequestId = -1;
+
+        QList<SemanticToken> allTokens = parseSemanticTokens(result);
+        if (allTokens.isEmpty())
+            return;
+
+        // Group tokens by cell, converting virtual → local line numbers
+        QMap<int, QList<SemanticToken>> tokensByCell;
+        for (const SemanticToken &token : allTokens) {
+            for (auto it = m_cppServer.cellRanges.begin();
+                 it != m_cppServer.cellRanges.end(); ++it) {
+                int ci = it.key();
+                CellRange cr = it.value();
+                if (token.line >= cr.firstVirtualLine
+                    && token.line < cr.firstVirtualLine + cr.localLineCount) {
+                    SemanticToken localToken = token;
+                    localToken.line = token.line - cr.firstVirtualLine;
+                    tokensByCell[ci].append(localToken);
+                    break;
+                }
+            }
+        }
+
+        for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
+            emit semanticTokensReadyForCell(it.key(), it.value());
     }
 }
 
@@ -611,6 +751,9 @@ void SmdLspManager::onCppRequestFailed(int id, QJsonObject error)
     } else if (id == m_cppServer.signatureHelpRequestId) {
         m_cppServer.signatureHelpRequestId = -1;
         emit signatureHelpReadyForCell(m_cppServer.requestingCellIndex, {}, 0);
+    } else if (id == m_cppServer.semanticTokensRequestId) {
+        m_cppServer.semanticTokensRequestId = -1;
+        // Semantic tokens failure is non-critical — silently ignore
     }
 }
 
@@ -836,12 +979,16 @@ int SmdLspManager::computeCppGroup(int cellIndex) const
 
 void SmdLspManager::focusCell(int cellIndex)
 {
+    if (m_focusing || m_shuttingDown)
+        return;
     if (!m_cppCellContents.contains(cellIndex))
         return;
 
     int newGroup = computeCppGroup(cellIndex);
     if (newGroup == m_activeCppGroup)
         return;
+
+    m_focusing = true;
 
     // Save current diagnostics to cache
     if (m_activeCppGroup >= 0 && !m_diagnostics.isEmpty())
@@ -850,6 +997,12 @@ void SmdLspManager::focusCell(int cellIndex)
     // Clear squiggles for old group
     for (auto it = m_diagnostics.begin(); it != m_diagnostics.end(); ++it)
         emit diagnosticsUpdated(it.key(), {});
+
+    // Clear semantic tokens for old group cells
+    for (auto it = m_cppServer.cellRanges.begin();
+         it != m_cppServer.cellRanges.end(); ++it) {
+        emit semanticTokensReadyForCell(it.key(), {});
+    }
 
     m_diagnostics.clear();
     m_activeCppGroup = newGroup;
@@ -864,6 +1017,8 @@ void SmdLspManager::focusCell(int cellIndex)
     }
 
     rebuildVirtualDoc(QStringLiteral("cpp"));
+
+    m_focusing = false;
 }
 
 // ─── Python process ──────────────────────────────────────────────────

@@ -60,8 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- cpp 高亮关键字优化
+### 新增
+- SMD Cpp Cell 支持完整高亮
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -604,7 +604,7 @@
 - `void setDocumentUri(const QString &uri)`：设置当前文档 URI（`file:///` + 文件路径），供 LSP 后端识别文件身份。独立代码文件在 `EditorWidget::loadFile()` 中调用。
 - `QString languageId() const`：返回当前语言 ID。
 - `CompletionProvider *completionProvider() const`：返回当前补全提供者。
-- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
+- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。同时连接 `CompletionProvider::semanticTokensReady` → `CppSyntaxHighlighter::setSemanticTokens()`（与 `createCompletionProvider()` 相同的语义高亮转发链路）。
 - `void hideSignatureHelp()`：隐藏签名帮助弹出窗口。由 `focusOutEvent` 失焦时调用，也由 `SmdEditor` 在执行 cell 前调用以确保弹出窗口不残留。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。构造函数连接 `provider->diagnosticsUpdated` → `setDiagnostics()`。
 - `QList<SmdDiagnostic> diagnostics() const`：返回缓存的诊断列表。供 `MainWindow` 在切换标签页时立即恢复诊断，无需等待 provider 重发。
@@ -622,13 +622,14 @@
 
 **信号**：
 - `diagnosticsToggleRequested()`：用户按下诊断面板快捷键时发出。
+- `semanticTokensApplied()`：每次 LSP semantic tokens 通过 `CppSyntaxHighlighter::setSemanticTokens()` 应用到高亮器后发出。SmdCell 连接此信号以调用 `updateEditorHeight()`，确保语义高亮的格式变更不会导致 cell 高度与文档实际大小不匹配。
 
 **LSP 补全集成**：
 - 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。替换旧 provider 前先断开其所有信号（`this`、`m_hoverManager`、`m_signatureHelpManager`），然后 `deleteLater()`，防止旧 LSP 进程的异步信号在延迟删除期间回调到已更新的 `m_completionProvider` 造成状态错乱。
   - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
   - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
   - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
-  - **语义高亮转发**：`createCompletionProvider()` 连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda `qobject_cast<CppSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`。仅 C++ 高亮器接受 semantic tokens，Python 高亮器不受影响。
+  - **语义高亮转发**：`createCompletionProvider()` 和 `setCompletionProvider()` 均连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda `qobject_cast<CppSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`。仅 C++ 高亮器接受 semantic tokens，Python 高亮器不受影响。每次应用 semantic tokens 后 emit `semanticTokensApplied()` 信号，供 SmdCell 连接以触发 `updateEditorHeight()` 重新计算 cell 高度。
 - SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
 - 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
 
@@ -697,17 +698,19 @@
 | 2 | **`::` 作用域** `\b(\w+)(?=\s*::)` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
 | 3 | **关键字**（所有，粗体） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
 | 4 | **控制流关键字** `if/for/while/return` 等（粗体，覆盖普通关键字） | `syntax.controlKeywords` | `#c792ea` 紫 | `#0000ff` 蓝 |
-| 5 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#C586C0` 紫 | `#800080` 紫 |
-| 6 | **类型** `\btype\b` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
-| 7 | class/struct/enum 声明名 | `syntax.types` | 同上 | 同上 |
-| 8 | **数字** | `syntax.numbers` | `#B5CEA8` 绿 | `#098658` 绿 |
-| 9 (最高 Regex) | **`#include` 路径** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
-| 10 | **字符串/字符** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| 5 | **基本/内置类型** `int/double/char/bool/float/size_t` 等（蓝色无粗体，不包括 STL 类型） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
+| 6 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#C586C0` 紫 | `#800080` 紫 |
+| 7 | **STL/Qt 类型** `vector/map/QString` 等 | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
+| 8 | class/struct/enum 声明名 | `syntax.types` | 同上 | 同上 |
+| 9 | **数字** | `syntax.numbers` | `#B5CEA8` 绿 | `#098658` 绿 |
+| 10 (最高 Regex) | **`#include` 路径** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| 11 | **字符串/字符** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
 | — | **参数/变量/属性** (LSP) | `syntax.parameters` | `#9CDCFE` 青 | `#001080` 深蓝 |
 | — | **单行/多行注释** | `syntax.comments` | `#6A9955` 绿 | `#008000` 绿 |
 
 - **函数调用规则最先应用**作为 fallback，后续关键字规则覆盖 `for (`/`while (`/`if (` 等，使控制流关键字在深色模式下保持紫色而非函数金色。
-- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static` 等，蓝色）规则先应用；控制流关键字（`if`/`for`/`while`/`return`/`switch` 等 14 个，深色紫色/浅色蓝色）规则随后覆盖。
+- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static` 等，蓝色粗体）规则先应用；控制流关键字（`if`/`for`/`while`/`return`/`switch` 等 14 个，深色紫色/浅色蓝色粗体）规则随后覆盖。
+- **基本/内置类型独立分类**：`bool`/`char`/`int`/`double`/`float`/`long`/`short`/`wchar_t` 及 `size_t`/`intN_t`/`uintN_t` 等从 `cppCommonTypes()` 中拆分至新函数 `cppPrimitiveTypes()`，使用关键字蓝色但**不加粗**，与控制流关键字区分。STL 容器/智能指针/IO 流等保留在 `cppCommonTypes()` 中，使用类型青色（`syntax.types`）。`cout`/`cin`/`endl` 已从 `cppCommonTypes()` 移除，由 LSP semantic tokens 作为 `variable` 类型高亮为浅蓝色。
 - `#include` 路径规则在所有 regex 规则中**最后应用**（最高优先级），覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一为字符串色。
 - 注释通过 `highlightBlock` 中的字符扫描在**所有 regex 规则之后**执行，跟踪字符串/字符状态避免误着色。
 
@@ -723,7 +726,7 @@
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"cpp"` 语言的高亮器实现。
 - 被 `CodeEditor::setLanguage()` 调用并安装到 `QTextDocument` 上。
-- `CodeEditor::createCompletionProvider()` 连接 `CppCompletionProvider::semanticTokensReady` 信号，通过 `qobject_cast<CppSyntaxHighlighter*>` 转发至 `setSemanticTokens()`。
+- `CodeEditor::createCompletionProvider()` 和 `CodeEditor::setCompletionProvider()` 连接 `CompletionProvider::semanticTokensReady` 信号，通过 `qobject_cast<CppSyntaxHighlighter*>` 转发至 `setSemanticTokens()`。应用后 emit `CodeEditor::semanticTokensApplied()`，供 SmdCell 触发高度重算。
 
 ---
 
@@ -1164,7 +1167,7 @@
 - `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor` 和 `m_baseFontSize`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
-- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
+- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。由 `blockCountChanged`、`contentsChanged` 和 `CodeEditor::semanticTokensApplied` 三个信号触发。语义高亮应用后需要重新计算高度，因为 `rehighlight()` 可能轻微改变 `QTextDocument::size()`，导致固定高度与文档实际大小不匹配。
   - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
   - **内容变更计数器**：`m_pendingContentChanges` 由 document 信号 lambda 递增、`updateEditorHeight` 入口原子性获取并清零。仅当计数器 > 0（真正的用户编辑）时才 `emit contentChanged()`，避免 layout 触发的重算虚假发射 LSP `cellContentChanged` → `syncVirtualDoc` 通知风暴。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
@@ -1410,21 +1413,25 @@
 
 **核心数据结构**：
 - `SmdDiagnostic`：诊断信息结构体（cellIndex、startLine/Col、endLine/Col、message、severity 1=错误,2=警告,3=信息,4=提示）。已从 `smdlspmanager.h` 移至独立的 `smddiagnostic.h`，供所有诊断生产者/消费者（SmdLspManager、CppCompletionProvider、PythonCompletionProvider、CodeEditor、BottomPanel、SmdDiagnosticsPanel）共享。
-- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪）。
+- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪、semantic tokens 请求 ID、token type/modifier legend）。
 - `m_activeCppGroup`：当前活动 C++ 程序组 ID（0 起始），虚拟文档仅向 clangd 发送该组的 cell。
 - `m_groupDiagnostics`：两级 Map（groupId → cellIndex → diagnostics），缓存各组诊断结果，支持切换 cell 时即时恢复，避免闪烁。
 
 **内部类 `CellCompletionAdapter`**：
 - 继承 `CompletionProvider`，持有 `SmdLspManager*` + `cellIndex`。
 - `requestCompletion/Hover/SignatureHelp(text, cursorPos)` 将绝对 cursorPos 转换为 cell 本地 (line, col)，委托给 `SmdLspManager::requestCompletion/Hover/SignatureHelp(cellIndex, line, col)`。
-- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
+- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`/`semanticTokensReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
 
 **C++ LSP 后端**（clangd）：
 - `startCppServer()`：查找 clangd → 创建 `LspClient` → 连接信号 → `--fallback-style=Google` 参数启动。
-- `sendInitialize()`：发送 `initialize` 请求（JSON-RPC）。
-- 初始化完成后发送 `textDocument/didOpen` 通知（完整虚拟文档），之后每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`。
-- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp 响应。
+- `sendInitialize()`：发送 `initialize` 请求，声明 `capabilities.textDocument.semanticTokens` 能力（与独立 `CppCompletionProvider` 相同的声明方式），使 clangd 在响应中返回 `semanticTokensProvider.legend`。
+- 初始化完成后提取 `tokenTypeLegend` / `tokenModifierLegend`，发送 `textDocument/didOpen` 通知（完整虚拟文档），启动 300ms 防抖定时器 `m_cppSemanticTokensTimer` 请求初始 semantic tokens。
+- 每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`，同时重新启动 300ms 防抖定时器。
+- `requestCppSemanticTokens()`：发送 `textDocument/semanticTokens/full` 请求至 clangd。连接至 `m_cppSemanticTokensTimer`（`new QTimer(this)`，正确 parent 到 SmdLspManager，300ms 单次防抖）。
+- `parseSemanticTokens()`：解码 LSP delta-encoded 数据 `[deltaLine, deltaStart, length, type, modifiers]`，根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串。
+- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp/**semanticTokens** 响应。Semantic tokens 响应中，先将 virtual line → cell 本地 line 坐标转换（通过 `cellRanges` 映射表），按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
 - `onCppNotificationReceived()`：处理 `textDocument/publishDiagnostics` → `processDiagnostics()` 翻译行号 → `diagnosticsUpdated` 信号。
+- `onCppRequestFailed()`：semantic tokens 请求失败时静默忽略（非关键功能，仅回退到 regex-only 高亮）。
 - 崩溃自动重启（1s 延迟的 `QTimer::singleShot`）。
 
 **Python 后端**（Jedi + 诊断）：
@@ -1440,7 +1447,7 @@
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
 - `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。`cellAdded()` 在插入 `cellOrder` 前检查 `contains()` 护盾，防止重复信号连接导致同一 cell 重复插入；`cellRemoved()` 删除共享 adapter（`CellCompletionAdapter`）并从 `cellOrder` 中移除。
-- `void focusCell(int cellIndex)`：程序组切换入口。计算 cell 所属组，若与当前活动组不同则保存当前诊断至 `m_groupDiagnostics` 缓存、清除旧诊断、恢复新组缓存诊断、重建虚拟文档并同步至 clangd。
+- `void focusCell(int cellIndex)`：程序组切换入口。计算 cell 所属组，若与当前活动组不同则保存当前诊断至 `m_groupDiagnostics` 缓存、清除旧诊断、**清除旧组 semantic tokens**（emit 空列表使旧 cell 的高亮器清除语义着色）、恢复新组缓存诊断、重建虚拟文档并同步至 clangd。包含 `m_focusing` 重入防护标志，防止信号链（semanticTokensReadyForCell → rehighlight → 布局回调）导致递归调用。
 - `int computeCppGroup(int cellIndex) const`：遍历 `cellOrder` 中位于 `cellIndex` 之前的 C++ cell，通过正则 `\bmain\s*\(` 计数 `main()` 函数出现次数，返回 cell 所属程序组 ID。
 - `void requestCompletion/Hover/SignatureHelp(int cellIndex, int cursorLine, int cursorCol)`：公共请求 API，cell 本地位置 → 虚拟位置 → LSP 请求。
 - `CompletionProvider *providerForCell(int cellIndex, const QString &langId)`：返回 cell 对应的 CellCompletionAdapter。
@@ -1459,7 +1466,7 @@
 - **Python 独立文件**（`PythonCompletionProvider`）：新增 `sendDiagnosticsRequest()`，将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
 - `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
-- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
+- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell/semanticTokensReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
 - `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
 
 **协作关系**：

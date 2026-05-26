@@ -329,6 +329,7 @@ void CodeEditor::createCompletionProvider(const QString &langId)
             if (cppHL)
                 cppHL->setSemanticTokens(tokens);
         }
+        emit semanticTokensApplied();
     });
 
     // Notify hover and signature managers of the new provider
@@ -359,6 +360,15 @@ void CodeEditor::setCompletionProvider(CompletionProvider *provider)
     if (provider) {
         connect(provider, &CompletionProvider::completionReady,
                 this, &CodeEditor::onCompletionsReady);
+        connect(provider, &CompletionProvider::semanticTokensReady,
+                this, [this](const QList<SemanticToken> &tokens) {
+            if (m_highlighter) {
+                auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter);
+                if (cppHL)
+                    cppHL->setSemanticTokens(tokens);
+            }
+            emit semanticTokensApplied();
+        });
         m_hoverManager->setProvider(provider);
         m_signatureHelpManager->setProvider(provider);
     }

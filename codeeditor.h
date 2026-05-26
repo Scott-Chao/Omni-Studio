@@ -55,6 +55,7 @@ public:
 
 signals:
     void diagnosticsToggleRequested();
+    void semanticTokensApplied();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
