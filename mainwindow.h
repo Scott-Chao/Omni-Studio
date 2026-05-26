@@ -40,6 +40,7 @@ class HelpPanel;
 class AiPanel;
 class AiRequestHandler;
 class IndexManager;
+class CrashRecoveryManager;
 class TitleBarButton;
 
 QT_BEGIN_NAMESPACE
@@ -274,8 +275,7 @@ private:
 
     // 崩溃恢复
     void checkCrashRecovery();
-    void cleanStaleRecoveryFiles();
-    void clearRecoveryDirectory();
+    CrashRecoveryManager *m_crashRecovery = nullptr;
 
 
 };

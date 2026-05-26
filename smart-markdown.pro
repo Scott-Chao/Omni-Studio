@@ -32,6 +32,7 @@ SOURCES += \
     ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
+    crashrecoverymanager.cpp \
     backlinkindex.cpp \
     backlinkspanel.cpp \
     codeeditor.cpp \
@@ -101,6 +102,7 @@ HEADERS += \
     ai/prompttemplates.h \
     activitybar.h \
     configmanager.h \
+    crashrecoverymanager.h \
     backlinkindex.h \
     backlinkspanel.h \
     codeeditor.h \

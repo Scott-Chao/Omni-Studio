@@ -65,6 +65,7 @@ protected:
 #include "ai/errorjournal.h"
 #include "ai/airequesthandler.h"
 #include "indexmanager.h"
+#include "crashrecoverymanager.h"
 #include "smdformat.h"
 #include "smdeditor.h"
 #include "codeeditor.h"
@@ -198,6 +199,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 创建索引管理器
     m_indexManager = new IndexManager(this);
+    m_crashRecovery = new CrashRecoveryManager(this);
     m_indexManager->setTabManager(m_tabManager);
     connect(m_indexManager, &IndexManager::fullIndexReady, this, [this]() {
         updateCurrentEditorCompletions();
@@ -1251,7 +1253,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     m_rightPanel->historyPanel()->saveHistory();
     m_settings->flushOverrides();
     saveSettings();
-    clearRecoveryDirectory(); // 正常关闭，清理恢复目录
+    m_crashRecovery->clearRecoveryDirectory(); // 正常关闭，清理恢复目录
     event->accept();
 }
 
@@ -3353,19 +3355,13 @@ void MainWindow::loadMdDiagnosticsForCurrentTab()
 
 void MainWindow::checkCrashRecovery()
 {
-    cleanStaleRecoveryFiles();
-
-    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                          + "/SM-Recovery";
-    QDir dir(recoveryDir);
-    if (!dir.exists())
+    m_crashRecovery->cleanStaleRecoveryFiles();
+    if (!m_crashRecovery->hasRecoveryFiles())
         return;
 
+    QDir dir(CrashRecoveryManager::recoveryDirectoryPath());
     QStringList entries = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Time);
-    if (entries.isEmpty())
-        return;
 
-    // 有恢复文件 → 询问用户
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(tr("恢复文件"));
     msgBox.setIcon(QMessageBox::Question);
@@ -3376,11 +3372,9 @@ void MainWindow::checkCrashRecovery()
     QPushButton *restoreBtn = msgBox.addButton(tr("恢复(&R)"), QMessageBox::AcceptRole);
     msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
     msgBox.setDefaultButton(restoreBtn);
-
     msgBox.exec();
 
     if (msgBox.clickedButton() == restoreBtn) {
-        // 恢复：依次打开每个恢复文件
         for (const QString &entry : entries) {
             QString filePath = dir.absoluteFilePath(entry);
             QFile file(filePath);
@@ -3389,57 +3383,16 @@ void MainWindow::checkCrashRecovery()
             QString content = QString::fromUtf8(file.readAll());
             file.close();
 
-            // 创建新标签页，填入恢复内容
             EditorWidget *editor = m_tabManager->newFile();
             editor->setPlainText(content);
             editor->setModified(true);
-
-            // 记录恢复文件路径，后续手动保存时清理
             editor->setRecoveryTempPath(filePath);
-
-            // 更新标签标题
             int idx = m_tabManager->indexOf(editor);
             if (idx >= 0)
                 m_tabManager->setTabText(idx, tr("未命名（已恢复）"));
         }
     } else {
-        // 丢弃：删除整个恢复目录
-        clearRecoveryDirectory();
+        m_crashRecovery->clearRecoveryDirectory();
     }
 }
 
-void MainWindow::cleanStaleRecoveryFiles()
-{
-    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                          + "/SM-Recovery";
-    QDir dir(recoveryDir);
-    if (!dir.exists())
-        return;
-
-    int maxAgeHours = ConfigManager::instance().autoSaveRecoveryMaxAgeHours();
-    qint64 cutoff = QDateTime::currentSecsSinceEpoch() - (maxAgeHours * 3600);
-
-    const QStringList entries = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-    for (const QString &entry : entries) {
-        QString filePath = dir.absoluteFilePath(entry);
-        QFileInfo info(filePath);
-        if (info.lastModified().toSecsSinceEpoch() < cutoff) {
-            QFile::remove(filePath);
-        }
-    }
-
-    // 如果目录已空，删除它
-    if (dir.entryList(QDir::Files | QDir::NoDotAndDotDot).isEmpty()) {
-        dir.removeRecursively();
-    }
-}
-
-void MainWindow::clearRecoveryDirectory()
-{
-    QString recoveryDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                          + "/SM-Recovery";
-    QDir dir(recoveryDir);
-    if (dir.exists()) {
-        dir.removeRecursively();
-    }
-}
