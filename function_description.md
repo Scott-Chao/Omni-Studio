@@ -60,44 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.13.0
-#### 代码编辑器升级
-
-**代码编辑器 — 括号对着色（Bracket Pair Colorization）**
-- `()` / `[]` / `{}` 按嵌套深度使用 3 种颜色（金 `#FFD700` / 紫 `#DA70D6` / 蓝 `#179FFF`）循环着色，加粗，未配对闭括号红色
-- 跨行配对：通过 `setCurrentBlockState()` bit 编码（bits 0-2 注释状态 + bits 3-7 深度 + bits 8+ 类型）在相邻 block 间传递括号栈，最多支持 12 层嵌套
-- 字符串/注释保护：使用 `QSyntaxHighlighter::format(pos)` 而非 `QTextLayout::formats()` 检测已着色的注释/字符串区域，避免 `highlightBlock()` 执行期间布局未提交导致的漏检
-- 初始状态修复：`previousBlockState() == -1`（首行）时做归零处理，防止深度字段被误读为 31 产生幽灵括号
-
-**代码编辑器 — 指针/引用运算符高亮**
-- `*`（指针）和 `&`（引用/取地址）以关键字蓝色（`#569CD6`）高亮，两层互补机制：
-  - Regex 快速通道：`\b(?:const\s+)?(?:int|char|...|auto|wchar_t)\s*([*&]+)\b` 覆盖基本类型和 `auto`，立即生效
-  - clangd 语义驱动：遍历 semantic token 中的 type/class/struct/enum/typeParameter token，跳过空白+模板闭合 `>`+cv限定符后定位 `*`/`&` 并着色，覆盖所有自定义类型
-- 两层互补：regex 无需等待 clangd 响应，clangd 提供 `QString &a`、`std::shared_ptr<int>*` 等完整类型覆盖
-
-**代码编辑器 — 选中区域保留语法高亮**
-- 重写 `paintEvent()`：临时清除光标选中 → `QPlainTextEdit::paintEvent()` 完整绘制语法颜色 → `QPainter` 在 viewport 叠加半透明选中背景
-- 选中区域逐行计算：遍历 `QTextBlock` → `QTextLayout` → `QTextLine`，通过 `cursorRect()` 获取每行选中部分起止矩形并 `fillRect()`
-- 选中背景 alpha 值根据主题自适应（暗色 120 / 亮色 80），确保两种模式下对比度充足
-- `m_inPaintSelection` 防递归标志，`qMin(lineEnd, selEnd)` 确保每行末字符不被遗漏
-
-**代码编辑器 — 高亮效果增强**
-- 关键字分层：普通关键字（蓝色粗体）+ 控制流关键字（紫/蓝粗体覆盖）
-- 基本类型独立分类：`bool`/`int`/`double` 等使用关键字蓝色但不加粗，从通用类型中拆分
-- 参数规则扩展：`m_parameterFormat` 同时用于参数/变量/属性，由 semantic tokens 驱动
-- 高亮颜色配置从硬编码迁移至 `ConfigManager` 主题配置（`syntax.*` 系列方法）
-- 修复打开文件时变量名高亮不触发的问题（`CppCompletionProvider::setSemanticTokens` 重新触发 `rehighlight()`）
-
-**SMD Python Cell — 完整语义高亮与诊断**
-- Python 单元格接入 `SmdLspManager` 共享 Jedi 后端，提供 semantic tokens（函数/方法/参数/变量/类/模块）
-- Python 诊断：通过 Jedi `diagnostics` action + base64 编码获取语法诊断，500ms 防抖
-- `CompletionProvider` 基类新增 `diagnosticsUpdated()` 信号和 `SemanticToken` 结构体，统一诊断接口
-
-**悬停提示修复**
-- 修复 Python 函数内参数悬停时无法显示的问题（Jedi `help` action 异常处理）
-- 修复部分情况下 Python 文件鼠标悬停没有提示的问题（`isPositionOverText` 行尾空白误触发修复）
-- 修复 SMD Python Cell 打开文件无法自动显示诊断信息的问题
-- 悬停弹窗内容过长时采用滚动显示（`QScrollArea` 包装）
+### 修复 v0.13.1
+- 修复括号匹配错误
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -636,7 +600,7 @@
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
-- **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的闭括号显示红色。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
+- **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的括号显示红色（含开括号和闭括号），通过搜索整个括号栈实现跨类型 bracket 匹配（rainbow brackets），并通过前行扫描检测真正无匹配的开括号。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
 - **指针/引用运算符高亮**：`CppSyntaxHighlighter` 通过两层机制对声明上下文中的 `*`（指针）和 `&`（引用/取地址）运算符进行蓝色（`#569CD6`）高亮：
   - **Regex 快速通道**：正则 `\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b` 在 `initFormats()` 中提前于字符串规则添加，覆盖基本类型和 `auto` 后的 `*`/`&`。高亮后立即生效，不等待 clangd。
   - **clangd 语义驱动**：`highlightBlock()` 在应用 semantic tokens 后，遍历当前 block 中类型为 `type`/`class`/`struct`/`enum`/`typeParameter` 的 token，检查其后紧跟的字符（跳过空白）是否为 `*` 或 `&`，若是则应用 `m_operatorFormat`。仅在目标位置尚未被前层着色（如字符串、注释或 regex 快速通道）时才设置，避免覆盖。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
@@ -768,10 +732,12 @@
 
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
-- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
+- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的括号显示红色（含开括号和闭括号） `#FF0000`。
+	- **跨类型括号匹配**：闭括号不再仅检查栈顶，而是**搜索整个括号栈**寻找最近同类型开括号。若栈顶有不同类型括号介入（如 `([)` 中的 `[`），这些"交叉"括号被标记为红色（未配对）并从栈中移除，外层的同类型开括号与当前闭括号正常配对着色。这实现了 rainbow brackets 风格的跨类型独立匹配（`([)]` 中的 `(` 配 `)`、`[` 配 `]` 各自配对）。
+	- **前行扫描未匹配开括号**：行内处理完毕后，若括号栈仍有未匹配的开括号且其中有来自当前行（`pos >= 0`）的，向前遍历后续所有 `QTextBlock` 维持栈匹配逻辑，判断这些开括号在文档后续是否有匹配的闭括号。若无，则将其重新着为红色。这使得 `()` 删除 `)` 后 `(` 能正确显示为红色。
 - **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。解码时对 `-1` 初始值做 `if (prevState < 0) prevState = 0` 归零处理，防止首次高亮时深度被误读为 31。
 - **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号。使用 `format()` 而非 `QTextLayout::formats()`，因为后者在 `highlightBlock()` 执行期间尚未被 Qt 提交更新，查询结果为空或陈旧。
-- **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（确保最终颜色一致）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
+- **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（含交叉括号清理后的深度重算）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
 
 **指针/引用运算符高亮**：
 - 两层机制高亮 C++ 代码中声明上下文里的 `*`（指针）和 `&`（引用/取地址）运算符为蓝色（`syntax.keywords`，`#569CD6`）。
@@ -816,7 +782,9 @@
 
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
-- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
+- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的括号显示红色（含开括号和闭括号） `#FF0000`。
+	- **跨类型括号匹配**：闭括号不再仅检查栈顶，而是**搜索整个括号栈**寻找最近同类型开括号。若栈顶有不同类型括号介入（如 `([)` 中的 `[`），这些"交叉"括号被标记为红色（未配对）并从栈中移除，外层的同类型开括号与当前闭括号正常配对着色。这实现了 rainbow brackets 风格的跨类型独立匹配（`([)]` 中的 `(` 配 `)`、`[` 配 `]` 各自配对）。
+	- **前行扫描未匹配开括号**：行内处理完毕后，若括号栈仍有未匹配的开括号且其中有来自当前行（`pos >= 0`）的，向前遍历后续所有 `QTextBlock` 维持栈匹配逻辑，判断这些开括号在文档后续是否有匹配的闭括号。若无，则将其重新着为红色。这使得 `()` 删除 `)` 后 `(` 能正确显示为红色。
 - **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 三引号状态 0/1/2，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈。与三引号字符串的跨行状态在同一 `int` 中编码，互不干扰。解码时对 `-1` 初始值做归零处理，防止深度字段被误读。
 - **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()` 或 `syntaxStrings()`，若匹配则跳过。C++ 版本额外检查 `syntaxPreprocessor()`。
 

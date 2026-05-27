@@ -349,21 +349,87 @@ void PythonSyntaxHighlighter::highlightBrackets(const QString &text)
             else
                 expected = QLatin1Char('{');
 
-            if (!bracketStack.isEmpty() && bracketStack.last().ch == expected) {
-                const int depth = bracketStack.size() - 1;
+            // Search stack for a matching opener of the same type
+            int matchIdx = -1;
+            for (int j = bracketStack.size() - 1; j >= 0; --j) {
+                if (bracketStack[j].ch == expected) {
+                    matchIdx = j;
+                    break;
+                }
+            }
+
+            if (matchIdx >= 0) {
+                // Intervening brackets (different types) are crossed — mark red
+                for (int j = matchIdx + 1; j < bracketStack.size(); ++j) {
+                    if (bracketStack[j].pos >= 0) {
+                        QTextCharFormat errFmt;
+                        errFmt.setForeground(m_unpairedBracketColor);
+                        errFmt.setFontWeight(QFont::Bold);
+                        setFormat(bracketStack[j].pos, 1, errFmt);
+                    }
+                }
+                BracketInfo opener = bracketStack[matchIdx];
+                bracketStack.resize(matchIdx);
+                // Color matched pair with correct depth
+                const int depth = matchIdx;
                 QTextCharFormat fmt;
                 fmt.setForeground(m_bracketColors[depth % 3]);
                 fmt.setFontWeight(QFont::Bold);
-                // Recolor opener if on the same line
-                if (bracketStack.last().pos >= 0)
-                    setFormat(bracketStack.last().pos, 1, fmt);
+                if (opener.pos >= 0)
+                    setFormat(opener.pos, 1, fmt);
                 setFormat(i, 1, fmt);
-                bracketStack.removeLast();
             } else {
                 QTextCharFormat fmt;
                 fmt.setForeground(m_unpairedBracketColor);
                 fmt.setFontWeight(QFont::Bold);
                 setFormat(i, 1, fmt);
+            }
+        }
+    }
+
+    // Recolor unmatched opening brackets from the current line as red
+    if (!bracketStack.isEmpty()) {
+        QVector<QChar> pending;
+        for (const auto &b : bracketStack)
+            pending.append(b.ch);
+
+        // Scan subsequent blocks to see if remaining brackets can be matched
+        QTextBlock nextBlock = currentBlock().next();
+        while (nextBlock.isValid() && !pending.isEmpty()) {
+            QString nextText = nextBlock.text();
+            for (int i = 0; i < nextText.length() && !pending.isEmpty(); ++i) {
+                QChar ch = nextText.at(i);
+                if (ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{')) {
+                    pending.append(ch);
+                } else if (ch == QLatin1Char(')') || ch == QLatin1Char(']') || ch == QLatin1Char('}')) {
+                    QChar expected;
+                    if (ch == QLatin1Char(')')) expected = QLatin1Char('(');
+                    else if (ch == QLatin1Char(']')) expected = QLatin1Char('[');
+                    else expected = QLatin1Char('{');
+                    if (!pending.isEmpty() && pending.last() == expected)
+                        pending.removeLast();
+                }
+            }
+            nextBlock = nextBlock.next();
+        }
+
+        // The first N chars of pending that match bracketStack in order
+        // are the original unmatched brackets
+        int unmatchedCount = 0;
+        for (int i = 0; i < pending.size() && i < bracketStack.size(); ++i) {
+            if (bracketStack[i].ch == pending[i])
+                ++unmatchedCount;
+            else
+                break;
+        }
+
+        if (unmatchedCount > 0) {
+            QTextCharFormat errFmt;
+            errFmt.setForeground(m_unpairedBracketColor);
+            errFmt.setFontWeight(QFont::Bold);
+            for (int i = 0; i < unmatchedCount; ++i) {
+                if (bracketStack[i].pos >= 0)
+                    setFormat(bracketStack[i].pos, 1, errFmt);
             }
         }
     }
