@@ -20,6 +20,7 @@
 #include <QIntValidator>
 #include <QTableWidget>
 #include <QTextEdit>
+#include <QToolButton>
 #include <QHeaderView>
 #include <QColorDialog>
 #include <QFileDialog>
@@ -882,56 +883,47 @@ QWidget *SettingsPanel::createAppearancePage()
         emit appearanceSettingChanged("editor.file_tree_item_height", val);
     });
 
-    layout->addStretch();
+    // ====================================================================
+    // Collapsible Color Sections
+    // ====================================================================
+    layout->addSpacing(8);
 
-    struct ColorItem {
-        QString label;
-        QString configKey;
-        QColor defaultColor;
-    };
-
-    ColorItem colors[] = {
-        {tr("编辑器背景"), "appearance.colors.editor.background", cfg.editorBackground()},
-        {tr("编辑器前景（文字）"), "appearance.colors.editor.foreground", cfg.editorForeground()},
-        {tr("选中背景"),  "appearance.colors.editor.selection",  cfg.editorSelection()},
-        {tr("当前行高亮"), "appearance.colors.current_line.highlight", cfg.currentLineHighlight()},
-        {tr("行号区域背景"), "appearance.colors.line_number.background", cfg.lineNumberBackground()},
-        {tr("行号文字颜色"), "appearance.colors.line_number.foreground", cfg.lineNumberForeground()},
-    };
-
-    for (const auto &ci : colors) {
+    // Helper: create a single color picker row inside a section layout
+    auto addColorRow = [&](QVBoxLayout *parent, const QString &label,
+                           const QString &configKey, const QColor &defaultColor)
+    {
         auto *row = new QHBoxLayout;
-        auto *lbl = new QLabel(ci.label);
+        auto *lbl = new QLabel(label);
         lbl->setStyleSheet(labelStyle());
+
+        QString currentHex = sm.value(configKey, defaultColor.name()).toString();
 
         auto *colorBtn = new QPushButton;
         colorBtn->setFixedSize(24, 24);
-        QString bgHex = sm.value(ci.configKey, ci.defaultColor.name()).toString();
-        QString btnBorder = ThemeManager::instance().color("input.border").name();
-    QString btnActive = ThemeManager::instance().color("badge.background").name();
-    colorBtn->setStyleSheet(
+        QString btnBorder = tm.color("input.border").name();
+        QString btnActive = tm.color("badge.background").name();
+        colorBtn->setStyleSheet(
             QStringLiteral(
                 "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                 "QPushButton:hover { border-color: %3; }"
-            ).arg(bgHex, btnBorder, btnActive)
-        );
+            ).arg(currentHex, btnBorder, btnActive));
 
         auto *colorPreview = new QLabel;
         colorPreview->setFixedWidth(80);
-        colorPreview->setText(bgHex);
+        colorPreview->setText(currentHex);
         colorPreview->setStyleSheet(
             QStringLiteral("color: %1; font-size: 11px; padding: 2px 4px; "
                            "background-color: %2; border: 1px solid %3; border-radius: 3px;")
-                           .arg(ThemeManager::instance().color("tab.inactiveForeground").name(),
-                                ThemeManager::instance().color("input.background").name(),
-                                ThemeManager::instance().color("input.border").name())
-        );
-
-        QString configKey = ci.configKey;
-        QColor defaultColor = ci.defaultColor;
+            .arg(tm.color("tab.inactiveForeground").name(),
+                 tm.color("input.background").name(),
+                 tm.color("input.border").name()));
 
         connect(colorBtn, &QPushButton::clicked, this, [this, colorBtn, colorPreview, configKey, defaultColor]() {
-            QColor chosen = QColorDialog::getColor(defaultColor, this, tr("选择颜色"));
+            auto &sm2 = SettingsManager::instance();
+            QString curHex = sm2.value(configKey, defaultColor.name()).toString();
+            QColor curCol = QColor(curHex);
+            QColor chosen = QColorDialog::getColor(curCol.isValid() ? curCol : defaultColor,
+                                                    this, tr("选择颜色"));
             if (chosen.isValid()) {
                 QString hex = chosen.name();
                 auto &ctm = ThemeManager::instance();
@@ -939,8 +931,7 @@ QWidget *SettingsPanel::createAppearancePage()
                     QStringLiteral(
                         "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                         "QPushButton:hover { border-color: %3; }"
-                    ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name())
-                );
+                    ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
                 colorPreview->setText(hex);
                 emit appearanceSettingChanged(configKey, hex);
             }
@@ -950,7 +941,120 @@ QWidget *SettingsPanel::createAppearancePage()
         row->addStretch();
         row->addWidget(colorPreview);
         row->addWidget(colorBtn);
-        layout->addLayout(row);
+        parent->addLayout(row);
+    };
+
+    // Helper: create a collapsible section with QToolButton toggle
+    auto createSection = [&](const QString &title, bool defaultExpanded)
+    {
+        auto *btn = new QToolButton;
+        btn->setCheckable(true);
+        btn->setChecked(defaultExpanded);
+        btn->setText(title);
+        btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        btn->setArrowType(defaultExpanded ? Qt::DownArrow : Qt::RightArrow);
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { color: %1; font-size: 13px; font-weight: bold; border: none; padding: 2px 0; }"
+            "QToolButton:hover { color: %2; }")
+            .arg(tm.color("tab.activeForeground").name(),
+                 tm.color("badge.background").name()));
+
+        auto *content = new QWidget;
+        content->setVisible(defaultExpanded);
+        auto *contentLayout = new QVBoxLayout(content);
+        contentLayout->setContentsMargins(8, 4, 0, 4);
+        contentLayout->setSpacing(4);
+
+        QObject::connect(btn, &QToolButton::toggled, content, &QWidget::setVisible);
+        QObject::connect(btn, &QToolButton::toggled, btn, [btn](bool checked) {
+            btn->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+        });
+
+        return QPair<QToolButton*, QVBoxLayout*>(btn, contentLayout);
+    };
+
+    // ---- 编辑器色 (6 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("编辑器色"), true);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("编辑器背景"),            "appearance.colors.editor.background",      cfg.editorBackground());
+        addColorRow(cl, tr("编辑器前景（文字）"),     "appearance.colors.editor.foreground",      cfg.editorForeground());
+        addColorRow(cl, tr("选中背景"),              "appearance.colors.editor.selection",       cfg.editorSelection());
+        addColorRow(cl, tr("当前行高亮"),             "appearance.colors.current_line.highlight", cfg.currentLineHighlight());
+        addColorRow(cl, tr("行号区域背景"),           "appearance.colors.line_number.background", cfg.lineNumberBackground());
+        addColorRow(cl, tr("行号文字颜色"),           "appearance.colors.line_number.foreground", cfg.lineNumberForeground());
+
+        layout->addWidget(cl->parentWidget());
+    }
+
+    // ---- 语法高亮 (8 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("语法高亮"), false);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("关键字"),       "appearance.colors.syntax_highlight.keywords",         cfg.syntaxKeywords());
+        addColorRow(cl, tr("预处理指令"),   "appearance.colors.syntax_highlight.preprocessor",     cfg.syntaxPreprocessor());
+        addColorRow(cl, tr("类型"),         "appearance.colors.syntax_highlight.types",            cfg.syntaxTypes());
+        addColorRow(cl, tr("数字"),         "appearance.colors.syntax_highlight.numbers",          cfg.syntaxNumbers());
+        addColorRow(cl, tr("字符串"),       "appearance.colors.syntax_highlight.strings",          cfg.syntaxStrings());
+        addColorRow(cl, tr("注释"),         "appearance.colors.syntax_highlight.comments",         cfg.syntaxComments());
+        addColorRow(cl, tr("Python 装饰器"), "appearance.colors.syntax_highlight.python_decorators", cfg.syntaxPythonDecorators());
+        addColorRow(cl, tr("Python self/cls"), "appearance.colors.syntax_highlight.python_self_cls", cfg.syntaxPythonSelfCls());
+
+        layout->addWidget(cl->parentWidget());
+    }
+
+    // ---- 输出面板 (4 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("输出面板"), false);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("背景"),       "appearance.colors.output_panel.background", cfg.outputPanelBackground());
+        addColorRow(cl, tr("前景"),       "appearance.colors.output_panel.foreground", cfg.outputPanelForeground());
+        addColorRow(cl, tr("选中色"),     "appearance.colors.output_panel.selection",  cfg.outputPanelSelection());
+        addColorRow(cl, tr("错误输出"),   "appearance.colors.output_panel.stderr",     cfg.outputStderr());
+
+        layout->addWidget(cl->parentWidget());
+    }
+
+    // ---- 搜索高亮 (2 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("搜索高亮"), false);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("高亮背景"), "appearance.colors.search.highlight_background", cfg.searchHighlightBackground());
+        addColorRow(cl, tr("高亮文字"), "appearance.colors.search.highlight_foreground", cfg.searchHighlightForeground());
+
+        layout->addWidget(cl->parentWidget());
+    }
+
+    // ---- 预览 (2 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("预览"), false);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("容器背景"),         "appearance.colors.preview.container_background",   cfg.previewContainerBackground());
+        addColorRow(cl, tr("WebEngine 背景"),   "appearance.colors.preview.webengine_background",   cfg.previewWebEngineBackground());
+
+        layout->addWidget(cl->parentWidget());
+    }
+
+    // ---- Judge 状态 (8 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("Judge 状态"), false);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("AC"),  "appearance.colors.judge_status.ac",  cfg.judgeColorAc());
+        addColorRow(cl, tr("WA"),  "appearance.colors.judge_status.wa",  cfg.judgeColorWa());
+        addColorRow(cl, tr("TLE"), "appearance.colors.judge_status.tle", cfg.judgeColorTle());
+        addColorRow(cl, tr("MLE"), "appearance.colors.judge_status.mle", cfg.judgeColorMle());
+        addColorRow(cl, tr("RE"),  "appearance.colors.judge_status.re",  cfg.judgeColorRe());
+        addColorRow(cl, tr("PE"),  "appearance.colors.judge_status.pe",  cfg.judgeColorPe());
+        addColorRow(cl, tr("OLE"), "appearance.colors.judge_status.ole", cfg.judgeColorOle());
+        addColorRow(cl, tr("CE"),  "appearance.colors.judge_status.ce",  cfg.judgeColorCe());
+
+        layout->addWidget(cl->parentWidget());
     }
 
     layout->addStretch();
