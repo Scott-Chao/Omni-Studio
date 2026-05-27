@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 修复 Python 函数内参数悬停时无法显示的问题
+- 悬停弹窗内容过长时采用滚动显示
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -584,7 +584,11 @@
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
-- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。诊断提示（错误/警告）和 LSP 悬停提示均应用紧凑样式（`padding: 0px 4px; margin: 0px;`），与全局 `QToolTip` 样式一致。全局 tooltip 通过 `CompactTooltipStyle`（`main.cpp` 中的 QProxyStyle 子类，`PM_ToolTipLabelFrameWidth = 0`）进一步消除 Qt Fusion 样式的额外内框边距。鼠标移出文本区域、离开编辑器、点击或滚轮时关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
+  - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
+  - **LSP 悬停提示（自定义浮窗）**：使用自定义 `QFrame`（`Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`，无焦点可交互的浮动窗口），内含 `QScrollArea` + `QLabel`。`QTextDocument::setHtml()` + `setTextWidth()` 精确测量内容渲染高度实现自适应尺寸：短内容紧凑无滚动条，长内容上限 300px 并显示垂直滚动条（宽度 8px，仅在需要时出现）。布局边距 6/4/6/4 px，圆角 5px。背景色和边框色均从 `QPalette::ToolTipBase` 推导（边框 = 背景色 ±55 亮度偏移），统一写入 stylesheet 确保视觉一致。
+  - **定位**：弹窗紧贴悬停文字行正下方 1px（若下方空间不足则移至行上方），水平方向从鼠标位置向左偏移 15px，并 clamp 在编辑器视口边界内，确保弹窗不超出编辑器窗口。
+  - **鼠标追踪**：`HoverManager` 通过 `eventFilter` 监听编辑器视口和弹窗窗口。`MouseMove` 中通过 `isSameWord()` 检测鼠标是否仍在悬停单词范围内（字母/数字/下划线边界），避免左右微移导致弹窗闪烁。`Leave` 事件使用 `m_mouseInTooltip` 标志（弹窗 `Enter`/`Leave` 事件维护）和 `QCursor::pos()` 双重检查，使鼠标从文字移至弹窗时弹窗不消失。弹窗上的滚轮事件转发至 `QScrollArea` 实现滚动阅读，点击弹窗内部不关闭。应用失焦时自动隐藏。
 - **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
@@ -1468,6 +1472,7 @@
   - `PythonCompletionProvider::processResponse()` 改为**基于 JSON 结构的路由**：tokens（数组含 `line`+`type`）→ diagnostics（数组含 `startLine`）→ hover（对象含 `signature`）按结构优先检测，消除并发请求 pending 状态被覆盖导致响应错配的竞态条件。
   - `SmdLspManager::sendPythonHoverLocal()`：发送单个 cell 代码（base64，`code_b64` 字段）+ cell 本地坐标，绕过虚拟文档映射。
   - `completion_helper.py` main loop 统一处理：优先 `code_b64` 字段否则回退 `code` 字段，两者均 base64 解码，确保 SMD 和独立 `.py` 文件两条路径一致。
+  - `completion_helper.py` **`handle_hover()` 优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
