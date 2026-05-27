@@ -1121,6 +1121,10 @@ static QString sanitizeForPython(const QString &s)
                  && (i + 1 >= out.size() || !out.at(i + 1).isLowSurrogate()))
             out[i] = QChar(QChar::ReplacementCharacter);
     }
+    // UTF-8 round-trip: correctly encodes valid surrogate pairs and
+    // replaces any remaining lone surrogates with U+FFFD, ensuring
+    // the Python json parser never sees bare surrogates.
+    out = QString::fromUtf8(out.toUtf8());
     return out;
 }
 
@@ -1190,7 +1194,7 @@ void SmdLspManager::sendPythonHoverLocal(int cellIndex, int line, int col)
 
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("hover");
-    req[QStringLiteral("code")] = QString::fromUtf8(codeB64);
+    req[QStringLiteral("code_b64")] = QString::fromUtf8(codeB64);
     QJsonArray cursor;
     cursor.append(line);
     cursor.append(col);

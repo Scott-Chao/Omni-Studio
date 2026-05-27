@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 修复 SMD Python Cell 鼠标悬停提示异常
+- 修复部分情况下 Python 文件鼠标悬停没有提示的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1450,7 +1450,7 @@
 **Python 后端**（Jedi + 诊断 + 语义标记）：
 - `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断和语义标记请求。
 - **补全/签名请求**：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`signatureHelpReadyForCell`。
-- **悬停请求**：通过 `sendPythonHoverLocal()` 发送**单个 cell 代码**（base64 编码）+ **cell 本地坐标**，绕过虚拟文档映射。与诊断请求一致，消除了 `cellLocalToVirtual()` → `pythonVirtualDoc()` 链路中潜在的 off-by-one 偏差。响应分发至 `hoverReadyForCell`。
+- **悬停请求**：通过 `sendPythonHoverLocal()` 发送**单个 cell 代码**（base64 编码，`code_b64` 字段）+ **cell 本地坐标**，绕过虚拟文档映射。`completion_helper.py` 优先检查 `code_b64` 否则回退 `code`，两者均 base64 解码。与诊断请求一致，消除了 `cellLocalToVirtual()` → `pythonVirtualDoc()` 链路中潜在的 off-by-one 偏差。响应分发至 `hoverReadyForCell`。
 - **Python 语义标记**（新增）：
   - `m_pySemanticTokensTimer`（300ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后以及 `syncVirtualDoc()` 中启动，防抖触发 `requestPythonSemanticTokens()`。
   - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，**base64 编码**后发送 `{"action":"tokens","code":"<base64>"}` 至 `completion_helper.py`，避免 JSON 序列化时孤立 surrogate 破坏换行符。采用 fire-and-forget 模式（`m_pyTokensPending` 标志），不占用 `m_pyTimeoutTimer`，确保长文档 Jedi 解析耗时 >1s 时响应不被丢弃。
@@ -1463,8 +1463,11 @@
   - 响应在 `processPythonResponse()` 的 `PyPending::Diagnostics` 分支直接构建 `SmdDiagnostic` 并发射 `diagnosticsUpdated`，绕过 `processDiagnostics()`（后者为虚拟文档坐标映射设计）。过期诊断仅清除同语言（`m_pyCellContents.contains(ci)`）cell 的条目。
   - `PyPending` 枚举新增 `Diagnostics`、`SemanticTokens` 值；超时/错误时语义标记 emit 空列表清除旧高亮，诊断不主动清除。
 - **Python 悬停修复**（新增）：
-  - `handle_hover()` 改为**先调 `infer()` 再调 `get_signatures()`**：`infer()` 返回变量类型/定义，`get_signatures()` 补充函数签名参数。仅当 `infer()` 结果为 function 类型时优先使用 `get_signatures()` 的完整签名，否则以 `infer()` 结果为主、签名作为补充文本。解决光标落在函数调用括号内时 `get_signatures()` 遮蔽变量类型的问题。
-  - `completion_helper.py` main loop 对 `complete`/`hover`/`signature` 动作的 `code` 字段**自动检测 base64 编码**：尝试 `base64.b64decode()`，成功则使用解码后的 cell 本地代码，失败则作为纯文本虚拟文档（向后兼容补全/签名请求的旧路径）。
+  - `sanitizeForPython()` 末尾增加 **UTF-8 往返**（`QString::fromUtf8(out.toUtf8())`）：有效代理对正确编码为非 BMP 字符，孤立代理替换为 U+FFFD。解决两个相邻孤立代理被误判为有效对而穿透清理的边界情况。
+  - `PythonCompletionProvider::sendRequest()` 改为**先 `sanitizeForPython()` 再 base64 编码**发送 `code` 字段（与 `sendDiagnosticsRequest()` / `requestSemanticTokens()` 一致）。消除 JSON 序列化时 surrogate 字符破坏代码内容的根因。
+  - `PythonCompletionProvider::processResponse()` 改为**基于 JSON 结构的路由**：tokens（数组含 `line`+`type`）→ diagnostics（数组含 `startLine`）→ hover（对象含 `signature`）按结构优先检测，消除并发请求 pending 状态被覆盖导致响应错配的竞态条件。
+  - `SmdLspManager::sendPythonHoverLocal()`：发送单个 cell 代码（base64，`code_b64` 字段）+ cell 本地坐标，绕过虚拟文档映射。
+  - `completion_helper.py` main loop 统一处理：优先 `code_b64` 字段否则回退 `code` 字段，两者均 base64 解码，确保 SMD 和独立 `.py` 文件两条路径一致。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
