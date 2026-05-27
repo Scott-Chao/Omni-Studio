@@ -41,6 +41,9 @@ private:
     QTextCharFormat m_commentFormat;
     QTextCharFormat m_tripleFormat;
 
+    QColor m_bracketColors[3];
+    QColor m_unpairedBracketColor;
+
     QRegularExpression m_tripleSingleStart;
     QRegularExpression m_tripleSingleEnd;
     QRegularExpression m_tripleDoubleStart;
@@ -48,6 +51,7 @@ private:
 
     void initFormats();
     QTextCharFormat formatForTokenType(const QString &type) const;
+    void highlightBrackets(const QString &text);
 
     QMap<int, QList<SemanticToken>> m_semanticTokens;
 };

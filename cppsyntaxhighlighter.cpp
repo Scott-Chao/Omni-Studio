@@ -2,6 +2,7 @@
 #include "configmanager.h"
 #include "thememanager.h"
 #include "cppkeywords.h"
+#include <QTextLayout>
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
@@ -116,7 +117,7 @@ void CppSyntaxHighlighter::initFormats()
     m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+<([^>]+)>"));
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+(<[^>]+>)"));
         rule.format = m_includeHeaderFormat;
         rule.captureGroup = 1;
         m_rules.append(rule);
@@ -158,6 +159,11 @@ void CppSyntaxHighlighter::initFormats()
     m_multiLineCommentFormat.setForeground(cfg.syntaxComments());
     m_commentStartExpr = QRegularExpression(QStringLiteral("/\\*"));
     m_commentEndExpr = QRegularExpression(QStringLiteral("\\*/"));
+
+    m_bracketColors[0] = QColor("#FFD700");
+    m_bracketColors[1] = QColor("#DA70D6");
+    m_bracketColors[2] = QColor("#179FFF");
+    m_unpairedBracketColor = QColor("#FF0000");
 }
 
 void CppSyntaxHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)
@@ -224,14 +230,16 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
     }
 
     // Combined single-line & multi-line comment handling — string-aware
-    setCurrentBlockState(0);
+    // Clear only comment state bits, preserve bracket state from previous block
+    setCurrentBlockState(previousBlockState() & ~7);
 
     int searchFrom = 0;
-    if (previousBlockState() == 1) {
+    if ((previousBlockState() & 7) == 1) {
         int endIdx = text.indexOf(QStringLiteral("*/"));
         if (endIdx == -1) {
             setFormat(0, text.length(), m_multiLineCommentFormat);
-            setCurrentBlockState(1);
+            // Preserve bracket state, set comment state = 1
+            setCurrentBlockState((previousBlockState() & ~7) | 1);
             return;
         }
         setFormat(0, endIdx + 2, m_multiLineCommentFormat);
@@ -259,7 +267,7 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
                 } else if (text[i+1] == u'*') {
                     int endIdx = text.indexOf(QStringLiteral("*/"), i + 2);
                     if (endIdx == -1) {
-                        setCurrentBlockState(1);
+                        setCurrentBlockState((currentBlockState() & ~7) | 1);
                         setFormat(i, text.length() - i, m_multiLineCommentFormat);
                         break;
                     } else {
@@ -295,4 +303,106 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
             setFormat(token.startChar, token.length, fmt);
         }
     }
+
+    highlightBrackets(text);
+}
+
+void CppSyntaxHighlighter::highlightBrackets(const QString &text)
+{
+    struct BracketInfo {
+        int pos;   // -1 for brackets carried from previous blocks
+        QChar ch;
+    };
+    QVector<BracketInfo> bracketStack;
+
+    // Decode bracket stack from previous block state
+    int prevState = previousBlockState();
+    int prevDepth = (prevState >> 3) & 31;
+    for (int i = 0; i < prevDepth && i < 12; ++i) {
+        int type = (prevState >> (8 + i * 2)) & 3;
+        QChar ch = (type == 1) ? QLatin1Char('[') : (type == 2) ? QLatin1Char('{') : QLatin1Char('(');
+        bracketStack.append({-1, ch});
+    }
+
+    // Build a set of positions that fall inside string/comment format ranges
+    QVector<QTextLayout::FormatRange> fmtRanges = currentBlock().layout()->formats();
+    const auto &cfg = ConfigManager::instance();
+    const QColor commentFg = cfg.syntaxComments();
+    const QColor stringFg = cfg.syntaxStrings();
+    const QColor preprocessorFg = cfg.syntaxPreprocessor();
+    auto isInSpecialFormat = [&](int pos) -> bool {
+        for (const auto &r : fmtRanges) {
+            if (pos >= r.start && pos < r.start + r.length) {
+                QColor fg = r.format.foreground().color();
+                if (fg == commentFg || fg == stringFg || fg == preprocessorFg)
+                    return true;
+                break;
+            }
+        }
+        return false;
+    };
+
+    for (int i = 0; i < text.length(); ++i) {
+        const QChar ch = text.at(i);
+
+        if (ch != QLatin1Char('(') && ch != QLatin1Char(')') &&
+            ch != QLatin1Char('[') && ch != QLatin1Char(']') &&
+            ch != QLatin1Char('{') && ch != QLatin1Char('}'))
+            continue;
+
+        // Skip brackets inside strings, comments, or preprocessor directives
+        if (isInSpecialFormat(i))
+            continue;
+
+        if (ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{')) {
+            bracketStack.append({i, ch});
+            // Color with tentative depth color (will be recolor later if matched on same line)
+            const int depth = bracketStack.size() - 1;
+            QTextCharFormat fmt;
+            fmt.setForeground(m_bracketColors[depth % 3]);
+            fmt.setFontWeight(QFont::Bold);
+            setFormat(i, 1, fmt);
+        } else {
+            QChar expected;
+            if (ch == QLatin1Char(')'))
+                expected = QLatin1Char('(');
+            else if (ch == QLatin1Char(']'))
+                expected = QLatin1Char('[');
+            else
+                expected = QLatin1Char('{');
+
+            if (!bracketStack.isEmpty() && bracketStack.last().ch == expected) {
+                const int depth = bracketStack.size() - 1;
+                QTextCharFormat fmt;
+                fmt.setForeground(m_bracketColors[depth % 3]);
+                fmt.setFontWeight(QFont::Bold);
+                // Recolor opener if on the same line (pos >= 0)
+                if (bracketStack.last().pos >= 0)
+                    setFormat(bracketStack.last().pos, 1, fmt);
+                setFormat(i, 1, fmt);
+                bracketStack.removeLast();
+            } else {
+                QTextCharFormat fmt;
+                fmt.setForeground(m_unpairedBracketColor);
+                fmt.setFontWeight(QFont::Bold);
+                setFormat(i, 1, fmt);
+            }
+        }
+    }
+
+    // Encode final bracket stack into block state (bits 3+), preserving comment state (bits 0-2)
+    int commentState = currentBlockState();
+    if (commentState < 0) commentState = 0;
+    commentState &= 7;
+
+    int state = commentState;
+    int depth = qMin(bracketStack.size(), 12);
+    state |= (depth << 3);
+    for (int i = 0; i < depth; ++i) {
+        int type = 0;
+        if (bracketStack[i].ch == QLatin1Char('[')) type = 1;
+        else if (bracketStack[i].ch == QLatin1Char('{')) type = 2;
+        state |= (type << (8 + i * 2));
+    }
+    setCurrentBlockState(state);
 }

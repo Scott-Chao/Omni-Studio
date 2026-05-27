@@ -43,6 +43,9 @@ private:
     QTextCharFormat m_singleLineCommentFormat;
     QTextCharFormat m_multiLineCommentFormat;
 
+    QColor m_bracketColors[3];
+    QColor m_unpairedBracketColor;
+
     QRegularExpression m_commentStartExpr;
     QRegularExpression m_commentEndExpr;
 
@@ -50,6 +53,7 @@ private:
 
     QTextCharFormat formatForTokenType(const QString &type) const;
     void initFormats();
+    void highlightBrackets(const QString &text);
 };
 
 #endif // CPPSYNTAXHIGHLIGHTER_H
