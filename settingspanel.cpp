@@ -1198,17 +1198,18 @@ QWidget *SettingsPanel::createShortcutsPage()
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
 
-    // Conflict detection lambda
-    auto checkConflict = [this](KeyRecorder *sender, const QString &newKs) {
-        if (newKs.isEmpty())
-            return QString();
+    // Conflict indicator update (Minecraft-style: allow conflicts, mark in red)
+    auto updateConflictIndicators = [this]() {
+        QMap<QString, int> seqCount;
         for (auto it = m_keyRecorders.constBegin(); it != m_keyRecorders.constEnd(); ++it) {
-            if (it.value() == sender)
-                continue;
-            if (it.value()->keySequence() == newKs)
-                return it.key();
+            QString seq = it.value()->keySequence();
+            if (!seq.isEmpty())
+                seqCount[seq]++;
         }
-        return QString();
+        for (auto it = m_keyRecorders.constBegin(); it != m_keyRecorders.constEnd(); ++it) {
+            QString seq = it.value()->keySequence();
+            it.value()->setConflict(!seq.isEmpty() && seqCount.value(seq) > 1);
+        }
     };
 
     m_keyRecorders.clear();
@@ -1266,37 +1267,11 @@ QWidget *SettingsPanel::createShortcutsPage()
         m_keyRecorders[item.configKey] = recorder;
 
         connect(recorder, &KeyRecorder::keySequenceCaptured,
-                this, [this, recorder, checkConflict, item](const QString &actionKey, const QKeySequence &ks) {
+                this, [this, recorder, updateConflictIndicators](const QString &actionKey, const QKeySequence &ks) {
             QString newText = ks.toString(QKeySequence::NativeText);
-
-            // Conflict detection
-            QString conflictAction = checkConflict(recorder, newText);
-            if (!conflictAction.isEmpty()) {
-                QMessageBox msgBox(this);
-                msgBox.setWindowTitle(tr("快捷键冲突"));
-                msgBox.setText(tr("快捷键 %1 已被「%2」使用。\n是否将 %1 分配给「%3」？")
-                               .arg(newText, conflictAction, item.configKey));
-                msgBox.setIcon(QMessageBox::Warning);
-                auto *overwriteBtn = msgBox.addButton(tr("覆盖"), QMessageBox::AcceptRole);
-                msgBox.addButton(tr("取消"), QMessageBox::RejectRole);
-                msgBox.exec();
-
-                if (msgBox.clickedButton() == overwriteBtn) {
-                    if (m_keyRecorders.contains(conflictAction)) {
-                        m_keyRecorders[conflictAction]->setKeySequence(QString());
-                        emit shortcutChanged(conflictAction, QString());
-                    }
-                    recorder->setKeySequence(newText);
-                    emit shortcutChanged(actionKey, newText);
-                } else {
-                    recorder->restorePreviousSequence();
-                }
-                return;
-            }
-
-            // No conflict
             recorder->setKeySequence(newText);
             emit shortcutChanged(actionKey, newText);
+            updateConflictIndicators();
         });
 
         listLayout->addWidget(row);
@@ -1308,6 +1283,9 @@ QWidget *SettingsPanel::createShortcutsPage()
         sep->setFixedHeight(1);
         listLayout->addWidget(sep);
     }
+
+    // Mark any pre-existing conflicts from saved settings
+    updateConflictIndicators();
 
     layout->addWidget(m_shortcutsListContainer, 1);
 
@@ -1325,13 +1303,14 @@ QWidget *SettingsPanel::createShortcutsPage()
              ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name())
     );
     m_shortcutsResetBtn->setFixedWidth(120);
-    connect(m_shortcutsResetBtn, &QPushButton::clicked, this, [this]() {
+    connect(m_shortcutsResetBtn, &QPushButton::clicked, this, [this, updateConflictIndicators]() {
         const auto &cfg2 = ConfigManager::instance();
         for (auto it = m_keyRecorders.begin(); it != m_keyRecorders.end(); ++it) {
             QString defaultVal = cfg2.shortcut(it.key(), "");
             it.value()->setKeySequence(defaultVal);
             emit shortcutChanged(it.key(), defaultVal);
         }
+        updateConflictIndicators();
     });
     layout->addWidget(m_shortcutsResetBtn, 0, Qt::AlignLeft);
 
