@@ -1195,7 +1195,40 @@ QWidget *SettingsPanel::createShortcutsPage()
 
     m_keyRecorders.clear();
 
-    for (const auto &item : items) {
+    // Group definitions for visual organization
+    struct GroupMarker { int index; QString name; };
+    GroupMarker markers[] = {
+        {0,   tr("通用")},
+        {25,  tr("CodeEditor")},
+        {28,  tr("SmdEditor")},
+        {35,  tr("SmdEditor 命令模式")},
+        {38,  tr("输出面板")},
+    };
+
+    int markerIdx = 0;
+    constexpr int kNumItems = sizeof(items) / sizeof(items[0]);
+    for (int i = 0; i < kNumItems; ++i) {
+        const auto &item = items[i];
+
+        // Insert group header before the first item of each group
+        if (markerIdx < 5 && i == markers[markerIdx].index) {
+            if (i > 0) {
+                auto *sep = new QFrame;
+                sep->setFrameShape(QFrame::HLine);
+                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
+                sep->setFixedHeight(1);
+                listLayout->addWidget(sep);
+                listLayout->addSpacing(4);
+            }
+            auto *groupLabel = new QLabel(markers[markerIdx].name);
+            groupLabel->setStyleSheet(QStringLiteral(
+                "color: %1; font-size: 13px; font-weight: bold; padding: 10px 8px 10px 8px; background: transparent;")
+                .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+            listLayout->addWidget(groupLabel);
+            ++markerIdx;
+        }
+
+
         auto *row = new QWidget;
         row->setFixedHeight(32);
         row->setStyleSheet("background: transparent;");
