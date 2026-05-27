@@ -964,7 +964,7 @@ void SmdLspManager::requestHover(int cellIndex, int cursorLine, int cursorCol)
     if (m_cppCellContents.contains(cellIndex))
         sendHoverRequest(cellIndex, cursorLine, cursorCol, QStringLiteral("cpp"));
     else if (m_pyCellContents.contains(cellIndex))
-        sendPythonRequest(QStringLiteral("hover"), cellIndex, cursorLine, cursorCol);
+        sendPythonHoverLocal(cellIndex, cursorLine, cursorCol);
 }
 
 void SmdLspManager::requestSignatureHelp(int cellIndex, int cursorLine, int cursorCol)
@@ -1170,6 +1170,36 @@ void SmdLspManager::sendPythonRequest(const QString &action, int cellIndex,
     else
         m_pyPending = PyPending::SignatureHelp;
 
+    m_pyRequestingCell = cellIndex;
+    m_pyTimeoutTimer.start(500);
+}
+
+void SmdLspManager::sendPythonHoverLocal(int cellIndex, int line, int col)
+{
+    if (!m_pyProcess || m_pyProcess->state() != QProcess::Running) {
+        emit hoverReadyForCell(cellIndex, {});
+        return;
+    }
+
+    // Send only this cell's code (base64) with cell-local coordinates,
+    // bypassing the virtual-document mapping entirely.  This makes hover
+    // immune to off-by-one errors in rebuildVirtualDoc / cellLocalToVirtual
+    // and is consistent with how diagnostics uses cell-local coordinates.
+    QString code = sanitizeForPython(m_pyCellContents.value(cellIndex));
+    QByteArray codeB64 = code.toUtf8().toBase64();
+
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("hover");
+    req[QStringLiteral("code")] = QString::fromUtf8(codeB64);
+    QJsonArray cursor;
+    cursor.append(line);
+    cursor.append(col);
+    req[QStringLiteral("cursor")] = cursor;
+
+    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+    m_pyProcess->write(payload);
+
+    m_pyPending = PyPending::Hover;
     m_pyRequestingCell = cellIndex;
     m_pyTimeoutTimer.start(500);
 }

@@ -125,6 +125,7 @@ private:
     // Python-specific
     void startPythonProcess();
     void sendPythonRequest(const QString &action, int cellIndex, int line, int col);
+    void sendPythonHoverLocal(int cellIndex, int line, int col);
     void requestPythonDiagnostics();
     void requestPythonSemanticTokens();
     void processPythonResponse(const QByteArray &line);

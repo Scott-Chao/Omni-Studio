@@ -39,26 +39,48 @@ def handle_complete(script, line, col):
 
 def handle_hover(script, line, col):
     """Return hover info matching HoverInfo struct."""
+    # Try infer() first so variable types aren't shadowed by
+    # get_signatures() when the cursor lands inside a call's parens.
+    names = script.infer(line, col)
+    inferred_sig = ""
+    inferred_doc = ""
+    inferred_def = ""
+    is_function = False
+    if names:
+        n = names[0]
+        inferred_sig = f"{n.name}: {n.type}" if n.type else n.name
+        inferred_doc = n.docstring() or ""
+        inferred_def = n.module_name or ""
+        is_function = (n.type == "function")
+
+    # For function calls, also try get_signatures() to get parameter info.
     signatures = script.get_signatures(line, col)
     if signatures:
         sig = signatures[0]
+        if is_function:
+            # Prefer the full signature over the bare "name: function"
+            return {
+                "signature": sig.description or inferred_sig,
+                "doc": sig.docstring() or inferred_doc,
+                "definition": sig.module_name or inferred_def,
+            }
+        # Not a function — use inferred type; add signature params as extra
+        # context only when the cursor is inside a call.
         info = {
-            "signature": sig.description or "",
-            "doc": sig.docstring() or "",
-            "definition": sig.module_name or "",
+            "signature": inferred_sig,
+            "doc": inferred_doc,
+            "definition": inferred_def,
         }
+        if sig.description:
+            info["signature"] = inferred_sig + "\n\n" + sig.description
         return info
 
-    # Fallback: use inferred type
-    names = script.infer(line, col)
     if names:
-        n = names[0]
-        info = {
-            "signature": f"{n.name}: {n.type}" if n.type else n.name,
-            "doc": n.docstring() or "",
-            "definition": n.module_name or "",
+        return {
+            "signature": inferred_sig,
+            "doc": inferred_doc,
+            "definition": inferred_def,
         }
-        return info
 
     return {"signature": "", "doc": "", "definition": ""}
 
@@ -258,6 +280,12 @@ def main():
                 script = jedi.Script(code=code, path="untitled.py")
                 data = handle_tokens(script, code)
             elif action in ("complete", "hover", "signature"):
+                # Hover sends cell-local code as base64; completion/signature
+                # send the full virtual document as plain text.  Auto-detect.
+                try:
+                    code = base64.b64decode(code).decode("utf-8")
+                except Exception:
+                    pass  # plain-text virtual document (completion/signature)
                 script = jedi.Script(code=code, path="untitled.py")
                 if action == "complete":
                     data = handle_complete(script, line_1based, col)
