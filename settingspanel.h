@@ -14,12 +14,14 @@ class QPushButton;
 class QScrollArea;
 class QSlider;
 class QSpinBox;
+class QDoubleSpinBox;
 class QComboBox;
 class QStackedWidget;
 class QLineEdit;
 class QVBoxLayout;
 class QSizeGrip;
 class QTextEdit;
+class QTimer;
 class KeyRecorder;
 
 // 自定义开关控件，类似 Windows 系统设置的 Toggle Switch
@@ -88,6 +90,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     bool event(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     enum class Edge {
@@ -169,9 +172,12 @@ private:
     QComboBox *m_aiProviderCombo = nullptr;
     QLineEdit *m_aiEndpointEdit = nullptr;
     QLineEdit *m_aiApiKeyEdit = nullptr;
+    QPushButton *m_aiApiKeyToggleBtn = nullptr;
     QLineEdit *m_aiModelEdit = nullptr;
     QSpinBox *m_aiMaxTokensSpin = nullptr;
+    QDoubleSpinBox *m_aiTemperatureSpin = nullptr;
     QTextEdit *m_aiSystemPromptEdit = nullptr;
+    QTimer *m_aiPromptDebounceTimer = nullptr;
 
     // Tools page - Language Services
     QLineEdit *m_clangdPathEdit = nullptr;
@@ -193,6 +199,7 @@ private:
     ToggleSwitch *m_openJudgeAutoLoginToggle = nullptr;
     QLineEdit *m_openJudgeUsernameEdit = nullptr;
     QLineEdit *m_openJudgePasswordEdit = nullptr;
+    QPushButton *m_openJudgePasswordToggleBtn = nullptr;
 
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;

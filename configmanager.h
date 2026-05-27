@@ -203,6 +203,7 @@ public:
     QString aiEndpoint() const;
     QString aiModel() const;
     int aiMaxTokens() const;
+    double aiTemperature() const;
     QString aiSystemPrompt() const;
 
     // ---- Tools ----

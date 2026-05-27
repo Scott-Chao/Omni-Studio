@@ -756,6 +756,7 @@ QString ConfigManager::aiProviderType() const { return stringValue("ai.provider_
 QString ConfigManager::aiEndpoint() const { return stringValue("ai.endpoint", "https://api.deepseek.com/v1"); }
 QString ConfigManager::aiModel() const { return stringValue("ai.model", "deepseek-v4-flash"); }
 int ConfigManager::aiMaxTokens() const { return intValue("ai.max_tokens", 4096); }
+double ConfigManager::aiTemperature() const { return doubleValue("ai.temperature", 0.7); }
 QString ConfigManager::aiSystemPrompt() const { return stringValue("ai.system_prompt", ""); }
 
 // ---- Tools ----

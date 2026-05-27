@@ -13,6 +13,7 @@
 #include <QSlider>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QMouseEvent>
 #include <QApplication>
@@ -28,6 +29,7 @@
 #include <QPainter>
 #include <QMessageBox>
 #include <QMap>
+#include <QTimer>
 #include <functional>
 #include "keyrecorder.h"
 
@@ -1351,13 +1353,30 @@ QWidget *SettingsPanel::createAiServicePage()
     m_aiApiKeyEdit->setEchoMode(QLineEdit::Password);
     m_aiApiKeyEdit->setPlaceholderText(tr("输入 API Key"));
     m_aiApiKeyEdit->setStyleSheet(inputStyle());
+    m_aiApiKeyToggleBtn = new QPushButton(tr("显示"));
+    m_aiApiKeyToggleBtn->setFixedSize(50, 28);
+    m_aiApiKeyToggleBtn->setCursor(Qt::PointingHandCursor);
+    m_aiApiKeyToggleBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
     keyRow->addWidget(keyLabel);
     keyRow->addStretch();
     keyRow->addWidget(m_aiApiKeyEdit, 1);
+    keyRow->addWidget(m_aiApiKeyToggleBtn);
     layout->addLayout(keyRow);
 
     connect(m_aiApiKeyEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
         emit aiSettingChanged("ai.api_key", text);
+    });
+    connect(m_aiApiKeyToggleBtn, &QPushButton::clicked, this, [this]() {
+        bool hidden = (m_aiApiKeyEdit->echoMode() == QLineEdit::Password);
+        m_aiApiKeyEdit->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+        m_aiApiKeyToggleBtn->setText(hidden ? tr("隐藏") : tr("显示"));
     });
 
     // ---- 模型 ----
@@ -1395,6 +1414,26 @@ QWidget *SettingsPanel::createAiServicePage()
         emit aiSettingChanged("ai.max_tokens", val);
     });
 
+    // ---- Temperature ----
+    auto *tempRow = new QHBoxLayout;
+    auto *tempLabel = new QLabel(tr("Temperature"));
+    tempLabel->setStyleSheet(labelStyle());
+    m_aiTemperatureSpin = new QDoubleSpinBox;
+    m_aiTemperatureSpin->setRange(0.0, 2.0);
+    m_aiTemperatureSpin->setSingleStep(0.1);
+    m_aiTemperatureSpin->setDecimals(1);
+    m_aiTemperatureSpin->setValue(cfg.aiTemperature());
+    m_aiTemperatureSpin->setFixedWidth(120);
+    m_aiTemperatureSpin->setStyleSheet(inputStyle());
+    tempRow->addWidget(tempLabel);
+    tempRow->addStretch();
+    tempRow->addWidget(m_aiTemperatureSpin);
+    layout->addLayout(tempRow);
+
+    connect(m_aiTemperatureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        emit aiSettingChanged("ai.temperature", val);
+    });
+
     // ---- 系统提示词 ----
     layout->addSpacing(8);
     auto *promptLabel = new QLabel(tr("系统提示词"));
@@ -1423,9 +1462,17 @@ QWidget *SettingsPanel::createAiServicePage()
     );
     layout->addWidget(m_aiSystemPromptEdit);
 
-    connect(m_aiSystemPromptEdit, &QTextEdit::textChanged, this, [this]() {
+    m_aiPromptDebounceTimer = new QTimer(this);
+    m_aiPromptDebounceTimer->setSingleShot(true);
+    m_aiPromptDebounceTimer->setInterval(300);
+    connect(m_aiPromptDebounceTimer, &QTimer::timeout, this, [this]() {
         emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
     });
+    connect(m_aiSystemPromptEdit, &QTextEdit::textChanged, this, [this]() {
+        m_aiPromptDebounceTimer->start();
+    });
+    // 焦点离开时立即 emit 最终值
+    m_aiSystemPromptEdit->installEventFilter(this);
 
     layout->addStretch();
     scrollArea->setWidget(content);
@@ -1703,13 +1750,30 @@ QWidget *SettingsPanel::createToolsPage()
     m_openJudgePasswordEdit = new QLineEdit;
     m_openJudgePasswordEdit->setEchoMode(QLineEdit::Password);
     m_openJudgePasswordEdit->setStyleSheet(inputStyle());
+    m_openJudgePasswordToggleBtn = new QPushButton(tr("显示"));
+    m_openJudgePasswordToggleBtn->setFixedSize(50, 28);
+    m_openJudgePasswordToggleBtn->setCursor(Qt::PointingHandCursor);
+    m_openJudgePasswordToggleBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
     passwordRow->addWidget(passwordLabel);
     passwordRow->addStretch();
     passwordRow->addWidget(m_openJudgePasswordEdit, 1);
+    passwordRow->addWidget(m_openJudgePasswordToggleBtn);
     layout->addLayout(passwordRow);
 
     connect(m_openJudgePasswordEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
         emit toolSettingChanged("open_judge.password", text);
+    });
+    connect(m_openJudgePasswordToggleBtn, &QPushButton::clicked, this, [this]() {
+        bool hidden = (m_openJudgePasswordEdit->echoMode() == QLineEdit::Password);
+        m_openJudgePasswordEdit->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+        m_openJudgePasswordToggleBtn->setText(hidden ? tr("隐藏") : tr("显示"));
     });
 
     layout->addStretch();
@@ -1815,6 +1879,8 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_aiModelEdit->setText(sm.value("ai.model", cfg.aiModel()).toString());
     if (m_aiMaxTokensSpin)
         m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
+    if (m_aiTemperatureSpin)
+        m_aiTemperatureSpin->setValue(sm.value("ai.temperature", cfg.aiTemperature()).toDouble());
     if (m_aiSystemPromptEdit)
         m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
 
@@ -2011,4 +2077,14 @@ bool SettingsPanel::event(QEvent *event)
         }
     }
     return QWidget::event(event);
+}
+
+bool SettingsPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_aiSystemPromptEdit && event->type() == QEvent::FocusOut) {
+        // 焦点离开时立即 emit 最终值
+        emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
+        m_aiPromptDebounceTimer->stop();
+    }
+    return QWidget::eventFilter(watched, event);
 }
