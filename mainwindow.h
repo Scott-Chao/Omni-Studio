@@ -264,6 +264,7 @@ private:
     void onPreviewSettingChanged(const QString &key, const QVariant &value);
     void onSearchSettingChanged(const QString &key, const QVariant &value);
     void onAiSettingChanged(const QString &key, const QVariant &value);
+    void onToolSettingChanged(const QString &key, const QVariant &value);
     void onResetToDefaults();
     void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
     QString saveCodeToTempFile(EditorWidget *editor);

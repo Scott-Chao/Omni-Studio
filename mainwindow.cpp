@@ -709,6 +709,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
     connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
     connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
 
@@ -1467,6 +1468,19 @@ void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
         m_settings->setAiApiKey(value.toString());
     } else {
         m_settings->setSettingOverride(key, value);
+    }
+}
+
+void MainWindow::onToolSettingChanged(const QString &key, const QVariant &value)
+{
+    m_settings->setSettingOverride(key, value);
+
+    if (key == "open_judge.username" || key == "open_judge.password") {
+        QString username = m_settings->settingOverride("open_judge.username", "").toString();
+        QString password = m_settings->settingOverride("open_judge.password", "").toString();
+        m_settings->setOpenJudgeCredentials(username, password);
+    } else if (key == "open_judge.auto_login") {
+        m_settings->setOpenJudgeAutoLogin(value.toBool());
     }
 }
 

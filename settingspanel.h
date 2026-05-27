@@ -78,6 +78,7 @@ signals:
     void previewSettingChanged(const QString &key, const QVariant &value);
     void searchSettingChanged(const QString &key, const QVariant &value);
     void aiSettingChanged(const QString &key, const QVariant &value);
+    void toolSettingChanged(const QString &key, const QVariant &value);
     void shortcutChanged(const QString &actionKey, const QString &keySequenceText);
     void resetToDefaultsRequested();
 
@@ -106,6 +107,7 @@ private:
     QWidget *createAppearancePage();
     QWidget *createShortcutsPage();
     QWidget *createAiServicePage();
+    QWidget *createToolsPage();
 
     void refreshStyle();
     void refreshPageTree(QWidget *w);
@@ -161,6 +163,27 @@ private:
     QLineEdit *m_aiModelEdit = nullptr;
     QSpinBox *m_aiMaxTokensSpin = nullptr;
     QTextEdit *m_aiSystemPromptEdit = nullptr;
+
+    // Tools page - Language Services
+    QLineEdit *m_clangdPathEdit = nullptr;
+    QPushButton *m_clangdBrowseBtn = nullptr;
+    QLineEdit *m_clangdArgsEdit = nullptr;
+    QLineEdit *m_pythonPathEdit = nullptr;
+    QPushButton *m_pythonBrowseBtn = nullptr;
+
+    // Tools page - Compiler
+    QLineEdit *m_gxxFlagsEdit = nullptr;
+    QLineEdit *m_msvcFlagsEdit = nullptr;
+
+    // Tools page - Judge
+    QSpinBox *m_judgeTimeLimitSpin = nullptr;
+    QSpinBox *m_judgeMemoryLimitSpin = nullptr;
+
+    // Tools page - OpenJudge
+    QLineEdit *m_openJudgeUrlEdit = nullptr;
+    ToggleSwitch *m_openJudgeAutoLoginToggle = nullptr;
+    QLineEdit *m_openJudgeUsernameEdit = nullptr;
+    QLineEdit *m_openJudgePasswordEdit = nullptr;
 
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;

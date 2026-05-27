@@ -22,6 +22,7 @@
 #include <QTextEdit>
 #include <QHeaderView>
 #include <QColorDialog>
+#include <QFileDialog>
 #include <QFontDatabase>
 #include <QPainter>
 #include <QMessageBox>
@@ -183,7 +184,7 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_stackedWidget->addWidget(createAppearancePage());    // index 1
     m_stackedWidget->addWidget(createAiServicePage());     // index 2
     m_stackedWidget->addWidget(createShortcutsPage());     // index 3
-    // index 4 reserved for tools page (Step 4)
+    m_stackedWidget->addWidget(createToolsPage());         // index 4
 
     connect(m_categoryList, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
     m_categoryList->setCurrentRow(0);
@@ -1318,6 +1319,291 @@ QWidget *SettingsPanel::createAiServicePage()
 }
 
 // ============================================================
+// Page: 工具 (Tools)
+// ============================================================
+QWidget *SettingsPanel::createToolsPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(scrollAreaStyle());
+
+    auto *content = new QWidget;
+    content->setStyleSheet(QStringLiteral("background: %1;").arg(ThemeManager::instance().color("menu.background").name()));
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    // ====================================================================
+    // Section: 语言服务
+    // ====================================================================
+    layout->addWidget(createSectionLabel(tr("语言服务")));
+
+    // ---- clangd 路径 ----
+    auto *clangdPathRow = new QHBoxLayout;
+    auto *clangdPathLabel = new QLabel(tr("clangd 路径"));
+    clangdPathLabel->setStyleSheet(labelStyle());
+    m_clangdPathEdit = new QLineEdit;
+    m_clangdPathEdit->setPlaceholderText(tr("留空则从 PATH 查找"));
+    m_clangdPathEdit->setStyleSheet(inputStyle());
+    m_clangdPathEdit->setText(cfg.toolClangdPath());
+    m_clangdBrowseBtn = new QPushButton(tr("浏览…"));
+    m_clangdBrowseBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "padding: 4px 12px; border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    clangdPathRow->addWidget(clangdPathLabel);
+    clangdPathRow->addStretch();
+    clangdPathRow->addWidget(m_clangdPathEdit, 1);
+    clangdPathRow->addWidget(m_clangdBrowseBtn);
+    layout->addLayout(clangdPathRow);
+
+    connect(m_clangdPathEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.clangd.path", text);
+    });
+    connect(m_clangdBrowseBtn, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, tr("选择 clangd 可执行文件"));
+        if (!path.isEmpty())
+            m_clangdPathEdit->setText(path);
+    });
+
+    // ---- clangd 参数 ----
+    auto *clangdArgsRow = new QHBoxLayout;
+    auto *clangdArgsLabel = new QLabel(tr("clangd 参数"));
+    clangdArgsLabel->setStyleSheet(labelStyle());
+    m_clangdArgsEdit = new QLineEdit;
+    m_clangdArgsEdit->setPlaceholderText(QStringLiteral("--fallback-style=Google"));
+    m_clangdArgsEdit->setStyleSheet(inputStyle());
+    m_clangdArgsEdit->setText(cfg.toolClangdArgs());
+    clangdArgsRow->addWidget(clangdArgsLabel);
+    clangdArgsRow->addStretch();
+    clangdArgsRow->addWidget(m_clangdArgsEdit, 1);
+    layout->addLayout(clangdArgsRow);
+
+    connect(m_clangdArgsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.clangd.args", text);
+    });
+
+    // ---- Python 路径 ----
+    auto *pythonPathRow = new QHBoxLayout;
+    auto *pythonPathLabel = new QLabel(tr("Python 路径"));
+    pythonPathLabel->setStyleSheet(labelStyle());
+    m_pythonPathEdit = new QLineEdit;
+    m_pythonPathEdit->setPlaceholderText(tr("留空则从 PATH 查找"));
+    m_pythonPathEdit->setStyleSheet(inputStyle());
+    m_pythonPathEdit->setText(cfg.toolPythonPath());
+    m_pythonBrowseBtn = new QPushButton(tr("浏览…"));
+    m_pythonBrowseBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "padding: 4px 12px; border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    pythonPathRow->addWidget(pythonPathLabel);
+    pythonPathRow->addStretch();
+    pythonPathRow->addWidget(m_pythonPathEdit, 1);
+    pythonPathRow->addWidget(m_pythonBrowseBtn);
+    layout->addLayout(pythonPathRow);
+
+    connect(m_pythonPathEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.python.path", text);
+    });
+    connect(m_pythonBrowseBtn, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, tr("选择 Python 可执行文件"));
+        if (!path.isEmpty())
+            m_pythonPathEdit->setText(path);
+    });
+
+    // ====================================================================
+    // Section: 编译器
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("编译器")));
+
+    // ---- GCC/Clang flags ----
+    auto *gxxRow = new QHBoxLayout;
+    auto *gxxLabel = new QLabel(tr("GCC/Clang flags"));
+    gxxLabel->setStyleSheet(labelStyle());
+    m_gxxFlagsEdit = new QLineEdit;
+    m_gxxFlagsEdit->setPlaceholderText(tr("以空格分隔"));
+    m_gxxFlagsEdit->setStyleSheet(inputStyle());
+    m_gxxFlagsEdit->setText(cfg.compilerGxxFlags().join(" "));
+    gxxRow->addWidget(gxxLabel);
+    gxxRow->addStretch();
+    gxxRow->addWidget(m_gxxFlagsEdit, 1);
+    layout->addLayout(gxxRow);
+
+    connect(m_gxxFlagsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("compiler.gxx_flags", text);
+    });
+
+    // ---- MSVC flags ----
+    auto *msvcRow = new QHBoxLayout;
+    auto *msvcLabel = new QLabel(tr("MSVC flags"));
+    msvcLabel->setStyleSheet(labelStyle());
+    m_msvcFlagsEdit = new QLineEdit;
+    m_msvcFlagsEdit->setPlaceholderText(tr("以空格分隔"));
+    m_msvcFlagsEdit->setStyleSheet(inputStyle());
+    m_msvcFlagsEdit->setText(cfg.compilerMsvcFlags().join(" "));
+    msvcRow->addWidget(msvcLabel);
+    msvcRow->addStretch();
+    msvcRow->addWidget(m_msvcFlagsEdit, 1);
+    layout->addLayout(msvcRow);
+
+    connect(m_msvcFlagsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("compiler.msvc_flags", text);
+    });
+
+    // ====================================================================
+    // Section: 评测
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("评测")));
+
+    // ---- 时间限制 ----
+    auto *timeLimitRow = new QHBoxLayout;
+    auto *timeLimitLabel = new QLabel(tr("时间限制"));
+    timeLimitLabel->setStyleSheet(labelStyle());
+    m_judgeTimeLimitSpin = new QSpinBox;
+    m_judgeTimeLimitSpin->setRange(100, 10000);
+    m_judgeTimeLimitSpin->setSingleStep(100);
+    m_judgeTimeLimitSpin->setValue(cfg.judgeTimeLimitMs());
+    m_judgeTimeLimitSpin->setSuffix(QStringLiteral(" ms"));
+    m_judgeTimeLimitSpin->setFixedWidth(120);
+    m_judgeTimeLimitSpin->setStyleSheet(inputStyle());
+    timeLimitRow->addWidget(timeLimitLabel);
+    timeLimitRow->addStretch();
+    timeLimitRow->addWidget(m_judgeTimeLimitSpin);
+    layout->addLayout(timeLimitRow);
+
+    connect(m_judgeTimeLimitSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit toolSettingChanged("judge.time_limit_ms", val);
+    });
+
+    // ---- 内存限制 ----
+    auto *memLimitRow = new QHBoxLayout;
+    auto *memLimitLabel = new QLabel(tr("内存限制"));
+    memLimitLabel->setStyleSheet(labelStyle());
+    m_judgeMemoryLimitSpin = new QSpinBox;
+    m_judgeMemoryLimitSpin->setRange(16, 1024);
+    m_judgeMemoryLimitSpin->setSingleStep(16);
+    m_judgeMemoryLimitSpin->setValue(cfg.judgeMemoryLimitKb() / 1024);
+    m_judgeMemoryLimitSpin->setSuffix(QStringLiteral(" MB"));
+    m_judgeMemoryLimitSpin->setFixedWidth(120);
+    m_judgeMemoryLimitSpin->setStyleSheet(inputStyle());
+    memLimitRow->addWidget(memLimitLabel);
+    memLimitRow->addStretch();
+    memLimitRow->addWidget(m_judgeMemoryLimitSpin);
+    layout->addLayout(memLimitRow);
+
+    connect(m_judgeMemoryLimitSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit toolSettingChanged("judge.memory_limit_kb", val * 1024);
+    });
+
+    // ====================================================================
+    // Section: OpenJudge
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("OpenJudge")));
+
+    // ---- 服务器 URL ----
+    auto *urlRow = new QHBoxLayout;
+    auto *urlLabel = new QLabel(tr("服务器 URL"));
+    urlLabel->setStyleSheet(labelStyle());
+    m_openJudgeUrlEdit = new QLineEdit;
+    m_openJudgeUrlEdit->setPlaceholderText(QStringLiteral("https://"));
+    m_openJudgeUrlEdit->setStyleSheet(inputStyle());
+    m_openJudgeUrlEdit->setText(cfg.openJudgeBaseUrl());
+    urlRow->addWidget(urlLabel);
+    urlRow->addStretch();
+    urlRow->addWidget(m_openJudgeUrlEdit, 1);
+    layout->addLayout(urlRow);
+
+    connect(m_openJudgeUrlEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.base_url", text);
+    });
+
+    // ---- 自动登录 ----
+    auto *autoLoginRow = new QHBoxLayout;
+    auto *autoLoginLabel = new QLabel(tr("自动登录"));
+    autoLoginLabel->setStyleSheet(labelStyle());
+
+    m_openJudgeAutoLoginToggle = new ToggleSwitch;
+    m_openJudgeAutoLoginToggle->setChecked(false);
+
+    auto *autoLoginStateLabel = new QLabel(tr("关"));
+    autoLoginStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;")
+        .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+
+    m_openJudgeAutoLoginToggle->onToggled = [this, autoLoginStateLabel](bool checked) {
+        autoLoginStateLabel->setText(checked ? tr("开") : tr("关"));
+        autoLoginStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;")
+            .arg(checked ? ThemeManager::instance().color("badge.background").name()
+                         : ThemeManager::instance().color("tab.inactiveForeground").name()));
+        emit toolSettingChanged("open_judge.auto_login", checked);
+    };
+
+    auto *toggleWidget = new QWidget;
+    auto *toggleLayout = new QHBoxLayout(toggleWidget);
+    toggleLayout->setContentsMargins(0, 0, 0, 0);
+    toggleLayout->setSpacing(6);
+    toggleLayout->addWidget(m_openJudgeAutoLoginToggle);
+    toggleLayout->addWidget(autoLoginStateLabel);
+
+    autoLoginRow->addWidget(autoLoginLabel);
+    autoLoginRow->addStretch();
+    autoLoginRow->addWidget(toggleWidget);
+    layout->addLayout(autoLoginRow);
+
+    // ---- 用户名 ----
+    auto *usernameRow = new QHBoxLayout;
+    auto *usernameLabel = new QLabel(tr("用户名"));
+    usernameLabel->setStyleSheet(labelStyle());
+    m_openJudgeUsernameEdit = new QLineEdit;
+    m_openJudgeUsernameEdit->setStyleSheet(inputStyle());
+    usernameRow->addWidget(usernameLabel);
+    usernameRow->addStretch();
+    usernameRow->addWidget(m_openJudgeUsernameEdit, 1);
+    layout->addLayout(usernameRow);
+
+    connect(m_openJudgeUsernameEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.username", text);
+    });
+
+    // ---- 密码 ----
+    auto *passwordRow = new QHBoxLayout;
+    auto *passwordLabel = new QLabel(tr("密码"));
+    passwordLabel->setStyleSheet(labelStyle());
+    m_openJudgePasswordEdit = new QLineEdit;
+    m_openJudgePasswordEdit->setEchoMode(QLineEdit::Password);
+    m_openJudgePasswordEdit->setStyleSheet(inputStyle());
+    passwordRow->addWidget(passwordLabel);
+    passwordRow->addStretch();
+    passwordRow->addWidget(m_openJudgePasswordEdit, 1);
+    layout->addLayout(passwordRow);
+
+    connect(m_openJudgePasswordEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.password", text);
+    });
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
 // Drag & Resize (unchanged)
 // ============================================================
 
@@ -1410,6 +1696,33 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         QString val = sm.value("shortcuts." + it.key(), "").toString();
         if (!val.isEmpty())
             it.value()->setKeySequence(val);
+    }
+
+    // Tools page
+    if (m_clangdPathEdit)
+        m_clangdPathEdit->setText(sm.value("tools.clangd.path", cfg.toolClangdPath()).toString());
+    if (m_clangdArgsEdit)
+        m_clangdArgsEdit->setText(sm.value("tools.clangd.args", cfg.toolClangdArgs()).toString());
+    if (m_pythonPathEdit)
+        m_pythonPathEdit->setText(sm.value("tools.python.path", cfg.toolPythonPath()).toString());
+    if (m_gxxFlagsEdit)
+        m_gxxFlagsEdit->setText(sm.value("compiler.gxx_flags", cfg.compilerGxxFlags().join(" ")).toString());
+    if (m_msvcFlagsEdit)
+        m_msvcFlagsEdit->setText(sm.value("compiler.msvc_flags", cfg.compilerMsvcFlags().join(" ")).toString());
+    if (m_judgeTimeLimitSpin)
+        m_judgeTimeLimitSpin->setValue(sm.value("judge.time_limit_ms", cfg.judgeTimeLimitMs()).toInt());
+    if (m_judgeMemoryLimitSpin)
+        m_judgeMemoryLimitSpin->setValue(sm.value("judge.memory_limit_kb", cfg.judgeMemoryLimitKb()).toInt() / 1024);
+    if (m_openJudgeUrlEdit)
+        m_openJudgeUrlEdit->setText(sm.value("open_judge.base_url", cfg.openJudgeBaseUrl()).toString());
+    if (m_openJudgeAutoLoginToggle)
+        m_openJudgeAutoLoginToggle->setChecked(sm.openJudgeAutoLogin());
+    if (m_openJudgeUsernameEdit || m_openJudgePasswordEdit) {
+        auto creds = sm.openJudgeCredentials();
+        if (m_openJudgeUsernameEdit)
+            m_openJudgeUsernameEdit->setText(creds.first);
+        if (m_openJudgePasswordEdit)
+            m_openJudgePasswordEdit->setText(creds.second);
     }
 }
 
