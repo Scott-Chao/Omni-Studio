@@ -1,4 +1,5 @@
 #include "smdlspmanager.h"
+#include "configmanager.h"
 #include "lspclient.h"
 
 #include <QCoreApplication>
@@ -512,7 +513,13 @@ void SmdLspManager::startCppServer()
     if (m_shuttingDown || m_cppServer.client) {
         return;
     }
-    QString clangdPath = QStandardPaths::findExecutable(QStringLiteral("clangd"));
+    QString clangdPath;
+    QString configuredPath = ConfigManager::instance().toolClangdPath();
+    if (!configuredPath.isEmpty() && QFileInfo::exists(configuredPath)) {
+        clangdPath = configuredPath;
+    } else {
+        clangdPath = QStandardPaths::findExecutable(QStringLiteral("clangd"));
+    }
     if (clangdPath.isEmpty()) {
         qWarning() << "SmdLspManager: clangd not found";
         emit serverFailed(QStringLiteral("cpp"),
@@ -543,7 +550,10 @@ void SmdLspManager::startCppServer()
     connect(m_cppServer.client, &LspClient::serverStopped,
             this, &SmdLspManager::onCppServerStopped);
 
-    QStringList args = { QStringLiteral("--fallback-style=Google") };
+    QString argsStr = ConfigManager::instance().toolClangdArgs();
+    QStringList args;
+    if (!argsStr.isEmpty())
+        args = argsStr.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
     m_cppServer.client->start(clangdPath, args);
     // startup is async — serverStarted / serverError signals handle result
@@ -1073,8 +1083,14 @@ void SmdLspManager::startPythonProcess()
         return;
     }
 
-    QString python = QStandardPaths::findExecutable(QStringLiteral("python"));
-    if (python.isEmpty()) python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    QString python;
+    QString configuredPath = ConfigManager::instance().toolPythonPath();
+    if (!configuredPath.isEmpty() && QFileInfo::exists(configuredPath)) {
+        python = configuredPath;
+    } else {
+        python = QStandardPaths::findExecutable(QStringLiteral("python"));
+        if (python.isEmpty()) python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    }
     if (python.isEmpty()) {
         qWarning() << "SmdLspManager: python not found";
         emit serverFailed(QStringLiteral("python"), tr("Python not found."));

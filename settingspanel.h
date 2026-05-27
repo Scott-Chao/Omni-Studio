@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <QPainter>
 #include <QMap>
+#include <QVector>
 #include <functional>
 
 class QLabel;
@@ -13,12 +14,14 @@ class QPushButton;
 class QScrollArea;
 class QSlider;
 class QSpinBox;
+class QDoubleSpinBox;
 class QComboBox;
 class QStackedWidget;
 class QLineEdit;
 class QVBoxLayout;
 class QSizeGrip;
 class QTextEdit;
+class QTimer;
 class KeyRecorder;
 
 // 自定义开关控件，类似 Windows 系统设置的 Toggle Switch
@@ -78,6 +81,7 @@ signals:
     void previewSettingChanged(const QString &key, const QVariant &value);
     void searchSettingChanged(const QString &key, const QVariant &value);
     void aiSettingChanged(const QString &key, const QVariant &value);
+    void toolSettingChanged(const QString &key, const QVariant &value);
     void shortcutChanged(const QString &actionKey, const QString &keySequenceText);
     void resetToDefaultsRequested();
 
@@ -86,6 +90,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     bool event(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     enum class Edge {
@@ -104,11 +109,9 @@ private:
     // Category pages
     QWidget *createEditorPage();
     QWidget *createAppearancePage();
-    QWidget *createOutputPanelPage();
-    QWidget *createPreviewPage();
-    QWidget *createSearchPage();
     QWidget *createShortcutsPage();
     QWidget *createAiServicePage();
+    QWidget *createToolsPage();
 
     void refreshStyle();
     void refreshPageTree(QWidget *w);
@@ -130,9 +133,12 @@ private:
     QSpinBox *m_indentWidthSpin = nullptr;
     QSpinBox *m_markdownIndentWidthSpin = nullptr;
     ToggleSwitch *m_autoSaveToggle = nullptr;
+    QSpinBox *m_autoSaveIntervalSpin = nullptr;
 
-    // Output panel controls
+    // Output panel controls (moved to editor page)
+    QComboBox *m_outputFontFamilyCombo = nullptr;
     QSpinBox *m_outputFontSizeSpin = nullptr;
+    QSpinBox *m_outputMaxBlocksSpin = nullptr;
 
     // Preview controls
     QSpinBox *m_previewDebounceSpin = nullptr;
@@ -148,6 +154,14 @@ private:
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
     QPushButton *m_resetThemeBtn = nullptr;
 
+    struct ColorControl {
+        QPushButton *btn;
+        QLabel *preview;
+        QString configKey;
+        QColor defaultColor;
+    };
+    QVector<ColorControl> m_colorControls;
+
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;
     QWidget *m_shortcutsHeaderRow = nullptr;
@@ -158,9 +172,34 @@ private:
     QComboBox *m_aiProviderCombo = nullptr;
     QLineEdit *m_aiEndpointEdit = nullptr;
     QLineEdit *m_aiApiKeyEdit = nullptr;
+    QPushButton *m_aiApiKeyToggleBtn = nullptr;
     QLineEdit *m_aiModelEdit = nullptr;
     QSpinBox *m_aiMaxTokensSpin = nullptr;
+    QDoubleSpinBox *m_aiTemperatureSpin = nullptr;
     QTextEdit *m_aiSystemPromptEdit = nullptr;
+    QTimer *m_aiPromptDebounceTimer = nullptr;
+
+    // Tools page - Language Services
+    QLineEdit *m_clangdPathEdit = nullptr;
+    QPushButton *m_clangdBrowseBtn = nullptr;
+    QLineEdit *m_clangdArgsEdit = nullptr;
+    QLineEdit *m_pythonPathEdit = nullptr;
+    QPushButton *m_pythonBrowseBtn = nullptr;
+
+    // Tools page - Compiler
+    QLineEdit *m_gxxFlagsEdit = nullptr;
+    QLineEdit *m_msvcFlagsEdit = nullptr;
+
+    // Tools page - Judge
+    QSpinBox *m_judgeTimeLimitSpin = nullptr;
+    QSpinBox *m_judgeMemoryLimitSpin = nullptr;
+
+    // Tools page - OpenJudge
+    QLineEdit *m_openJudgeUrlEdit = nullptr;
+    ToggleSwitch *m_openJudgeAutoLoginToggle = nullptr;
+    QLineEdit *m_openJudgeUsernameEdit = nullptr;
+    QLineEdit *m_openJudgePasswordEdit = nullptr;
+    QPushButton *m_openJudgePasswordToggleBtn = nullptr;
 
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;

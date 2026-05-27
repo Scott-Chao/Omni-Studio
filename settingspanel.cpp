@@ -13,6 +13,7 @@
 #include <QSlider>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QMouseEvent>
 #include <QApplication>
@@ -20,12 +21,15 @@
 #include <QIntValidator>
 #include <QTableWidget>
 #include <QTextEdit>
+#include <QToolButton>
 #include <QHeaderView>
 #include <QColorDialog>
+#include <QFileDialog>
 #include <QFontDatabase>
 #include <QPainter>
 #include <QMessageBox>
 #include <QMap>
+#include <QTimer>
 #include <functional>
 #include "keyrecorder.h"
 
@@ -46,6 +50,17 @@ static QString labelStyle() {
     auto &tm = ThemeManager::instance();
     return QStringLiteral("color: %1; font-size: 12px;")
         .arg(tm.color("workbench.foreground").name());
+}
+
+// Helper: create a row label with explicit alignment & zero contents margins.
+// Without explicit contentsMargins(0,0,0,0), QStyleSheetStyle inherited from
+// the parent #settingsPanel may inject platform-varying default padding.
+static QLabel *makeRowLabel(const QString &text) {
+    auto *lbl = new QLabel(text);
+    lbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    lbl->setContentsMargins(0, 0, 0, 0);
+    lbl->setStyleSheet(labelStyle());
+    return lbl;
 }
 
 static QString inputStyle() {
@@ -153,11 +168,9 @@ SettingsPanel::SettingsPanel(QWidget *parent)
 
     m_categoryList->addItem(tr("编辑器"));
     m_categoryList->addItem(tr("外观"));
-    m_categoryList->addItem(tr("输出面板"));
-    m_categoryList->addItem(tr("预览"));
-    m_categoryList->addItem(tr("搜索"));
-    m_categoryList->addItem(tr("快捷键"));
     m_categoryList->addItem(tr("AI 服务"));
+    m_categoryList->addItem(tr("快捷键"));
+    m_categoryList->addItem(tr("工具"));
 
     leftLayout->addWidget(m_categoryList, 1);
 
@@ -171,8 +184,10 @@ SettingsPanel::SettingsPanel(QWidget *parent)
             QMessageBox::Yes | QMessageBox::No,
             QMessageBox::No
         );
-        if (reply == QMessageBox::Yes)
+        if (reply == QMessageBox::Yes) {
             emit resetToDefaultsRequested();
+            syncFromSettings(SettingsManager::instance());
+        }
     });
     leftLayout->addWidget(resetBtn);
 
@@ -181,11 +196,9 @@ SettingsPanel::SettingsPanel(QWidget *parent)
 
     m_stackedWidget->addWidget(createEditorPage());       // index 0
     m_stackedWidget->addWidget(createAppearancePage());    // index 1
-    m_stackedWidget->addWidget(createOutputPanelPage());   // index 2
-    m_stackedWidget->addWidget(createPreviewPage());       // index 3
-    m_stackedWidget->addWidget(createSearchPage());        // index 4
-    m_stackedWidget->addWidget(createShortcutsPage());     // index 5
-    m_stackedWidget->addWidget(createAiServicePage());     // index 6
+    m_stackedWidget->addWidget(createAiServicePage());     // index 2
+    m_stackedWidget->addWidget(createShortcutsPage());     // index 3
+    m_stackedWidget->addWidget(createToolsPage());         // index 4
 
     connect(m_categoryList, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
     m_categoryList->setCurrentRow(0);
@@ -353,6 +366,13 @@ void SettingsPanel::refreshPageTree(QWidget *w)
             label->setStyleSheet(labelStyle());
     } else if (qobject_cast<QSpinBox*>(w) || qobject_cast<QLineEdit*>(w) || qobject_cast<QComboBox*>(w)) {
         w->setStyleSheet(inputStyle());
+        // Do NOT recurse into internal children of QSpinBox/QComboBox
+        // (e.g. the embedded QLineEdit inside QSpinBox / editable QComboBox).
+        // Doing so would apply inputStyle (min-height:20px) to those internal
+        // widgets, forcing the parent to grow taller than the intended 26px
+        // and breaking label–control vertical alignment.
+        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w))
+            return;
     }
 
     for (auto *child : w->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
@@ -368,7 +388,7 @@ QLabel *SettingsPanel::createSectionLabel(const QString &text)
 }
 
 // ============================================================
-// Page: 编辑器 (Editor)
+// Page: 编辑器 (Editor) — merged from editor, output, preview, search
 // ============================================================
 QWidget *SettingsPanel::createEditorPage()
 {
@@ -388,43 +408,93 @@ QWidget *SettingsPanel::createEditorPage()
     layout->setContentsMargins(24, 16, 24, 16);
     layout->setSpacing(8);
 
-    layout->addWidget(createSectionLabel(tr("编辑器")));
+    // ====================================================================
+    // Section: 编辑
+    // ====================================================================
+    layout->addWidget(createSectionLabel(tr("编辑")));
 
-    // ---- 自动保存 ----
-    auto *autoSaveRow = new QHBoxLayout;
-    auto *autoSaveLabel = new QLabel(tr("自动保存"));
-    autoSaveLabel->setStyleSheet(labelStyle());
+    // ---- 编辑器字体 ----
+    auto *fontRow = new QHBoxLayout;
+    auto *fontLabel = new QLabel(tr("字体"));
+    fontLabel->setStyleSheet(labelStyle());
+    m_fontFamilyCombo = new QComboBox;
+    m_fontFamilyCombo->setEditable(false);
+    m_fontFamilyCombo->setFixedWidth(180);
+    m_fontFamilyCombo->setStyleSheet(inputStyle());
 
-    m_autoSaveToggle = new ToggleSwitch;
-    m_autoSaveToggle->setChecked(true);
+    static const QStringList families = QFontDatabase::families();
+    m_fontFamilyCombo->addItems(families);
+    int fontIdx = m_fontFamilyCombo->findText(cfg.editorFontFamily());
+    if (fontIdx >= 0) m_fontFamilyCombo->setCurrentIndex(fontIdx);
 
-    auto *autoSaveStateLabel = new QLabel(tr("开"));
-    autoSaveStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;").arg(ThemeManager::instance().color("badge.background").name()));
+    fontRow->addWidget(fontLabel);
+    fontRow->addStretch();
+    fontRow->addWidget(m_fontFamilyCombo);
+    layout->addLayout(fontRow);
 
-    m_autoSaveToggle->onToggled = [this, autoSaveStateLabel](bool checked) {
-        autoSaveStateLabel->setText(checked ? tr("开") : tr("关"));
-        autoSaveStateLabel->setStyleSheet(QString("color: %1; font-size: 13px;")
-            .arg(checked ? ThemeManager::instance().color("badge.background").name() : ThemeManager::instance().color("tab.inactiveForeground").name()));
-        emit editorSettingChanged("editor.auto_save", checked);
-    };
+    connect(m_fontFamilyCombo, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+        emit editorSettingChanged("editor.font.family", text);
+    });
 
-    auto *toggleWidget = new QWidget;
-    auto *toggleLayout = new QHBoxLayout(toggleWidget);
-    toggleLayout->setContentsMargins(0, 0, 0, 0);
-    toggleLayout->setSpacing(6);
-    toggleLayout->addWidget(m_autoSaveToggle);
-    toggleLayout->addWidget(autoSaveStateLabel);
+    // ---- 编辑器字号 ----
+    auto *fontSizeRow = new QHBoxLayout;
+    auto *fontSizeLabel = new QLabel(tr("字号"));
+    fontSizeLabel->setStyleSheet(labelStyle());
+    m_fontSizeSpin = new QSpinBox;
+    m_fontSizeSpin->setRange(8, 24);
+    m_fontSizeSpin->setValue(cfg.editorFontSize());
+    m_fontSizeSpin->setFixedWidth(80);
+    m_fontSizeSpin->setStyleSheet(inputStyle());
+    fontSizeRow->addWidget(fontSizeLabel);
+    fontSizeRow->addStretch();
+    fontSizeRow->addWidget(m_fontSizeSpin);
+    layout->addLayout(fontSizeRow);
 
-    autoSaveRow->addWidget(autoSaveLabel);
-    autoSaveRow->addStretch();
-    autoSaveRow->addWidget(toggleWidget);
-    layout->addLayout(autoSaveRow);
+    connect(m_fontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.font.size", val);
+    });
 
-    layout->addSpacing(6);
+    // ---- 缩进宽度 ----
+    int indentDef = cfg.editorIndentWidth();
+    auto *indentRow = new QHBoxLayout;
+    auto *indentLabel = new QLabel(tr("缩进宽度"));
+    indentLabel->setStyleSheet(labelStyle());
+    m_indentWidthSpin = new QSpinBox;
+    m_indentWidthSpin->setRange(1, 8);
+    m_indentWidthSpin->setValue(indentDef);
+    m_indentWidthSpin->setFixedWidth(80);
+    m_indentWidthSpin->setStyleSheet(inputStyle());
+    indentRow->addWidget(indentLabel);
+    indentRow->addStretch();
+    indentRow->addWidget(m_indentWidthSpin);
+    layout->addLayout(indentRow);
 
-    // ---- 默认字体大小 (zoom) ----
+    connect(m_indentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.indent_width", val);
+    });
+
+    // ---- Markdown 缩进宽度 ----
+    int mdIndentDef = cfg.editorMarkdownIndentWidth();
+    auto *mdIndentRow = new QHBoxLayout;
+    auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
+    mdIndentLabel->setStyleSheet(labelStyle());
+    m_markdownIndentWidthSpin = new QSpinBox;
+    m_markdownIndentWidthSpin->setRange(1, 8);
+    m_markdownIndentWidthSpin->setValue(mdIndentDef);
+    m_markdownIndentWidthSpin->setFixedWidth(80);
+    m_markdownIndentWidthSpin->setStyleSheet(inputStyle());
+    mdIndentRow->addWidget(mdIndentLabel);
+    mdIndentRow->addStretch();
+    mdIndentRow->addWidget(m_markdownIndentWidthSpin);
+    layout->addLayout(mdIndentRow);
+
+    connect(m_markdownIndentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("editor.markdown_indent_width", val);
+    });
+
+    // ---- 默认缩放 ----
     auto *zoomRow = new QHBoxLayout;
-    auto *zoomLabel = new QLabel(tr("默认缩放比例"));
+    auto *zoomLabel = new QLabel(tr("默认缩放"));
     zoomLabel->setStyleSheet(labelStyle());
     zoomRow->addWidget(zoomLabel);
 
@@ -481,9 +551,9 @@ QWidget *SettingsPanel::createEditorPage()
     m_fontSizeEdit->setStyleSheet(inputStyle());
     zoomRow->addWidget(m_fontSizeEdit);
 
-    auto *percentLabel = new QLabel(QStringLiteral("%"));
-    percentLabel->setStyleSheet(labelStyle());
-    zoomRow->addWidget(percentLabel);
+    auto *zoomPercentLabel = new QLabel(QStringLiteral("%"));
+    zoomPercentLabel->setStyleSheet(labelStyle());
+    zoomRow->addWidget(zoomPercentLabel);
 
     layout->addLayout(zoomRow);
 
@@ -508,87 +578,234 @@ QWidget *SettingsPanel::createEditorPage()
         emit defaultZoomChanged(value / 100.0);
     });
 
-    // ---- 缩进宽度 ----
-    int indentDef = cfg.editorIndentWidth();
-    auto *indentRow = new QHBoxLayout;
-    auto *indentLabel = new QLabel(tr("缩进宽度"));
-    indentLabel->setStyleSheet(labelStyle());
-    m_indentWidthSpin = new QSpinBox;
-    m_indentWidthSpin->setRange(1, 8);
-    m_indentWidthSpin->setValue(indentDef);
-    m_indentWidthSpin->setFixedWidth(80);
-    m_indentWidthSpin->setStyleSheet(inputStyle());
-    indentRow->addWidget(indentLabel);
-    indentRow->addStretch();
-    indentRow->addWidget(m_indentWidthSpin);
-    layout->addLayout(indentRow);
+    // ====================================================================
+    // Section: 自动保存
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("自动保存")));
 
-    connect(m_indentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit editorSettingChanged("editor.indent_width", val);
+    // ---- 自动保存开关 ----
+    auto *autoSaveRow = new QHBoxLayout;
+    auto *autoSaveLabel = new QLabel(tr("自动保存"));
+    autoSaveLabel->setStyleSheet(labelStyle());
+
+    m_autoSaveToggle = new ToggleSwitch;
+    m_autoSaveToggle->setChecked(true);
+
+    auto *autoSaveStateLabel = new QLabel(tr("开"));
+    autoSaveStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;").arg(ThemeManager::instance().color("badge.background").name()));
+
+    m_autoSaveToggle->onToggled = [this, autoSaveStateLabel](bool checked) {
+        autoSaveStateLabel->setText(checked ? tr("开") : tr("关"));
+        autoSaveStateLabel->setStyleSheet(QString("color: %1; font-size: 13px;")
+            .arg(checked ? ThemeManager::instance().color("badge.background").name() : ThemeManager::instance().color("tab.inactiveForeground").name()));
+        emit editorSettingChanged("auto_save.enabled", checked);
+    };
+
+    auto *toggleWidget = new QWidget;
+    auto *toggleLayout = new QHBoxLayout(toggleWidget);
+    toggleLayout->setContentsMargins(0, 0, 0, 0);
+    toggleLayout->setSpacing(6);
+    toggleLayout->addWidget(m_autoSaveToggle);
+    toggleLayout->addWidget(autoSaveStateLabel);
+
+    autoSaveRow->addWidget(autoSaveLabel);
+    autoSaveRow->addStretch();
+    autoSaveRow->addWidget(toggleWidget);
+    layout->addLayout(autoSaveRow);
+
+    // ---- 保存间隔 ----
+    auto *intervalRow = new QHBoxLayout;
+    auto *intervalLabel = new QLabel(tr("保存间隔"));
+    intervalLabel->setStyleSheet(labelStyle());
+    m_autoSaveIntervalSpin = new QSpinBox;
+    m_autoSaveIntervalSpin->setRange(1, 300);
+    m_autoSaveIntervalSpin->setValue(cfg.autoSaveIntervalMs() / 1000);
+    m_autoSaveIntervalSpin->setSuffix(tr("秒"));
+    m_autoSaveIntervalSpin->setFixedWidth(100);
+    m_autoSaveIntervalSpin->setStyleSheet(inputStyle());
+    intervalRow->addWidget(intervalLabel);
+    intervalRow->addStretch();
+    intervalRow->addWidget(m_autoSaveIntervalSpin);
+    layout->addLayout(intervalRow);
+
+    connect(m_autoSaveIntervalSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("auto_save.interval_ms", val * 1000);
     });
 
-    // ---- Markdown 缩进宽度 ----
-    int mdIndentDef = cfg.editorMarkdownIndentWidth();
-    auto *mdIndentRow = new QHBoxLayout;
-    auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
-    mdIndentLabel->setStyleSheet(labelStyle());
-    m_markdownIndentWidthSpin = new QSpinBox;
-    m_markdownIndentWidthSpin->setRange(1, 8);
-    m_markdownIndentWidthSpin->setValue(mdIndentDef);
-    m_markdownIndentWidthSpin->setFixedWidth(80);
-    m_markdownIndentWidthSpin->setStyleSheet(inputStyle());
-    mdIndentRow->addWidget(mdIndentLabel);
-    mdIndentRow->addStretch();
-    mdIndentRow->addWidget(m_markdownIndentWidthSpin);
-    layout->addLayout(mdIndentRow);
+    // ====================================================================
+    // Section: 输出面板
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("输出面板")));
 
-    connect(m_markdownIndentWidthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit editorSettingChanged("editor.markdown_indent_width", val);
+    // ---- 输出字体 ----
+    auto *outFontRow = new QHBoxLayout;
+    auto *outFontLabel = new QLabel(tr("字体"));
+    outFontLabel->setStyleSheet(labelStyle());
+    m_outputFontFamilyCombo = new QComboBox;
+    m_outputFontFamilyCombo->setEditable(true);
+    m_outputFontFamilyCombo->setFixedWidth(180);
+    m_outputFontFamilyCombo->setStyleSheet(inputStyle());
+    m_outputFontFamilyCombo->addItems(families);
+    int outFontIdx = m_outputFontFamilyCombo->findText(cfg.outputPanelFontFamily());
+    if (outFontIdx >= 0) m_outputFontFamilyCombo->setCurrentIndex(outFontIdx);
+    outFontRow->addWidget(outFontLabel);
+    outFontRow->addStretch();
+    outFontRow->addWidget(m_outputFontFamilyCombo);
+    layout->addLayout(outFontRow);
+
+    connect(m_outputFontFamilyCombo, &QComboBox::currentTextChanged, this, [this](const QString &text) {
+        emit outputPanelSettingChanged("output_panel.font.family", text);
     });
 
-    // ---- 编辑器字体 ----
-    auto *fontRow = new QHBoxLayout;
-    auto *fontLabel = new QLabel(tr("编辑器字体"));
-    fontLabel->setStyleSheet(labelStyle());
-    m_fontFamilyCombo = new QComboBox;
-    m_fontFamilyCombo->setEditable(false);
-    m_fontFamilyCombo->setFixedWidth(180);
-    m_fontFamilyCombo->setStyleSheet(inputStyle());
+    // ---- 输出字号 ----
+    auto *outSizeRow = new QHBoxLayout;
+    auto *outSizeLabel = new QLabel(tr("字号"));
+    outSizeLabel->setStyleSheet(labelStyle());
+    m_outputFontSizeSpin = new QSpinBox;
+    m_outputFontSizeSpin->setRange(8, 24);
+    m_outputFontSizeSpin->setValue(cfg.outputPanelFontSize());
+    m_outputFontSizeSpin->setFixedWidth(80);
+    m_outputFontSizeSpin->setStyleSheet(inputStyle());
+    outSizeRow->addWidget(outSizeLabel);
+    outSizeRow->addStretch();
+    outSizeRow->addWidget(m_outputFontSizeSpin);
+    layout->addLayout(outSizeRow);
 
-    static const QStringList families = QFontDatabase::families();
-    m_fontFamilyCombo->addItems(families);
-    int fontIdx = m_fontFamilyCombo->findText(cfg.editorFontFamily());
-    if (fontIdx >= 0) m_fontFamilyCombo->setCurrentIndex(fontIdx);
-
-    fontRow->addWidget(fontLabel);
-    fontRow->addStretch();
-    fontRow->addWidget(m_fontFamilyCombo);
-    layout->addLayout(fontRow);
-
-    connect(m_fontFamilyCombo, &QComboBox::currentTextChanged, this, [this](const QString &text) {
-        emit editorSettingChanged("editor.font.family", text);
+    connect(m_outputFontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit outputPanelSettingChanged("output_panel.font.size", val);
     });
 
-    // ---- 编辑器字号 ----
-    auto *fontSizeRow = new QHBoxLayout;
-    auto *fontSizeLabel = new QLabel(tr("编辑器字号"));
-    fontSizeLabel->setStyleSheet(labelStyle());
-    m_fontSizeSpin = new QSpinBox;
-    m_fontSizeSpin->setRange(8, 24);
-    m_fontSizeSpin->setValue(cfg.editorFontSize());
-    m_fontSizeSpin->setFixedWidth(80);
-    m_fontSizeSpin->setStyleSheet(inputStyle());
-    fontSizeRow->addWidget(fontSizeLabel);
-    fontSizeRow->addStretch();
-    fontSizeRow->addWidget(m_fontSizeSpin);
-    layout->addLayout(fontSizeRow);
+    // ---- 最大行数 ----
+    auto *maxRow = new QHBoxLayout;
+    auto *maxLabel = new QLabel(tr("最大行数"));
+    maxLabel->setStyleSheet(labelStyle());
+    m_outputMaxBlocksSpin = new QSpinBox;
+    m_outputMaxBlocksSpin->setRange(100, 100000);
+    m_outputMaxBlocksSpin->setSingleStep(500);
+    m_outputMaxBlocksSpin->setValue(cfg.outputPanelMaxBlocks());
+    m_outputMaxBlocksSpin->setFixedWidth(100);
+    m_outputMaxBlocksSpin->setStyleSheet(inputStyle());
+    maxRow->addWidget(maxLabel);
+    maxRow->addStretch();
+    maxRow->addWidget(m_outputMaxBlocksSpin);
+    layout->addLayout(maxRow);
 
-    connect(m_fontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit editorSettingChanged("editor.font.size", val);
+    connect(m_outputMaxBlocksSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit outputPanelSettingChanged("output_panel.max_blocks", val);
+    });
+
+    // ====================================================================
+    // Section: 预览
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("预览")));
+
+    // ---- 分屏防抖 ----
+    auto *debounceRow = new QHBoxLayout;
+    auto *debounceLabel = new QLabel(tr("分屏防抖"));
+    debounceLabel->setStyleSheet(labelStyle());
+    m_previewDebounceSpin = new QSpinBox;
+    m_previewDebounceSpin->setRange(100, 2000);
+    m_previewDebounceSpin->setSingleStep(50);
+    m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
+    m_previewDebounceSpin->setSuffix(QStringLiteral(" ms"));
+    m_previewDebounceSpin->setFixedWidth(100);
+    m_previewDebounceSpin->setStyleSheet(inputStyle());
+    debounceRow->addWidget(debounceLabel);
+    debounceRow->addStretch();
+    debounceRow->addWidget(m_previewDebounceSpin);
+    layout->addLayout(debounceRow);
+
+    connect(m_previewDebounceSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit previewSettingChanged("preview.split_debounce_ms", val);
+    });
+
+    // ---- 分屏比例 ----
+    auto *ratioRow = new QHBoxLayout;
+    auto *ratioLabel = new QLabel(tr("分屏比例"));
+    ratioLabel->setStyleSheet(labelStyle());
+    m_previewRatioSpin = new QSpinBox;
+    m_previewRatioSpin->setRange(30, 70);
+    m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
+    m_previewRatioSpin->setFixedWidth(100);
+    m_previewRatioSpin->setStyleSheet(inputStyle());
+    ratioRow->addWidget(ratioLabel);
+    ratioRow->addStretch();
+    ratioRow->addWidget(m_previewRatioSpin);
+    auto *ratioPercentLabel = new QLabel(QStringLiteral("%"));
+    ratioPercentLabel->setStyleSheet(labelStyle());
+    ratioRow->addWidget(ratioPercentLabel);
+    layout->addLayout(ratioRow);
+
+    connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit previewSettingChanged("preview.split_preview_ratio", val);
+    });
+
+    // ====================================================================
+    // Section: 搜索
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("搜索")));
+
+    // ---- 每文件最大匹配 ----
+    auto *perFileRow = new QHBoxLayout;
+    auto *perFileLabel = new QLabel(tr("每文件匹配数"));
+    perFileLabel->setStyleSheet(labelStyle());
+    m_searchPerFileSpin = new QSpinBox;
+    m_searchPerFileSpin->setRange(1, 50);
+    m_searchPerFileSpin->setValue(cfg.searchMaxPerFile());
+    m_searchPerFileSpin->setFixedWidth(80);
+    m_searchPerFileSpin->setStyleSheet(inputStyle());
+    perFileRow->addWidget(perFileLabel);
+    perFileRow->addStretch();
+    perFileRow->addWidget(m_searchPerFileSpin);
+    layout->addLayout(perFileRow);
+
+    connect(m_searchPerFileSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.max_per_file", val);
+    });
+
+    // ---- 最大结果总数 ----
+    auto *totalRow = new QHBoxLayout;
+    auto *totalLabel = new QLabel(tr("最大结果总数"));
+    totalLabel->setStyleSheet(labelStyle());
+    m_searchTotalSpin = new QSpinBox;
+    m_searchTotalSpin->setRange(50, 2000);
+    m_searchTotalSpin->setSingleStep(50);
+    m_searchTotalSpin->setValue(cfg.searchMaxTotalResults());
+    m_searchTotalSpin->setFixedWidth(100);
+    m_searchTotalSpin->setStyleSheet(inputStyle());
+    totalRow->addWidget(totalLabel);
+    totalRow->addStretch();
+    totalRow->addWidget(m_searchTotalSpin);
+    layout->addLayout(totalRow);
+
+    connect(m_searchTotalSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.max_total_results", val);
+    });
+
+    // ---- 片段最大长度 ----
+    auto *snippetRow = new QHBoxLayout;
+    auto *snippetLabel = new QLabel(tr("片段最大长度"));
+    snippetLabel->setStyleSheet(labelStyle());
+    m_searchSnippetSpin = new QSpinBox;
+    m_searchSnippetSpin->setRange(50, 500);
+    m_searchSnippetSpin->setSingleStep(10);
+    m_searchSnippetSpin->setValue(cfg.searchSnippetMaxLength());
+    m_searchSnippetSpin->setFixedWidth(80);
+    m_searchSnippetSpin->setStyleSheet(inputStyle());
+    snippetRow->addWidget(snippetLabel);
+    snippetRow->addStretch();
+    snippetRow->addWidget(m_searchSnippetSpin);
+    layout->addLayout(snippetRow);
+
+    connect(m_searchSnippetSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit searchSettingChanged("search_panel.snippet_max_length", val);
     });
 
     layout->addStretch();
-
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
     return page;
@@ -655,6 +872,14 @@ QWidget *SettingsPanel::createAppearancePage()
         auto &tm = ThemeManager::instance();
         tm.clearOverrides();
         tm.loadTheme(tm.currentThemeName());
+
+        // Keep SettingsManager in sync so panel values match on next open
+        auto &sm = SettingsManager::instance();
+        for (const auto &k : sm.allOverrideKeys()) {
+            if (k.startsWith(QStringLiteral("appearance.colors.")))
+                sm.removeSettingOverride(k);
+        }
+        syncFromSettings(sm);
     });
 
     themeRow->addWidget(themeLabel);
@@ -686,56 +911,48 @@ QWidget *SettingsPanel::createAppearancePage()
         emit appearanceSettingChanged("editor.file_tree_item_height", val);
     });
 
-    layout->addStretch();
+    // ====================================================================
+    // Collapsible Color Sections
+    // ====================================================================
+    layout->addSpacing(8);
+    m_colorControls.clear();
 
-    struct ColorItem {
-        QString label;
-        QString configKey;
-        QColor defaultColor;
-    };
-
-    ColorItem colors[] = {
-        {tr("编辑器背景"), "appearance.colors.editor.background", cfg.editorBackground()},
-        {tr("编辑器前景（文字）"), "appearance.colors.editor.foreground", cfg.editorForeground()},
-        {tr("选中背景"),  "appearance.colors.editor.selection",  cfg.editorSelection()},
-        {tr("当前行高亮"), "appearance.colors.current_line.highlight", cfg.currentLineHighlight()},
-        {tr("行号区域背景"), "appearance.colors.line_number.background", cfg.lineNumberBackground()},
-        {tr("行号文字颜色"), "appearance.colors.line_number.foreground", cfg.lineNumberForeground()},
-    };
-
-    for (const auto &ci : colors) {
+    // Helper: create a single color picker row inside a section layout
+    auto addColorRow = [&](QVBoxLayout *parent, const QString &label,
+                           const QString &configKey, const QColor &defaultColor)
+    {
         auto *row = new QHBoxLayout;
-        auto *lbl = new QLabel(ci.label);
+        auto *lbl = new QLabel(label);
         lbl->setStyleSheet(labelStyle());
+
+        QString currentHex = sm.value(configKey, defaultColor.name()).toString();
 
         auto *colorBtn = new QPushButton;
         colorBtn->setFixedSize(24, 24);
-        QString bgHex = sm.value(ci.configKey, ci.defaultColor.name()).toString();
-        QString btnBorder = ThemeManager::instance().color("input.border").name();
-    QString btnActive = ThemeManager::instance().color("badge.background").name();
-    colorBtn->setStyleSheet(
+        QString btnBorder = tm.color("input.border").name();
+        QString btnActive = tm.color("badge.background").name();
+        colorBtn->setStyleSheet(
             QStringLiteral(
                 "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                 "QPushButton:hover { border-color: %3; }"
-            ).arg(bgHex, btnBorder, btnActive)
-        );
+            ).arg(currentHex, btnBorder, btnActive));
 
         auto *colorPreview = new QLabel;
         colorPreview->setFixedWidth(80);
-        colorPreview->setText(bgHex);
+        colorPreview->setText(currentHex);
         colorPreview->setStyleSheet(
             QStringLiteral("color: %1; font-size: 11px; padding: 2px 4px; "
                            "background-color: %2; border: 1px solid %3; border-radius: 3px;")
-                           .arg(ThemeManager::instance().color("tab.inactiveForeground").name(),
-                                ThemeManager::instance().color("input.background").name(),
-                                ThemeManager::instance().color("input.border").name())
-        );
-
-        QString configKey = ci.configKey;
-        QColor defaultColor = ci.defaultColor;
+            .arg(tm.color("tab.inactiveForeground").name(),
+                 tm.color("input.background").name(),
+                 tm.color("input.border").name()));
 
         connect(colorBtn, &QPushButton::clicked, this, [this, colorBtn, colorPreview, configKey, defaultColor]() {
-            QColor chosen = QColorDialog::getColor(defaultColor, this, tr("选择颜色"));
+            auto &sm2 = SettingsManager::instance();
+            QString curHex = sm2.value(configKey, defaultColor.name()).toString();
+            QColor curCol = QColor(curHex);
+            QColor chosen = QColorDialog::getColor(curCol.isValid() ? curCol : defaultColor,
+                                                    this, tr("选择颜色"));
             if (chosen.isValid()) {
                 QString hex = chosen.name();
                 auto &ctm = ThemeManager::instance();
@@ -743,8 +960,7 @@ QWidget *SettingsPanel::createAppearancePage()
                     QStringLiteral(
                         "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                         "QPushButton:hover { border-color: %3; }"
-                    ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name())
-                );
+                    ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
                 colorPreview->setText(hex);
                 emit appearanceSettingChanged(configKey, hex);
             }
@@ -754,229 +970,123 @@ QWidget *SettingsPanel::createAppearancePage()
         row->addStretch();
         row->addWidget(colorPreview);
         row->addWidget(colorBtn);
-        layout->addLayout(row);
+        parent->addLayout(row);
+
+        m_colorControls.append({colorBtn, colorPreview, configKey, defaultColor});
+    };
+
+    // Helper: create a collapsible section with QToolButton toggle
+    auto createSection = [&](const QString &title, bool defaultExpanded)
+    {
+        auto *btn = new QToolButton;
+        btn->setCheckable(true);
+        btn->setChecked(defaultExpanded);
+        btn->setText(title);
+        btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        btn->setArrowType(defaultExpanded ? Qt::DownArrow : Qt::RightArrow);
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { color: %1; font-size: 13px; font-weight: bold; border: none; padding: 2px 0; }"
+            "QToolButton:hover { color: %2; }")
+            .arg(tm.color("tab.activeForeground").name(),
+                 tm.color("badge.background").name()));
+
+        auto *content = new QWidget;
+        content->setVisible(defaultExpanded);
+        auto *contentLayout = new QVBoxLayout(content);
+        contentLayout->setContentsMargins(8, 4, 0, 4);
+        contentLayout->setSpacing(4);
+
+        QObject::connect(btn, &QToolButton::toggled, content, &QWidget::setVisible);
+        QObject::connect(btn, &QToolButton::toggled, btn, [btn](bool checked) {
+            btn->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+        });
+
+        return QPair<QToolButton*, QVBoxLayout*>(btn, contentLayout);
+    };
+
+    // ---- 编辑器色 (6 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("编辑器色"), true);
+        layout->addWidget(btn);
+
+        addColorRow(cl, tr("编辑器背景"),            "appearance.colors.editor.background",      cfg.editorBackground());
+        addColorRow(cl, tr("编辑器前景（文字）"),     "appearance.colors.editor.foreground",      cfg.editorForeground());
+        addColorRow(cl, tr("选中背景"),              "appearance.colors.editor.selection",       cfg.editorSelection());
+        addColorRow(cl, tr("当前行高亮"),             "appearance.colors.current_line.highlight", cfg.currentLineHighlight());
+        addColorRow(cl, tr("行号区域背景"),           "appearance.colors.line_number.background", cfg.lineNumberBackground());
+        addColorRow(cl, tr("行号文字颜色"),           "appearance.colors.line_number.foreground", cfg.lineNumberForeground());
+
+        layout->addWidget(cl->parentWidget());
     }
 
-    layout->addStretch();
-    scrollArea->setWidget(content);
-    outerLayout->addWidget(scrollArea);
-    return page;
-}
+    // ---- 语法高亮 (8 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("语法高亮"), false);
+        layout->addWidget(btn);
 
-// ============================================================
-// Page: 输出面板 (Output Panel)
-// ============================================================
-QWidget *SettingsPanel::createOutputPanelPage()
-{
-    const auto &cfg = ConfigManager::instance();
-    auto *page = new QWidget;
-    auto *outerLayout = new QVBoxLayout(page);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
+        addColorRow(cl, tr("关键字"),       "appearance.colors.syntax_highlight.keywords",         cfg.syntaxKeywords());
+        addColorRow(cl, tr("预处理指令"),   "appearance.colors.syntax_highlight.preprocessor",     cfg.syntaxPreprocessor());
+        addColorRow(cl, tr("类型"),         "appearance.colors.syntax_highlight.types",            cfg.syntaxTypes());
+        addColorRow(cl, tr("数字"),         "appearance.colors.syntax_highlight.numbers",          cfg.syntaxNumbers());
+        addColorRow(cl, tr("字符串"),       "appearance.colors.syntax_highlight.strings",          cfg.syntaxStrings());
+        addColorRow(cl, tr("注释"),         "appearance.colors.syntax_highlight.comments",         cfg.syntaxComments());
+        addColorRow(cl, tr("Python 装饰器"), "appearance.colors.syntax_highlight.python_decorators", cfg.syntaxPythonDecorators());
+        addColorRow(cl, tr("Python self/cls"), "appearance.colors.syntax_highlight.python_self_cls", cfg.syntaxPythonSelfCls());
 
-    auto *scrollArea = new QScrollArea;
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setStyleSheet(scrollAreaStyle());
+        layout->addWidget(cl->parentWidget());
+    }
 
-    auto *content = new QWidget;
-    content->setStyleSheet(QStringLiteral("background: %1;").arg(ThemeManager::instance().color("menu.background").name()));
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(24, 16, 24, 16);
-    layout->setSpacing(8);
+    // ---- 输出面板 (4 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("输出面板"), false);
+        layout->addWidget(btn);
 
-    layout->addWidget(createSectionLabel(tr("输出面板")));
+        addColorRow(cl, tr("背景"),       "appearance.colors.output_panel.background", cfg.outputPanelBackground());
+        addColorRow(cl, tr("前景"),       "appearance.colors.output_panel.foreground", cfg.outputPanelForeground());
+        addColorRow(cl, tr("选中色"),     "appearance.colors.output_panel.selection",  cfg.outputPanelSelection());
+        addColorRow(cl, tr("错误输出"),   "appearance.colors.output_panel.stderr",     cfg.outputStderr());
 
-    // 字体大小
-    auto *sizeRow = new QHBoxLayout;
-    auto *sizeLabel = new QLabel(tr("字体大小"));
-    sizeLabel->setStyleSheet(labelStyle());
-    m_outputFontSizeSpin = new QSpinBox;
-    m_outputFontSizeSpin->setRange(8, 24);
-    m_outputFontSizeSpin->setValue(cfg.outputPanelFontSize());
-    m_outputFontSizeSpin->setFixedWidth(80);
-    m_outputFontSizeSpin->setStyleSheet(inputStyle());
-    sizeRow->addWidget(sizeLabel);
-    sizeRow->addStretch();
-    sizeRow->addWidget(m_outputFontSizeSpin);
-    layout->addLayout(sizeRow);
+        layout->addWidget(cl->parentWidget());
+    }
 
-    connect(m_outputFontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit outputPanelSettingChanged("output_panel.font.size", val);
-    });
+    // ---- 搜索高亮 (2 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("搜索高亮"), false);
+        layout->addWidget(btn);
 
-    // 最大行数
-    auto *maxRow = new QHBoxLayout;
-    auto *maxLabel = new QLabel(tr("最大行数"));
-    maxLabel->setStyleSheet(labelStyle());
-    auto *maxSpin = new QSpinBox;
-    maxSpin->setRange(100, 100000);
-    maxSpin->setSingleStep(500);
-    maxSpin->setValue(cfg.outputPanelMaxBlocks());
-    maxSpin->setFixedWidth(100);
-    maxSpin->setStyleSheet(inputStyle());
-    maxRow->addWidget(maxLabel);
-    maxRow->addStretch();
-    maxRow->addWidget(maxSpin);
-    layout->addLayout(maxRow);
+        addColorRow(cl, tr("高亮背景"), "appearance.colors.search.highlight_background", cfg.searchHighlightBackground());
+        addColorRow(cl, tr("高亮文字"), "appearance.colors.search.highlight_foreground", cfg.searchHighlightForeground());
 
-    connect(maxSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit outputPanelSettingChanged("output_panel.max_blocks", val);
-    });
+        layout->addWidget(cl->parentWidget());
+    }
 
-    layout->addStretch();
-    scrollArea->setWidget(content);
-    outerLayout->addWidget(scrollArea);
-    return page;
-}
+    // ---- 预览 (2 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("预览"), false);
+        layout->addWidget(btn);
 
-// ============================================================
-// Page: 预览 (Preview)
-// ============================================================
-QWidget *SettingsPanel::createPreviewPage()
-{
-    const auto &cfg = ConfigManager::instance();
-    auto *page = new QWidget;
-    auto *outerLayout = new QVBoxLayout(page);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
+        addColorRow(cl, tr("容器背景"),         "appearance.colors.preview.container_background",   cfg.previewContainerBackground());
+        addColorRow(cl, tr("WebEngine 背景"),   "appearance.colors.preview.webengine_background",   cfg.previewWebEngineBackground());
 
-    auto *scrollArea = new QScrollArea;
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setStyleSheet(scrollAreaStyle());
+        layout->addWidget(cl->parentWidget());
+    }
 
-    auto *content = new QWidget;
-    content->setStyleSheet(QStringLiteral("background: %1;").arg(ThemeManager::instance().color("menu.background").name()));
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(24, 16, 24, 16);
-    layout->setSpacing(8);
+    // ---- Judge 状态 (8 colors) ----
+    {
+        auto [btn, cl] = createSection(tr("Judge 状态"), false);
+        layout->addWidget(btn);
 
-    layout->addWidget(createSectionLabel(tr("预览")));
+        addColorRow(cl, tr("AC"),  "appearance.colors.judge_status.ac",  cfg.judgeColorAc());
+        addColorRow(cl, tr("WA"),  "appearance.colors.judge_status.wa",  cfg.judgeColorWa());
+        addColorRow(cl, tr("TLE"), "appearance.colors.judge_status.tle", cfg.judgeColorTle());
+        addColorRow(cl, tr("MLE"), "appearance.colors.judge_status.mle", cfg.judgeColorMle());
+        addColorRow(cl, tr("RE"),  "appearance.colors.judge_status.re",  cfg.judgeColorRe());
+        addColorRow(cl, tr("PE"),  "appearance.colors.judge_status.pe",  cfg.judgeColorPe());
+        addColorRow(cl, tr("OLE"), "appearance.colors.judge_status.ole", cfg.judgeColorOle());
+        addColorRow(cl, tr("CE"),  "appearance.colors.judge_status.ce",  cfg.judgeColorCe());
 
-    // 分屏防抖毫秒
-    auto *debounceRow = new QHBoxLayout;
-    auto *debounceLabel = new QLabel(tr("分屏防抖 (ms)"));
-    debounceLabel->setStyleSheet(labelStyle());
-    m_previewDebounceSpin = new QSpinBox;
-    m_previewDebounceSpin->setRange(100, 2000);
-    m_previewDebounceSpin->setSingleStep(50);
-    m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
-    m_previewDebounceSpin->setSuffix(QStringLiteral(" ms"));
-    m_previewDebounceSpin->setFixedWidth(100);
-    m_previewDebounceSpin->setStyleSheet(inputStyle());
-    debounceRow->addWidget(debounceLabel);
-    debounceRow->addStretch();
-    debounceRow->addWidget(m_previewDebounceSpin);
-    layout->addLayout(debounceRow);
-
-    connect(m_previewDebounceSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit previewSettingChanged("preview.split_debounce_ms", val);
-    });
-
-    // 分屏比例
-    auto *ratioRow = new QHBoxLayout;
-    auto *ratioLabel = new QLabel(tr("分屏比例"));
-    ratioLabel->setStyleSheet(labelStyle());
-    m_previewRatioSpin = new QSpinBox;
-    m_previewRatioSpin->setRange(30, 70);
-    m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
-    m_previewRatioSpin->setFixedWidth(100);
-    m_previewRatioSpin->setStyleSheet(inputStyle());
-    ratioRow->addWidget(ratioLabel);
-    ratioRow->addStretch();
-    ratioRow->addWidget(m_previewRatioSpin);
-    auto *ratioPercentLabel = new QLabel(QStringLiteral("%"));
-    ratioPercentLabel->setStyleSheet(labelStyle());
-    ratioRow->addWidget(ratioPercentLabel);
-    layout->addLayout(ratioRow);
-
-    connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit previewSettingChanged("preview.split_preview_ratio", val);
-    });
-
-    layout->addStretch();
-    scrollArea->setWidget(content);
-    outerLayout->addWidget(scrollArea);
-    return page;
-}
-
-// ============================================================
-// Page: 搜索 (Search)
-// ============================================================
-QWidget *SettingsPanel::createSearchPage()
-{
-    const auto &cfg = ConfigManager::instance();
-    auto *page = new QWidget;
-    auto *outerLayout = new QVBoxLayout(page);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    auto *scrollArea = new QScrollArea;
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setStyleSheet(scrollAreaStyle());
-
-    auto *content = new QWidget;
-    content->setStyleSheet(QStringLiteral("background: %1;").arg(ThemeManager::instance().color("menu.background").name()));
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(24, 16, 24, 16);
-    layout->setSpacing(8);
-
-    layout->addWidget(createSectionLabel(tr("搜索")));
-
-    // 每文件最大匹配
-    auto *perFileRow = new QHBoxLayout;
-    auto *perFileLabel = new QLabel(tr("每文件最大匹配"));
-    perFileLabel->setStyleSheet(labelStyle());
-    m_searchPerFileSpin = new QSpinBox;
-    m_searchPerFileSpin->setRange(1, 50);
-    m_searchPerFileSpin->setValue(cfg.searchMaxPerFile());
-    m_searchPerFileSpin->setFixedWidth(80);
-    m_searchPerFileSpin->setStyleSheet(inputStyle());
-    perFileRow->addWidget(perFileLabel);
-    perFileRow->addStretch();
-    perFileRow->addWidget(m_searchPerFileSpin);
-    layout->addLayout(perFileRow);
-
-    connect(m_searchPerFileSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit searchSettingChanged("search_panel.max_per_file", val);
-    });
-
-    // 最大结果总数
-    auto *totalRow = new QHBoxLayout;
-    auto *totalLabel = new QLabel(tr("最大结果总数"));
-    totalLabel->setStyleSheet(labelStyle());
-    m_searchTotalSpin = new QSpinBox;
-    m_searchTotalSpin->setRange(50, 2000);
-    m_searchTotalSpin->setSingleStep(50);
-    m_searchTotalSpin->setValue(cfg.searchMaxTotalResults());
-    m_searchTotalSpin->setFixedWidth(100);
-    m_searchTotalSpin->setStyleSheet(inputStyle());
-    totalRow->addWidget(totalLabel);
-    totalRow->addStretch();
-    totalRow->addWidget(m_searchTotalSpin);
-    layout->addLayout(totalRow);
-
-    connect(m_searchTotalSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit searchSettingChanged("search_panel.max_total_results", val);
-    });
-
-    // 片段最大长度
-    auto *snippetRow = new QHBoxLayout;
-    auto *snippetLabel = new QLabel(tr("片段最大长度"));
-    snippetLabel->setStyleSheet(labelStyle());
-    m_searchSnippetSpin = new QSpinBox;
-    m_searchSnippetSpin->setRange(50, 500);
-    m_searchSnippetSpin->setSingleStep(10);
-    m_searchSnippetSpin->setValue(cfg.searchSnippetMaxLength());
-    m_searchSnippetSpin->setFixedWidth(80);
-    m_searchSnippetSpin->setStyleSheet(inputStyle());
-    snippetRow->addWidget(snippetLabel);
-    snippetRow->addStretch();
-    snippetRow->addWidget(m_searchSnippetSpin);
-    layout->addLayout(snippetRow);
-
-    connect(m_searchSnippetSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
-        emit searchSettingChanged("search_panel.snippet_max_length", val);
-    });
+        layout->addWidget(cl->parentWidget());
+    }
 
     layout->addStretch();
     scrollArea->setWidget(content);
@@ -1088,22 +1198,56 @@ QWidget *SettingsPanel::createShortcutsPage()
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
 
-    // Conflict detection lambda
-    auto checkConflict = [this](KeyRecorder *sender, const QString &newKs) {
-        if (newKs.isEmpty())
-            return QString();
+    // Conflict indicator update (Minecraft-style: allow conflicts, mark in red)
+    auto updateConflictIndicators = [this]() {
+        QMap<QString, int> seqCount;
         for (auto it = m_keyRecorders.constBegin(); it != m_keyRecorders.constEnd(); ++it) {
-            if (it.value() == sender)
-                continue;
-            if (it.value()->keySequence() == newKs)
-                return it.key();
+            QString seq = it.value()->keySequence();
+            if (!seq.isEmpty())
+                seqCount[seq]++;
         }
-        return QString();
+        for (auto it = m_keyRecorders.constBegin(); it != m_keyRecorders.constEnd(); ++it) {
+            QString seq = it.value()->keySequence();
+            it.value()->setConflict(!seq.isEmpty() && seqCount.value(seq) > 1);
+        }
     };
 
     m_keyRecorders.clear();
 
-    for (const auto &item : items) {
+    // Group definitions for visual organization
+    struct GroupMarker { int index; QString name; };
+    GroupMarker markers[] = {
+        {0,   tr("通用")},
+        {25,  tr("CodeEditor")},
+        {28,  tr("SmdEditor")},
+        {35,  tr("SmdEditor 命令模式")},
+        {38,  tr("输出面板")},
+    };
+
+    int markerIdx = 0;
+    constexpr int kNumItems = sizeof(items) / sizeof(items[0]);
+    for (int i = 0; i < kNumItems; ++i) {
+        const auto &item = items[i];
+
+        // Insert group header before the first item of each group
+        if (markerIdx < 5 && i == markers[markerIdx].index) {
+            if (i > 0) {
+                auto *sep = new QFrame;
+                sep->setFrameShape(QFrame::HLine);
+                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
+                sep->setFixedHeight(1);
+                listLayout->addWidget(sep);
+                listLayout->addSpacing(4);
+            }
+            auto *groupLabel = new QLabel(markers[markerIdx].name);
+            groupLabel->setStyleSheet(QStringLiteral(
+                "color: %1; font-size: 13px; font-weight: bold; padding: 10px 8px 10px 8px; background: transparent;")
+                .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+            listLayout->addWidget(groupLabel);
+            ++markerIdx;
+        }
+
+
         auto *row = new QWidget;
         row->setFixedHeight(32);
         row->setStyleSheet("background: transparent;");
@@ -1123,37 +1267,11 @@ QWidget *SettingsPanel::createShortcutsPage()
         m_keyRecorders[item.configKey] = recorder;
 
         connect(recorder, &KeyRecorder::keySequenceCaptured,
-                this, [this, recorder, checkConflict, item](const QString &actionKey, const QKeySequence &ks) {
+                this, [this, recorder, updateConflictIndicators](const QString &actionKey, const QKeySequence &ks) {
             QString newText = ks.toString(QKeySequence::NativeText);
-
-            // Conflict detection
-            QString conflictAction = checkConflict(recorder, newText);
-            if (!conflictAction.isEmpty()) {
-                QMessageBox msgBox(this);
-                msgBox.setWindowTitle(tr("快捷键冲突"));
-                msgBox.setText(tr("快捷键 %1 已被「%2」使用。\n是否将 %1 分配给「%3」？")
-                               .arg(newText, conflictAction, item.configKey));
-                msgBox.setIcon(QMessageBox::Warning);
-                auto *overwriteBtn = msgBox.addButton(tr("覆盖"), QMessageBox::AcceptRole);
-                msgBox.addButton(tr("取消"), QMessageBox::RejectRole);
-                msgBox.exec();
-
-                if (msgBox.clickedButton() == overwriteBtn) {
-                    if (m_keyRecorders.contains(conflictAction)) {
-                        m_keyRecorders[conflictAction]->setKeySequence(QString());
-                        emit shortcutChanged(conflictAction, QString());
-                    }
-                    recorder->setKeySequence(newText);
-                    emit shortcutChanged(actionKey, newText);
-                } else {
-                    recorder->restorePreviousSequence();
-                }
-                return;
-            }
-
-            // No conflict
             recorder->setKeySequence(newText);
             emit shortcutChanged(actionKey, newText);
+            updateConflictIndicators();
         });
 
         listLayout->addWidget(row);
@@ -1165,6 +1283,9 @@ QWidget *SettingsPanel::createShortcutsPage()
         sep->setFixedHeight(1);
         listLayout->addWidget(sep);
     }
+
+    // Mark any pre-existing conflicts from saved settings
+    updateConflictIndicators();
 
     layout->addWidget(m_shortcutsListContainer, 1);
 
@@ -1182,13 +1303,14 @@ QWidget *SettingsPanel::createShortcutsPage()
              ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name())
     );
     m_shortcutsResetBtn->setFixedWidth(120);
-    connect(m_shortcutsResetBtn, &QPushButton::clicked, this, [this]() {
+    connect(m_shortcutsResetBtn, &QPushButton::clicked, this, [this, updateConflictIndicators]() {
         const auto &cfg2 = ConfigManager::instance();
         for (auto it = m_keyRecorders.begin(); it != m_keyRecorders.end(); ++it) {
             QString defaultVal = cfg2.shortcut(it.key(), "");
             it.value()->setKeySequence(defaultVal);
             emit shortcutChanged(it.key(), defaultVal);
         }
+        updateConflictIndicators();
     });
     layout->addWidget(m_shortcutsResetBtn, 0, Qt::AlignLeft);
 
@@ -1261,13 +1383,30 @@ QWidget *SettingsPanel::createAiServicePage()
     m_aiApiKeyEdit->setEchoMode(QLineEdit::Password);
     m_aiApiKeyEdit->setPlaceholderText(tr("输入 API Key"));
     m_aiApiKeyEdit->setStyleSheet(inputStyle());
+    m_aiApiKeyToggleBtn = new QPushButton(tr("显示"));
+    m_aiApiKeyToggleBtn->setFixedSize(50, 28);
+    m_aiApiKeyToggleBtn->setCursor(Qt::PointingHandCursor);
+    m_aiApiKeyToggleBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
     keyRow->addWidget(keyLabel);
     keyRow->addStretch();
     keyRow->addWidget(m_aiApiKeyEdit, 1);
+    keyRow->addWidget(m_aiApiKeyToggleBtn);
     layout->addLayout(keyRow);
 
     connect(m_aiApiKeyEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
         emit aiSettingChanged("ai.api_key", text);
+    });
+    connect(m_aiApiKeyToggleBtn, &QPushButton::clicked, this, [this]() {
+        bool hidden = (m_aiApiKeyEdit->echoMode() == QLineEdit::Password);
+        m_aiApiKeyEdit->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+        m_aiApiKeyToggleBtn->setText(hidden ? tr("隐藏") : tr("显示"));
     });
 
     // ---- 模型 ----
@@ -1305,6 +1444,26 @@ QWidget *SettingsPanel::createAiServicePage()
         emit aiSettingChanged("ai.max_tokens", val);
     });
 
+    // ---- Temperature ----
+    auto *tempRow = new QHBoxLayout;
+    auto *tempLabel = new QLabel(tr("Temperature"));
+    tempLabel->setStyleSheet(labelStyle());
+    m_aiTemperatureSpin = new QDoubleSpinBox;
+    m_aiTemperatureSpin->setRange(0.0, 2.0);
+    m_aiTemperatureSpin->setSingleStep(0.1);
+    m_aiTemperatureSpin->setDecimals(1);
+    m_aiTemperatureSpin->setValue(cfg.aiTemperature());
+    m_aiTemperatureSpin->setFixedWidth(120);
+    m_aiTemperatureSpin->setStyleSheet(inputStyle());
+    tempRow->addWidget(tempLabel);
+    tempRow->addStretch();
+    tempRow->addWidget(m_aiTemperatureSpin);
+    layout->addLayout(tempRow);
+
+    connect(m_aiTemperatureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        emit aiSettingChanged("ai.temperature", val);
+    });
+
     // ---- 系统提示词 ----
     layout->addSpacing(8);
     auto *promptLabel = new QLabel(tr("系统提示词"));
@@ -1333,8 +1492,318 @@ QWidget *SettingsPanel::createAiServicePage()
     );
     layout->addWidget(m_aiSystemPromptEdit);
 
-    connect(m_aiSystemPromptEdit, &QTextEdit::textChanged, this, [this]() {
+    m_aiPromptDebounceTimer = new QTimer(this);
+    m_aiPromptDebounceTimer->setSingleShot(true);
+    m_aiPromptDebounceTimer->setInterval(300);
+    connect(m_aiPromptDebounceTimer, &QTimer::timeout, this, [this]() {
         emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
+    });
+    connect(m_aiSystemPromptEdit, &QTextEdit::textChanged, this, [this]() {
+        m_aiPromptDebounceTimer->start();
+    });
+    // 焦点离开时立即 emit 最终值
+    m_aiSystemPromptEdit->installEventFilter(this);
+
+    layout->addStretch();
+    scrollArea->setWidget(content);
+    outerLayout->addWidget(scrollArea);
+    return page;
+}
+
+// ============================================================
+// Page: 工具 (Tools)
+// ============================================================
+QWidget *SettingsPanel::createToolsPage()
+{
+    const auto &cfg = ConfigManager::instance();
+    auto *page = new QWidget;
+    auto *outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet(scrollAreaStyle());
+
+    auto *content = new QWidget;
+    content->setStyleSheet(QStringLiteral("background: %1;").arg(ThemeManager::instance().color("menu.background").name()));
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(24, 16, 24, 16);
+    layout->setSpacing(8);
+
+    // ====================================================================
+    // Section: 语言服务
+    // ====================================================================
+    layout->addWidget(createSectionLabel(tr("语言服务")));
+
+    // ---- clangd 路径 ----
+    auto *clangdPathRow = new QHBoxLayout;
+    auto *clangdPathLabel = new QLabel(tr("clangd 路径"));
+    clangdPathLabel->setStyleSheet(labelStyle());
+    m_clangdPathEdit = new QLineEdit;
+    m_clangdPathEdit->setPlaceholderText(tr("留空则从 PATH 查找"));
+    m_clangdPathEdit->setStyleSheet(inputStyle());
+    m_clangdPathEdit->setText(cfg.toolClangdPath());
+    m_clangdBrowseBtn = new QPushButton(tr("浏览…"));
+    m_clangdBrowseBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "padding: 4px 12px; border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    clangdPathRow->addWidget(clangdPathLabel);
+    clangdPathRow->addStretch();
+    clangdPathRow->addWidget(m_clangdPathEdit, 1);
+    clangdPathRow->addWidget(m_clangdBrowseBtn);
+    layout->addLayout(clangdPathRow);
+
+    connect(m_clangdPathEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.clangd.path", text);
+    });
+    connect(m_clangdBrowseBtn, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, tr("选择 clangd 可执行文件"));
+        if (!path.isEmpty())
+            m_clangdPathEdit->setText(path);
+    });
+
+    // ---- clangd 参数 ----
+    auto *clangdArgsRow = new QHBoxLayout;
+    auto *clangdArgsLabel = new QLabel(tr("clangd 参数"));
+    clangdArgsLabel->setStyleSheet(labelStyle());
+    m_clangdArgsEdit = new QLineEdit;
+    m_clangdArgsEdit->setPlaceholderText(QStringLiteral("--fallback-style=Google"));
+    m_clangdArgsEdit->setStyleSheet(inputStyle());
+    m_clangdArgsEdit->setText(cfg.toolClangdArgs());
+    clangdArgsRow->addWidget(clangdArgsLabel);
+    clangdArgsRow->addStretch();
+    clangdArgsRow->addWidget(m_clangdArgsEdit, 1);
+    layout->addLayout(clangdArgsRow);
+
+    connect(m_clangdArgsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.clangd.args", text);
+    });
+
+    // ---- Python 路径 ----
+    auto *pythonPathRow = new QHBoxLayout;
+    auto *pythonPathLabel = new QLabel(tr("Python 路径"));
+    pythonPathLabel->setStyleSheet(labelStyle());
+    m_pythonPathEdit = new QLineEdit;
+    m_pythonPathEdit->setPlaceholderText(tr("留空则从 PATH 查找"));
+    m_pythonPathEdit->setStyleSheet(inputStyle());
+    m_pythonPathEdit->setText(cfg.toolPythonPath());
+    m_pythonBrowseBtn = new QPushButton(tr("浏览…"));
+    m_pythonBrowseBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "padding: 4px 12px; border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    pythonPathRow->addWidget(pythonPathLabel);
+    pythonPathRow->addStretch();
+    pythonPathRow->addWidget(m_pythonPathEdit, 1);
+    pythonPathRow->addWidget(m_pythonBrowseBtn);
+    layout->addLayout(pythonPathRow);
+
+    connect(m_pythonPathEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("tools.python.path", text);
+    });
+    connect(m_pythonBrowseBtn, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, tr("选择 Python 可执行文件"));
+        if (!path.isEmpty())
+            m_pythonPathEdit->setText(path);
+    });
+
+    // ====================================================================
+    // Section: 编译器
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("编译器")));
+
+    // ---- GCC/Clang flags ----
+    auto *gxxRow = new QHBoxLayout;
+    auto *gxxLabel = new QLabel(tr("GCC/Clang flags"));
+    gxxLabel->setStyleSheet(labelStyle());
+    m_gxxFlagsEdit = new QLineEdit;
+    m_gxxFlagsEdit->setPlaceholderText(tr("以空格分隔"));
+    m_gxxFlagsEdit->setStyleSheet(inputStyle());
+    m_gxxFlagsEdit->setText(cfg.compilerGxxFlags().join(" "));
+    gxxRow->addWidget(gxxLabel);
+    gxxRow->addStretch();
+    gxxRow->addWidget(m_gxxFlagsEdit, 1);
+    layout->addLayout(gxxRow);
+
+    connect(m_gxxFlagsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("compiler.gxx_flags", text);
+    });
+
+    // ---- MSVC flags ----
+    auto *msvcRow = new QHBoxLayout;
+    auto *msvcLabel = new QLabel(tr("MSVC flags"));
+    msvcLabel->setStyleSheet(labelStyle());
+    m_msvcFlagsEdit = new QLineEdit;
+    m_msvcFlagsEdit->setPlaceholderText(tr("以空格分隔"));
+    m_msvcFlagsEdit->setStyleSheet(inputStyle());
+    m_msvcFlagsEdit->setText(cfg.compilerMsvcFlags().join(" "));
+    msvcRow->addWidget(msvcLabel);
+    msvcRow->addStretch();
+    msvcRow->addWidget(m_msvcFlagsEdit, 1);
+    layout->addLayout(msvcRow);
+
+    connect(m_msvcFlagsEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("compiler.msvc_flags", text);
+    });
+
+    // ====================================================================
+    // Section: 评测
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("评测")));
+
+    // ---- 时间限制 ----
+    auto *timeLimitRow = new QHBoxLayout;
+    auto *timeLimitLabel = new QLabel(tr("时间限制"));
+    timeLimitLabel->setStyleSheet(labelStyle());
+    m_judgeTimeLimitSpin = new QSpinBox;
+    m_judgeTimeLimitSpin->setRange(100, 10000);
+    m_judgeTimeLimitSpin->setSingleStep(100);
+    m_judgeTimeLimitSpin->setValue(cfg.judgeTimeLimitMs());
+    m_judgeTimeLimitSpin->setSuffix(QStringLiteral(" ms"));
+    m_judgeTimeLimitSpin->setFixedWidth(120);
+    m_judgeTimeLimitSpin->setStyleSheet(inputStyle());
+    timeLimitRow->addWidget(timeLimitLabel);
+    timeLimitRow->addStretch();
+    timeLimitRow->addWidget(m_judgeTimeLimitSpin);
+    layout->addLayout(timeLimitRow);
+
+    connect(m_judgeTimeLimitSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit toolSettingChanged("judge.time_limit_ms", val);
+    });
+
+    // ---- 内存限制 ----
+    auto *memLimitRow = new QHBoxLayout;
+    auto *memLimitLabel = new QLabel(tr("内存限制"));
+    memLimitLabel->setStyleSheet(labelStyle());
+    m_judgeMemoryLimitSpin = new QSpinBox;
+    m_judgeMemoryLimitSpin->setRange(16, 1024);
+    m_judgeMemoryLimitSpin->setSingleStep(16);
+    m_judgeMemoryLimitSpin->setValue(cfg.judgeMemoryLimitKb() / 1024);
+    m_judgeMemoryLimitSpin->setSuffix(QStringLiteral(" MB"));
+    m_judgeMemoryLimitSpin->setFixedWidth(120);
+    m_judgeMemoryLimitSpin->setStyleSheet(inputStyle());
+    memLimitRow->addWidget(memLimitLabel);
+    memLimitRow->addStretch();
+    memLimitRow->addWidget(m_judgeMemoryLimitSpin);
+    layout->addLayout(memLimitRow);
+
+    connect(m_judgeMemoryLimitSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit toolSettingChanged("judge.memory_limit_kb", val * 1024);
+    });
+
+    // ====================================================================
+    // Section: OpenJudge
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("OpenJudge")));
+
+    // ---- 服务器 URL ----
+    auto *urlRow = new QHBoxLayout;
+    auto *urlLabel = new QLabel(tr("服务器 URL"));
+    urlLabel->setStyleSheet(labelStyle());
+    m_openJudgeUrlEdit = new QLineEdit;
+    m_openJudgeUrlEdit->setPlaceholderText(QStringLiteral("https://"));
+    m_openJudgeUrlEdit->setStyleSheet(inputStyle());
+    m_openJudgeUrlEdit->setText(cfg.openJudgeBaseUrl());
+    urlRow->addWidget(urlLabel);
+    urlRow->addStretch();
+    urlRow->addWidget(m_openJudgeUrlEdit, 1);
+    layout->addLayout(urlRow);
+
+    connect(m_openJudgeUrlEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.base_url", text);
+    });
+
+    // ---- 自动登录 ----
+    auto *autoLoginRow = new QHBoxLayout;
+    auto *autoLoginLabel = new QLabel(tr("自动登录"));
+    autoLoginLabel->setStyleSheet(labelStyle());
+
+    m_openJudgeAutoLoginToggle = new ToggleSwitch;
+    m_openJudgeAutoLoginToggle->setChecked(false);
+
+    auto *autoLoginStateLabel = new QLabel(tr("关"));
+    autoLoginStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;")
+        .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+
+    m_openJudgeAutoLoginToggle->onToggled = [this, autoLoginStateLabel](bool checked) {
+        autoLoginStateLabel->setText(checked ? tr("开") : tr("关"));
+        autoLoginStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;")
+            .arg(checked ? ThemeManager::instance().color("badge.background").name()
+                         : ThemeManager::instance().color("tab.inactiveForeground").name()));
+        emit toolSettingChanged("open_judge.auto_login", checked);
+    };
+
+    auto *toggleWidget = new QWidget;
+    auto *toggleLayout = new QHBoxLayout(toggleWidget);
+    toggleLayout->setContentsMargins(0, 0, 0, 0);
+    toggleLayout->setSpacing(6);
+    toggleLayout->addWidget(m_openJudgeAutoLoginToggle);
+    toggleLayout->addWidget(autoLoginStateLabel);
+
+    autoLoginRow->addWidget(autoLoginLabel);
+    autoLoginRow->addStretch();
+    autoLoginRow->addWidget(toggleWidget);
+    layout->addLayout(autoLoginRow);
+
+    // ---- 用户名 ----
+    auto *usernameRow = new QHBoxLayout;
+    auto *usernameLabel = new QLabel(tr("用户名"));
+    usernameLabel->setStyleSheet(labelStyle());
+    m_openJudgeUsernameEdit = new QLineEdit;
+    m_openJudgeUsernameEdit->setStyleSheet(inputStyle());
+    usernameRow->addWidget(usernameLabel);
+    usernameRow->addStretch();
+    usernameRow->addWidget(m_openJudgeUsernameEdit, 1);
+    layout->addLayout(usernameRow);
+
+    connect(m_openJudgeUsernameEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.username", text);
+    });
+
+    // ---- 密码 ----
+    auto *passwordRow = new QHBoxLayout;
+    auto *passwordLabel = new QLabel(tr("密码"));
+    passwordLabel->setStyleSheet(labelStyle());
+    m_openJudgePasswordEdit = new QLineEdit;
+    m_openJudgePasswordEdit->setEchoMode(QLineEdit::Password);
+    m_openJudgePasswordEdit->setStyleSheet(inputStyle());
+    m_openJudgePasswordToggleBtn = new QPushButton(tr("显示"));
+    m_openJudgePasswordToggleBtn->setFixedSize(50, 28);
+    m_openJudgePasswordToggleBtn->setCursor(Qt::PointingHandCursor);
+    m_openJudgePasswordToggleBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    passwordRow->addWidget(passwordLabel);
+    passwordRow->addStretch();
+    passwordRow->addWidget(m_openJudgePasswordEdit, 1);
+    passwordRow->addWidget(m_openJudgePasswordToggleBtn);
+    layout->addLayout(passwordRow);
+
+    connect(m_openJudgePasswordEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
+        emit toolSettingChanged("open_judge.password", text);
+    });
+    connect(m_openJudgePasswordToggleBtn, &QPushButton::clicked, this, [this]() {
+        bool hidden = (m_openJudgePasswordEdit->echoMode() == QLineEdit::Password);
+        m_openJudgePasswordEdit->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+        m_openJudgePasswordToggleBtn->setText(hidden ? tr("隐藏") : tr("显示"));
     });
 
     layout->addStretch();
@@ -1369,7 +1838,10 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_markdownIndentWidthSpin->setValue(sm.value("editor.markdown_indent_width", cfg.editorMarkdownIndentWidth()).toInt());
     }
     if (m_autoSaveToggle) {
-        m_autoSaveToggle->setChecked(sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool());
+        m_autoSaveToggle->setChecked(sm.value("auto_save.enabled", cfg.autoSaveEnabled()).toBool());
+    }
+    if (m_autoSaveIntervalSpin) {
+        m_autoSaveIntervalSpin->setValue(sm.value("auto_save.interval_ms", cfg.autoSaveIntervalMs()).toInt() / 1000);
     }
 
     // Appearance page
@@ -1377,9 +1849,31 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
     }
 
-    // Output panel page
+    // Refresh color controls (appearance page)
+    for (const auto &cc : m_colorControls) {
+        QString hex = sm.value(cc.configKey, cc.defaultColor.name()).toString();
+        auto &ctm = ThemeManager::instance();
+        cc.btn->setStyleSheet(
+            QStringLiteral(
+                "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
+                "QPushButton:hover { border-color: %3; }"
+            ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
+        cc.preview->setText(hex);
+    }
+
+    // Output panel (now in editor page)
+    if (m_outputFontFamilyCombo) {
+        QString outFamily = sm.value("output_panel.font.family", "").toString();
+        if (!outFamily.isEmpty()) {
+            int idx = m_outputFontFamilyCombo->findText(outFamily);
+            if (idx >= 0) m_outputFontFamilyCombo->setCurrentIndex(idx);
+        }
+    }
     if (m_outputFontSizeSpin) {
         m_outputFontSizeSpin->setValue(sm.value("output_panel.font.size", cfg.outputPanelFontSize()).toInt());
+    }
+    if (m_outputMaxBlocksSpin) {
+        m_outputMaxBlocksSpin->setValue(sm.value("output_panel.max_blocks", cfg.outputPanelMaxBlocks()).toInt());
     }
 
     // Preview page
@@ -1415,6 +1909,8 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_aiModelEdit->setText(sm.value("ai.model", cfg.aiModel()).toString());
     if (m_aiMaxTokensSpin)
         m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
+    if (m_aiTemperatureSpin)
+        m_aiTemperatureSpin->setValue(sm.value("ai.temperature", cfg.aiTemperature()).toDouble());
     if (m_aiSystemPromptEdit)
         m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
 
@@ -1423,6 +1919,33 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         QString val = sm.value("shortcuts." + it.key(), "").toString();
         if (!val.isEmpty())
             it.value()->setKeySequence(val);
+    }
+
+    // Tools page
+    if (m_clangdPathEdit)
+        m_clangdPathEdit->setText(sm.value("tools.clangd.path", cfg.toolClangdPath()).toString());
+    if (m_clangdArgsEdit)
+        m_clangdArgsEdit->setText(sm.value("tools.clangd.args", cfg.toolClangdArgs()).toString());
+    if (m_pythonPathEdit)
+        m_pythonPathEdit->setText(sm.value("tools.python.path", cfg.toolPythonPath()).toString());
+    if (m_gxxFlagsEdit)
+        m_gxxFlagsEdit->setText(sm.value("compiler.gxx_flags", cfg.compilerGxxFlags().join(" ")).toString());
+    if (m_msvcFlagsEdit)
+        m_msvcFlagsEdit->setText(sm.value("compiler.msvc_flags", cfg.compilerMsvcFlags().join(" ")).toString());
+    if (m_judgeTimeLimitSpin)
+        m_judgeTimeLimitSpin->setValue(sm.value("judge.time_limit_ms", cfg.judgeTimeLimitMs()).toInt());
+    if (m_judgeMemoryLimitSpin)
+        m_judgeMemoryLimitSpin->setValue(sm.value("judge.memory_limit_kb", cfg.judgeMemoryLimitKb()).toInt() / 1024);
+    if (m_openJudgeUrlEdit)
+        m_openJudgeUrlEdit->setText(sm.value("open_judge.base_url", cfg.openJudgeBaseUrl()).toString());
+    if (m_openJudgeAutoLoginToggle)
+        m_openJudgeAutoLoginToggle->setChecked(sm.openJudgeAutoLogin());
+    if (m_openJudgeUsernameEdit || m_openJudgePasswordEdit) {
+        auto creds = sm.openJudgeCredentials();
+        if (m_openJudgeUsernameEdit)
+            m_openJudgeUsernameEdit->setText(creds.first);
+        if (m_openJudgePasswordEdit)
+            m_openJudgePasswordEdit->setText(creds.second);
     }
 }
 
@@ -1584,4 +2107,14 @@ bool SettingsPanel::event(QEvent *event)
         }
     }
     return QWidget::event(event);
+}
+
+bool SettingsPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_aiSystemPromptEdit && event->type() == QEvent::FocusOut) {
+        // 焦点离开时立即 emit 最终值
+        emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
+        m_aiPromptDebounceTimer->stop();
+    }
+    return QWidget::eventFilter(watched, event);
 }

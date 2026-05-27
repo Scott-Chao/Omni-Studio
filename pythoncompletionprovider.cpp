@@ -1,4 +1,5 @@
 #include "pythoncompletionprovider.h"
+#include "configmanager.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -82,9 +83,15 @@ void PythonCompletionProvider::startProcess()
     }
 
     // Find Python interpreter
-    QString python = QStandardPaths::findExecutable(QStringLiteral("python"));
-    if (python.isEmpty())
-        python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    QString python;
+    QString configuredPath = ConfigManager::instance().toolPythonPath();
+    if (!configuredPath.isEmpty() && QFileInfo::exists(configuredPath)) {
+        python = configuredPath;
+    } else {
+        python = QStandardPaths::findExecutable(QStringLiteral("python"));
+        if (python.isEmpty())
+            python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+    }
 
     if (python.isEmpty()) {
         qWarning() << "PythonCompletionProvider: python not found in PATH";

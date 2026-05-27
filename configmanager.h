@@ -206,7 +206,13 @@ public:
     QString aiEndpoint() const;
     QString aiModel() const;
     int aiMaxTokens() const;
+    double aiTemperature() const;
     QString aiSystemPrompt() const;
+
+    // ---- Tools ----
+    QString toolClangdPath() const;
+    QString toolClangdArgs() const;
+    QString toolPythonPath() const;
 
     // ---- Settings Panel ----
     int settingsPanelWidth() const;

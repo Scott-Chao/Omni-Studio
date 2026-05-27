@@ -207,7 +207,7 @@ EditorWidget::EditorWidget(QWidget *parent)
 
     // 自动保存定时器（周期触发，每 30 秒检查一次）
     m_autoSaveTimer.setInterval(ConfigManager::instance().autoSaveIntervalMs());
-    m_autoSaveEnabled = sm.value("editor.auto_save", cfg.autoSaveEnabled()).toBool();
+    m_autoSaveEnabled = sm.value("auto_save.enabled", cfg.autoSaveEnabled()).toBool();
     connect(&m_autoSaveTimer, &QTimer::timeout, this, &EditorWidget::onAutoSaveTimeout);
 
     // 当文本编辑器内容变化时，重置计时器

@@ -46,6 +46,14 @@ void KeyRecorder::restorePreviousSequence()
     update();
 }
 
+void KeyRecorder::setConflict(bool conflicted)
+{
+    if (m_conflict != conflicted) {
+        m_conflict = conflicted;
+        update();
+    }
+}
+
 void KeyRecorder::paintEvent(QPaintEvent * /*event*/)
 {
     QPainter p(this);
@@ -65,7 +73,7 @@ void KeyRecorder::paintEvent(QPaintEvent * /*event*/)
 
     switch (m_state) {
     case Normal:
-        textColor = QColor("#569CD6");
+        textColor = m_conflict ? QColor("#e06c75") : QColor("#569CD6");
         displayText = m_sequence;
         break;
     case Recording:

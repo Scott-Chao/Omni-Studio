@@ -95,6 +95,16 @@
     "kill_wait_ms": 3000
   },
 
+  "tools": {
+    "clangd": {
+      "path": "",
+      "args": "--fallback-style=Google"
+    },
+    "python": {
+      "path": ""
+    }
+  },
+
   "compiler": {
     "gxx_flags": ["-std=c++17", "-Wall", "-Wextra"],
     "msvc_flags": ["/std:c++17", "/W4", "/EHsc"],

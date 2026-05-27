@@ -21,6 +21,8 @@ public:
     void clearSequence();
     void restorePreviousSequence();
     State state() const { return m_state; }
+    void setConflict(bool conflicted);
+    bool hasConflict() const { return m_conflict; }
 
 signals:
     void keySequenceCaptured(const QString &actionKey, const QKeySequence &ks);
@@ -37,6 +39,7 @@ private:
     QString m_sequence;
     QString m_previousSeq;
     State m_state = Normal;
+    bool m_conflict = false;
 };
 
 #endif // KEYRECORDER_H
