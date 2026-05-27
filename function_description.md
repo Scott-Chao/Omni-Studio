@@ -60,8 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-- SMD Python Cell 支持完整语义高亮
+### 修复
+- 修复 SMD Python Cell 打开文件无法自动显示诊断信息的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1453,7 +1453,7 @@
 - **Python 语义标记**（新增）：
   - `m_pySemanticTokensTimer`（300ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后以及 `syncVirtualDoc()` 中启动，防抖触发 `requestPythonSemanticTokens()`。
   - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，**base64 编码**后发送 `{"action":"tokens","code":"<base64>"}` 至 `completion_helper.py`，避免 JSON 序列化时孤立 surrogate 破坏换行符。采用 fire-and-forget 模式（`m_pyTokensPending` 标志），不占用 `m_pyTimeoutTimer`，确保长文档 Jedi 解析耗时 >1s 时响应不被丢弃。
-  - `processPythonResponse()` 中**优先检测 tokens 响应**（`m_pyTokensPending` 且 data[0] 含 `"line"` + `"type"` 字段），晚于其他请求超时时仍能正确处理。响应通过 `cellRanges` 映射虚拟行号 → cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
+  - `processPythonResponse()` 中**优先检测 tokens 响应**（`m_pyTokensPending` 且 data[0] 含 `"line"` + `"type"` 字段），晚于其他请求超时时仍能正确处理。**`m_pyPending`/`m_pyRequestingCell` 的保存和清除在 tokens 检测块之后执行**，仅在 `m_pyPending == PyPending::SemanticTokens` 时于 tokens 分支内清除，防止 tokens 响应先到达时错误清除诊断请求的 pending 状态导致诊断被丢弃。响应通过 `cellRanges` 映射虚拟行号 → cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
   - `cellContentChanged()` 添加了**内容未变则跳过**的防护：`rehighlight()` 可触发 `QTextDocument::contentsChanged` 冒泡为 spurious contentChanged → 重启定时器 → 再次请求 → 无限循环。该防护比较缓存内容与传入内容，相同则直接返回，阻止循环。
 - **Python 诊断**（新增）：
   - `m_pyDiagnosticsTimer`（500ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后启动，防抖触发 `requestPythonDiagnostics()`。

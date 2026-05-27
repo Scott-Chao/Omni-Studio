@@ -1254,12 +1254,6 @@ void SmdLspManager::onPyReadyRead()
 
 void SmdLspManager::processPythonResponse(const QByteArray &line)
 {
-    m_pyTimeoutTimer.stop();
-    PyPending pending = m_pyPending;
-    m_pyPending = PyPending::None;
-    int cellIndex = m_pyRequestingCell;
-    m_pyRequestingCell = -1;
-
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(line, &err);
     if (err.error != QJsonParseError::NoError) {
@@ -1277,6 +1271,8 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
 
     // Detect in-flight semantic tokens response by structure, so late
     // arrivals (past the timeout of another request) are still processed.
+    // Process tokens BEFORE clearing m_pyPending so cross-talk between the
+    // tokens and diagnostics timers doesn't drop diagnostics on file open.
     if (m_pyTokensPending) {
         QJsonArray arr = dataVal.toArray();
         if (!arr.isEmpty()) {
@@ -1314,15 +1310,22 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
                 m_pyTokensPending = false;
                 for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
                     emit semanticTokensReadyForCell(it.key(), it.value());
-                // Also clear if this was the main pending request
-                if (pending == PyPending::SemanticTokens) {
+                // Only clear the pending state if THIS response was expected
+                if (m_pyPending == PyPending::SemanticTokens) {
                     m_pyPending = PyPending::None;
                     m_pyTimeoutTimer.stop();
+                    m_pyRequestingCell = -1;
                 }
                 return;
             }
         }
     }
+
+    m_pyTimeoutTimer.stop();
+    PyPending pending = m_pyPending;
+    m_pyPending = PyPending::None;
+    int cellIndex = m_pyRequestingCell;
+    m_pyRequestingCell = -1;
 
     switch (pending) {
     case PyPending::Completion: {
