@@ -39,17 +39,6 @@ def handle_complete(script, line, col):
 
 def handle_hover(script, line, col):
     """Return hover info matching HoverInfo struct."""
-    signatures = script.get_signatures(line, col)
-    if signatures:
-        sig = signatures[0]
-        info = {
-            "signature": sig.description or "",
-            "doc": sig.docstring() or "",
-            "definition": sig.module_name or "",
-        }
-        return info
-
-    # Fallback: use inferred type
     names = script.infer(line, col)
     if names:
         n = names[0]
@@ -57,6 +46,17 @@ def handle_hover(script, line, col):
             "signature": f"{n.name}: {n.type}" if n.type else n.name,
             "doc": n.docstring() or "",
             "definition": n.module_name or "",
+        }
+        return info
+
+    # Fallback: use function signature
+    signatures = script.get_signatures(line, col)
+    if signatures:
+        sig = signatures[0]
+        info = {
+            "signature": sig.description or "",
+            "doc": sig.docstring() or "",
+            "definition": sig.module_name or "",
         }
         return info
 
