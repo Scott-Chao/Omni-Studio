@@ -1,6 +1,8 @@
 #include "cppcompletionprovider.h"
+#include "configmanager.h"
 #include "lspclient.h"
 #include "debuglog.h"
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonValue>
@@ -46,13 +48,18 @@ void CppCompletionProvider::shutdown()
 
 void CppCompletionProvider::startServer()
 {
-    QString clangdPath = QStandardPaths::findExecutable(QStringLiteral("clangd"));
+    QString clangdPath;
+    QString configuredPath = ConfigManager::instance().toolClangdPath();
+    if (!configuredPath.isEmpty() && QFileInfo::exists(configuredPath)) {
+        clangdPath = configuredPath;
+    } else {
+        clangdPath = QStandardPaths::findExecutable(QStringLiteral("clangd"));
+    }
     if (clangdPath.isEmpty()) {
-        qWarning() << "CppCompletionProvider: clangd not found in PATH";
+        qWarning() << "CppCompletionProvider: clangd not found";
         emit serverFailed(tr("clangd not found. Please install clangd to enable C++ code completion."));
         return;
     }
-
 
     m_client = new LspClient(this);
 
@@ -79,9 +86,10 @@ void CppCompletionProvider::startServer()
     connect(m_client, &LspClient::serverStopped,
             this, &CppCompletionProvider::onServerStopped);
 
-    QStringList args = {
-        QStringLiteral("--fallback-style=Google")
-    };
+    QString argsStr = ConfigManager::instance().toolClangdArgs();
+    QStringList args;
+    if (!argsStr.isEmpty())
+        args = argsStr.split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
     m_client->start(clangdPath, args);
     // startup is async — serverStarted / serverError signals handle result
