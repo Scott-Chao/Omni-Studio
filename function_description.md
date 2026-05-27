@@ -60,8 +60,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-- 代码编辑器括号高亮、括号配对检测
+### 修复
+- 修复括号跨行配对被错误高亮为红色的问题
+- 修复字符串内的括号错误高亮的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -600,7 +601,7 @@
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
-- **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的闭括号显示红色。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型）。跳过字符串、注释、预处理器指令内部的括号（通过 `QTextLayout::FormatRange` 检查前景色是否匹配注释/字符串色）。
+- **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的闭括号显示红色。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
 **主要接口**：
@@ -722,8 +723,8 @@
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
 - **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
-- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。
-- **字符串/注释保护**：扫描前遍历 `QTextLayout::FormatRange` 列表，检查每个括号位置的前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号，避免字符串或注释内的括号被错误着色。
+- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。解码时对 `-1` 初始值做 `if (prevState < 0) prevState = 0` 归零处理，防止首次高亮时深度被误读为 31。
+- **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号。使用 `format()` 而非 `QTextLayout::formats()`，因为后者在 `highlightBlock()` 执行期间尚未被 Qt 提交更新，查询结果为空或陈旧。
 - **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（确保最终颜色一致）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
 
 **语义高亮 (Semantic Tokens) 叠加机制**：
@@ -764,8 +765,8 @@
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
 - **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
-- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 三引号状态 0/1/2，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈。与三引号字符串的跨行状态在同一 `int` 中编码，互不干扰。
-- **字符串/注释保护**：扫描前遍历 `QTextLayout::FormatRange` 列表，检查每个括号位置的前景色是否匹配 `syntaxComments()` 或 `syntaxStrings()`，若匹配则跳过。
+- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 三引号状态 0/1/2，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈。与三引号字符串的跨行状态在同一 `int` 中编码，互不干扰。解码时对 `-1` 初始值做归零处理，防止深度字段被误读。
+- **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()` 或 `syntaxStrings()`，若匹配则跳过。C++ 版本额外检查 `syntaxPreprocessor()`。
 
 **语义高亮 (Semantic Tokens) 叠加机制**（与 `CppSyntaxHighlighter` 相同的架构）：
 - `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 Python semantic tokens，按行号索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。

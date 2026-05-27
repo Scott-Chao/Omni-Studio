@@ -2,7 +2,6 @@
 #include "configmanager.h"
 #include "thememanager.h"
 #include "cppkeywords.h"
-#include <QTextLayout>
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
@@ -317,6 +316,7 @@ void CppSyntaxHighlighter::highlightBrackets(const QString &text)
 
     // Decode bracket stack from previous block state
     int prevState = previousBlockState();
+    if (prevState < 0) prevState = 0;
     int prevDepth = (prevState >> 3) & 31;
     for (int i = 0; i < prevDepth && i < 12; ++i) {
         int type = (prevState >> (8 + i * 2)) & 3;
@@ -324,20 +324,16 @@ void CppSyntaxHighlighter::highlightBrackets(const QString &text)
         bracketStack.append({-1, ch});
     }
 
-    // Build a set of positions that fall inside string/comment format ranges
-    QVector<QTextLayout::FormatRange> fmtRanges = currentBlock().layout()->formats();
     const auto &cfg = ConfigManager::instance();
     const QColor commentFg = cfg.syntaxComments();
     const QColor stringFg = cfg.syntaxStrings();
     const QColor preprocessorFg = cfg.syntaxPreprocessor();
     auto isInSpecialFormat = [&](int pos) -> bool {
-        for (const auto &r : fmtRanges) {
-            if (pos >= r.start && pos < r.start + r.length) {
-                QColor fg = r.format.foreground().color();
-                if (fg == commentFg || fg == stringFg || fg == preprocessorFg)
-                    return true;
-                break;
-            }
+        QTextCharFormat fmt = format(pos);
+        if (fmt.hasProperty(QTextFormat::ForegroundBrush)) {
+            QColor fg = fmt.foreground().color();
+            if (fg == commentFg || fg == stringFg || fg == preprocessorFg)
+                return true;
         }
         return false;
     };
