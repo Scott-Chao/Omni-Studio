@@ -205,6 +205,11 @@ public:
     int aiMaxTokens() const;
     QString aiSystemPrompt() const;
 
+    // ---- Tools ----
+    QString toolClangdPath() const;
+    QString toolClangdArgs() const;
+    QString toolPythonPath() const;
+
     // ---- Settings Panel ----
     int settingsPanelWidth() const;
     int settingsPanelHeight() const;

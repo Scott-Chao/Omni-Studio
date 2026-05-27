@@ -290,6 +290,17 @@ QJsonObject ConfigManager::buildDefaultConfig()
     compiler["code_block_prefix"] = "mdblock_";
     root["compiler"] = compiler;
 
+    // ---- tools ----
+    QJsonObject tools;
+    QJsonObject clangd;
+    clangd["path"] = QString();
+    clangd["args"] = "--fallback-style=Google";
+    tools["clangd"] = clangd;
+    QJsonObject python;
+    python["path"] = QString();
+    tools["python"] = python;
+    root["tools"] = tools;
+
     // ---- settings_panel ----
     QJsonObject settingsPanel;
     settingsPanel["width"] = 680;
@@ -746,6 +757,11 @@ QString ConfigManager::aiEndpoint() const { return stringValue("ai.endpoint", "h
 QString ConfigManager::aiModel() const { return stringValue("ai.model", "deepseek-v4-flash"); }
 int ConfigManager::aiMaxTokens() const { return intValue("ai.max_tokens", 4096); }
 QString ConfigManager::aiSystemPrompt() const { return stringValue("ai.system_prompt", ""); }
+
+// ---- Tools ----
+QString ConfigManager::toolClangdPath() const { return stringValue("tools.clangd.path", ""); }
+QString ConfigManager::toolClangdArgs() const { return stringValue("tools.clangd.args", "--fallback-style=Google"); }
+QString ConfigManager::toolPythonPath() const { return stringValue("tools.python.path", ""); }
 
 // ---- Settings Panel ----
 int ConfigManager::settingsPanelWidth() const { return intValue("settings_panel.width", 500); }
