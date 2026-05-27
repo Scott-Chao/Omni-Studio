@@ -52,6 +52,17 @@ static QString labelStyle() {
         .arg(tm.color("workbench.foreground").name());
 }
 
+// Helper: create a row label with explicit alignment & zero contents margins.
+// Without explicit contentsMargins(0,0,0,0), QStyleSheetStyle inherited from
+// the parent #settingsPanel may inject platform-varying default padding.
+static QLabel *makeRowLabel(const QString &text) {
+    auto *lbl = new QLabel(text);
+    lbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    lbl->setContentsMargins(0, 0, 0, 0);
+    lbl->setStyleSheet(labelStyle());
+    return lbl;
+}
+
 static QString inputStyle() {
     auto &tm = ThemeManager::instance();
     QString bg = tm.color("input.background").name();
@@ -355,6 +366,13 @@ void SettingsPanel::refreshPageTree(QWidget *w)
             label->setStyleSheet(labelStyle());
     } else if (qobject_cast<QSpinBox*>(w) || qobject_cast<QLineEdit*>(w) || qobject_cast<QComboBox*>(w)) {
         w->setStyleSheet(inputStyle());
+        // Do NOT recurse into internal children of QSpinBox/QComboBox
+        // (e.g. the embedded QLineEdit inside QSpinBox / editable QComboBox).
+        // Doing so would apply inputStyle (min-height:20px) to those internal
+        // widgets, forcing the parent to grow taller than the intended 26px
+        // and breaking label–control vertical alignment.
+        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w))
+            return;
     }
 
     for (auto *child : w->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {

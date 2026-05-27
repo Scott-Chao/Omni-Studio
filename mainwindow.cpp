@@ -1638,6 +1638,7 @@ void MainWindow::onResetToDefaults()
     m_settings->flushOverrides();
 
     // Reset settings panel controls to defaults
+    m_settingsPanel->setDefaultZoom(cfg.zoomDefault());
     m_settingsPanel->syncFromSettings(*m_settings);
 
     // Apply default zoom + editor font to all editors
