@@ -1402,7 +1402,7 @@ void MainWindow::onEditorSettingChanged(const QString &key, const QVariant &valu
                 editor->setEditorFont(family, size);
             }
         }
-    } else if (key == "editor.auto_save") {
+    } else if (key == "auto_save.enabled") {
         bool enabled = value.toBool();
         for (int i = 0; i < m_tabManager->count(); ++i) {
             if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {

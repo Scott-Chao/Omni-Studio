@@ -104,9 +104,6 @@ private:
     // Category pages
     QWidget *createEditorPage();
     QWidget *createAppearancePage();
-    QWidget *createOutputPanelPage();
-    QWidget *createPreviewPage();
-    QWidget *createSearchPage();
     QWidget *createShortcutsPage();
     QWidget *createAiServicePage();
 
@@ -130,9 +127,12 @@ private:
     QSpinBox *m_indentWidthSpin = nullptr;
     QSpinBox *m_markdownIndentWidthSpin = nullptr;
     ToggleSwitch *m_autoSaveToggle = nullptr;
+    QSpinBox *m_autoSaveIntervalSpin = nullptr;
 
-    // Output panel controls
+    // Output panel controls (moved to editor page)
+    QComboBox *m_outputFontFamilyCombo = nullptr;
     QSpinBox *m_outputFontSizeSpin = nullptr;
+    QSpinBox *m_outputMaxBlocksSpin = nullptr;
 
     // Preview controls
     QSpinBox *m_previewDebounceSpin = nullptr;
