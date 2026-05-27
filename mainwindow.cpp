@@ -1419,6 +1419,53 @@ void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &
 
     if (key == "editor.file_tree_item_height") {
         m_explorer->setItemHeight(value.toInt());
+        return;
+    }
+
+    // Bridge: apply color overrides to ThemeManager so editors render them.
+    // Settings keys (ConfigManager JSON paths) differ from ThemeManager tokens.
+    static const QMap<QString, QString> s_colorTokenMap = {
+        // Editor
+        {QStringLiteral("appearance.colors.editor.background"),        QStringLiteral("editor.background")},
+        {QStringLiteral("appearance.colors.editor.foreground"),        QStringLiteral("editor.foreground")},
+        {QStringLiteral("appearance.colors.editor.selection"),         QStringLiteral("editor.selectionBackground")},
+        {QStringLiteral("appearance.colors.current_line.highlight"),   QStringLiteral("editor.lineHighlightBackground")},
+        {QStringLiteral("appearance.colors.line_number.background"),   QStringLiteral("editorLineNumber.background")},
+        {QStringLiteral("appearance.colors.line_number.foreground"),   QStringLiteral("editorLineNumber.foreground")},
+        // Syntax highlighting
+        {QStringLiteral("appearance.colors.syntax_highlight.keywords"),         QStringLiteral("syntax.keywords")},
+        {QStringLiteral("appearance.colors.syntax_highlight.preprocessor"),     QStringLiteral("syntax.preprocessor")},
+        {QStringLiteral("appearance.colors.syntax_highlight.types"),            QStringLiteral("syntax.types")},
+        {QStringLiteral("appearance.colors.syntax_highlight.numbers"),          QStringLiteral("syntax.numbers")},
+        {QStringLiteral("appearance.colors.syntax_highlight.strings"),          QStringLiteral("syntax.strings")},
+        {QStringLiteral("appearance.colors.syntax_highlight.comments"),         QStringLiteral("syntax.comments")},
+        {QStringLiteral("appearance.colors.syntax_highlight.python_decorators"), QStringLiteral("syntax.pythonDecorators")},
+        {QStringLiteral("appearance.colors.syntax_highlight.python_self_cls"),  QStringLiteral("syntax.pythonSelfCls")},
+        // Output panel
+        {QStringLiteral("appearance.colors.output_panel.background"),  QStringLiteral("output.background")},
+        {QStringLiteral("appearance.colors.output_panel.foreground"),  QStringLiteral("output.foreground")},
+        {QStringLiteral("appearance.colors.output_panel.selection"),   QStringLiteral("output.selectionBackground")},
+        {QStringLiteral("appearance.colors.output_panel.stderr"),      QStringLiteral("output.stderr")},
+        // Search highlight
+        {QStringLiteral("appearance.colors.search.highlight_background"), QStringLiteral("search.highlightBackground")},
+        {QStringLiteral("appearance.colors.search.highlight_foreground"), QStringLiteral("search.highlightForeground")},
+        // Preview
+        {QStringLiteral("appearance.colors.preview.container_background"), QStringLiteral("preview.containerBackground")},
+        {QStringLiteral("appearance.colors.preview.webengine_background"), QStringLiteral("preview.webEngineBackground")},
+        // Judge status
+        {QStringLiteral("appearance.colors.judge_status.ac"),  QStringLiteral("judge.ac")},
+        {QStringLiteral("appearance.colors.judge_status.wa"),  QStringLiteral("judge.wa")},
+        {QStringLiteral("appearance.colors.judge_status.tle"), QStringLiteral("judge.tle")},
+        {QStringLiteral("appearance.colors.judge_status.mle"), QStringLiteral("judge.mle")},
+        {QStringLiteral("appearance.colors.judge_status.re"),  QStringLiteral("judge.re")},
+        {QStringLiteral("appearance.colors.judge_status.pe"),  QStringLiteral("judge.pe")},
+        {QStringLiteral("appearance.colors.judge_status.ole"), QStringLiteral("judge.ole")},
+        {QStringLiteral("appearance.colors.judge_status.ce"),  QStringLiteral("judge.ce")},
+    };
+
+    auto tokenIt = s_colorTokenMap.find(key);
+    if (tokenIt != s_colorTokenMap.end()) {
+        ThemeManager::instance().setOverride(tokenIt.value(), QColor(value.toString()));
     }
 
     for (int i = 0; i < m_tabManager->count(); ++i) {

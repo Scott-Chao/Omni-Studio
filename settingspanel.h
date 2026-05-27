@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <QPainter>
 #include <QMap>
+#include <QVector>
 #include <functional>
 
 class QLabel;
@@ -149,6 +150,14 @@ private:
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
     QPushButton *m_resetThemeBtn = nullptr;
+
+    struct ColorControl {
+        QPushButton *btn;
+        QLabel *preview;
+        QString configKey;
+        QColor defaultColor;
+    };
+    QVector<ColorControl> m_colorControls;
 
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;

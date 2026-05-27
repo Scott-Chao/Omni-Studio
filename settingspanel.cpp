@@ -852,6 +852,14 @@ QWidget *SettingsPanel::createAppearancePage()
         auto &tm = ThemeManager::instance();
         tm.clearOverrides();
         tm.loadTheme(tm.currentThemeName());
+
+        // Keep SettingsManager in sync so panel values match on next open
+        auto &sm = SettingsManager::instance();
+        for (const auto &k : sm.allOverrideKeys()) {
+            if (k.startsWith(QStringLiteral("appearance.colors.")))
+                sm.removeSettingOverride(k);
+        }
+        syncFromSettings(sm);
     });
 
     themeRow->addWidget(themeLabel);
@@ -887,6 +895,7 @@ QWidget *SettingsPanel::createAppearancePage()
     // Collapsible Color Sections
     // ====================================================================
     layout->addSpacing(8);
+    m_colorControls.clear();
 
     // Helper: create a single color picker row inside a section layout
     auto addColorRow = [&](QVBoxLayout *parent, const QString &label,
@@ -942,6 +951,8 @@ QWidget *SettingsPanel::createAppearancePage()
         row->addWidget(colorPreview);
         row->addWidget(colorBtn);
         parent->addLayout(row);
+
+        m_colorControls.append({colorBtn, colorPreview, configKey, defaultColor});
     };
 
     // Helper: create a collapsible section with QToolButton toggle
@@ -1742,6 +1753,18 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     // Appearance page
     if (m_fileTreeItemHeightSpin) {
         m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
+    }
+
+    // Refresh color controls (appearance page)
+    for (const auto &cc : m_colorControls) {
+        QString hex = sm.value(cc.configKey, cc.defaultColor.name()).toString();
+        auto &ctm = ThemeManager::instance();
+        cc.btn->setStyleSheet(
+            QStringLiteral(
+                "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
+                "QPushButton:hover { border-color: %3; }"
+            ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
+        cc.preview->setText(hex);
     }
 
     // Output panel (now in editor page)
