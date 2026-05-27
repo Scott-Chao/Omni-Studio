@@ -2,8 +2,9 @@
 #include "cppcompletionprovider.h"
 #include "pythoncompletionprovider.h"
 #include "keywordcompletionprovider.h"
+#include "cppsyntaxhighlighter.h"
+#include "pythonsyntaxhighlighter.h"
 #include "smddiagnostic.h"
-#include "debuglog.h"
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
@@ -13,6 +14,7 @@
 #include "settingsmanager.h"
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextLayout>
 #include <QTextDocument>
 #include <QKeyEvent>
 #include <QSyntaxHighlighter>
@@ -114,6 +116,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_cachedLnBg = tm.color("editorLineNumber.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
+    m_cachedSelectionBg = tm.color("editor.selectionBackground");
 
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
@@ -163,8 +166,6 @@ void CodeEditor::reloadShortcuts()
     m_toggleComment = QKeySequence(sm.value("shortcuts.toggle_comment", "Ctrl+/").toString());
     m_toggleDiagnostics = QKeySequence(sm.value("shortcuts.toggle_diagnostics",
         ConfigManager::instance().shortcut("toggle_diagnostics", "Ctrl+D")).toString());
-    debugLog(QString("CodeEditor::reloadShortcuts toggle_diagnostics=%1")
-        .arg(m_toggleDiagnostics.toString()));
 }
 
 void CodeEditor::setIndentWidth(int width)
@@ -188,6 +189,7 @@ void CodeEditor::reloadColors()
     m_cachedLnBg = tm.color("editorLineNumber.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
+    m_cachedSelectionBg = tm.color("editor.selectionBackground");
 
     // Rebuild search highlights with new theme colors
     if (!m_searchHighlightText.isEmpty()) {
@@ -320,6 +322,16 @@ void CodeEditor::createCompletionProvider(const QString &langId)
             this, &CodeEditor::onCompletionsReady);
     connect(m_completionProvider, &CompletionProvider::diagnosticsUpdated,
             this, &CodeEditor::setDiagnostics);
+    connect(m_completionProvider, &CompletionProvider::semanticTokensReady,
+            this, [this](const QList<SemanticToken> &tokens) {
+        if (m_highlighter) {
+            if (auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter))
+                cppHL->setSemanticTokens(tokens);
+            else if (auto *pyHL = qobject_cast<PythonSyntaxHighlighter*>(m_highlighter))
+                pyHL->setSemanticTokens(tokens);
+        }
+        emit semanticTokensApplied();
+    });
 
     // Notify hover and signature managers of the new provider
     m_hoverManager->setProvider(m_completionProvider);
@@ -349,6 +361,16 @@ void CodeEditor::setCompletionProvider(CompletionProvider *provider)
     if (provider) {
         connect(provider, &CompletionProvider::completionReady,
                 this, &CodeEditor::onCompletionsReady);
+        connect(provider, &CompletionProvider::semanticTokensReady,
+                this, [this](const QList<SemanticToken> &tokens) {
+            if (m_highlighter) {
+                if (auto *cppHL = qobject_cast<CppSyntaxHighlighter*>(m_highlighter))
+                    cppHL->setSemanticTokens(tokens);
+                else if (auto *pyHL = qobject_cast<PythonSyntaxHighlighter*>(m_highlighter))
+                    pyHL->setSemanticTokens(tokens);
+            }
+            emit semanticTokensApplied();
+        });
         m_hoverManager->setProvider(provider);
         m_signatureHelpManager->setProvider(provider);
     }
@@ -546,13 +568,46 @@ const SmdDiagnostic* CodeEditor::diagnosticAt(int line, int col) const
     return nullptr;
 }
 
+bool CodeEditor::isPositionOverText(const QPoint &viewportPos) const
+{
+    QTextBlock block = firstVisibleBlock();
+    QPointF offset = contentOffset();
+
+    while (block.isValid()) {
+        QRectF geo = blockBoundingGeometry(block).translated(offset);
+
+        if (geo.top() > viewportPos.y())
+            break;
+
+        if (viewportPos.y() >= geo.top() && viewportPos.y() <= geo.bottom()) {
+            QTextLayout *layout = block.layout();
+            if (!layout)
+                return false;
+
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                QTextLine line = layout->lineAt(i);
+                qreal lineTop = geo.top() + line.y();
+                if (viewportPos.y() >= lineTop && viewportPos.y() <= lineTop + line.height()) {
+                    QRectF nr = line.naturalTextRect();
+                    return viewportPos.x() <= geo.left() + nr.right();
+                }
+            }
+
+            return false;
+        }
+
+        block = block.next();
+    }
+
+    return false;
+}
+
 // ---- Key handling ----
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
     // Debug: trace Ctrl+D
     if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
-        debugLog("CodeEditor::keyPressEvent: Ctrl+D received!");
     }
 
     // ---- Completion popup key routing ----
@@ -636,7 +691,6 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
     }
 
     if (matchShortcut(m_toggleDiagnostics)) {
-        debugLog("CodeEditor: toggleDiagnostics shortcut matched");
         emit diagnosticsToggleRequested();
         return;
     }
@@ -1169,7 +1223,6 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
             QKeyEvent *ke = static_cast<QKeyEvent *>(event);
             Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
             if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
-                debugLog("CodeEditor::eventFilter: ShortcutOverride accepted");
                 event->accept();
                 return true;
             }
@@ -1178,7 +1231,6 @@ bool CodeEditor::eventFilter(QObject *obj, QEvent *event)
             QKeyEvent *ke = static_cast<QKeyEvent *>(event);
             Qt::KeyboardModifiers mods = ke->modifiers() & ~Qt::KeypadModifier;
             if (QKeySequence(mods | ke->key()) == m_toggleDiagnostics) {
-                debugLog("CodeEditor::eventFilter: KeyPress -> emit");
                 emit diagnosticsToggleRequested();
                 return true;
             }
@@ -1211,6 +1263,70 @@ void CodeEditor::focusOutEvent(QFocusEvent *event)
 {
     hideSignatureHelp();
     QPlainTextEdit::focusOutEvent(event);
+}
+
+void CodeEditor::paintEvent(QPaintEvent *event)
+{
+    QTextCursor cursor = textCursor();
+    if (!cursor.hasSelection() || m_inPaintSelection) {
+        QPlainTextEdit::paintEvent(event);
+        return;
+    }
+
+    m_inPaintSelection = true;
+    int selStart = cursor.selectionStart();
+    int selEnd = cursor.selectionEnd();
+
+    // Temporarily clear selection so Qt draws text with syntax colors intact
+    cursor.clearSelection();
+    setTextCursor(cursor);
+    QPlainTextEdit::paintEvent(event);
+
+    // Overlay semi-transparent selection background on top of syntax-colored text
+    {
+        QPainter painter(viewport());
+        QColor selBg = m_cachedSelectionBg;
+        // Higher alpha in dark themes for sufficient contrast against dark backgrounds
+        bool isDark = ThemeManager::instance().currentThemeType() == ThemeManager::Dark;
+        selBg.setAlpha(isDark ? 120 : 80);
+
+        QTextDocument *doc = document();
+        QTextBlock block = doc->findBlock(selStart);
+        QTextCursor rc(doc);
+
+        while (block.isValid() && block.position() < selEnd) {
+            QTextLayout *layout = block.layout();
+            if (layout) {
+                for (int i = 0; i < layout->lineCount(); ++i) {
+                    QTextLine line = layout->lineAt(i);
+                    int lineStart = block.position() + line.textStart();
+                    int lineEnd = lineStart + line.textLength();
+
+                    int s = qMax(lineStart, selStart);
+                    int e = qMin(lineEnd, selEnd);
+                    if (s > e) continue;
+
+                    rc.setPosition(s);
+                    QRect r1 = cursorRect(rc);
+                    rc.setPosition(e);
+                    QRect r2 = cursorRect(rc);
+
+                    QRect fillRect(qMin(r1.left(), r2.left()), r1.top(),
+                                   qMax(r1.right(), r2.right()) - qMin(r1.left(), r2.left()),
+                                   r1.height());
+                    painter.fillRect(fillRect, selBg);
+                }
+            }
+            block = block.next();
+        }
+    }
+
+    // Restore selection
+    cursor = textCursor();
+    cursor.setPosition(selStart);
+    cursor.setPosition(selEnd, QTextCursor::KeepAnchor);
+    setTextCursor(cursor);
+    m_inPaintSelection = false;
 }
 
 // ---- Helpers ----

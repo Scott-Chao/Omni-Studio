@@ -177,6 +177,7 @@ public:
 
     // ---- Syntax Highlighting ----
     QColor syntaxKeywords() const;
+    QColor syntaxControlKeywords() const;
     QColor syntaxPreprocessor() const;
     QColor syntaxTypes() const;
     QColor syntaxNumbers() const;
@@ -184,6 +185,8 @@ public:
     QColor syntaxComments() const;
     QColor syntaxPythonDecorators() const;
     QColor syntaxPythonSelfCls() const;
+    QColor syntaxFunctions() const;
+    QColor syntaxParameters() const;
 
     // ---- Judge Status Colors ----
     QColor judgeColorAc() const;

@@ -51,14 +51,17 @@ public:
 
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth() const;
+    bool isPositionOverText(const QPoint &viewportPos) const;
 
 signals:
     void diagnosticsToggleRequested();
+    void semanticTokensApplied();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
@@ -88,6 +91,8 @@ private:
     QColor m_cachedLnBg;
     QColor m_cachedLnFg;
     QColor m_cachedCurrentLine;
+    QColor m_cachedSelectionBg;
+    bool m_inPaintSelection = false;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
     QString m_searchHighlightText;
     QList<SmdDiagnostic> m_diagnostics;

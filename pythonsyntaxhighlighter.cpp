@@ -1,13 +1,26 @@
 #include "pythonsyntaxhighlighter.h"
 #include "pykeywords.h"
 #include "configmanager.h"
+#include "thememanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     : QSyntaxHighlighter(parent)
 {
-    const auto &cfg = ConfigManager::instance();
+    initFormats();
 
-    // --- Comment format (dim green, applied in highlightBlock via string-aware scanner) ---
+    // Rebuild rules and re-highlight when the theme changes
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]() {
+        initFormats();
+        rehighlight();
+    });
+}
+
+void PythonSyntaxHighlighter::initFormats()
+{
+    const auto &cfg = ConfigManager::instance();
+    m_rules.clear();
+
+    // --- Comment format (applied in highlightBlock via string-aware scanner) ---
     m_commentFormat.setForeground(cfg.syntaxComments());
 
     // --- Decorator format (purple) ---
@@ -19,7 +32,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Self/cls format (yellow) ---
+    // --- Self/cls format ---
     m_selfFormat.setForeground(cfg.syntaxPythonSelfCls());
     {
         HighlightingRule rule;
@@ -34,7 +47,7 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Keyword format (blue, bold) ---
+    // --- Keyword format (bold) ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
     m_keywordFormat.setFontWeight(QFont::Bold);
 
@@ -45,10 +58,27 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Constants format (blue, bold) ---
-    // True, False, None already included in pyKeywords()
+    // --- Control-flow keyword format (overrides regular keyword color) ---
+    m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
+    m_controlKeywordFormat.setFontWeight(QFont::Bold);
+    {
+        const QStringList ctrl = {
+            QStringLiteral("if"), QStringLiteral("elif"), QStringLiteral("else"),
+            QStringLiteral("for"), QStringLiteral("while"), QStringLiteral("try"),
+            QStringLiteral("except"), QStringLiteral("finally"), QStringLiteral("with"),
+            QStringLiteral("return"), QStringLiteral("yield"), QStringLiteral("break"),
+            QStringLiteral("continue"), QStringLiteral("raise"), QStringLiteral("assert"),
+            QStringLiteral("pass"), QStringLiteral("match"), QStringLiteral("case"),
+        };
+        for (const QString &kw : ctrl) {
+            HighlightingRule rule;
+            rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
+            rule.format = m_controlKeywordFormat;
+            m_rules.append(rule);
+        }
+    }
 
-    // --- Builtin format (teal) ---
+    // --- Builtin format ---
     m_builtinFormat.setForeground(cfg.syntaxTypes());
     for (const QString &b : pyBuiltins()) {
         HighlightingRule rule;
@@ -57,23 +87,33 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         m_rules.append(rule);
     }
 
-    // --- Number format (green) ---
+    // --- Function call format ---
+    m_functionFormat.setForeground(cfg.syntaxFunctions());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
+        rule.format = m_functionFormat;
+        m_rules.append(rule);
+    }
+
+    // --- Parameter/variable/property format (used by semantic tokens overlay) ---
+    m_parameterFormat.setForeground(cfg.syntaxParameters());
+
+    // --- Number format ---
     m_numberFormat.setForeground(cfg.syntaxNumbers());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral(
-            "\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b|"   // hex
-            "\\b0[bB][01](?:[01_]*[01])?\\b|"                          // binary
-            "\\b0[oO][0-7](?:[0-7_]*[0-7])?\\b|"                       // octal
-            "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)?[jJ]?\\b"));  // int/float/complex
+            "\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b|"
+            "\\b0[bB][01](?:[01_]*[01])?\\b|"
+            "\\b0[oO][0-7](?:[0-7_]*[0-7])?\\b|"
+            "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)?[jJ]?\\b"));
         rule.format = m_numberFormat;
         m_rules.append(rule);
     }
 
-    // --- String format (orange-brown) ---
+    // --- String format ---
     m_stringFormat.setForeground(cfg.syntaxStrings());
-
-    // Double-quoted strings with optional prefix: f, r, b, u, fr, rf, br, rb
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -81,7 +121,6 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
         rule.format = m_stringFormat;
         m_rules.append(rule);
     }
-    // Single-quoted strings with optional prefix
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
@@ -91,11 +130,50 @@ PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     }
 
     // Triple-quote patterns for block-state tracking
-    m_tripleFormat.setForeground(cfg.syntaxComments());
+    m_tripleFormat.setForeground(cfg.syntaxStrings());
     m_tripleDoubleStart = QRegularExpression(QStringLiteral("\"\"\""));
     m_tripleDoubleEnd   = QRegularExpression(QStringLiteral("\"\"\""));
     m_tripleSingleStart = QRegularExpression(QStringLiteral("'''"));
     m_tripleSingleEnd   = QRegularExpression(QStringLiteral("'''"));
+
+    m_bracketColors[0] = QColor("#FFD700");
+    m_bracketColors[1] = QColor("#DA70D6");
+    m_bracketColors[2] = QColor("#179FFF");
+    m_unpairedBracketColor = QColor("#FF0000");
+}
+
+void PythonSyntaxHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)
+{
+    m_semanticTokens.clear();
+    for (const auto &token : tokens) {
+        m_semanticTokens[token.line].append(token);
+    }
+    rehighlight();
+}
+
+void PythonSyntaxHighlighter::clearSemanticTokens()
+{
+    m_semanticTokens.clear();
+    rehighlight();
+}
+
+QTextCharFormat PythonSyntaxHighlighter::formatForTokenType(const QString &type) const
+{
+    if (type == QStringLiteral("function") || type == QStringLiteral("method")) {
+        return m_functionFormat;
+    }
+    if (type == QStringLiteral("parameter")) {
+        return m_parameterFormat;
+    }
+    if (type == QStringLiteral("class") || type == QStringLiteral("type")
+        || type == QStringLiteral("module")) {
+        return m_builtinFormat;
+    }
+    if (type == QStringLiteral("variable") || type == QStringLiteral("property")) {
+        return m_parameterFormat;
+    }
+    // namespace, module — keep default to avoid visual noise
+    return QTextCharFormat();
 }
 
 void PythonSyntaxHighlighter::highlightBlock(const QString &text)
@@ -116,7 +194,6 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
         for (int i = 0; i < text.length(); ++i) {
             if (!inString) {
                 if (text[i] == u'\'' || text[i] == u'"') {
-                    // Skip triple-quoted strings (handled separately below)
                     if (i + 2 < text.length() && text[i] == text[i+1] && text[i] == text[i+2]) {
                         i += 2;
                         continue;
@@ -128,37 +205,35 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
                     break;
                 }
             } else {
-                if (text[i] == u'\\') {
-                    ++i; // skip escaped character
-                    continue;
-                }
+                if (text[i] == u'\\') { ++i; continue; }
                 if (text[i] == stringChar)
                     inString = false;
             }
         }
     }
 
-    // Multi-line triple-quoted string handling — string-aware: skip triple quotes inside single-line strings
-    setCurrentBlockState(0);
+    // Multi-line triple-quoted string handling
+    // Clear only triple-string state bits, preserve bracket state from previous block
+    setCurrentBlockState(previousBlockState() & ~7);
 
     int searchFrom = 0;
     int prevState = previousBlockState();
+    int prevTripleState = prevState & 7;
 
-    if (prevState == 1 || prevState == 2) {
-        // Continuing a triple-quoted string from the previous block
-        int state = prevState;
+    if (prevTripleState == 1 || prevTripleState == 2) {
+        int state = prevTripleState;
         QString closing = (state == 1) ? QStringLiteral("\"\"\"") : QStringLiteral("'''");
         int endIdx = text.indexOf(closing);
         if (endIdx == -1) {
             setFormat(0, text.length(), m_tripleFormat);
-            setCurrentBlockState(state);
+            // Preserve bracket state, set triple-string state
+            setCurrentBlockState((prevState & ~7) | state);
             return;
         }
         setFormat(0, endIdx + 3, m_tripleFormat);
         searchFrom = endIdx + 3;
     }
 
-    // Search for new triple-quoted strings in this block — skip positions inside single-line strings
     bool inString = false;
     QChar stringChar;
     for (int i = searchFrom; i < text.length(); ++i) {
@@ -170,7 +245,8 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
                 int endIdx = text.indexOf(closeStr, i + 3);
                 if (endIdx == -1) {
                     setFormat(i, text.length() - i, m_tripleFormat);
-                    setCurrentBlockState(tripleState);
+                    // Preserve bracket state, set triple-string state
+                    setCurrentBlockState((currentBlockState() & ~7) | tripleState);
                     break;
                 } else {
                     setFormat(i, endIdx - i + 3, m_tripleFormat);
@@ -183,12 +259,128 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
                 stringChar = text[i];
             }
         } else {
-            if (text[i] == u'\\') {
-                ++i;
-                continue;
-            }
+            if (text[i] == u'\\') { ++i; continue; }
             if (text[i] == stringChar)
                 inString = false;
         }
     }
+
+    // Apply semantic tokens on top of regex rules.
+    // Only apply where no format has been set yet (to preserve keyword/comment/string highlights).
+    int blockNumber = currentBlock().blockNumber();
+    auto it = m_semanticTokens.find(blockNumber);
+    if (it != m_semanticTokens.end()) {
+        for (const SemanticToken &token : it.value()) {
+            QTextCharFormat fmt = formatForTokenType(token.type);
+            if (!fmt.isValid() || fmt == QTextCharFormat())
+                continue;
+
+            int midPoint = token.startChar + token.length / 2;
+            if (midPoint < text.length()) {
+                QTextCharFormat existing = format(midPoint);
+                if (existing.hasProperty(QTextFormat::ForegroundBrush))
+                    continue;
+            }
+
+            setFormat(token.startChar, token.length, fmt);
+        }
+    }
+
+    highlightBrackets(text);
+}
+
+void PythonSyntaxHighlighter::highlightBrackets(const QString &text)
+{
+    struct BracketInfo {
+        int pos;   // -1 for brackets carried from previous blocks
+        QChar ch;
+    };
+    QVector<BracketInfo> bracketStack;
+
+    // Decode bracket stack from previous block state
+    int prevState = previousBlockState();
+    if (prevState < 0) prevState = 0;
+    int prevDepth = (prevState >> 3) & 31;
+    for (int i = 0; i < prevDepth && i < 12; ++i) {
+        int type = (prevState >> (8 + i * 2)) & 3;
+        QChar ch = (type == 1) ? QLatin1Char('[') : (type == 2) ? QLatin1Char('{') : QLatin1Char('(');
+        bracketStack.append({-1, ch});
+    }
+
+    const auto &cfg = ConfigManager::instance();
+    const QColor commentFg = cfg.syntaxComments();
+    const QColor stringFg = cfg.syntaxStrings();
+    auto isInSpecialFormat = [&](int pos) -> bool {
+        QTextCharFormat fmt = format(pos);
+        if (fmt.hasProperty(QTextFormat::ForegroundBrush)) {
+            QColor fg = fmt.foreground().color();
+            if (fg == commentFg || fg == stringFg)
+                return true;
+        }
+        return false;
+    };
+
+    for (int i = 0; i < text.length(); ++i) {
+        const QChar ch = text.at(i);
+
+        if (ch != QLatin1Char('(') && ch != QLatin1Char(')') &&
+            ch != QLatin1Char('[') && ch != QLatin1Char(']') &&
+            ch != QLatin1Char('{') && ch != QLatin1Char('}'))
+            continue;
+
+        // Skip brackets inside strings or comments
+        if (isInSpecialFormat(i))
+            continue;
+
+        if (ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{')) {
+            bracketStack.append({i, ch});
+            // Color with tentative depth color
+            const int depth = bracketStack.size() - 1;
+            QTextCharFormat fmt;
+            fmt.setForeground(m_bracketColors[depth % 3]);
+            fmt.setFontWeight(QFont::Bold);
+            setFormat(i, 1, fmt);
+        } else {
+            QChar expected;
+            if (ch == QLatin1Char(')'))
+                expected = QLatin1Char('(');
+            else if (ch == QLatin1Char(']'))
+                expected = QLatin1Char('[');
+            else
+                expected = QLatin1Char('{');
+
+            if (!bracketStack.isEmpty() && bracketStack.last().ch == expected) {
+                const int depth = bracketStack.size() - 1;
+                QTextCharFormat fmt;
+                fmt.setForeground(m_bracketColors[depth % 3]);
+                fmt.setFontWeight(QFont::Bold);
+                // Recolor opener if on the same line
+                if (bracketStack.last().pos >= 0)
+                    setFormat(bracketStack.last().pos, 1, fmt);
+                setFormat(i, 1, fmt);
+                bracketStack.removeLast();
+            } else {
+                QTextCharFormat fmt;
+                fmt.setForeground(m_unpairedBracketColor);
+                fmt.setFontWeight(QFont::Bold);
+                setFormat(i, 1, fmt);
+            }
+        }
+    }
+
+    // Encode final bracket stack into block state (bits 3+), preserving triple-string state (bits 0-2)
+    int tripleState = currentBlockState();
+    if (tripleState < 0) tripleState = 0;
+    tripleState &= 7;
+
+    int state = tripleState;
+    int depth = qMin(bracketStack.size(), 12);
+    state |= (depth << 3);
+    for (int i = 0; i < depth; ++i) {
+        int type = 0;
+        if (bracketStack[i].ch == QLatin1Char('[')) type = 1;
+        else if (bracketStack[i].ch == QLatin1Char('{')) type = 2;
+        state |= (type << (8 + i * 2));
+    }
+    setCurrentBlockState(state);
 }

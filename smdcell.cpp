@@ -236,7 +236,11 @@ void SmdCell::setupCodeEditor(const QString &langId)
     connect(m_codeEditor->document(), &QTextDocument::blockCountChanged,
             this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
     connect(m_codeEditor->document(), &QTextDocument::contentsChanged,
-            this, [this]() { ++m_pendingContentChanges; updateEditorHeight(); });
+            this, [this]() {
+                ++m_pendingContentChanges; updateEditorHeight();
+            });
+    connect(m_codeEditor, &CodeEditor::semanticTokensApplied,
+            this, [this]() { updateEditorHeight(); });
     m_codeEditor->installEventFilter(this);
     m_editorStack->insertWidget(0, m_codeEditor);
     QTimer::singleShot(0, this, &SmdCell::updateEditorHeight);

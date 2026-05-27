@@ -19,6 +19,11 @@ PythonCompletionProvider::PythonCompletionProvider(QObject *parent)
     connect(&m_diagnosticsTimer, &QTimer::timeout,
             this, &PythonCompletionProvider::onDiagnosticsDebounce);
 
+    m_semanticTokensTimer.setSingleShot(true);
+    m_semanticTokensTimer.setInterval(300);
+    connect(&m_semanticTokensTimer, &QTimer::timeout,
+            this, &PythonCompletionProvider::requestSemanticTokens);
+
     startProcess();
 }
 
@@ -43,7 +48,9 @@ void PythonCompletionProvider::shutdown()
 
     m_timeoutTimer.stop();
     m_diagnosticsTimer.stop();
+    m_semanticTokensTimer.stop();
     m_pendingRequest = PendingRequest::None;
+    m_tokensPending = false;
 }
 
 void PythonCompletionProvider::startProcess()
@@ -119,6 +126,7 @@ void PythonCompletionProvider::restartProcess()
         m_process = nullptr;
     }
     m_pendingRequest = PendingRequest::None;
+    m_tokensPending = false;
     startProcess();
 }
 
@@ -128,15 +136,21 @@ void PythonCompletionProvider::openDocument(const QString &uri, const QString &l
 {
     Q_UNUSED(uri);
     Q_UNUSED(languageId);
-    // Request diagnostics immediately on open.
+    m_lastDiagnosticsText = text;
     sendDiagnosticsRequest(text);
+    m_semanticTokensTimer.start();
 }
 
 void PythonCompletionProvider::updateText(const QString &text)
 {
-    // Debounce diagnostics on text changes.
+    // Guard: rehighlight() can trigger QTextDocument::contentsChanged
+    // which calls us again with identical text — skip to avoid an
+    // infinite request loop.
+    if (text == m_lastDiagnosticsText)
+        return;
     m_lastDiagnosticsText = text;
     m_diagnosticsTimer.start();
+    m_semanticTokensTimer.start();
 }
 
 void PythonCompletionProvider::onDiagnosticsDebounce()
@@ -146,6 +160,26 @@ void PythonCompletionProvider::onDiagnosticsDebounce()
 
 // ---- Request sending ----
 
+static QString sanitizeForPython(const QString &s)
+{
+    QString out = s;
+    out.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    out.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    for (int i = 0; i < out.size(); ++i) {
+        QChar ch = out.at(i);
+        if (ch.isLowSurrogate() && (i == 0 || !out.at(i - 1).isHighSurrogate()))
+            out[i] = QChar(QChar::ReplacementCharacter);
+        else if (ch.isHighSurrogate()
+                 && (i + 1 >= out.size() || !out.at(i + 1).isLowSurrogate()))
+            out[i] = QChar(QChar::ReplacementCharacter);
+    }
+    // UTF-8 round-trip: correctly encodes valid surrogate pairs and
+    // replaces any remaining lone surrogates with U+FFFD, ensuring
+    // the Python json parser never sees bare surrogates.
+    out = QString::fromUtf8(out.toUtf8());
+    return out;
+}
+
 void PythonCompletionProvider::sendRequest(const QString &action, const QString &text, int cursorPos)
 {
     if (!m_jediAvailable) {
@@ -153,8 +187,19 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
         return;
     }
 
-    if (!m_process || m_process->state() != QProcess::Running) {
+    if (!m_process) {
+        startProcess();
+        emitEmptyResults();
+        return;
+    }
+    if (m_process->state() == QProcess::NotRunning) {
         restartProcess();
+        emitEmptyResults();
+        return;
+    }
+    if (m_process->state() != QProcess::Running) {
+        // Still starting — results won't be ready yet
+        emitEmptyResults();
         return;
     }
 
@@ -162,21 +207,36 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
     m_pendingRequest = PendingRequest::None;
     m_timeoutTimer.stop();
 
-    // Convert absolute cursorPos to 0-based line/col
+    // Sanitize before computing coordinates so lone surrogates and
+    // \r/\r\n line endings don't cause position mismatches with Jedi.
+    QString safeText = sanitizeForPython(text);
+
+    // Compute 0-based line/col from the original text.  sanitizeForPython
+    // replaces lone surrogates with U+FFFD (still 1 QChar) and \r\n→\n
+    // (2→1 char), so we walk the *original* text up to cursorPos but
+    // account for \r\n compression so the final line/col match safeText.
     int line = 0, col = 0;
-    int len = qMin(cursorPos, text.length());
-    for (int i = 0; i < len; ++i) {
-        if (text.at(i) == QLatin1Char('\n')) {
-            ++line;
-            col = 0;
+    int srcLen = text.length();
+    for (int i = 0; i < srcLen && i < cursorPos; ++i) {
+        QChar ch = text.at(i);
+        if (ch == QLatin1Char('\n')) {
+            ++line; col = 0;
+        } else if (ch == QLatin1Char('\r')) {
+            if (i + 1 < srcLen && text.at(i + 1) == QLatin1Char('\n'))
+                ++i; // skip \n (counted as one line break)
+            ++line; col = 0;
         } else {
             ++col;
         }
     }
 
+    // Base64-encode to avoid JSON/UTF-8 issues with surrogates
+    // and non-ASCII characters (same approach as diagnostics & tokens).
+    QByteArray codeBase64 = safeText.toUtf8().toBase64();
+
     QJsonObject req;
     req[QStringLiteral("action")] = action;
-    req[QStringLiteral("code")] = text;
+    req[QStringLiteral("code")] = QString::fromLatin1(codeBase64);
     QJsonArray cursor;
     cursor.append(line);
     cursor.append(col);
@@ -199,8 +259,16 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
 void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
 {
     // Diagnostics don't require Jedi (uses compile()), so skip jedi check.
-    if (!m_process || m_process->state() != QProcess::Running) {
+    if (!m_process) {
+        startProcess();
+        return;
+    }
+    if (m_process->state() == QProcess::NotRunning) {
         restartProcess();
+        return;
+    }
+    if (m_process->state() != QProcess::Running) {
+        // Still starting — the started callback will re-trigger
         return;
     }
 
@@ -208,8 +276,10 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
     m_pendingRequest = PendingRequest::None;
     m_timeoutTimer.stop();
 
+    // Sanitize lone surrogates before sending to Python
+    QString safeText = sanitizeForPython(text);
     // Base64-encode the code to avoid JSON escaping issues (matching SMD cell format)
-    QByteArray codeBase64 = text.toUtf8().toBase64();
+    QByteArray codeBase64 = safeText.toUtf8().toBase64();
 
     QJsonObject req;
     req[QStringLiteral("action")] = QStringLiteral("diagnostics");
@@ -225,6 +295,48 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
 
     m_pendingRequest = PendingRequest::Diagnostics;
     m_timeoutTimer.start(500);
+}
+
+void PythonCompletionProvider::requestSemanticTokens()
+{
+    if (!m_jediAvailable)
+        return;
+    if (!m_process) {
+        startProcess();
+        return;
+    }
+    if (m_process->state() == QProcess::NotRunning) {
+        restartProcess();
+        return;
+    }
+    if (m_process->state() != QProcess::Running) {
+        // Still starting — the started callback will re-trigger
+        return;
+    }
+
+    QString text = sanitizeForPython(m_lastDiagnosticsText);
+    // Skip large files to avoid performance issues
+    if (text.length() > 200 * 1024)
+        return;
+
+    // Base64-encode to avoid JSON escaping issues with lone surrogates
+    QByteArray codeBase64 = text.toUtf8().toBase64();
+
+    QJsonObject req;
+    req[QStringLiteral("action")] = QStringLiteral("tokens");
+    req[QStringLiteral("code")] = QString::fromLatin1(codeBase64);
+    QJsonArray cursor;
+    cursor.append(0);
+    cursor.append(0);
+    req[QStringLiteral("cursor")] = cursor;
+
+    QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
+    m_process->write(payload);
+
+    // Tokens are fire-and-forget — the response may arrive after other
+    // requests have been processed.  We flag that tokens are in-flight
+    // and detect them by response structure rather than by m_pendingRequest.
+    m_tokensPending = true;
 }
 
 void PythonCompletionProvider::requestCompletion(const QString &text, int cursorPos)
@@ -298,10 +410,94 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         return;
     }
 
+    QJsonValue dataVal = msg.value(QStringLiteral("data"));
+
+    // ── Structure-based response routing ──────────────────────────
+    // Detect responses by their JSON shape rather than relying solely on
+    // m_pendingRequest, so concurrent requests (diagnostics / tokens /
+    // hover) don't corrupt each other's state when responses overlap.
+    //
+    // Order matters: tokens (array with "line"+"type") before diagnostics
+    // (array with "startLine"), hover (object with "signature") last so
+    // arrays are handled first.
+
+    // 1. Tokens — array of {line, type, startChar, length}
+    if (m_tokensPending) {
+        QJsonArray arr = dataVal.toArray();
+        if (!arr.isEmpty()) {
+            QJsonObject first = arr[0].toObject();
+            if (first.contains(QStringLiteral("line"))
+                && first.contains(QStringLiteral("type"))) {
+                QList<SemanticToken> tokens;
+                for (const QJsonValue &v : arr) {
+                    QJsonObject obj = v.toObject();
+                    SemanticToken t;
+                    t.line = obj.value(QStringLiteral("line")).toInt();
+                    t.startChar = obj.value(QStringLiteral("startChar")).toInt();
+                    t.length = obj.value(QStringLiteral("length")).toInt();
+                    t.type = obj.value(QStringLiteral("type")).toString();
+                    tokens.append(t);
+                }
+                m_tokensPending = false;
+                emit semanticTokensReady(tokens);
+                if (m_pendingRequest == PendingRequest::SemanticTokens) {
+                    m_pendingRequest = PendingRequest::None;
+                    m_timeoutTimer.stop();
+                }
+                return;
+            }
+        }
+    }
+
+    // 2. Diagnostics — array of {cellIndex, startLine, startCol, …}
+    {
+        QJsonArray arr = dataVal.toArray();
+        if (!arr.isEmpty()) {
+            QJsonObject first = arr[0].toObject();
+            if (first.contains(QStringLiteral("startLine"))) {
+                QList<SmdDiagnostic> diagnostics;
+                for (const QJsonValue &v : arr) {
+                    QJsonObject obj = v.toObject();
+                    SmdDiagnostic d;
+                    d.startLine = obj.value(QStringLiteral("startLine")).toInt();
+                    d.startCol  = obj.value(QStringLiteral("startCol")).toInt();
+                    d.endLine   = obj.value(QStringLiteral("endLine")).toInt();
+                    d.endCol    = obj.value(QStringLiteral("endCol")).toInt();
+                    d.message   = obj.value(QStringLiteral("message")).toString();
+                    d.severity  = obj.value(QStringLiteral("severity")).toInt(1);
+                    diagnostics.append(d);
+                }
+                emit diagnosticsUpdated(diagnostics);
+                if (m_pendingRequest == PendingRequest::Diagnostics) {
+                    m_pendingRequest = PendingRequest::None;
+                    m_timeoutTimer.stop();
+                }
+                return;
+            }
+        }
+    }
+
+    // 3. Hover — object {signature, doc, definition}
+    if (dataVal.isObject()) {
+        QJsonObject obj = dataVal.toObject();
+        if (obj.contains(QStringLiteral("signature"))) {
+            HoverInfo info;
+            info.signature = obj.value(QStringLiteral("signature")).toString();
+            info.doc = obj.value(QStringLiteral("doc")).toString();
+            info.definition = obj.value(QStringLiteral("definition")).toString();
+            emit hoverReady(info);
+            if (m_pendingRequest == PendingRequest::Hover) {
+                m_pendingRequest = PendingRequest::None;
+                m_timeoutTimer.stop();
+            }
+            return;
+        }
+    }
+
+    // 4–5. Fallback: pending-request-based routing for completion,
+    //      signature help, and legacy paths.
     PendingRequest pending = m_pendingRequest;
     m_pendingRequest = PendingRequest::None;
-
-    QJsonValue dataVal = msg.value(QStringLiteral("data"));
 
     switch (pending) {
     case PendingRequest::Completion: {
@@ -319,16 +515,6 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         }
         qDebug() << "PythonCompletionProvider: completion returned" << items.size() << "items";
         emit completionReady(items);
-        break;
-    }
-    case PendingRequest::Hover: {
-        HoverInfo info;
-        QJsonObject obj = dataVal.toObject();
-        info.signature = obj.value(QStringLiteral("signature")).toString();
-        info.doc = obj.value(QStringLiteral("doc")).toString();
-        info.definition = obj.value(QStringLiteral("definition")).toString();
-        qDebug() << "PythonCompletionProvider: hover returned";
-        emit hoverReady(info);
         break;
     }
     case PendingRequest::SignatureHelp: {
@@ -350,24 +536,12 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         emit signatureHelpReady(signatures, activeIndex);
         break;
     }
-    case PendingRequest::Diagnostics: {
-        QList<SmdDiagnostic> diagnostics;
-        QJsonArray arr = dataVal.toArray();
-        for (const QJsonValue &v : arr) {
-            QJsonObject obj = v.toObject();
-            SmdDiagnostic d;
-            d.startLine = obj.value(QStringLiteral("startLine")).toInt();
-            d.startCol  = obj.value(QStringLiteral("startCol")).toInt();
-            d.endLine   = obj.value(QStringLiteral("endLine")).toInt();
-            d.endCol    = obj.value(QStringLiteral("endCol")).toInt();
-            d.message   = obj.value(QStringLiteral("message")).toString();
-            d.severity  = obj.value(QStringLiteral("severity")).toInt(1);
-            diagnostics.append(d);
-        }
-        qDebug() << "PythonCompletionProvider: diagnostics returned" << diagnostics.size() << "items";
-        emit diagnosticsUpdated(diagnostics);
+    case PendingRequest::SemanticTokens:
+    case PendingRequest::Diagnostics:
+    case PendingRequest::Hover:
+        // Already handled by structure detection above; reaching here
+        // means the response didn't match the expected shape — ignore.
         break;
-    }
     default:
         break;
     }
@@ -388,6 +562,10 @@ void PythonCompletionProvider::emitEmptyResults()
         break;
     case PendingRequest::SignatureHelp:
         emit signatureHelpReady({}, 0);
+        break;
+    case PendingRequest::SemanticTokens:
+        m_tokensPending = false;
+        emit semanticTokensReady({});
         break;
     default:
         break;
@@ -411,6 +589,7 @@ void PythonCompletionProvider::onProcessError(QProcess::ProcessError err)
     if (!m_process)
         return;
     qWarning() << "PythonCompletionProvider: process error" << err;
+    m_tokensPending = false;
     emitEmptyResults();
     if (err == QProcess::FailedToStart) {
         qWarning() << "PythonCompletionProvider: Python helper failed to start";
@@ -428,7 +607,7 @@ void PythonCompletionProvider::onProcessFinished(int exitCode, QProcess::ExitSta
     qDebug() << "PythonCompletionProvider: process finished, exitCode" << exitCode
              << "status" << status;
 
-    // Emit empty for any pending request
+    m_tokensPending = false;
     emitEmptyResults();
 
     // Restart on crash (but not if jedi was unavailable — that's permanent)

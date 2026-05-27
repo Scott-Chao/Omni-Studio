@@ -1,4 +1,4 @@
-## 功能说明文档（v0.12.14）
+## 功能说明文档（v0.13.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,10 +60,44 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 重构 v0.12.14
-- **提取 `AiRequestHandler`**：将 AI 请求管理（`startAiRequest`、`abortAiRequest`、`loadAiConversation`、token 估算、context 裁剪等）从 `MainWindow` 提取到独立的 `AiRequestHandler` 类，MainWindow 减少约 340 行。
-- **提取 `IndexManager`**：将索引管理（`startAsyncIndexBuild`、`buildFileIndexAsync`、backlink/tag 索引操作、`findWikiTarget` 等）提取到独立的 `IndexManager` 类，MainWindow 减少约 190 行。
-- **提取 `CrashRecoveryManager`**：将崩溃恢复文件清理逻辑提取到独立的 `CrashRecoveryManager` 类，`checkCrashRecovery` 仍留在 MainWindow（涉及 UI 对话框）。
+### 新增 v0.13.0
+#### 代码编辑器升级
+
+**代码编辑器 — 括号对着色（Bracket Pair Colorization）**
+- `()` / `[]` / `{}` 按嵌套深度使用 3 种颜色（金 `#FFD700` / 紫 `#DA70D6` / 蓝 `#179FFF`）循环着色，加粗，未配对闭括号红色
+- 跨行配对：通过 `setCurrentBlockState()` bit 编码（bits 0-2 注释状态 + bits 3-7 深度 + bits 8+ 类型）在相邻 block 间传递括号栈，最多支持 12 层嵌套
+- 字符串/注释保护：使用 `QSyntaxHighlighter::format(pos)` 而非 `QTextLayout::formats()` 检测已着色的注释/字符串区域，避免 `highlightBlock()` 执行期间布局未提交导致的漏检
+- 初始状态修复：`previousBlockState() == -1`（首行）时做归零处理，防止深度字段被误读为 31 产生幽灵括号
+
+**代码编辑器 — 指针/引用运算符高亮**
+- `*`（指针）和 `&`（引用/取地址）以关键字蓝色（`#569CD6`）高亮，两层互补机制：
+  - Regex 快速通道：`\b(?:const\s+)?(?:int|char|...|auto|wchar_t)\s*([*&]+)\b` 覆盖基本类型和 `auto`，立即生效
+  - clangd 语义驱动：遍历 semantic token 中的 type/class/struct/enum/typeParameter token，跳过空白+模板闭合 `>`+cv限定符后定位 `*`/`&` 并着色，覆盖所有自定义类型
+- 两层互补：regex 无需等待 clangd 响应，clangd 提供 `QString &a`、`std::shared_ptr<int>*` 等完整类型覆盖
+
+**代码编辑器 — 选中区域保留语法高亮**
+- 重写 `paintEvent()`：临时清除光标选中 → `QPlainTextEdit::paintEvent()` 完整绘制语法颜色 → `QPainter` 在 viewport 叠加半透明选中背景
+- 选中区域逐行计算：遍历 `QTextBlock` → `QTextLayout` → `QTextLine`，通过 `cursorRect()` 获取每行选中部分起止矩形并 `fillRect()`
+- 选中背景 alpha 值根据主题自适应（暗色 120 / 亮色 80），确保两种模式下对比度充足
+- `m_inPaintSelection` 防递归标志，`qMin(lineEnd, selEnd)` 确保每行末字符不被遗漏
+
+**代码编辑器 — 高亮效果增强**
+- 关键字分层：普通关键字（蓝色粗体）+ 控制流关键字（紫/蓝粗体覆盖）
+- 基本类型独立分类：`bool`/`int`/`double` 等使用关键字蓝色但不加粗，从通用类型中拆分
+- 参数规则扩展：`m_parameterFormat` 同时用于参数/变量/属性，由 semantic tokens 驱动
+- 高亮颜色配置从硬编码迁移至 `ConfigManager` 主题配置（`syntax.*` 系列方法）
+- 修复打开文件时变量名高亮不触发的问题（`CppCompletionProvider::setSemanticTokens` 重新触发 `rehighlight()`）
+
+**SMD Python Cell — 完整语义高亮与诊断**
+- Python 单元格接入 `SmdLspManager` 共享 Jedi 后端，提供 semantic tokens（函数/方法/参数/变量/类/模块）
+- Python 诊断：通过 Jedi `diagnostics` action + base64 编码获取语法诊断，500ms 防抖
+- `CompletionProvider` 基类新增 `diagnosticsUpdated()` 信号和 `SemanticToken` 结构体，统一诊断接口
+
+**悬停提示修复**
+- 修复 Python 函数内参数悬停时无法显示的问题（Jedi `help` action 异常处理）
+- 修复部分情况下 Python 文件鼠标悬停没有提示的问题（`isPositionOverText` 行尾空白误触发修复）
+- 修复 SMD Python Cell 打开文件无法自动显示诊断信息的问题
+- 悬停弹窗内容过长时采用滚动显示（`QScrollArea` 包装）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -586,7 +620,11 @@
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
-- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置通过 `QToolTip::showText()` 显示类型/文档信息。诊断提示（错误/警告）和 LSP 悬停提示均应用紧凑样式（`padding: 0px 4px; margin: 0px;`），与全局 `QToolTip` 样式一致。全局 tooltip 通过 `CompactTooltipStyle`（`main.cpp` 中的 QProxyStyle 子类，`PM_ToolTipLabelFrameWidth = 0`）进一步消除 Qt Fusion 样式的额外内框边距。鼠标移动/离开/点击/滚轮时关闭。
+- **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
+  - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
+  - **LSP 悬停提示（自定义浮窗）**：使用自定义 `QFrame`（`Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`，无焦点可交互的浮动窗口），内含 `QScrollArea` + `QLabel`。`QTextDocument::setHtml()` + `setTextWidth()` 精确测量内容渲染高度实现自适应尺寸：短内容紧凑无滚动条，长内容上限 300px 并显示垂直滚动条（宽度 8px，仅在需要时出现）。布局边距 6/4/6/4 px，圆角 5px。背景色和边框色均从 `QPalette::ToolTipBase` 推导（边框 = 背景色 ±55 亮度偏移），统一写入 stylesheet 确保视觉一致。
+  - **定位**：弹窗紧贴悬停文字行正下方 1px（若下方空间不足则移至行上方），水平方向从鼠标位置向左偏移 15px，并 clamp 在编辑器视口边界内，确保弹窗不超出编辑器窗口。
+  - **鼠标追踪**：`HoverManager` 通过 `eventFilter` 监听编辑器视口和弹窗窗口。`MouseMove` 中通过 `isSameWord()` 检测鼠标是否仍在悬停单词范围内（字母/数字/下划线边界），避免左右微移导致弹窗闪烁。`Leave` 事件使用 `m_mouseInTooltip` 标志（弹窗 `Enter`/`Leave` 事件维护）和 `QCursor::pos()` 双重检查，使鼠标从文字移至弹窗时弹窗不消失。弹窗上的滚轮事件转发至 `QScrollArea` 实现滚动阅读，点击弹窗内部不关闭。应用失焦时自动隐藏。
 - **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
 - 自动缩进（`handleAutoIndent`）：按 Enter 时提取当前行前导空白作为缩进。光标在 `{` 和 `}` 之间时，自动分割为三行（`{`、缩进空白行、`}`），光标定位在中间行。光标前的文本以 `{`（C 风格）或 `:`（Python）结尾时才增加一级缩进。
 - 括号补全（`handleBracketCompletion`）：输入 `{`、`(`、`[`、`"`、`'` 时自动插入匹配对；有选中文本时包裹选中内容。在字符串或注释区域内不触发。
@@ -598,6 +636,10 @@
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
+- **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的闭括号显示红色。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
+- **指针/引用运算符高亮**：`CppSyntaxHighlighter` 通过两层机制对声明上下文中的 `*`（指针）和 `&`（引用/取地址）运算符进行蓝色（`#569CD6`）高亮：
+  - **Regex 快速通道**：正则 `\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b` 在 `initFormats()` 中提前于字符串规则添加，覆盖基本类型和 `auto` 后的 `*`/`&`。高亮后立即生效，不等待 clangd。
+  - **clangd 语义驱动**：`highlightBlock()` 在应用 semantic tokens 后，遍历当前 block 中类型为 `type`/`class`/`struct`/`enum`/`typeParameter` 的 token，检查其后紧跟的字符（跳过空白）是否为 `*` 或 `&`，若是则应用 `m_operatorFormat`。仅在目标位置尚未被前层着色（如字符串、注释或 regex 快速通道）时才设置，避免覆盖。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
 **主要接口**：
@@ -606,7 +648,7 @@
 - `void setDocumentUri(const QString &uri)`：设置当前文档 URI（`file:///` + 文件路径），供 LSP 后端识别文件身份。独立代码文件在 `EditorWidget::loadFile()` 中调用。
 - `QString languageId() const`：返回当前语言 ID。
 - `CompletionProvider *completionProvider() const`：返回当前补全提供者。
-- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。
+- `void setCompletionProvider(CompletionProvider *provider)`：设置外部共享的 CompletionProvider（非拥有模式）。会先断开并 shutdown 旧私有 provider。SMD cell 通过此方法接入 SmdLspManager 的共享后端。同时连接 `CompletionProvider::semanticTokensReady` → `CppSyntaxHighlighter::setSemanticTokens()`（与 `createCompletionProvider()` 相同的语义高亮转发链路）。
 - `void hideSignatureHelp()`：隐藏签名帮助弹出窗口。由 `focusOutEvent` 失焦时调用，也由 `SmdEditor` 在执行 cell 前调用以确保弹出窗口不残留。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)` / `void clearDiagnostics()`：设置或清除诊断信息，触发波浪线重绘。构造函数连接 `provider->diagnosticsUpdated` → `setDiagnostics()`。
 - `QList<SmdDiagnostic> diagnostics() const`：返回缓存的诊断列表。供 `MainWindow` 在切换标签页时立即恢复诊断，无需等待 provider 重发。
@@ -614,6 +656,7 @@
 - `void refreshLineNumberArea()`：刷新行号区域，重算宽度与几何形状并触发重绘。用于字体缩放后同步更新行号区域。
 - `int lineNumberAreaWidth() const`：计算行号区域所需宽度。
 - `void lineNumberAreaPaintEvent(QPaintEvent *event)`：行号区域绘制逻辑（由 `LineNumberArea` 委托）。绘制时显式设置 painter 字体为编辑器当前字体，确保行号随缩放同步变化。
+- `bool isPositionOverText(const QPoint &viewportPos) const`：判断视口坐标是否落在实际文本内容区域内，遍历可见 `QTextBlock` 并逐行比较 `QTextLine::naturalTextRect()` 真实文本宽度，杜绝行尾/文档末尾空白区域误触悬停。供 `HoverManager` 在 `MouseMove`、`requestHoverAt` 和 `onHoverReady` 中调用。
 
 **诊断面板快捷键**（`toggle_diagnostics`，默认 `Ctrl+D`）：
 - `reloadShortcuts()` 从 `SettingsManager` / `ConfigManager` 加载 `m_toggleDiagnostics` QKeySequence。
@@ -623,18 +666,28 @@
 
 **信号**：
 - `diagnosticsToggleRequested()`：用户按下诊断面板快捷键时发出。
+- `semanticTokensApplied()`：每次 LSP semantic tokens 通过 `CppSyntaxHighlighter::setSemanticTokens()` 应用到高亮器后发出。SmdCell 连接此信号以调用 `updateEditorHeight()`，确保语义高亮的格式变更不会导致 cell 高度与文档实际大小不匹配。
 
 **LSP 补全集成**：
 - 独立代码文件：`setLanguage()` → `createCompletionProvider()` 创建私有 `CppCompletionProvider`（clangd）/ `PythonCompletionProvider`（Jedi），由 CodeEditor 拥有和管理（`m_ownsProvider = true`）。替换旧 provider 前先断开其所有信号（`this`、`m_hoverManager`、`m_signatureHelpManager`），然后 `deleteLater()`，防止旧 LSP 进程的异步信号在延迟删除期间回调到已更新的 `m_completionProvider` 造成状态错乱。
   - `CppCompletionProvider::~CppCompletionProvider()` **不调用 `shutdown()`** — `stop()` 中的 `waitForFinished()` 阻塞主线程，导致关闭文件时卡死。LspClient 子对象通过 Qt 父子链自动清理。
   - `CppCompletionProvider::onResponseReceived()` 顶部仅检查 `!m_client`，`!m_initialized` 检查移至初始化响应处理 **之后**。原位置在 `m_initialized` 被设置前就拦截了 initialize 响应，导致 LSP 永不初始化。
   - `CppCompletionProvider::shutdown()` 保留用于 `setCompletionProvider()` 替换旧 provider 的场景（SMD cell 类型切换），通过 `m_ownsProvider` 标志判断。
+  - **语义高亮转发**：`createCompletionProvider()` 和 `setCompletionProvider()` 均连接 `CompletionProvider::semanticTokensReady` 信号，通过 lambda 分别 `qobject_cast<CppSyntaxHighlighter*>` / `qobject_cast<PythonSyntaxHighlighter*>` 调用 `setSemanticTokens(tokens)`，C++ 和 Python 高亮器均接受 semantic tokens。每次应用 semantic tokens 后 emit `semanticTokensApplied()` 信号，供 SmdCell 连接以触发 `updateEditorHeight()` 重新计算 cell 高度。
 - SMD cell：`setLanguageSyntaxOnly()` 只做语法高亮和信号连接，随后由 `SmdEditor::connectCellSignals()` 通过 `setCompletionProvider()` 注入 SmdLspManager 的共享 `CellCompletionAdapter`（`m_ownsProvider = false`）。
 - 补全触发：输入 `.`、`->`、`::` 或 `Ctrl+I` → `triggerCompletion()` → provider → LSP 请求。
 
 **诊断波浪线渲染**：
 - `updateExtraSelectionsWithDiagnostics()`：将 `m_diagnostics` 列表转换为 `QTextEdit::ExtraSelection`（错误红色 `#F44747` / 警告黄色 `#CCA700` 波浪下划线，tooltip 显示诊断信息），与当前行高亮、搜索高亮合并后通过 `setExtraSelections()` 统一应用。
 - 由 `highlightCurrentLine()` 和 `setDiagnostics()` 触发刷新。
+
+**选中渲染（保留语法高亮）**：
+- Qt 内置选中机制会用 `QPalette::HighlightedText`（暗色主题下为白色）覆盖所有选中文字的语法前景色。为保留选中区域的语法高亮，覆盖 `paintEvent()` 实现自定义选中渲染：
+  - 临时调用 `cursor.clearSelection()` + `setTextCursor()` 清除光标选中状态，让 `QPlainTextEdit::paintEvent()` 以完整语法颜色绘制文字。
+  - 绘制完成后通过 `QPainter` 在 viewport 上叠加半透明的选中背景 `m_cachedSelectionBg`（`editor.selectionBackground`）。alpha 值根据主题自适应：暗色主题 120，亮色主题 80，确保两种模式下均有足够的对比度。
+  - 选中区域逐行计算：遍历选中范围内的 `QTextBlock` → `QTextLayout` → `QTextLine`，通过 `cursorRect()` 获取每行选中部分的起止矩形，`fillRect()` 填充。
+  - `m_inPaintSelection` 布尔标志防止 `setTextCursor()` 触发 `selectionChanged` 信号导致递归重绘。
+  - `lineEnd = lineStart + line.textLength()` 不额外减 1（`QTextLine::textLength()` 含行尾换行符），由 `qMin(lineEnd, selEnd)` 结合 `selEnd` 正确裁剪，确保每行最后一个可见字符不被遗漏。
 
 **内部类 `LineNumberArea`**：
 - 继承 `QWidget`，作为 `CodeEditor` 的子控件。
@@ -685,19 +738,60 @@
 **文件**：`cppsyntaxhighlighter.h` / `cppsyntaxhighlighter.cpp`
 
 **职责**：
-- 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行深色主题语法高亮。
-- 高亮规则具体颜色方案：
-  - **关键字**（`#569CD6`，粗体）：`if`、`else`、`for`、`while`、`class`、`struct`、`return`、`const`、`static`、`virtual`、`override`、`namespace`、`using`、`template`、`public`、`private`、`protected`、`new`、`delete`、`auto`、`nullptr` 等，含 C++20 新增关键字（`co_await`、`co_return`、`consteval`、`constinit` 等）。
-  - **预处理器**（`#C586C0`）：`#include`、`#define`、`#ifdef`、`#ifndef`、`#endif`、`#pragma` 等。
-  - **类型**（`#4EC9B0`）：`int`、`void`、`bool`、`char`、`double`、`float`、`size_t`、`QString` 等常见类型。
-  - **字符串**（`#CE9178`）：双引号字符串、单引号字符字面量、原始字符串字面量，均支持转义字符。
-  - **数字**（`#B5CEA8`）：十进制、十六进制数字字面量。
-  - **单行注释**（`#6A9955`）：`// ...`，通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `"..."` 字符串和 `'...'` 字符字面量状态，仅在字符串外检测到 `//` 时应用注释格式，避免误将字符串内的 `//` 着色为注释。
-  - **多行注释**（`#6A9955`）：`/* ... */`，通过 `setCurrentBlockState()` / `previousBlockState()` 实现跨行状态跟踪。
+- 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行语法高亮，颜色**跟随当前 ThemeManager 主题（深色/浅色）自动切换**。
+- 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名/变量名）。
+- **颜色来源链**：`ConfigManager::syntaxXxx()` → `syntaxThemeOr(token, darkFallback, lightFallback)` → 优先从 `ThemeManager::color("syntax.xxx")` 读取当前主题 JSON，缺失则按 `currentThemeType()` 选择深色/浅色硬编码默认值。
+- **主题切换实时刷新**：构造函数末尾连接 `ThemeManager::themeChanged` 信号 → `initFormats()` 重建全部 Regex 规则 + `rehighlight()` 重绘。所有格式初始化逻辑抽取为 `initFormats()` 私有方法，构造函数和信号槽共用。
+- 高亮规则及应用优先级（低→高，后应用者覆盖前者）：
+
+| 优先级 | 规则 | Theme 键 | 深色默认 | 浅色默认 |
+|--------|------|----------|----------|----------|
+| 1 (最低) | **函数/方法调用** `\b(\w+)(?=\s*\()` | `syntax.functions` | `#dcdcaa` 金 | `#6b3a00` 深棕 |
+| 2 | **`::` 作用域** `\b(\w+)(?=\s*::)` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
+| 3 | **关键字**（所有，粗体） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
+| 4 | **控制流关键字** `if/for/while/return` 等（粗体，覆盖普通关键字） | `syntax.controlKeywords` | `#c792ea` 紫 | `#0000ff` 蓝 |
+| 5 | **基本/内置类型** `int/double/char/bool/float/size_t` 等（蓝色无粗体，不包括 STL 类型） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
+| 6 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#C586C0` 紫 | `#800080` 紫 |
+| 7 | **STL/Qt 类型** `vector/map/QString` 等 | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
+| 8 | class/struct/enum 声明名 | `syntax.types` | 同上 | 同上 |
+| 9 | **数字** | `syntax.numbers` | `#B5CEA8` 绿 | `#098658` 绿 |
+| 10 (最高 Regex) | **`#include` 路径** `#include\s+(<[^>]+>)` | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| 11 | **字符串/字符** | `syntax.strings` | `#CE9178` 橙 | `#a31515` 红 |
+| — | **参数/变量/属性** (LSP) | `syntax.parameters` | `#9CDCFE` 青 | `#001080` 深蓝 |
+| — | **单行/多行注释** | `syntax.comments` | `#6A9955` 绿 | `#008000` 绿 |
+
+- **函数调用规则最先应用**作为 fallback，后续关键字规则覆盖 `for (`/`while (`/`if (` 等，使控制流关键字在深色模式下保持紫色而非函数金色。
+- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static` 等，蓝色粗体）规则先应用；控制流关键字（`if`/`for`/`while`/`return`/`switch` 等 14 个，深色紫色/浅色蓝色粗体）规则随后覆盖。
+- **基本/内置类型独立分类**：`bool`/`char`/`int`/`double`/`float`/`long`/`short`/`wchar_t` 及 `size_t`/`intN_t`/`uintN_t` 等从 `cppCommonTypes()` 中拆分至新函数 `cppPrimitiveTypes()`，使用关键字蓝色但**不加粗**，与控制流关键字区分。STL 容器/智能指针/IO 流等保留在 `cppCommonTypes()` 中，使用类型青色（`syntax.types`）。`cout`/`cin`/`endl` 已从 `cppCommonTypes()` 移除，由 LSP semantic tokens 作为 `variable` 类型高亮为浅蓝色。
+- `#include` 路径规则在所有 regex 规则中**最后应用**（最高优先级），覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一为字符串色。
+- 注释通过 `highlightBlock` 中的字符扫描在**所有 regex 规则之后**执行，跟踪字符串/字符状态避免误着色。
+
+**括号对着色（`highlightBrackets()`）**：
+- `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
+- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
+- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。解码时对 `-1` 初始值做 `if (prevState < 0) prevState = 0` 归零处理，防止首次高亮时深度被误读为 31。
+- **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号。使用 `format()` 而非 `QTextLayout::formats()`，因为后者在 `highlightBlock()` 执行期间尚未被 Qt 提交更新，查询结果为空或陈旧。
+- **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（确保最终颜色一致）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
+
+**指针/引用运算符高亮**：
+- 两层机制高亮 C++ 代码中声明上下文里的 `*`（指针）和 `&`（引用/取地址）运算符为蓝色（`syntax.keywords`，`#569CD6`）。
+- **Regex 快速通道**：`\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b`，使用 `captureGroup = 2`。在字符串 regex 规则之前添加，确保字符串内的字符被覆盖。
+- **clangd 语义驱动**：`highlightBlock()` 在 semantic token 应用后，遍历当前 block 的类型 token（`type`/`class`/`struct`/`enum`/`typeParameter`），检查其后紧跟字符（跳过空白）是否为 `*` 或 `&`，若是则高亮。仅在目标位置未被前层着色时才设置，避免覆盖字符串/注释/regex 快速通道。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
+- 两层互补：Regex 通道立即生效（无需等待 clangd 响应），clangd 通道提供完整类型覆盖（300ms 后 `rehighlight()` 触发）。
+
+**语义高亮 (Semantic Tokens) 叠加机制**：
+- `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 LSP semantic tokens，按行号（0-based block number）索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
+- `clearSemanticTokens()`：清空 semantic tokens 并重绘。
+- `formatForTokenType(const QString &type)`：将 LSP token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`，`parameter`/`variable`/`property` → `m_parameterFormat`，`class`/`struct`/`enum`/`type` → `m_typeFormat`，`macro` → `m_preprocessorFormat`，`namespace` 返回空格式不额外高亮以避免视觉噪音。
+- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。这确保 LSP 高亮不会覆盖关键字、注释等基本语法着色。
+
+**内部结构 `HighlightingRule` 增强**：
+- 新增 `int captureGroup` 字段（默认 0 = 完整匹配），支持只高亮正则捕获组对应的子串。`#include` 头文件路径和函数调用规则使用此特性。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"cpp"` 语言的高亮器实现。
 - 被 `CodeEditor::setLanguage()` 调用并安装到 `QTextDocument` 上。
+- `CodeEditor::createCompletionProvider()` 和 `CodeEditor::setCompletionProvider()` 连接 `CompletionProvider::semanticTokensReady` 信号，通过 `qobject_cast<CppSyntaxHighlighter*>` 转发至 `setSemanticTokens()`。应用后 emit `CodeEditor::semanticTokensApplied()`，供 SmdCell 触发高度重算。
 
 ---
 
@@ -706,16 +800,38 @@
 **文件**：`pythonsyntaxhighlighter.h` / `pythonsyntaxhighlighter.cpp`
 
 **职责**：
-- 深色主题 Python 语法高亮，继承 `QSyntaxHighlighter`。
-- 关键字（`def`/`class`/`if`/`for`/`while`/`import` 等）：蓝色 `#569CD6` 加粗。
-- 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：青色 `#4EC9B0`。
-- 常量（`True`/`False`/`None`）：蓝色加粗。
-- 装饰器（`@` 开头）：紫色 `#C586C0`。
-- `self`/`cls`：黄色 `#DCDCAA`。
-- 字符串（普通、f-string、raw string，含前缀 `f`/`r`/`b`/`u`）：橙色 `#CE9178`。
-- 数字：绿色 `#B5CEA8`。
-- **注释**（`# 行`）：绿色 `#6A9955`。注释通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪 `'...'` 和 `"..."` 字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。这确保了注释内部的数字、字符串、关键字等内容不会被其他规则错误高亮（例如 `# {1:[2]}` 中 `1` 和 `2` 不会被错误着色为数字），同时字符串内部的 `#` 不会被误当作注释（例如 `x = "# not a comment"`）。
-- 三引号字符串（`"""` / `'''`）：绿色，支持跨行块状态跟踪。
+- Python 语法高亮，继承 `QSyntaxHighlighter`，颜色**跟随当前 ThemeManager 主题自动切换**。
+- 关键字（所有）：`syntax.keywords` 配色（深色蓝色 `#569CD6` / 浅色蓝色 `#0000ff`，加粗）。
+- **控制流关键字**（`if`/`elif`/`else`/`for`/`while`/`try`/`except`/`finally`/`with`/`return`/`yield`/`break`/`continue`/`raise`/`assert`/`pass`/`match`/`case`，18 个）：`syntax.controlKeywords` 配色（深色紫色 `#c792ea` / 浅色蓝色 `#0000ff`，加粗），规则置于普通关键字之后以覆盖。
+- 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：`syntax.types` 配色。
+- 常量（`True`/`False`/`None`，已包含在 pyKeywords 中）：随普通关键字配色。
+- 装饰器（`@` 开头）：`syntax.pythonDecorators` 配色。
+- `self`/`cls`：`syntax.pythonSelfCls` 配色。
+- 字符串（普通、f-string、raw string，含前缀）：`syntax.strings` 配色。
+- 数字：`syntax.numbers` 配色。
+- **函数调用**：`syntax.functions` 配色，Regex `\b(\w+)(?=\s*\()` 最先应用，确保 `print()`/`len()` 等以函数色而非内置色显示。
+- **注释**（`#`）：`syntax.comments` 配色。通过 `highlightBlock` 中的字符扫描实现——逐字符跟踪字符串状态（含转义字符和前缀处理），仅在字符串外检测到 `#` 时应用注释格式。
+- 三引号字符串（`"""` / `'''`）：`syntax.strings` 配色（橙色 `#CE9178`），支持跨行块状态跟踪（block state 1=双引号三引号，2=单引号三引号）。
+- **主题切换刷新**：连接 `ThemeManager::themeChanged` → `initFormats()` + `rehighlight()`，与 `CppSyntaxHighlighter` 机制相同。
+
+**括号对着色（`highlightBrackets()`）**：
+- `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
+- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的闭括号显示红色 `#FF0000`。
+- **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 三引号状态 0/1/2，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈。与三引号字符串的跨行状态在同一 `int` 中编码，互不干扰。解码时对 `-1` 初始值做归零处理，防止深度字段被误读。
+- **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()` 或 `syntaxStrings()`，若匹配则跳过。C++ 版本额外检查 `syntaxPreprocessor()`。
+
+**语义高亮 (Semantic Tokens) 叠加机制**（与 `CppSyntaxHighlighter` 相同的架构）：
+- `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 Python semantic tokens，按行号索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
+- `clearSemanticTokens()`：清空 semantic tokens 并重绘。
+- `formatForTokenType(const QString &type)`：将 token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`（`syntax.functions` 黄色），`class`/`type`/`module` → `m_builtinFormat`（`syntax.types` 青色/绿色），`parameter`/`variable`/`property` → `m_parameterFormat`（`syntax.parameters` 浅蓝色），`namespace` 返回空格式不额外高亮以避免视觉噪音。
+- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。确保 semantic 高亮不会覆盖关键字、字符串等基本语法着色。
+
+**Token 来源**（Jedi 子进程，非 LSP）：
+- `PythonCompletionProvider` 将文件代码经 `sanitizeForPython()` 规范化（替换 `\r\n`/`\r` → `\n`、替换孤立 surrogate 为 U+FFFD）后，通过 **base64 编码**发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。
+- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
+- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > parameter > property > variable > module）选择。
+- Token 以 fire-and-forget 模式发送（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，确保在 Jedi 解析耗时 >500ms 时响应不会因超时被丢弃。
+- `updateText()` 添加了**内容未变则跳过**的防护（`if (text == m_lastDiagnosticsText) return;`），防止 `rehighlight()` 触发的 `QTextDocument::contentsChanged` 信号导致无限循环请求。
 
 **协作关系**：
 - 由 `LanguageUtils::createHighlighter()` 工厂函数创建，作为 `"python"` 语言的高亮器实现。
@@ -1135,7 +1251,7 @@
 - `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor` 和 `m_baseFontSize`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
 - `void checkReRender()`：供 `SmdEditor` 在 `resizeEvent` 中调用的公共接口，检查当前 cell 宽度与 `m_lastRenderWidth` 的差异，大于 20px 时触发防抖重渲染。
-- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。连接 `blockCountChanged` 与 `contentsChanged` 触发。
+- `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。由 `blockCountChanged`、`contentsChanged` 和 `CodeEditor::semanticTokensApplied` 三个信号触发。语义高亮应用后需要重新计算高度，因为 `rehighlight()` 可能轻微改变 `QTextDocument::size()`，导致固定高度与文档实际大小不匹配。
   - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
   - **内容变更计数器**：`m_pendingContentChanges` 由 document 信号 lambda 递增、`updateEditorHeight` 入口原子性获取并清零。仅当计数器 > 0（真正的用户编辑）时才 `emit contentChanged()`，避免 layout 触发的重算虚假发射 LSP `cellContentChanged` → `syncVirtualDoc` 通知风暴。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
@@ -1381,37 +1497,54 @@
 
 **核心数据结构**：
 - `SmdDiagnostic`：诊断信息结构体（cellIndex、startLine/Col、endLine/Col、message、severity 1=错误,2=警告,3=信息,4=提示）。已从 `smdlspmanager.h` 移至独立的 `smddiagnostic.h`，供所有诊断生产者/消费者（SmdLspManager、CppCompletionProvider、PythonCompletionProvider、CodeEditor、BottomPanel、SmdDiagnosticsPanel）共享。
-- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪）。
+- `LanguageServer`：单语言 LSP 后端状态（`LspClient*`、初始化标志、虚拟文档 URI、cellRanges 映射表、cellOrder 顺序列表、请求 ID 跟踪、semantic tokens 请求 ID、token type/modifier legend）。
 - `m_activeCppGroup`：当前活动 C++ 程序组 ID（0 起始），虚拟文档仅向 clangd 发送该组的 cell。
 - `m_groupDiagnostics`：两级 Map（groupId → cellIndex → diagnostics），缓存各组诊断结果，支持切换 cell 时即时恢复，避免闪烁。
 
 **内部类 `CellCompletionAdapter`**：
 - 继承 `CompletionProvider`，持有 `SmdLspManager*` + `cellIndex`。
 - `requestCompletion/Hover/SignatureHelp(text, cursorPos)` 将绝对 cursorPos 转换为 cell 本地 (line, col)，委托给 `SmdLspManager::requestCompletion/Hover/SignatureHelp(cellIndex, line, col)`。
-- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
+- SmdLspManager 构造函数中连接 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`/`semanticTokensReadyForCell` 信号到对应 adapter 的标准 `CompletionProvider` 信号。
 
 **C++ LSP 后端**（clangd）：
 - `startCppServer()`：查找 clangd → 创建 `LspClient` → 连接信号 → `--fallback-style=Google` 参数启动。
-- `sendInitialize()`：发送 `initialize` 请求（JSON-RPC）。
-- 初始化完成后发送 `textDocument/didOpen` 通知（完整虚拟文档），之后每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`。
-- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp 响应。
+- `sendInitialize()`：发送 `initialize` 请求，声明 `capabilities.textDocument.semanticTokens` 能力（与独立 `CppCompletionProvider` 相同的声明方式），使 clangd 在响应中返回 `semanticTokensProvider.legend`。
+- 初始化完成后提取 `tokenTypeLegend` / `tokenModifierLegend`，发送 `textDocument/didOpen` 通知（完整虚拟文档），启动 300ms 防抖定时器 `m_cppSemanticTokensTimer` 请求初始 semantic tokens。
+- 每次 cell 内容变化通过 `syncVirtualDoc()` 发送 `textDocument/didChange`，同时重新启动 300ms 防抖定时器。
+- `requestCppSemanticTokens()`：发送 `textDocument/semanticTokens/full` 请求至 clangd。连接至 `m_cppSemanticTokensTimer`（`new QTimer(this)`，正确 parent 到 SmdLspManager，300ms 单次防抖）。
+- `parseSemanticTokens()`：解码 LSP delta-encoded 数据 `[deltaLine, deltaStart, length, type, modifiers]`，根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串。
+- `onCppResponseReceived()`：分发 initialize/completion/hover/signatureHelp/**semanticTokens** 响应。Semantic tokens 响应中，先将 virtual line → cell 本地 line 坐标转换（通过 `cellRanges` 映射表），按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
 - `onCppNotificationReceived()`：处理 `textDocument/publishDiagnostics` → `processDiagnostics()` 翻译行号 → `diagnosticsUpdated` 信号。
+- `onCppRequestFailed()`：semantic tokens 请求失败时静默忽略（非关键功能，仅回退到 regex-only 高亮）。
 - 崩溃自动重启（1s 延迟的 `QTimer::singleShot`）。
 
-**Python 后端**（Jedi + 诊断）：
-- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断请求。
-- 补全/悬停/签名请求：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`hoverReadyForCell`/`signatureHelpReadyForCell`。
+**Python 后端**（Jedi + 诊断 + 语义标记）：
+- `startPythonProcess()`：查找 Python → 启动 `completion_helper.py` 子进程（MergedChannels）。进程启动后若已有 Python cell 则自动触发初次诊断和语义标记请求。
+- **补全/签名请求**：将完整 Python 虚拟文档作为 `code` 字段发送，cursor 位置转换为虚拟文档 (line, col)。响应分发至 `completionReadyForCell`/`signatureHelpReadyForCell`。
+- **悬停请求**：通过 `sendPythonHoverLocal()` 发送**单个 cell 代码**（base64 编码，`code_b64` 字段）+ **cell 本地坐标**，绕过虚拟文档映射。`completion_helper.py` 优先检查 `code_b64` 否则回退 `code`，两者均 base64 解码。与诊断请求一致，消除了 `cellLocalToVirtual()` → `pythonVirtualDoc()` 链路中潜在的 off-by-one 偏差。响应分发至 `hoverReadyForCell`。
+- **Python 语义标记**（新增）：
+  - `m_pySemanticTokensTimer`（300ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后以及 `syncVirtualDoc()` 中启动，防抖触发 `requestPythonSemanticTokens()`。
+  - `requestPythonSemanticTokens()`：通过 `pythonVirtualDoc()` 拼接所有 Python cell 的虚拟文档，**base64 编码**后发送 `{"action":"tokens","code":"<base64>"}` 至 `completion_helper.py`，避免 JSON 序列化时孤立 surrogate 破坏换行符。采用 fire-and-forget 模式（`m_pyTokensPending` 标志），不占用 `m_pyTimeoutTimer`，确保长文档 Jedi 解析耗时 >1s 时响应不被丢弃。
+  - `processPythonResponse()` 中**优先检测 tokens 响应**（`m_pyTokensPending` 且 data[0] 含 `"line"` + `"type"` 字段），晚于其他请求超时时仍能正确处理。**`m_pyPending`/`m_pyRequestingCell` 的保存和清除在 tokens 检测块之后执行**，仅在 `m_pyPending == PyPending::SemanticTokens` 时于 tokens 分支内清除，防止 tokens 响应先到达时错误清除诊断请求的 pending 状态导致诊断被丢弃。响应通过 `cellRanges` 映射虚拟行号 → cell 本地行号，按 cellIndex 分组后 emit `semanticTokensReadyForCell`。
+  - `cellContentChanged()` 添加了**内容未变则跳过**的防护：`rehighlight()` 可触发 `QTextDocument::contentsChanged` 冒泡为 spurious contentChanged → 重启定时器 → 再次请求 → 无限循环。该防护比较缓存内容与传入内容，相同则直接返回，阻止循环。
 - **Python 诊断**（新增）：
   - `m_pyDiagnosticsTimer`（500ms 单次定时器）：在 `cellAdded`、`cellContentChanged`、Python 进程 `started` 后启动，防抖触发 `requestPythonDiagnostics()`。
   - `requestPythonDiagnostics()`：遍历 `m_pyServer.cellOrder`，对每个 Python cell 的代码调用 `sanitizeForPython()`（规范化 `\r\n`/`\r` → `\n`、替换孤立 surrogate），通过 **base64 编码**发送 `{"action":"diagnostics","cells":[{cellIndex,code}]}` 以避免 JSON 换行转义问题。
   - `completion_helper.py` 的 `handle_diagnostics(cells)` 对每个 cell 代码独立调用 `compile()`，返回 cell 本地行号（0-based）的诊断列表，无需虚拟文档坐标映射。
   - 响应在 `processPythonResponse()` 的 `PyPending::Diagnostics` 分支直接构建 `SmdDiagnostic` 并发射 `diagnosticsUpdated`，绕过 `processDiagnostics()`（后者为虚拟文档坐标映射设计）。过期诊断仅清除同语言（`m_pyCellContents.contains(ci)`）cell 的条目。
-  - `PyPending` 枚举新增 `Diagnostics` 值；超时/错误时不主动清除诊断（静默忽略）。
+  - `PyPending` 枚举新增 `Diagnostics`、`SemanticTokens` 值；超时/错误时语义标记 emit 空列表清除旧高亮，诊断不主动清除。
+- **Python 悬停修复**（新增）：
+  - `sanitizeForPython()` 末尾增加 **UTF-8 往返**（`QString::fromUtf8(out.toUtf8())`）：有效代理对正确编码为非 BMP 字符，孤立代理替换为 U+FFFD。解决两个相邻孤立代理被误判为有效对而穿透清理的边界情况。
+  - `PythonCompletionProvider::sendRequest()` 改为**先 `sanitizeForPython()` 再 base64 编码**发送 `code` 字段（与 `sendDiagnosticsRequest()` / `requestSemanticTokens()` 一致）。消除 JSON 序列化时 surrogate 字符破坏代码内容的根因。
+  - `PythonCompletionProvider::processResponse()` 改为**基于 JSON 结构的路由**：tokens（数组含 `line`+`type`）→ diagnostics（数组含 `startLine`）→ hover（对象含 `signature`）按结构优先检测，消除并发请求 pending 状态被覆盖导致响应错配的竞态条件。
+  - `SmdLspManager::sendPythonHoverLocal()`：发送单个 cell 代码（base64，`code_b64` 字段）+ cell 本地坐标，绕过虚拟文档映射。
+  - `completion_helper.py` main loop 统一处理：优先 `code_b64` 字段否则回退 `code` 字段，两者均 base64 解码，确保 SMD 和独立 `.py` 文件两条路径一致。
+  - `completion_helper.py` **`handle_hover()` 优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
 - `void cellAdded/cellRemoved/cellContentChanged/cellTypeChanged(cellIndex, langId, content)`：维护 cell 缓存和虚拟文档，延迟启动 LSP 后端。`cellAdded()` 在插入 `cellOrder` 前检查 `contains()` 护盾，防止重复信号连接导致同一 cell 重复插入；`cellRemoved()` 删除共享 adapter（`CellCompletionAdapter`）并从 `cellOrder` 中移除。
-- `void focusCell(int cellIndex)`：程序组切换入口。计算 cell 所属组，若与当前活动组不同则保存当前诊断至 `m_groupDiagnostics` 缓存、清除旧诊断、恢复新组缓存诊断、重建虚拟文档并同步至 clangd。
+- `void focusCell(int cellIndex)`：程序组切换入口。计算 cell 所属组，若与当前活动组不同则保存当前诊断至 `m_groupDiagnostics` 缓存、清除旧诊断、**清除旧组 semantic tokens**（emit 空列表使旧 cell 的高亮器清除语义着色）、恢复新组缓存诊断、重建虚拟文档并同步至 clangd。包含 `m_focusing` 重入防护标志，防止信号链（semanticTokensReadyForCell → rehighlight → 布局回调）导致递归调用。
 - `int computeCppGroup(int cellIndex) const`：遍历 `cellOrder` 中位于 `cellIndex` 之前的 C++ cell，通过正则 `\bmain\s*\(` 计数 `main()` 函数出现次数，返回 cell 所属程序组 ID。
 - `void requestCompletion/Hover/SignatureHelp(int cellIndex, int cursorLine, int cursorCol)`：公共请求 API，cell 本地位置 → 虚拟位置 → LSP 请求。
 - `CompletionProvider *providerForCell(int cellIndex, const QString &langId)`：返回 cell 对应的 CellCompletionAdapter。
@@ -1423,11 +1556,16 @@
 
 **独立文件诊断**（`.cpp`/`.py`，非 SMD）：
 - `CompletionProvider` 基类新增 `diagnosticsUpdated(QList<SmdDiagnostic>)` 信号（`completionprovider.h`），统一所有 provider 的诊断接口。
+- 新增 `SemanticToken` 结构体（`completionprovider.h`）：`int line`（0-based 行号）、`int startChar`（行内 0-based 字符偏移）、`int length`（token 长度）、`QString type`（LSP token 类型如 `"function"`/`"method"`/`"parameter"`/`"class"` 等）、`QStringList modifiers`（修饰符如 `"declaration"`/`"definition"`）。
+- 新增 `semanticTokensReady(QList<SemanticToken>)` 信号（`completionprovider.h`），供 `CppCompletionProvider`（LSP 语义标记）和 `PythonCompletionProvider`（Jedi 语义标记）发射 semantic tokens 至 CodeEditor → CppSyntaxHighlighter / PythonSyntaxHighlighter。
 - **C++ 独立文件**（`CppCompletionProvider`）：`onNotificationReceived()` 处理 clangd 的 `textDocument/publishDiagnostics` 通知，`parseDiagnostics()` 将 LSP 诊断 JSON 转换为 `SmdDiagnostic` 列表（`cellIndex = 0` 表示平面文件），emit `diagnosticsUpdated`。
-- **Python 独立文件**（`PythonCompletionProvider`）：新增 `sendDiagnosticsRequest()`，将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
+  - **语义高亮**：`sendInitialize()` 声明 `capabilities.textDocument.semanticTokens` 能力；初始化响应中提取 `legend`（tokenTypes/tokenModifiers 列表）存入 `m_tokenTypeLegend`/`m_tokenModifierLegend`。`updateText()` 发送 `didChange` 后启动 300ms 防抖定时器 `m_semanticTokensTimer`，到期后发送 `textDocument/semanticTokens/full` 请求。`parseSemanticTokens()` 解码 LSP delta-encoded 数据（每 5 个 int = 一组 token），根据 legend 将 tokenType 索引和 modifiers 位掩码映射为字符串，emit `semanticTokensReady`。
+- **Python 独立文件**（`PythonCompletionProvider`）：
+  - **诊断**：`sendDiagnosticsRequest()` 将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
+  - **语义高亮**：`requestSemanticTokens()` 通过 300ms 防抖定时器触发，代码经 `sanitizeForPython()` 处理（规范化行尾 + 替换孤立 surrogate）后 base64 编码发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。采用 fire-and-forget 模式（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，避免 Jedi 解析耗时较长（>500ms）导致响应被超时丢弃。`processResponse()` 中通过检测响应数据是否包含 `"line"` + `"type"` 字段来识别 tokens 响应，确保迟到响应仍被正确处理。`openDocument()` 和 `updateText()` 均启动防抖定时器，首次打开时通过 `serverReady` → `CodeEditor::onServerReady()` → `openDocument()` 链路在进程就绪后自动触发 tokens 请求。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
 - `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
-- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
+- `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell/semanticTokensReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
 - `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
 
 **协作关系**：

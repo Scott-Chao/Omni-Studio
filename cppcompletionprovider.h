@@ -6,6 +6,7 @@
 #include <QProcess>
 #include <QJsonObject>
 #include <QTimer>
+#include <QStringList>
 
 class LspClient;
 
@@ -40,6 +41,7 @@ private slots:
     void onServerError(QProcess::ProcessError err);
     void onServerStopped(int exitCode, QProcess::ExitStatus status);
     void onRequestTimeout();
+    void requestSemanticTokens();
 
 private:
     LspClient *m_client = nullptr;
@@ -50,11 +52,19 @@ private:
     int m_completionRequestId = -1;
     int m_hoverRequestId = -1;
     int m_signatureHelpRequestId = -1;
+    int m_semanticTokensRequestId = -1;
 
     // Request timeout
     QTimer m_requestTimer;
-    enum class PendingRequest { None, Completion, Hover, SignatureHelp };
+    enum class PendingRequest { None, Completion, Hover, SignatureHelp, SemanticTokens };
     PendingRequest m_pendingRequest = PendingRequest::None;
+
+    // Semantic tokens debounce
+    QTimer m_semanticTokensTimer;
+
+    // Semantic tokens legend from initialize response
+    QStringList m_tokenTypeLegend;
+    QStringList m_tokenModifierLegend;
 
     // Document sync state
     QString m_documentUri;
@@ -75,6 +85,7 @@ private:
     SignatureInfo parseSignatureHelpItem(const QJsonObject &sig);
     static QString completionKindToString(int kind);
     QList<SmdDiagnostic> parseDiagnostics(const QJsonArray &diags);
+    QList<SemanticToken> parseSemanticTokens(const QJsonObject &result);
 };
 
 #endif // CPPCOMPLETIONPROVIDER_H

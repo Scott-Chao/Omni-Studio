@@ -51,6 +51,7 @@ signals:
     void hoverReadyForCell(int cellIndex, HoverInfo info);
     void signatureHelpReadyForCell(int cellIndex, QList<SignatureInfo> signatures,
                                    int activeIndex);
+    void semanticTokensReadyForCell(int cellIndex, QList<SemanticToken> tokens);
     void serverReady(const QString &langId);
     void serverFailed(const QString &langId, const QString &reason);
 
@@ -72,9 +73,14 @@ private:
         int completionRequestId = -1;
         int hoverRequestId = -1;
         int signatureHelpRequestId = -1;
+        int semanticTokensRequestId = -1;
         enum RequestType { None, Completion, Hover, SignatureHelp };
         RequestType pendingType = None;
         int requestingCellIndex = -1;
+
+        // Semantic tokens
+        QStringList tokenTypeLegend;
+        QStringList tokenModifierLegend;
 
         void reset();
     };
@@ -113,11 +119,15 @@ private:
     void onPyTimeout();
 
     void processDiagnostics(const QString &langId, const QJsonObject &params);
+    void requestCppSemanticTokens();
+    QList<SemanticToken> parseSemanticTokens(const QJsonObject &result);
 
     // Python-specific
     void startPythonProcess();
     void sendPythonRequest(const QString &action, int cellIndex, int line, int col);
+    void sendPythonHoverLocal(int cellIndex, int line, int col);
     void requestPythonDiagnostics();
+    void requestPythonSemanticTokens();
     void processPythonResponse(const QByteArray &line);
     void emitPythonEmptyResults();
     QString pythonVirtualDoc() const;
@@ -135,9 +145,12 @@ private:
     QProcess *m_pyProcess = nullptr;
     QTimer m_pyTimeoutTimer;
     QTimer m_pyDiagnosticsTimer;
-    enum class PyPending { None, Completion, Hover, SignatureHelp, Diagnostics };
+    QTimer *m_pySemanticTokensTimer = nullptr;
+    QTimer *m_cppSemanticTokensTimer = nullptr;
+    enum class PyPending { None, Completion, Hover, SignatureHelp, Diagnostics, SemanticTokens };
     PyPending m_pyPending = PyPending::None;
     int m_pyRequestingCell = -1;
+    bool m_pyTokensPending = false;
 
     // Per-cell diagnostics
     QMap<int, QList<SmdDiagnostic>> m_diagnostics;
@@ -151,6 +164,7 @@ private:
     QMap<int, CellCompletionAdapter*> m_adapters;
 
     bool m_shuttingDown = false;
+    bool m_focusing = false;
 };
 
 #endif // SMDLSPMANAGER_H

@@ -3,7 +3,7 @@
 
 Communicates via stdin/stdout JSON lines protocol:
 
-Request:  {"action":"complete|hover|signature","code":"...","cursor":[line,col]}
+Request:  {"action":"complete|hover|signature|tokens","code":"...","cursor":[line,col]}
 Response: {"ok":true,"data":...}  or  {"ok":false,"error":"..."}
 
 line/col are 0-based.
@@ -11,6 +11,7 @@ line/col are 0-based.
 
 import sys
 import json
+import re
 import base64
 import traceback
 
@@ -38,17 +39,6 @@ def handle_complete(script, line, col):
 
 def handle_hover(script, line, col):
     """Return hover info matching HoverInfo struct."""
-    signatures = script.get_signatures(line, col)
-    if signatures:
-        sig = signatures[0]
-        info = {
-            "signature": sig.description or "",
-            "doc": sig.docstring() or "",
-            "definition": sig.module_name or "",
-        }
-        return info
-
-    # Fallback: use inferred type
     names = script.infer(line, col)
     if names:
         n = names[0]
@@ -56,6 +46,17 @@ def handle_hover(script, line, col):
             "signature": f"{n.name}: {n.type}" if n.type else n.name,
             "doc": n.docstring() or "",
             "definition": n.module_name or "",
+        }
+        return info
+
+    # Fallback: use function signature
+    signatures = script.get_signatures(line, col)
+    if signatures:
+        sig = signatures[0]
+        info = {
+            "signature": sig.description or "",
+            "doc": sig.docstring() or "",
+            "definition": sig.module_name or "",
         }
         return info
 
@@ -113,6 +114,62 @@ def handle_diagnostics(cells):
     return diagnostics
 
 
+def handle_tokens(script, code):
+    """Return list of semantic tokens — definitions AND all reference occurrences.
+
+    Jedi's get_names() only returns definitions, but for highlighting we want
+    every occurrence of a named identifier.  We collect the type for each
+    defined name and then use regex word-boundary search to find every usage
+    in the source (including the definition itself).
+    """
+    names = script.get_names(all_scopes=True)
+    if not names:
+        return []
+
+    # 1. Collect (name_str, type) for each definition, keeping the most
+    #    specific type when the same name is defined in multiple scopes.
+    TYPE_PRIORITY = {
+        "function": 6,
+        "class": 5,
+        "parameter": 4,
+        "property": 3,
+        "variable": 2,
+        "module": 1,
+    }
+    name_type = {}  # name_str → (priority, type)
+    for n in names:
+        token_type = _jedi_type_to_string(n.type)
+        # Keywords are already handled by the regex highlighter
+        if token_type == "keyword":
+            continue
+        prio = TYPE_PRIORITY.get(token_type, 0)
+        old = name_type.get(n.name)
+        if old is None or prio > old[0]:
+            name_type[n.name] = (prio, token_type)
+
+    # 2. Regex-scan the source for every occurrence of each name.
+    code_lines = code.split('\n')
+    tokens = []
+    seen = set()
+    for name_str, (_prio, ttype) in name_type.items():
+        escaped = re.escape(name_str)
+        pattern = re.compile(r'\b' + escaped + r'\b')
+        for line_idx, line_text in enumerate(code_lines):
+            for m in pattern.finditer(line_text):
+                col_0based = m.start()
+                key = (line_idx, col_0based)
+                if key in seen:
+                    continue
+                seen.add(key)
+                tokens.append({
+                    "line": line_idx,
+                    "startChar": col_0based,
+                    "length": len(name_str),
+                    "type": ttype,
+                })
+    return tokens
+
+
 def handle_signature(script, line, col):
     """Return list of signature info matching SignatureInfo struct."""
     signatures = script.get_signatures(line, col)
@@ -139,7 +196,7 @@ def _jedi_type_to_string(jedi_type):
         "instance": "variable",
         "statement": "variable",
         "keyword": "keyword",
-        "param": "variable",
+        "param": "parameter",
         "property": "property",
     }
     return mapping.get(jedi_type, "text")
@@ -192,7 +249,22 @@ def main():
             if action == "diagnostics":
                 cells = req.get("cells", [])
                 data = handle_diagnostics(cells)
+            elif action == "tokens":
+                # code is base64-encoded to avoid JSON escaping issues
+                try:
+                    code = base64.b64decode(code).decode("utf-8")
+                except Exception:
+                    code = ""
+                script = jedi.Script(code=code, path="untitled.py")
+                data = handle_tokens(script, code)
             elif action in ("complete", "hover", "signature"):
+                # Both SMD ("code_b64") and standalone ("code") now send
+                # base64-encoded code to avoid JSON/UTF-8 surrogate issues.
+                raw = req.get("code_b64", "") or req.get("code", "")
+                try:
+                    code = base64.b64decode(raw).decode("utf-8")
+                except Exception:
+                    code = ""
                 script = jedi.Script(code=code, path="untitled.py")
                 if action == "complete":
                     data = handle_complete(script, line_1based, col)
