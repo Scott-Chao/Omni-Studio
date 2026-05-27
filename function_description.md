@@ -60,9 +60,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- 修复括号跨行配对被错误高亮为红色的问题
-- 修复字符串内的括号错误高亮的问题
+### 新增
+- 代码编辑器选中区域高亮保留
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -602,6 +601,9 @@
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
 - **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的闭括号显示红色。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
+- **指针/引用运算符高亮**：`CppSyntaxHighlighter` 通过两层机制对声明上下文中的 `*`（指针）和 `&`（引用/取地址）运算符进行蓝色（`#569CD6`）高亮：
+  - **Regex 快速通道**：正则 `\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b` 在 `initFormats()` 中提前于字符串规则添加，覆盖基本类型和 `auto` 后的 `*`/`&`。高亮后立即生效，不等待 clangd。
+  - **clangd 语义驱动**：`highlightBlock()` 在应用 semantic tokens 后，遍历当前 block 中类型为 `type`/`class`/`struct`/`enum`/`typeParameter` 的 token，检查其后紧跟的字符（跳过空白）是否为 `*` 或 `&`，若是则应用 `m_operatorFormat`。仅在目标位置尚未被前层着色（如字符串、注释或 regex 快速通道）时才设置，避免覆盖。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
 - 编辑器主题：深色背景（`#1E1E1E`），浅灰前景（`#D4D4D4`），Consolas 12pt 等宽字体，禁用自动换行。
 
 **主要接口**：
@@ -642,6 +644,14 @@
 **诊断波浪线渲染**：
 - `updateExtraSelectionsWithDiagnostics()`：将 `m_diagnostics` 列表转换为 `QTextEdit::ExtraSelection`（错误红色 `#F44747` / 警告黄色 `#CCA700` 波浪下划线，tooltip 显示诊断信息），与当前行高亮、搜索高亮合并后通过 `setExtraSelections()` 统一应用。
 - 由 `highlightCurrentLine()` 和 `setDiagnostics()` 触发刷新。
+
+**选中渲染（保留语法高亮）**：
+- Qt 内置选中机制会用 `QPalette::HighlightedText`（暗色主题下为白色）覆盖所有选中文字的语法前景色。为保留选中区域的语法高亮，覆盖 `paintEvent()` 实现自定义选中渲染：
+  - 临时调用 `cursor.clearSelection()` + `setTextCursor()` 清除光标选中状态，让 `QPlainTextEdit::paintEvent()` 以完整语法颜色绘制文字。
+  - 绘制完成后通过 `QPainter` 在 viewport 上叠加半透明的选中背景 `m_cachedSelectionBg`（`editor.selectionBackground`）。alpha 值根据主题自适应：暗色主题 120，亮色主题 80，确保两种模式下均有足够的对比度。
+  - 选中区域逐行计算：遍历选中范围内的 `QTextBlock` → `QTextLayout` → `QTextLine`，通过 `cursorRect()` 获取每行选中部分的起止矩形，`fillRect()` 填充。
+  - `m_inPaintSelection` 布尔标志防止 `setTextCursor()` 触发 `selectionChanged` 信号导致递归重绘。
+  - `lineEnd = lineStart + line.textLength()` 不额外减 1（`QTextLine::textLength()` 含行尾换行符），由 `qMin(lineEnd, selEnd)` 结合 `selEnd` 正确裁剪，确保每行最后一个可见字符不被遗漏。
 
 **内部类 `LineNumberArea`**：
 - 继承 `QWidget`，作为 `CodeEditor` 的子控件。
@@ -726,6 +736,12 @@
 - **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。解码时对 `-1` 初始值做 `if (prevState < 0) prevState = 0` 归零处理，防止首次高亮时深度被误读为 31。
 - **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号。使用 `format()` 而非 `QTextLayout::formats()`，因为后者在 `highlightBlock()` 执行期间尚未被 Qt 提交更新，查询结果为空或陈旧。
 - **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（确保最终颜色一致）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
+
+**指针/引用运算符高亮**：
+- 两层机制高亮 C++ 代码中声明上下文里的 `*`（指针）和 `&`（引用/取地址）运算符为蓝色（`syntax.keywords`，`#569CD6`）。
+- **Regex 快速通道**：`\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b`，使用 `captureGroup = 2`。在字符串 regex 规则之前添加，确保字符串内的字符被覆盖。
+- **clangd 语义驱动**：`highlightBlock()` 在 semantic token 应用后，遍历当前 block 的类型 token（`type`/`class`/`struct`/`enum`/`typeParameter`），检查其后紧跟字符（跳过空白）是否为 `*` 或 `&`，若是则高亮。仅在目标位置未被前层着色时才设置，避免覆盖字符串/注释/regex 快速通道。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
+- 两层互补：Regex 通道立即生效（无需等待 clangd 响应），clangd 通道提供完整类型覆盖（300ms 后 `rehighlight()` 触发）。
 
 **语义高亮 (Semantic Tokens) 叠加机制**：
 - `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 LSP semantic tokens，按行号（0-based block number）索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。

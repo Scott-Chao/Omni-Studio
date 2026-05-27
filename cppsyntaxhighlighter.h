@@ -40,6 +40,7 @@ private:
     QTextCharFormat m_functionFormat;
     QTextCharFormat m_includeHeaderFormat;
     QTextCharFormat m_parameterFormat;
+    QTextCharFormat m_operatorFormat;
     QTextCharFormat m_singleLineCommentFormat;
     QTextCharFormat m_multiLineCommentFormat;
 

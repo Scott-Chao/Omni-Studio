@@ -116,6 +116,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_cachedLnBg = tm.color("editorLineNumber.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
+    m_cachedSelectionBg = tm.color("editor.selectionBackground");
 
     setLineWrapMode(QPlainTextEdit::NoWrap);
 
@@ -188,6 +189,7 @@ void CodeEditor::reloadColors()
     m_cachedLnBg = tm.color("editorLineNumber.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
+    m_cachedSelectionBg = tm.color("editor.selectionBackground");
 
     // Rebuild search highlights with new theme colors
     if (!m_searchHighlightText.isEmpty()) {
@@ -1261,6 +1263,70 @@ void CodeEditor::focusOutEvent(QFocusEvent *event)
 {
     hideSignatureHelp();
     QPlainTextEdit::focusOutEvent(event);
+}
+
+void CodeEditor::paintEvent(QPaintEvent *event)
+{
+    QTextCursor cursor = textCursor();
+    if (!cursor.hasSelection() || m_inPaintSelection) {
+        QPlainTextEdit::paintEvent(event);
+        return;
+    }
+
+    m_inPaintSelection = true;
+    int selStart = cursor.selectionStart();
+    int selEnd = cursor.selectionEnd();
+
+    // Temporarily clear selection so Qt draws text with syntax colors intact
+    cursor.clearSelection();
+    setTextCursor(cursor);
+    QPlainTextEdit::paintEvent(event);
+
+    // Overlay semi-transparent selection background on top of syntax-colored text
+    {
+        QPainter painter(viewport());
+        QColor selBg = m_cachedSelectionBg;
+        // Higher alpha in dark themes for sufficient contrast against dark backgrounds
+        bool isDark = ThemeManager::instance().currentThemeType() == ThemeManager::Dark;
+        selBg.setAlpha(isDark ? 120 : 80);
+
+        QTextDocument *doc = document();
+        QTextBlock block = doc->findBlock(selStart);
+        QTextCursor rc(doc);
+
+        while (block.isValid() && block.position() < selEnd) {
+            QTextLayout *layout = block.layout();
+            if (layout) {
+                for (int i = 0; i < layout->lineCount(); ++i) {
+                    QTextLine line = layout->lineAt(i);
+                    int lineStart = block.position() + line.textStart();
+                    int lineEnd = lineStart + line.textLength();
+
+                    int s = qMax(lineStart, selStart);
+                    int e = qMin(lineEnd, selEnd);
+                    if (s > e) continue;
+
+                    rc.setPosition(s);
+                    QRect r1 = cursorRect(rc);
+                    rc.setPosition(e);
+                    QRect r2 = cursorRect(rc);
+
+                    QRect fillRect(qMin(r1.left(), r2.left()), r1.top(),
+                                   qMax(r1.right(), r2.right()) - qMin(r1.left(), r2.left()),
+                                   r1.height());
+                    painter.fillRect(fillRect, selBg);
+                }
+            }
+            block = block.next();
+        }
+    }
+
+    // Restore selection
+    cursor = textCursor();
+    cursor.setPosition(selStart);
+    cursor.setPosition(selEnd, QTextCursor::KeepAnchor);
+    setTextCursor(cursor);
+    m_inPaintSelection = false;
 }
 
 // ---- Helpers ----

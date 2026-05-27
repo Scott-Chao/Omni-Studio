@@ -129,6 +129,17 @@ void CppSyntaxHighlighter::initFormats()
         m_rules.append(rule);
     }
 
+    // --- Pointer / reference operator format (blue, same as keywords) ---
+    m_operatorFormat.setForeground(cfg.syntaxKeywords());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(
+            QStringLiteral("\\b(?:const\\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\\s*([*&]+)\\b"));
+        rule.format = m_operatorFormat;
+        rule.captureGroup = 2;
+        m_rules.append(rule);
+    }
+
     // --- String / char / raw string format ---
     m_stringFormat.setForeground(cfg.syntaxStrings());
     {
@@ -300,6 +311,62 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
             }
 
             setFormat(token.startChar, token.length, fmt);
+        }
+
+        // Highlight * and & operators that follow type tokens (clangd-driven, handles all types)
+        for (const SemanticToken &token : it.value()) {
+            if (token.type != QStringLiteral("type") &&
+                token.type != QStringLiteral("class") &&
+                token.type != QStringLiteral("struct") &&
+                token.type != QStringLiteral("enum") &&
+                token.type != QStringLiteral("typeParameter"))
+                continue;
+
+            int pos = token.startChar + token.length;
+            if (pos >= text.length())
+                continue;
+
+            // Skip whitespace, template closing '>', and cv-qualifiers between type and operator.
+            // Handles: "int*", "int *", "QMap<A,B> &", "QMap<A,B>*", "int const *", etc.
+            for (;;) {
+                while (pos < text.length() && text[pos].isSpace())
+                    pos++;
+                if (pos >= text.length())
+                    break;
+                if (text[pos] == QLatin1Char('*') || text[pos] == QLatin1Char('&'))
+                    break;
+                // Skip template closing brackets (single or nested >>)
+                if (text[pos] == QLatin1Char('>')) {
+                    pos++;
+                    continue;
+                }
+                // Skip cv-qualifiers
+                if (text.mid(pos, 5) == QLatin1String("const") &&
+                    (pos + 5 >= text.length() || !text[pos + 5].isLetterOrNumber())) {
+                    pos += 5;
+                    continue;
+                }
+                if (text.mid(pos, 8) == QLatin1String("volatile") &&
+                    (pos + 8 >= text.length() || !text[pos + 8].isLetterOrNumber())) {
+                    pos += 8;
+                    continue;
+                }
+                break;
+            }
+
+            if (pos >= text.length())
+                continue;
+            if (text[pos] != QLatin1Char('*') && text[pos] != QLatin1Char('&'))
+                continue;
+
+            // Don't overwrite already-formatted positions (string, comment, or regex-fallback)
+            if (format(pos).hasProperty(QTextFormat::ForegroundBrush))
+                continue;
+
+            int start = pos;
+            while (pos < text.length() && (text[pos] == QLatin1Char('*') || text[pos] == QLatin1Char('&')))
+                pos++;
+            setFormat(start, pos - start, m_operatorFormat);
         }
     }
 
