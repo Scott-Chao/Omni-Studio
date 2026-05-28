@@ -283,7 +283,7 @@ void TabManager::updateTabTitle(EditorWidget *editor)
         title += " *";
 
     setTabText(idx, title);
-    // 预览标签页的斜体样式由 CustomTabBar::initStyleOption 自动处理
+    // 预览标签页的斜体样式由 CustomTabBar::paintEvent 处理
 }
 
 EditorWidget* TabManager::findEditorByPath(const QString &filePath) const {
@@ -339,72 +339,130 @@ void TabManager::updateEditorFilePath(const QString &oldPath, const QString &new
     }
 }
 
+// DragOverlay 实现：z-order 高于所有关闭按钮 widget
+DragOverlay::DragOverlay(QWidget *parent)
+    : QWidget(parent)
+{
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+}
+
+void DragOverlay::setPixmap(const QPixmap &pm)
+{
+    m_pixmap = pm;
+    setFixedSize(pm.size());
+    update();
+}
+
+void DragOverlay::paintEvent(QPaintEvent *)
+{
+    if (!m_pixmap.isNull()) {
+        QPainter p(this);
+        p.drawPixmap(0, 0, m_pixmap);
+    }
+}
+
 CustomTabBar::CustomTabBar(QWidget *parent)
     : QTabBar(parent)
 {
-    setMovable(true); // 允许用户通过拖拽重新排列标签
+    setMovable(true);
+    setExpanding(true);
+    setElideMode(Qt::ElideRight);
 }
 
 void CustomTabBar::mousePressEvent(QMouseEvent *event)
 {
-    QTabBar::mousePressEvent(event); // 先调用基类处理，保证基本的点击/拖拽初始化
+    QTabBar::mousePressEvent(event);
 
-    // 记录左键按下时的信息，用于后续拖拽边界计算
     if (event->button() == Qt::LeftButton) {
-        m_dragIndex = tabAt(event->pos());  // 获取被点击的标签索引
+        m_dragIndex = tabAt(event->pos());
         if (m_dragIndex != -1) {
             m_dragPressPos = event->pos();
 
-            // 获取被点标签的几何矩形
             QRect currentTabRect = tabRect(m_dragIndex);
-            m_dragTabWidth = currentTabRect.width(); // 标签宽度
-            m_dragOffsetX = m_dragPressPos.x() - currentTabRect.left(); // 鼠标相对于标签左边缘的偏移
+            m_dragTabWidth = currentTabRect.width();
+            m_dragOffsetX = m_dragPressPos.x() - currentTabRect.left();
 
-            // 尚未开始拖拽，等待 move 事件超过阈值
+            const TabManager *tm = qobject_cast<const TabManager*>(parent());
+            m_dragEditor = tm ? qobject_cast<EditorWidget*>(tm->widget(m_dragIndex)) : nullptr;
+
             m_dragStarted = false;
             m_dragInProgress = false;
         } else {
-            m_dragIndex = -1; // 点击空白处，重置
+            m_dragIndex = -1;
+            m_dragEditor = nullptr;
         }
     }
 }
 
 void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
 {
-    // 只有当按下左键且指向一个有效标签时才考虑拖拽
     if (m_dragIndex != -1 && (event->buttons() & Qt::LeftButton)) {
-        // 判断是否超过系统拖拽起始距离，防止轻微抖动触发拖拽
         if (!m_dragStarted &&
             (event->pos() - m_dragPressPos).manhattanLength() >= QApplication::startDragDistance())
         {
             m_dragStarted = true;
             m_dragInProgress = true;
+            m_dragOverlay = new DragOverlay(this);
+            m_dragOverlay->show();
+            m_dragOverlay->raise();
         }
 
         if (m_dragInProgress) {
-            // 整个被拖标签（宽度 m_dragTabWidth）始终完整出现在标签栏内部，不能越界，鼠标在标签内的偏移量为 m_dragOffsetX
-            int leftBound  = m_dragOffsetX; // 当鼠标 x == m_dragOffsetX 时，标签左边缘刚好对齐栏左侧。
-            int rightBound = width() - (m_dragTabWidth - m_dragOffsetX); // 当鼠标 x == width() - (m_dragTabWidth - m_dragOffsetX) 时，标签右边缘刚好对齐栏右侧。
-
+            int leftBound  = m_dragOffsetX;
+            int rightBound = width() - (m_dragTabWidth - m_dragOffsetX);
             QPoint clampedPos = event->pos();
             clampedPos.setX(qBound(leftBound, clampedPos.x(), rightBound));
+            m_dragCurrentPos = clampedPos;
 
-            QPoint globalClamped = mapToGlobal(clampedPos); // 同步修正全局坐标，确保浮动标签渲染位置与钳制后的本地坐标一致
+            int dragCenterX = clampedPos.x() - m_dragOffsetX + m_dragTabWidth / 2;
+            int targetIdx = tabAt(QPoint(dragCenterX, clampedPos.y()));
 
-            // 构造一个坐标被钳制过的事件副本，转发给基类继续处理拖拽动画和重排逻辑
-            QMouseEvent clampedEvent(
-                event->type(),
-                clampedPos,
-                globalClamped,
-                event->button(),
-                event->buttons(),
-                event->modifiers()
-                );
-            QTabBar::mouseMoveEvent(&clampedEvent);
+            if (targetIdx >= 0 && qAbs(dragCenterX - m_lastMoveCenterX) >= m_dragTabWidth / 3) {
+                const TabManager *tm = qobject_cast<const TabManager*>(parent());
+                if (tm && m_dragEditor) {
+                    int currentIdx = -1;
+                    for (int i = 0; i < count(); ++i) {
+                        if (qobject_cast<EditorWidget*>(tm->widget(i)) == m_dragEditor) {
+                            currentIdx = i;
+                            break;
+                        }
+                    }
+                    if (currentIdx >= 0 && currentIdx != targetIdx) {
+                        // 滞回：拖拽中心必须完全退出当前标签的 rect 才允许交换
+                        QRect curR = tabRect(currentIdx);
+                        bool pastThreshold = false;
+                        if (targetIdx > currentIdx)
+                            pastThreshold = (dragCenterX > curR.right());
+                        else
+                            pastThreshold = (dragCenterX < curR.left());
+
+                        if (pastThreshold) {
+                            moveTab(currentIdx, targetIdx);
+                            m_lastMoveCenterX = dragCenterX;
+                        }
+                    }
+                }
+            }
+
+            update();
             return;
         }
     }
-    QTabBar::mouseMoveEvent(event); // 未处于拖拽状态，或拖拽尚未开始，按普通移动处理
+    QTabBar::mouseMoveEvent(event);
+}
+
+void CustomTabBar::initStyleOption(QStyleOptionTab *option, int tabIndex) const
+{
+    QTabBar::initStyleOption(option, tabIndex);
+    const TabManager *tm = qobject_cast<const TabManager*>(parent());
+    if (tm) {
+        EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(tabIndex));
+        if (editor && tm->isPreviewEditor(editor)) {
+            QFont f = font();
+            f.setItalic(true);
+            option->fontMetrics = QFontMetrics(f);
+        }
+    }
 }
 
 void CustomTabBar::paintEvent(QPaintEvent *event)
@@ -418,44 +476,89 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
 
     QPainter painter(this);
     QFont normalFont = font();
+    QFont italicFont = normalFont;
+    italicFont.setItalic(true);
 
+    int draggedIdx = -1;
+    bool draggedIsPreview = false;
+    if (m_dragInProgress && m_dragEditor) {
+        for (int i = 0; i < count(); ++i) {
+            if (qobject_cast<EditorWidget*>(tm->widget(i)) == m_dragEditor) {
+                draggedIdx = i;
+                draggedIsPreview = tm->isPreviewEditor(m_dragEditor);
+                break;
+            }
+        }
+    }
+
+    // 绘制所有标签，被拖标签在原位以低透明度 ghost 形式显示
     for (int i = 0; i < count(); ++i) {
         QStyleOptionTab opt;
         initStyleOption(&opt, i);
 
         EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(i));
-        if (editor && tm->isPreviewEditor(editor)) {
-            QFont italicFont = normalFont;
-            italicFont.setItalic(true);
+        if (editor && tm->isPreviewEditor(editor))
             painter.setFont(italicFont);
-        } else {
+        else
             painter.setFont(normalFont);
-        }
+
+        if (i == draggedIdx)
+            painter.setOpacity(0.3);
+        else
+            painter.setOpacity(1.0);
 
         style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+    }
+    painter.setOpacity(1.0);
+
+    // 拖拽中：将标签+关闭按钮合成到 pixmap，置于 overlay（高于所有 widget）
+    if (draggedIdx >= 0 && m_dragOverlay) {
+        QRect tabR = tabRect(draggedIdx);
+        QPixmap pm(m_dragTabWidth, tabR.height());
+        pm.fill(Qt::transparent);
+        {
+            QPainter pp(&pm);
+            QStyleOptionTab opt;
+            initStyleOption(&opt, draggedIdx);
+            opt.rect = QRect(0, 0, m_dragTabWidth, tabR.height());
+            opt.position = QStyleOptionTab::Moving;
+            pp.setFont(draggedIsPreview ? italicFont : normalFont);
+            style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+
+            // 把关闭按钮 widget 渲染到 pixmap 上
+            QWidget *btn = tabButton(draggedIdx, QTabBar::RightSide);
+            if (!btn) btn = tabButton(draggedIdx, QTabBar::LeftSide);
+            if (btn) {
+                QPoint relPos = btn->pos() - tabR.topLeft();
+                btn->render(&pp, relPos, QRegion(), QWidget::DrawChildren);
+            }
+        }
+        m_dragOverlay->setPixmap(pm);
+        m_dragOverlay->move(m_dragCurrentPos.x() - m_dragOffsetX, tabR.top());
+        m_dragOverlay->raise();
     }
 }
 
 QSize CustomTabBar::tabSizeHint(int index) const
 {
     QSize size = QTabBar::tabSizeHint(index);
-    const TabManager *tm = qobject_cast<const TabManager*>(parent());
-    if (tm) {
-        EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(index));
-        if (editor && tm->isPreviewEditor(editor)) {
-            size.setWidth(size.width() + 8);
-        }
-    }
+    size.setWidth(140);
     return size;
 }
 
 void CustomTabBar::mouseReleaseEvent(QMouseEvent *event)
 {
-    QTabBar::mouseReleaseEvent(event); // 调用基类完成标签放置
-    // 重置所有拖拽相关状态
+    delete m_dragOverlay;
+    m_dragOverlay = nullptr;
+
+    QTabBar::mouseReleaseEvent(event);
     m_dragStarted = false;
     m_dragInProgress = false;
     m_dragIndex = -1;
+    m_dragEditor = nullptr;
+    m_lastMoveCenterX = 0;
+
+    update();
 }
 
 void TabManager::updatePathsAfterMove(const QString &oldBase, const QString &newBase)

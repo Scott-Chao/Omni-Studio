@@ -5,7 +5,7 @@
 - 支持多种文本文件格式（`.md`、`.txt`、`.c`、`.cpp`、`.py`、`.js`、`.html`、`.css`、`.json`、`.xml` 等 40+ 种常见文本文件扩展名），所有文件均以纯文本形式呈现在编辑器中
 - 文件的新建，保存，另存为操作，支持快捷键
 - 关闭文件时提示未保存的修改
-- 同时打开多个文件，显示在标签页栏中，拖拽标签页时，整个标签矩形始终不超出标签页栏的左右边界
+- 同时打开多个文件，显示在标签页栏中。所有标签页强制等宽（140px 基准 + 平均分配剩余空间），文字溢出用 "..." 省略。拖拽标签页时：原位显示半透明 ghost 标签（30% 透明度），浮动标签通过 DragOverlay 覆盖层（z-order 高于关闭按钮 widget）跟随鼠标，拖拽经过一半位置自动交换重排（带滞回和冷却距离防抖），整个标签矩形不超出标签页栏左右边界。
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换，仅在打开`.md`文件时可用。预览支持 GitHub Flavored Markdown、LaTeX 数学公式和 Mermaid 图表渲染
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
@@ -60,8 +60,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.7
-- 修复启动时短暂闪现白色小窗口的问题：将 `OverlayWidget`（设置/帮助面板遮罩层）从构造函数中提前创建改为在 `toggleSettings()` / `toggleHelp()` 中延迟初始化，避免 `MainWindow` 构造阶段产生顶层 `Qt::Tool` 窗口的原生 HWND 闪烁
+### 修复
+标签页栏显示修复
+- 标签页等宽
+- 拖动时原来的位置替换为 30% 透明度显示
+- 拖动防抖
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -176,7 +179,12 @@
 - 监听每个编辑器的 `modificationChanged` 和 `fileSaved` 信号，自动更新对应标签标题（修改时添加 `*` 号）。
 - 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字"保存"、"不保存"、"取消"）。
 - 提供 `closeAllTabs()` 方法，用于主窗口关闭时逐个尝试关闭所有标签页，若任一用户取消则返回 `false` 阻止退出。
-- 使用自定义子类 `CustomTabBar` 替换默认标签栏，以实现拖拽边界限制。`CustomTabBar` 覆盖 `paintEvent` 和 `tabSizeHint`：对预览标签页使用斜体字体渲染并为斜体文字预留额外宽度（+8px），避免右侧裁剪。
+- 使用自定义子类 `CustomTabBar` 替换默认标签栏，强制所有标签等宽（140px 基准，`setExpanding(true)` 平均分配多余空间，`setElideMode(Qt::ElideRight)` 文字溢出省略）。拖拽功能完全由 `CustomTabBar` 自行管理，不依赖 Qt 内置拖拽机制：
+  - **DragOverlay**：`QWidget` 子控件（`WA_TransparentForMouseEvents`），z-order 高于所有关闭按钮 widget。paintEvent 将 `CE_TabBarTab` + 关闭按钮 `QWidget::render()` 合成到 `QPixmap` 并显示于鼠标位置，实现浮动标签不被任何按钮遮挡。
+  - **mouseMoveEvent**：不再转发给 `QTabBar::mouseMoveEvent`（避免 Qt 内部拖拽幻影），改为手动 `moveTab`。交换条件：拖拽中心完全退出当前标签 rect（滞回，防止反复横跳）+ 鼠标移动超过标签宽度 1/3（冷却距离）。
+  - **paintEvent**：所有标签正常绘制；被拖标签原位以 30% 透明度 ghost 形式显示（关闭按钮 widget 自然在其上）；浮动标签通过 DragOverlay 在最高层渲染。
+  - **initStyleOption override**：为预览标签页设置 italic `fontMetrics`，确保文字测量（省略号计算）使用斜体度量。
+  - **tabSizeHint**：统一返回 140px 固定宽度，配合 `setExpanding(true)` 实现严格等宽。
 
 **主要接口**：
 - `EditorWidget* openFile(const QString &filePath)`：若文件已在某标签中打开则切换到该标签并自动提升预览标签页（若适用），否则新建标签并加载文件。
