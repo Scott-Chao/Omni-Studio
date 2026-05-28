@@ -1,6 +1,7 @@
 #include "tabmanager.h"
 #include "openjudgewidget.h"
 #include "settingsmanager.h"
+#include "thememanager.h"
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -365,8 +366,18 @@ CustomTabBar::CustomTabBar(QWidget *parent)
     : QTabBar(parent)
 {
     setMovable(true);
-    setExpanding(true);
-    setElideMode(Qt::ElideRight);
+    setExpanding(false);
+    setElideMode(Qt::ElideNone);
+}
+
+void CustomTabBar::setEqualWidth(bool enabled)
+{
+    if (m_equalWidth == enabled) return;
+    m_equalWidth = enabled;
+    setExpanding(enabled);
+    setElideMode(enabled ? Qt::ElideRight : Qt::ElideNone);
+    updateGeometry();
+    update();
 }
 
 void CustomTabBar::mousePressEvent(QMouseEvent *event)
@@ -417,7 +428,8 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
             int dragCenterX = clampedPos.x() - m_dragOffsetX + m_dragTabWidth / 2;
             int targetIdx = tabAt(QPoint(dragCenterX, clampedPos.y()));
 
-            if (targetIdx >= 0 && qAbs(dragCenterX - m_lastMoveCenterX) >= m_dragTabWidth / 3) {
+            if (targetIdx >= 0 &&
+                qAbs(dragCenterX - m_lastMoveCenterX) >= (m_equalWidth ? m_dragTabWidth / 3 : m_dragTabWidth / 4)) {
                 const TabManager *tm = qobject_cast<const TabManager*>(parent());
                 if (tm && m_dragEditor) {
                     int currentIdx = -1;
@@ -428,13 +440,22 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
                         }
                     }
                     if (currentIdx >= 0 && currentIdx != targetIdx) {
-                        // 滞回：拖拽中心必须完全退出当前标签的 rect 才允许交换
-                        QRect curR = tabRect(currentIdx);
                         bool pastThreshold = false;
-                        if (targetIdx > currentIdx)
-                            pastThreshold = (dragCenterX > curR.right());
-                        else
-                            pastThreshold = (dragCenterX < curR.left());
+                        if (m_equalWidth) {
+                            // 等宽模式：滞回，拖拽中心必须完全退出当前标签 rect 才允许交换
+                            QRect curR = tabRect(currentIdx);
+                            if (targetIdx > currentIdx)
+                                pastThreshold = (dragCenterX > curR.right());
+                            else
+                                pastThreshold = (dragCenterX < curR.left());
+                        } else {
+                            // 非等宽模式：拖拽标签的边界超过目标标签中心时交换
+                            int targetCenterX = tabRect(targetIdx).center().x();
+                            if (targetIdx > currentIdx)
+                                pastThreshold = (dragCenterX + m_dragTabWidth / 2 > targetCenterX);
+                            else
+                                pastThreshold = (dragCenterX - m_dragTabWidth / 2 < targetCenterX);
+                        }
 
                         if (pastThreshold) {
                             moveTab(currentIdx, targetIdx);
@@ -507,7 +528,38 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
         else
             painter.setOpacity(1.0);
 
-        style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+        if (m_equalWidth) {
+            // 等宽模式：先绘制无文字的标签背景，再左对齐绘制文字
+            QString tabText = opt.text;
+            opt.text = QString();
+            style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+            opt.text = tabText;
+            QRect r = tabRect(i);
+            r.setLeft(r.left() + 8);
+            QWidget *cb = tabButton(i, QTabBar::RightSide);
+            if (!cb) cb = tabButton(i, QTabBar::LeftSide);
+            if (cb) r.setRight(cb->pos().x() - 4);
+            QString elided = fontMetrics().elidedText(tabText, Qt::ElideRight, r.width());
+            painter.setPen(ThemeManager::instance().color(
+                (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+            painter.drawText(r, Qt::AlignLeft | Qt::AlignVCenter, elided);
+        } else if (editor && tm->isPreviewEditor(editor)) {
+            // 非等宽模式斜体预览标签：手动绘制文字以利用标签页完整宽度，避免被 style 裁切
+            QString tabText = opt.text;
+            opt.text = QString();
+            style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+            opt.text = tabText;
+            QRect r = tabRect(i);
+            r.setLeft(r.left() + 8);
+            QWidget *cb = tabButton(i, QTabBar::RightSide);
+            if (!cb) cb = tabButton(i, QTabBar::LeftSide);
+            if (cb) r.setRight(cb->pos().x() - 4);
+            painter.setPen(ThemeManager::instance().color(
+                (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+            painter.drawText(r, Qt::AlignLeft | Qt::AlignVCenter, tabText);
+        } else {
+            style()->drawControl(QStyle::CE_TabBarTab, &opt, &painter, this);
+        }
     }
     painter.setOpacity(1.0);
 
@@ -523,7 +575,31 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
             opt.rect = QRect(0, 0, m_dragTabWidth, tabR.height());
             opt.position = QStyleOptionTab::Moving;
             pp.setFont(draggedIsPreview ? italicFont : normalFont);
-            style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+            if (m_equalWidth || draggedIsPreview) {
+                QString overlayText = opt.text;
+                opt.text = QString();
+                style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+                opt.text = overlayText;
+                QRect overlayR = opt.rect;
+                overlayR.setLeft(overlayR.left() + 8);
+                QWidget *cb2 = tabButton(draggedIdx, QTabBar::RightSide);
+                if (!cb2) cb2 = tabButton(draggedIdx, QTabBar::LeftSide);
+                if (cb2) overlayR.setRight(cb2->pos().x() - tabR.left() - 4);
+                else overlayR.setRight(overlayR.right() - 8);
+                if (m_equalWidth) {
+                    QString overlayElided = pp.fontMetrics().elidedText(overlayText, Qt::ElideRight,
+                                                                        overlayR.width());
+                    pp.setPen(ThemeManager::instance().color(
+                        (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+                    pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayElided);
+                } else {
+                    pp.setPen(ThemeManager::instance().color(
+                        (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+                    pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayText);
+                }
+            } else {
+                style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+            }
 
             // 把关闭按钮 widget 渲染到 pixmap 上
             QWidget *btn = tabButton(draggedIdx, QTabBar::RightSide);
@@ -542,7 +618,8 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
 QSize CustomTabBar::tabSizeHint(int index) const
 {
     QSize size = QTabBar::tabSizeHint(index);
-    size.setWidth(140);
+    if (m_equalWidth)
+        size.setWidth(140);
     return size;
 }
 

@@ -911,6 +911,24 @@ QWidget *SettingsPanel::createAppearancePage()
         emit appearanceSettingChanged("editor.file_tree_item_height", val);
     });
 
+    layout->addSpacing(4);
+    layout->addWidget(createSectionLabel(tr("标签页")));
+
+    // ---- 等宽标签页 ----
+    auto *equalWidthRow = new QHBoxLayout;
+    auto *equalWidthLabel = new QLabel(tr("等宽标签页"));
+    equalWidthLabel->setStyleSheet(labelStyle());
+    m_equalWidthTabToggle = new ToggleSwitch;
+    m_equalWidthTabToggle->setChecked(
+        SettingsManager::instance().value("editor.equal_width_tab", false).toBool());
+    m_equalWidthTabToggle->onToggled = [this](bool checked) {
+        emit appearanceSettingChanged("editor.equal_width_tab", checked);
+    };
+    equalWidthRow->addWidget(equalWidthLabel);
+    equalWidthRow->addStretch();
+    equalWidthRow->addWidget(m_equalWidthTabToggle);
+    layout->addLayout(equalWidthRow);
+
     // ====================================================================
     // Collapsible Color Sections
     // ====================================================================
@@ -1847,6 +1865,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     // Appearance page
     if (m_fileTreeItemHeightSpin) {
         m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
+    }
+    if (m_equalWidthTabToggle) {
+        m_equalWidthTabToggle->setChecked(sm.value("editor.equal_width_tab", false).toBool());
     }
 
     // Refresh color controls (appearance page)

@@ -710,6 +710,9 @@ MainWindow::MainWindow(QWidget *parent)
                                            ConfigManager::instance().editorFileTreeItemHeight()).toInt();
     m_explorer->setItemHeight(treeItemHeight);
 
+    // 应用保存的等宽标签页设置
+    applyEqualWidthTab(m_settings->value("editor.equal_width_tab", false).toBool());
+
     // ----- AI 助手面板 -----
     m_aiPanel = new AiPanel(this);
     m_dockAi = new QDockWidget(tr("AI 助手"), this);
@@ -1425,6 +1428,10 @@ void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &
         m_explorer->setItemHeight(value.toInt());
         return;
     }
+    if (key == "editor.equal_width_tab") {
+        applyEqualWidthTab(value.toBool());
+        return;
+    }
 
     // Bridge: apply color overrides to ThemeManager so editors render them.
     // Settings keys (ConfigManager JSON paths) differ from ThemeManager tokens.
@@ -1645,6 +1652,9 @@ void MainWindow::onResetToDefaults()
     m_settingsPanel->setDefaultZoom(cfg.zoomDefault());
     m_settingsPanel->syncFromSettings(*m_settings);
 
+    // Apply default equal-width tab setting
+    applyEqualWidthTab(false);
+
     // Apply default zoom + editor font to all editors
     for (int i = 0; i < m_tabManager->count(); ++i) {
         if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
@@ -1687,6 +1697,12 @@ void MainWindow::onResetToDefaults()
     if (auto *editor = m_tabManager->currentEditor()) {
         editor->setSplitPreviewDebounceMs(cfg.previewSplitDebounceMs());
     }
+}
+
+void MainWindow::applyEqualWidthTab(bool enabled)
+{
+    if (auto *bar = qobject_cast<CustomTabBar*>(m_tabManager->tabBar()))
+        bar->setEqualWidth(enabled);
 }
 
 // 缩放相关槽函数

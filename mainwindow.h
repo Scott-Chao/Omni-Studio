@@ -267,6 +267,7 @@ private:
     void onToolSettingChanged(const QString &key, const QVariant &value);
     void onResetToDefaults();
     void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
+    void applyEqualWidthTab(bool enabled);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();

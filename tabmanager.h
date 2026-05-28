@@ -28,6 +28,8 @@ class CustomTabBar : public QTabBar
 public:
     explicit CustomTabBar(QWidget *parent = nullptr);
 
+    void setEqualWidth(bool enabled);
+
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -47,6 +49,7 @@ private:
     EditorWidget *m_dragEditor = nullptr;
     int  m_lastMoveCenterX = 0;
     DragOverlay *m_dragOverlay = nullptr;
+    bool m_equalWidth = false;
 };
 
 class SettingsManager;

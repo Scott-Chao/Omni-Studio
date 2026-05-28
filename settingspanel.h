@@ -153,6 +153,7 @@ private:
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
     QPushButton *m_resetThemeBtn = nullptr;
+    ToggleSwitch *m_equalWidthTabToggle = nullptr;
 
     struct ColorControl {
         QPushButton *btn;
