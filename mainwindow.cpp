@@ -698,6 +698,13 @@ MainWindow::MainWindow(QWidget *parent)
         updateAiActionBar();
     });
 
+    // 切换文件时自动关闭 OpenJudge 提交结果面板
+    connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
+        if (m_submitResultPanel && m_submitResultPanel->isVisible()) {
+            m_submitResultPanel->hide();
+        }
+    });
+
     // ----- 设置面板（悬浮遮罩 + 面板）-----
     // 使用 OverlayWidget（顶层 Tool 窗口）避免 Qt 裁剪 QWebEngineView
     // 的原生 HWND（子 widget 覆盖原生 child 时 Qt 通过 SetWindowRgn 裁剪，导致 Chromium 黑屏）
