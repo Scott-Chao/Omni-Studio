@@ -228,6 +228,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_dockRightPanel, &QDockWidget::visibilityChanged, this, [this](bool visible) {
         toggleRightPanelAction->setChecked(visible);
+        if (!visible) {
+            EditorWidget *editor = m_tabManager->currentEditor();
+            if (editor)
+                editor->clearOutlineHighlight();
+        }
     });
 
     // 用 focusChanged 替代全局 eventFilter 实现点击编辑器时自动隐藏右侧面板

@@ -1404,25 +1404,9 @@ void EditorWidget::reloadEditorColors()
           tm.color("editor.foreground").name(),
           tm.color("editor.selectionBackground").name()));
 
-    // Re-apply search highlights with new theme colors
-    if (!m_lastSearchHighlightText.isEmpty() && m_editorMode != CodeEdit) {
-        QList<QTextEdit::ExtraSelection> selections;
-        QTextCursor searchCursor(m_textEdit->document());
-        while (true) {
-            QTextCursor found = m_textEdit->document()->find(
-                m_lastSearchHighlightText, searchCursor);
-            if (found.isNull())
-                break;
-            QTextEdit::ExtraSelection sel;
-            sel.format.setBackground(tm.color("search.highlightBackground"));
-            sel.format.setForeground(tm.color("search.highlightForeground"));
-            sel.cursor = found;
-            selections.append(sel);
-            searchCursor = found;
-            searchCursor.movePosition(QTextCursor::EndOfWord);
-        }
-        m_textEdit->setExtraSelections(selections);
-    }
+    // Re-apply search + outline highlights with new theme colors
+    if (m_editorMode != CodeEdit && m_editorMode != PdfView && m_editorMode != SmdEdit)
+        applyMarkdownExtraSelections();
 
     // Update preview container background
     if (m_previewContainer) {
@@ -1805,17 +1789,69 @@ void EditorWidget::navigateEditorToLine(int lineNumber)
         m_textEdit->ensureCursorVisible();
     }
 
-    QTextEdit::ExtraSelection sel;
-    sel.format.setBackground(ThemeManager::instance().color("search.highlightBackground"));
-    sel.format.setForeground(ThemeManager::instance().color("search.highlightForeground"));
-    sel.format.setProperty(QTextFormat::FullWidthSelection, true);
-    sel.cursor = cursor;
-    sel.cursor.clearSelection();
+    if (m_editorMode == CodeEdit) {
+        m_codeEditor->setOutlineHighlightLine(lineNumber);
+    } else {
+        m_outlineHighlightLine = lineNumber;
+        applyMarkdownExtraSelections();
+    }
+}
 
-    if (m_editorMode == CodeEdit)
-        m_codeEditor->setExtraSelections({sel});
-    else
-        m_textEdit->setExtraSelections({sel});
+void EditorWidget::applyMarkdownExtraSelections()
+{
+    if (m_editorMode != MarkdownEdit) return;
+    if (!m_textEdit) return;
+
+    QList<QTextEdit::ExtraSelection> selections;
+
+    // Search highlights
+    if (!m_lastSearchHighlightText.isEmpty()) {
+        QTextCursor searchCursor(m_textEdit->document());
+        while (true) {
+            QTextCursor found = m_textEdit->document()->find(
+                m_lastSearchHighlightText, searchCursor);
+            if (found.isNull())
+                break;
+            QTextEdit::ExtraSelection sel;
+            auto &tm = ThemeManager::instance();
+            sel.format.setBackground(tm.color("search.highlightBackground"));
+            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.cursor = found;
+            selections.append(sel);
+            searchCursor = found;
+            searchCursor.movePosition(QTextCursor::EndOfWord);
+        }
+    }
+
+    // Outline navigation highlight
+    if (m_outlineHighlightLine > 0) {
+        QTextBlock block = m_textEdit->document()->findBlockByLineNumber(m_outlineHighlightLine - 1);
+        if (block.isValid()) {
+            QTextCursor cursor(block);
+            cursor.clearSelection();
+            QTextEdit::ExtraSelection sel;
+            auto &tm = ThemeManager::instance();
+            sel.format.setBackground(tm.color("search.highlightBackground"));
+            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+            sel.cursor = cursor;
+            selections.append(sel);
+        }
+    }
+
+    m_textEdit->setExtraSelections(selections);
+}
+
+void EditorWidget::clearOutlineHighlight()
+{
+    if (m_editorMode == PdfView || m_editorMode == SmdEdit)
+        return;
+    if (m_editorMode == CodeEdit) {
+        m_codeEditor->clearOutlineHighlightLine();
+    } else {
+        m_outlineHighlightLine = -1;
+        applyMarkdownExtraSelections();
+    }
 }
 
 void EditorWidget::clearExtraSelections()
@@ -1823,10 +1859,13 @@ void EditorWidget::clearExtraSelections()
     if (m_editorMode == PdfView || m_editorMode == SmdEdit)
         return;
     m_lastSearchHighlightText.clear();
-    if (m_editorMode == CodeEdit)
+    m_outlineHighlightLine = -1;
+    if (m_editorMode == CodeEdit) {
         m_codeEditor->clearSearchHighlights();
-    else
+        m_codeEditor->clearOutlineHighlightLine();
+    } else {
         m_textEdit->setExtraSelections({});
+    }
 }
 
 // ---- 分屏预览 ----

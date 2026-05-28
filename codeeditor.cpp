@@ -539,6 +539,22 @@ void CodeEditor::updateExtraSelectionsWithDiagnostics()
         extraSelections.append(sel);
     }
 
+    // Outline navigation highlight
+    if (m_outlineHighlightLine > 0) {
+        QTextBlock block = document()->findBlockByLineNumber(m_outlineHighlightLine - 1);
+        if (block.isValid()) {
+            QTextCursor cursor(block);
+            cursor.clearSelection();
+            QTextEdit::ExtraSelection sel;
+            auto &tm = ThemeManager::instance();
+            sel.format.setBackground(tm.color("search.highlightBackground"));
+            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.format.setProperty(QTextFormat::FullWidthSelection, true);
+            sel.cursor = cursor;
+            extraSelections.append(sel);
+        }
+    }
+
     setExtraSelections(extraSelections);
 }
 
@@ -1412,6 +1428,18 @@ void CodeEditor::clearSearchHighlights()
 void CodeEditor::clearCurrentLineHighlight()
 {
     setExtraSelections(m_searchHighlights);
+}
+
+void CodeEditor::setOutlineHighlightLine(int line)
+{
+    m_outlineHighlightLine = line;
+    highlightCurrentLine();
+}
+
+void CodeEditor::clearOutlineHighlightLine()
+{
+    m_outlineHighlightLine = -1;
+    highlightCurrentLine();
 }
 
 void CodeEditor::refreshCurrentLineHighlight()

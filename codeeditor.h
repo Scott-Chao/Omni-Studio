@@ -46,6 +46,8 @@ public:
     void setSearchHighlights(const QString &searchText);
     void clearSearchHighlights();
     void clearCurrentLineHighlight();
+    void setOutlineHighlightLine(int line);
+    void clearOutlineHighlightLine();
     void refreshCurrentLineHighlight();
     void refreshLineNumberArea();
 
@@ -95,6 +97,7 @@ private:
     bool m_inPaintSelection = false;
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
     QString m_searchHighlightText;
+    int m_outlineHighlightLine = -1; // 1-based line number from outline navigation
     QList<SmdDiagnostic> m_diagnostics;
 
     // Configurable shortcuts

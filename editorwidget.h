@@ -46,6 +46,7 @@ public:
     void scrollToLine(int lineNumber, const QString &highlightText = QString());
     void navigateToLine(int lineNumber);
     void clearExtraSelections();
+    void clearOutlineHighlight();
     void navigateEditorToLine(int lineNumber);
 
     // 预览模式切换
@@ -143,6 +144,7 @@ private:
     CodeEditor *m_codeEditor; // 代码编辑
     QString m_filePath;
     QString m_lastSearchHighlightText;
+    int m_outlineHighlightLine = -1; // 1-based line from outline navigation
     bool m_previewMode;
     bool m_previewReady = false; // WebEngine 页面是否已加载模板
 
@@ -182,6 +184,7 @@ private:
     QString previewThemeJs(); // 返回更新 CSS 变量的 JavaScript 代码
     void createSplitPreviewWidgets();
     void updateSplitPreviewContentNow();
+    void applyMarkdownExtraSelections();
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;
 
