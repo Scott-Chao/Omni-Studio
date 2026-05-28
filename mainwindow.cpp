@@ -609,6 +609,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::refreshTitleBarStyle);
     refreshTitleBarStyle();
 
+    // 主题切换时刷新标签页栏背景
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() { m_tabManager->update(); });
+
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
     m_stopAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("stop_process", "Ctrl+Break")));

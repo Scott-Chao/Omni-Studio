@@ -18,6 +18,15 @@ TabManager::TabManager(QWidget *parent)
     connect(this, &QTabWidget::tabCloseRequested, this, &TabManager::onTabCloseRequested);
 }
 
+void TabManager::paintEvent(QPaintEvent *)
+{
+    // 标签页栏所在矩形（标签栏顶部 → pane 顶部）填充为未激活标签背景色
+    QPainter p(this);
+    int tabBarBottom = tabBar()->geometry().bottom();
+    QRect topArea(0, 0, width(), tabBarBottom);
+    p.fillRect(topArea, ThemeManager::instance().color("tab.inactiveBackground"));
+}
+
 EditorWidget* TabManager::openFile(const QString &filePath)
 {
     QString normalized = QFileInfo(filePath).absoluteFilePath();
@@ -496,6 +505,7 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
     }
 
     QPainter painter(this);
+    painter.fillRect(rect(), ThemeManager::instance().color("tab.inactiveBackground"));
     QFont normalFont = font();
     QFont italicFont = normalFont;
     italicFont.setItalic(true);
@@ -563,6 +573,33 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
     }
     painter.setOpacity(1.0);
 
+    // 相邻未激活标签之间绘制分割线（不完全贯穿，上下留空）
+    for (int i = 0; i < count() - 1; ++i) {
+        QStyleOptionTab optA, optB;
+        initStyleOption(&optA, i);
+        initStyleOption(&optB, i + 1);
+        if (!(optA.state & QStyle::State_Selected) && !(optB.state & QStyle::State_Selected)) {
+            QRect ra = tabRect(i);
+            QRect rb = tabRect(i + 1);
+            int sepX = (ra.right() + rb.left()) / 2;
+            int margin = 6;
+            painter.setPen(QPen(ThemeManager::instance().color("tab.inactiveSeparator"), 1));
+            painter.drawLine(sepX, ra.top() + margin, sepX, ra.bottom() - margin);
+        }
+    }
+
+    // 激活标签底部蓝色指示线
+    for (int i = 0; i < count(); ++i) {
+        QStyleOptionTab opt;
+        initStyleOption(&opt, i);
+        if (opt.state & QStyle::State_Selected) {
+            QRect tr = tabRect(i);
+            painter.setPen(QPen(ThemeManager::instance().color("tab.activeIndicator"), 2));
+            painter.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom());
+            break;
+        }
+    }
+
     // 拖拽中：将标签+关闭按钮合成到 pixmap，置于 overlay（高于所有 widget）
     if (draggedIdx >= 0 && m_dragOverlay) {
         QRect tabR = tabRect(draggedIdx);
@@ -607,6 +644,11 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
             if (btn) {
                 QPoint relPos = btn->pos() - tabR.topLeft();
                 btn->render(&pp, relPos, QRegion(), QWidget::DrawChildren);
+            }
+            // 激活标签底部蓝色指示线
+            if (opt.state & QStyle::State_Selected) {
+                pp.setPen(QPen(ThemeManager::instance().color("tab.activeIndicator"), 2));
+                pp.drawLine(0, tabR.height() - 1, m_dragTabWidth, tabR.height() - 1);
             }
         }
         m_dragOverlay->setPixmap(pm);

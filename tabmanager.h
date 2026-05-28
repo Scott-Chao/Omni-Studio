@@ -62,6 +62,10 @@ class TabManager : public QTabWidget
 public:
     explicit TabManager(QWidget *parent = nullptr);
 
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+public:
     // 打开文件（若已存在则切换，否则新建标签）
     EditorWidget* openFile(const QString &filePath);
     // 新建空白文件
