@@ -1,9 +1,50 @@
 #include "outlinepanel.h"
 #include "configmanager.h"
+#include "thememanager.h"
 #include <QVBoxLayout>
-#include <QFileInfo>
 #include <QColor>
 #include <QFont>
+#include <QPainter>
+#include <QStyledItemDelegate>
+#include <QApplication>
+
+// Custom delegate that elides long outline entry text with "…"
+// near the right edge instead of hard-clipping.
+class ElideDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        // Use viewport width (visible area), not item rect width (may extend beyond viewport)
+        int vpWidth = opt.widget ? opt.widget->width() : opt.rect.width();
+        QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
+        QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, opt.widget);
+        // Clip to viewport bounds: right edge of text must not exceed viewport
+        int textRight = qMin(textRect.right(), vpWidth - 2);
+        int avail = qMax(textRight - textRect.left(), 40);
+        opt.text = opt.fontMetrics.elidedText(opt.text, Qt::ElideRight, avail);
+
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+    }
+};
+
+static QColor levelColor(int level, const QColor &fg, const QColor &bg)
+{
+    // Blend foreground toward background for deeper heading levels
+    static const float ratios[] = { 1.00f, 0.83f, 0.67f, 0.53f, 0.42f, 0.33f };
+    int idx = qBound(0, level - 1, 5);
+    float r = ratios[idx];
+    return QColor(
+        qRound(fg.red()   * r + bg.red()   * (1.0f - r)),
+        qRound(fg.green() * r + bg.green() * (1.0f - r)),
+        qRound(fg.blue()  * r + bg.blue()  * (1.0f - r)));
+}
 
 OutlinePanel::OutlinePanel(QWidget *parent)
     : QWidget(parent)
@@ -12,11 +53,16 @@ OutlinePanel::OutlinePanel(QWidget *parent)
 
     m_listWidget = new QListWidget(this);
     m_listWidget->setSelectionMode(QAbstractItemView::NoSelection);
+    m_listWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_listWidget->setItemDelegate(new ElideDelegate(m_listWidget));
     connect(m_listWidget, &QListWidget::itemClicked, this, &OutlinePanel::onItemClicked);
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_listWidget);
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &OutlinePanel::refreshStyle);
 }
 
 void OutlinePanel::showHeadings(const QVector<HeadingItem> &headings)
@@ -27,23 +73,24 @@ void OutlinePanel::showHeadings(const QVector<HeadingItem> &headings)
     if (m_headings.isEmpty()) {
         QListWidgetItem *item = new QListWidgetItem(tr("当前文件无标题"));
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
-        item->setForeground(QColor("#888"));
+        auto &tm = ThemeManager::instance();
+        item->setForeground(levelColor(4, tm.color("sideBar.foreground"),
+                                          tm.color("sideBar.background")));
         m_listWidget->addItem(item);
         return;
     }
 
-    // Heading level colors: h1 brightest, h6 progressively dimmer
-    static const QColor levelColors[] = {
-        QColor("#D4D4D4"), // h1
-        QColor("#B0B0B0"), // h2
-        QColor("#9A9A9A"), // h3
-        QColor("#808080"), // h4
-        QColor("#6A6A6A"), // h5
-        QColor("#585858")  // h6
-    };
+    // Compute minimum heading level for relative indentation
+    int minLevel = 6;
+    for (const HeadingItem &h : std::as_const(m_headings))
+        if (h.level < minLevel) minLevel = h.level;
+
+    auto &tm = ThemeManager::instance();
+    QColor fg = tm.color("sideBar.foreground");
+    QColor bg = tm.color("sideBar.background");
 
     for (const HeadingItem &h : std::as_const(m_headings)) {
-        int indent = (h.level - 1) * 8;
+        int indent = (h.level - minLevel) * 8;
 
         QString display;
         display.fill(QLatin1Char(' '), indent);
@@ -54,8 +101,7 @@ void OutlinePanel::showHeadings(const QVector<HeadingItem> &headings)
         item->setData(Qt::UserRole + 1, h.text);
         item->setToolTip(QStringLiteral("L%1  %2").arg(h.lineNumber).arg(h.text));
 
-        int colorIdx = qBound(0, h.level - 1, 5);
-        item->setForeground(levelColors[colorIdx]);
+        item->setForeground(levelColor(h.level, fg, bg));
 
         QFont f = m_listWidget->font();
         f.setBold(h.level <= 2);
@@ -69,6 +115,12 @@ void OutlinePanel::clear()
 {
     m_listWidget->clear();
     m_headings.clear();
+}
+
+void OutlinePanel::refreshStyle()
+{
+    if (!m_headings.isEmpty())
+        showHeadings(m_headings);
 }
 
 void OutlinePanel::onItemClicked(QListWidgetItem *item)

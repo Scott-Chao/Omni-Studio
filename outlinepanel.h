@@ -15,6 +15,7 @@ public:
 
     void showHeadings(const QVector<HeadingItem> &headings);
     void clear();
+    void refreshStyle();
 
 signals:
     void headingClicked(int lineNumber, const QString &headingText);
