@@ -61,11 +61,10 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 新增
-标签页栏视觉优化
-- 标签页栏水平条背景色：`TabManager::paintEvent` 将标签栏顶部到 pane 顶部的全宽矩形填充为 `tab.inactiveBackground`（未激活标签色），覆盖无文件打开和标签右侧空白区域。主题切换时通过 `ThemeManager::themeChanged` 触发 `update()` 刷新
-- 激活/未激活标签颜色对调：深色模式激活 `#2D2E30`（灰）/ 未激活 `#121314`（黑）；浅色模式激活 `#E5E5E8` / 未激活 `#FFFFFF`。QSS 中 `QTabWidget { background: tab.inactiveBackground }`，`QTabWidget::pane { background: tab.activeBackground }`
-- 激活标签底部蓝色指示线：`tab.activeIndicator`（深色 `#007ACC` / 浅色 `#0066CC`），2px 横线，主界面和拖拽 overlay 均绘制
-- 未激活标签间分割线：相邻未激活标签中间 1px 竖线（`tab.inactiveSeparator`），上下各留 6px 不贯穿
+运行按钮优化
+- 改为绿色图标
+- 点击可直接执行编译运行操作
+- 适当增加与下拉箭头的间距
 
 ### 1. `MainWindow` - 主窗口控制器
 

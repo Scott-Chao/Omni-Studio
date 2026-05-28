@@ -598,10 +598,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_runMenu->addAction(m_compileRunAction);
     m_runMenu->setTitle(tr("运行"));
 
+    // 工具栏运行按钮（带下拉菜单），直接点击默认编译运行
     m_runToolAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
     m_runToolAction->setMenu(m_runMenu);
-    m_runToolAction->setToolTip(tr("运行 (编译/运行/编译运行)"));
+    m_runToolAction->setToolTip(tr("编译运行 (编译/运行/编译运行)"));
     m_runToolAction->setVisible(false); // 只对代码文件显示
+    connect(m_runToolAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
     m_toolBar->addAction(m_runToolAction);
 
     // Title bar uses ThemeManager colors, refresh on theme change
@@ -2237,6 +2239,16 @@ void MainWindow::refreshTitleBarStyle()
     ).arg(tm.color("titleBar.foreground").name(),
           tm.color("titleBar.buttonHover").name()));
 
+    // Run button — green icon with extra space before dropdown arrow
+    if (auto *btn = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(m_runToolAction))) {
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton {"
+            "  background: transparent; border: none; padding: 4px 14px 4px 8px;"
+            "}"
+            "QToolButton:hover { background: %1; }"
+        ).arg(tm.color("titleBar.buttonHover").name()));
+    }
+
     // File menu dropdown
     m_fileMenu->setStyleSheet(QStringLiteral(
         "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
@@ -2270,7 +2282,7 @@ void MainWindow::refreshTitleBarStyle()
     m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
     m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
     if (m_runToolAction)
-        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", titleFg));
+        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
 }
 
 // ============================================================
