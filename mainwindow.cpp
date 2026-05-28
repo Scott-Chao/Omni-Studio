@@ -705,38 +705,10 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // ----- 设置面板（悬浮遮罩 + 面板）-----
-    // 使用 OverlayWidget（顶层 Tool 窗口）避免 Qt 裁剪 QWebEngineView
-    // 的原生 HWND（子 widget 覆盖原生 child 时 Qt 通过 SetWindowRgn 裁剪，导致 Chromium 黑屏）
-    m_settingsOverlay = new OverlayWidget();
-    m_settingsOverlay->installEventFilter(this);
-    m_settingsOverlay->hide();
-
-    m_settingsPanel = new SettingsPanel(m_settingsOverlay);
-    connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
-    connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
-    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
-    connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
-
     // 应用保存的文件树条目高度
     int treeItemHeight = m_settings->value("editor.file_tree_item_height",
                                            ConfigManager::instance().editorFileTreeItemHeight()).toInt();
     m_explorer->setItemHeight(treeItemHeight);
-
-    // ----- 帮助面板（悬浮遮罩 + 面板）-----
-    m_helpOverlay = new OverlayWidget();
-    m_helpOverlay->installEventFilter(this);
-    m_helpOverlay->hide();
-
-    m_helpPanel = new HelpPanel(m_helpOverlay);
-    connect(m_helpPanel, &HelpPanel::closeRequested, this, &MainWindow::toggleHelp);
 
     // ----- AI 助手面板 -----
     m_aiPanel = new AiPanel(this);
@@ -1338,8 +1310,23 @@ void MainWindow::moveEvent(QMoveEvent *event)
 
 void MainWindow::toggleSettings()
 {
-    if (!m_settingsOverlay || !m_settingsPanel)
-        return;
+    if (!m_settingsOverlay) {
+        m_settingsOverlay = new OverlayWidget();
+        m_settingsOverlay->installEventFilter(this);
+        m_settingsOverlay->hide();
+        m_settingsPanel = new SettingsPanel(m_settingsOverlay);
+        connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
+        connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
+        connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
+        connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
+        connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
+    }
 
     if (m_settingsOverlay->isVisible()) {
         m_settingsOverlay->hide();
@@ -1355,8 +1342,13 @@ void MainWindow::toggleSettings()
 
 void MainWindow::toggleHelp()
 {
-    if (!m_helpOverlay || !m_helpPanel)
-        return;
+    if (!m_helpOverlay) {
+        m_helpOverlay = new OverlayWidget();
+        m_helpOverlay->installEventFilter(this);
+        m_helpOverlay->hide();
+        m_helpPanel = new HelpPanel(m_helpOverlay);
+        connect(m_helpPanel, &HelpPanel::closeRequested, this, &MainWindow::toggleHelp);
+    }
 
     if (m_helpOverlay->isVisible()) {
         m_helpOverlay->hide();
