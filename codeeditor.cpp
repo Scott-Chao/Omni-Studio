@@ -1274,8 +1274,13 @@ void CodeEditor::paintEvent(QPaintEvent *event)
     }
 
     m_inPaintSelection = true;
-    int selStart = cursor.selectionStart();
-    int selEnd = cursor.selectionEnd();
+
+    // Save exact cursor state (anchor + position) so we can restore it
+    // without corrupting an active mouse-drag selection.
+    const int savedAnchor = cursor.anchor();
+    const int savedPosition = cursor.position();
+    const int selStart = cursor.selectionStart();
+    const int selEnd = cursor.selectionEnd();
 
     // Temporarily clear selection so Qt draws text with syntax colors intact
     cursor.clearSelection();
@@ -1321,10 +1326,10 @@ void CodeEditor::paintEvent(QPaintEvent *event)
         }
     }
 
-    // Restore selection
+    // Restore selection with exact anchor/position so drag direction is preserved
     cursor = textCursor();
-    cursor.setPosition(selStart);
-    cursor.setPosition(selEnd, QTextCursor::KeepAnchor);
+    cursor.setPosition(savedAnchor);
+    cursor.setPosition(savedPosition, QTextCursor::KeepAnchor);
     setTextCursor(cursor);
     m_inPaintSelection = false;
 }
