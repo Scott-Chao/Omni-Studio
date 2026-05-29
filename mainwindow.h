@@ -115,9 +115,13 @@ private:
     QAction *m_zoomOutAction;
     QAction *m_zoomResetAction;
     QLabel *m_zoomLabel; // 显示当前缩放百分比
+    QToolButton *m_zoomOutBtn;
+    QToolButton *m_zoomInBtn;
+    QToolButton *m_zoomResetBtn;
     QMetaObject::Connection m_editorZoomConnection; // 用来管理当前编辑器的缩放信号连接
 
     void updateZoomLabel(); // 更新百分比标签
+    void refreshZoomButtonStyle(); // 主题切换时刷新缩放按钮样式
     void connectCurrentEditorZoomSignal(); // 连接当前编辑器的缩放信号
     // 预览模式激活状态调整
     QAction *m_previewAction = nullptr;
@@ -267,6 +271,7 @@ private:
     void onToolSettingChanged(const QString &key, const QVariant &value);
     void onResetToDefaults();
     void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
+    void applyEqualWidthTab(bool enabled);
     QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void showOutputPanel();

@@ -153,6 +153,7 @@ private:
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
     QPushButton *m_resetThemeBtn = nullptr;
+    ToggleSwitch *m_equalWidthTabToggle = nullptr;
 
     struct ColorControl {
         QPushButton *btn;
@@ -175,7 +176,6 @@ private:
     QPushButton *m_aiApiKeyToggleBtn = nullptr;
     QLineEdit *m_aiModelEdit = nullptr;
     QSpinBox *m_aiMaxTokensSpin = nullptr;
-    QDoubleSpinBox *m_aiTemperatureSpin = nullptr;
     QTextEdit *m_aiSystemPromptEdit = nullptr;
     QTimer *m_aiPromptDebounceTimer = nullptr;
 

@@ -30,8 +30,127 @@
 #include <QMessageBox>
 #include <QMap>
 #include <QTimer>
+#include <QPointer>
+#include <QScreen>
+#include <QGuiApplication>
 #include <functional>
 #include "keyrecorder.h"
+
+// ============================================================
+// FontDropdown — QComboBox subclass that bypasses Qt's broken
+// stylesheet-popup sizing by using a custom popup QListWidget.
+// ============================================================
+class FontDropdown : public QComboBox
+{
+    Q_OBJECT
+public:
+    using QComboBox::QComboBox;
+
+    void showPopup() override
+    {
+        if (count() == 0)
+            return;
+
+        closePopup();
+
+        auto &tm = ThemeManager::instance();
+
+        m_popup = new QListWidget;
+        m_popup->setWindowFlags(Qt::Popup);
+        m_popup->setAttribute(Qt::WA_DeleteOnClose);
+        m_popup->setFont(font());
+
+        const int itemH = qMax(fontMetrics().height() + 8, 28);
+        constexpr int kMaxVisible = 10;
+        const int visible = qMin(count(), kMaxVisible);
+        const int popupW = width();
+        const int popupH = visible * itemH + 2;
+
+        for (int i = 0; i < count(); ++i) {
+            auto *item = new QListWidgetItem(itemText(i), m_popup);
+            item->setSizeHint(QSize(0, itemH));
+        }
+
+        m_popup->setCurrentRow(currentIndex());
+        m_popup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_popup->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+        QPoint pos = mapToGlobal(QPoint(0, height()));
+        if (auto *screen = QGuiApplication::screenAt(pos)) {
+            const QRect avail = screen->availableGeometry();
+            if (pos.y() + popupH > avail.bottom())
+                pos.setY(qMax(avail.top(), mapToGlobal(QPoint(0, 0)).y() - popupH));
+        }
+
+        m_popup->setGeometry(pos.x(), pos.y(), popupW, popupH);
+
+        const QString bg   = tm.color("menu.background").name();
+        const QString fg   = tm.color("input.foreground").name();
+        const QString bd   = tm.color("input.border").name();
+        const QString sel  = tm.color("badge.background").name();
+        const QString hbar = tm.color("scrollbarSlider.hoverBackground").name();
+
+        m_popup->setStyleSheet(QStringLiteral(
+            "QListWidget { background-color: %1; color: %2; border: 1px solid %3; outline: none; }"
+            "QListWidget::item { padding: 0px 8px; }"
+            "QListWidget::item:selected { background-color: %4; }"
+            "QScrollBar:vertical { background: %1; width: 10px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: %5; min-height: 30px; border-radius: 5px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }"
+        ).arg(bg, fg, bd, sel, hbar));
+
+        connect(m_popup, &QListWidget::itemClicked, this, &FontDropdown::onItemSelected);
+        connect(m_popup, &QListWidget::itemActivated, this, &FontDropdown::onItemSelected);
+
+        qApp->installEventFilter(this);
+        m_popup->show();
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (!m_popup)
+            return QComboBox::eventFilter(watched, event);
+
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent *>(event);
+            QPoint gp = me->globalPosition().toPoint();
+            QRect popupRect(m_popup->mapToGlobal(QPoint(0, 0)), m_popup->size());
+            QRect comboRect(mapToGlobal(QPoint(0, 0)), size());
+            if (!popupRect.contains(gp) && !comboRect.contains(gp)) {
+                closePopup();
+                // Don't consume — let the click reach its target
+            }
+        } else if (event->type() == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if (ke->key() == Qt::Key_Escape) {
+                closePopup();
+                return true; // consume Escape
+            }
+        }
+        return QComboBox::eventFilter(watched, event);
+    }
+
+private:
+    void closePopup()
+    {
+        if (m_popup) {
+            qApp->removeEventFilter(this);
+            m_popup->close();
+            m_popup = nullptr;
+        }
+    }
+
+    void onItemSelected(QListWidgetItem *item)
+    {
+        if (!m_popup)
+            return;
+        setCurrentIndex(m_popup->row(item));
+        closePopup();
+    }
+
+    QPointer<QListWidget> m_popup;
+};
 
 namespace {
 
@@ -43,6 +162,30 @@ public:
     {
         if (input.isEmpty()) return Acceptable;
         return QIntValidator::validate(input, pos);
+    }
+};
+
+// QSpinBox subclass: allows out-of-range input, auto-clamps on confirm
+class ClampSpinBox : public QSpinBox
+{
+public:
+    using QSpinBox::QSpinBox;
+    QValidator::State validate(QString &input, int &pos) const override
+    {
+        Q_UNUSED(pos);
+        bool ok;
+        int val = input.toInt(&ok);
+        if (!ok) return QValidator::Intermediate;
+        if (val < minimum() || val > maximum())
+            return QValidator::Intermediate;
+        return QValidator::Acceptable;
+    }
+    void fixup(QString &input) const override
+    {
+        bool ok;
+        int val = input.toInt(&ok);
+        if (ok)
+            input = QString::number(qBound(minimum(), val, maximum()));
     }
 };
 
@@ -69,18 +212,17 @@ static QString inputStyle() {
     QString fg = tm.color("input.foreground").name();
     QString border = tm.color("input.border").name();
     QString accent = tm.color("badge.background").name();
+    QString hoverBg = tm.color("aiAssistant.actionButtonHoverBackground").name();
     return QStringLiteral(
         "QSpinBox, QLineEdit, QComboBox { background-color: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 2px 4px; font-size: 12px; min-height: 20px; }"
         "QSpinBox:focus, QLineEdit:focus, QComboBox:focus { border-color: %4; }"
         "QComboBox::drop-down { border: none; width: 20px; }"
-        "QComboBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; margin-right: 4px; }"
-        "QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3; selection-background-color: %4; }"
-        "QSpinBox::up-button, QSpinBox::down-button { width: 20px; border: none; background-color: %1; }"
-        "QSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; border-left: 1px solid %3; border-top-right-radius: 3px; }"
-        "QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; border-left: 1px solid %3; border-bottom-right-radius: 3px; }"
-        "QSpinBox::up-arrow { image: url(:/preview/spin-up.svg); width: 10px; height: 7px; }"
-        "QSpinBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; }"
-    ).arg(bg, fg, border, accent);
+        "QComboBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; }"
+        "QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3; selection-background-color: %4; outline: none; max-height: 240px; padding: 0px; }"
+        "QComboBox QAbstractItemView::item { min-height: 24px; padding: 2px 8px; }"
+        "QSpinBox::up-button, QSpinBox::down-button { width: 0px; border: none; }"
+        "QComboBox::drop-down:hover { background-color: %5; }"
+    ).arg(bg, fg, border, accent, hoverBg);
 }
 
 
@@ -302,11 +444,11 @@ void SettingsPanel::refreshStyle()
                  tm.color("aiAssistant.actionButtonHoverBackground").name()));
     }
     if (m_shortcutsHeaderRow) {
-        m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;")
+        m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: none;")
             .arg(tm.color("activityBar.background").name(), tm.color("panel.border").name()));
     }
     if (m_shortcutsListContainer) {
-        m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;")
+        m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: 1px solid %2;")
             .arg(tm.color("menu.background").name(), tm.color("panel.border").name()));
     }
     if (m_shortcutsResetBtn) {
@@ -340,6 +482,24 @@ void SettingsPanel::refreshStyle()
                  tm.color("badge.background").name()));
     }
 
+    auto refreshSmallButton = [&](QPushButton *btn, bool hasPadding) {
+        if (!btn) return;
+        QString padding = hasPadding ? QStringLiteral("padding: 4px 12px;") : QString();
+        btn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: %1; color: %2; border: 1px solid %3;"
+            "  %4 border-radius: 3px; font-size: 12px; }"
+            "QPushButton:hover { background: %5; }")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 padding,
+                 tm.color("aiAssistant.actionButtonHoverBackground").name()));
+    };
+    refreshSmallButton(m_aiApiKeyToggleBtn, false);
+    refreshSmallButton(m_clangdBrowseBtn, true);
+    refreshSmallButton(m_pythonBrowseBtn, true);
+    refreshSmallButton(m_openJudgePasswordToggleBtn, false);
+
     // Refresh all inner page content (scroll areas, labels, inputs)
     for (int i = 0; i < m_stackedWidget->count(); ++i) {
         refreshPageTree(m_stackedWidget->widget(i));
@@ -356,6 +516,11 @@ void SettingsPanel::refreshPageTree(QWidget *w)
             content->setStyleSheet(QStringLiteral("background: %1;").arg(tm.color("menu.background").name()));
         }
     } else if (auto *label = qobject_cast<QLabel*>(w)) {
+        if (label->objectName() == QStringLiteral("shortcutsGroupLabel")) {
+            label->setStyleSheet(QStringLiteral("color: %1; padding: 0px 8px; background: transparent;")
+                .arg(tm.color("editor.foreground").name()));
+            return; // font is set via QFont — only refresh color here
+        }
         QString ss = label->styleSheet();
         if (ss.contains(QStringLiteral("font-size: 14px")))
             label->setStyleSheet(sectionLabelStyle());
@@ -371,8 +536,11 @@ void SettingsPanel::refreshPageTree(QWidget *w)
         // Doing so would apply inputStyle (min-height:20px) to those internal
         // widgets, forcing the parent to grow taller than the intended 26px
         // and breaking label–control vertical alignment.
-        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w))
+        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w)) {
+            if (qobject_cast<QComboBox*>(w))
+                w->installEventFilter(this);
             return;
+        }
     }
 
     for (auto *child : w->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
@@ -417,7 +585,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *fontRow = new QHBoxLayout;
     auto *fontLabel = new QLabel(tr("字体"));
     fontLabel->setStyleSheet(labelStyle());
-    m_fontFamilyCombo = new QComboBox;
+    m_fontFamilyCombo = new FontDropdown;
     m_fontFamilyCombo->setEditable(false);
     m_fontFamilyCombo->setFixedWidth(180);
     m_fontFamilyCombo->setStyleSheet(inputStyle());
@@ -440,10 +608,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *fontSizeRow = new QHBoxLayout;
     auto *fontSizeLabel = new QLabel(tr("字号"));
     fontSizeLabel->setStyleSheet(labelStyle());
-    m_fontSizeSpin = new QSpinBox;
+    m_fontSizeSpin = new ClampSpinBox;
     m_fontSizeSpin->setRange(8, 24);
     m_fontSizeSpin->setValue(cfg.editorFontSize());
-    m_fontSizeSpin->setFixedWidth(80);
+    m_fontSizeSpin->setFixedWidth(100);
     m_fontSizeSpin->setStyleSheet(inputStyle());
     fontSizeRow->addWidget(fontSizeLabel);
     fontSizeRow->addStretch();
@@ -459,10 +627,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *indentRow = new QHBoxLayout;
     auto *indentLabel = new QLabel(tr("缩进宽度"));
     indentLabel->setStyleSheet(labelStyle());
-    m_indentWidthSpin = new QSpinBox;
+    m_indentWidthSpin = new ClampSpinBox;
     m_indentWidthSpin->setRange(1, 8);
     m_indentWidthSpin->setValue(indentDef);
-    m_indentWidthSpin->setFixedWidth(80);
+    m_indentWidthSpin->setFixedWidth(100);
     m_indentWidthSpin->setStyleSheet(inputStyle());
     indentRow->addWidget(indentLabel);
     indentRow->addStretch();
@@ -478,10 +646,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *mdIndentRow = new QHBoxLayout;
     auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
     mdIndentLabel->setStyleSheet(labelStyle());
-    m_markdownIndentWidthSpin = new QSpinBox;
+    m_markdownIndentWidthSpin = new ClampSpinBox;
     m_markdownIndentWidthSpin->setRange(1, 8);
     m_markdownIndentWidthSpin->setValue(mdIndentDef);
-    m_markdownIndentWidthSpin->setFixedWidth(80);
+    m_markdownIndentWidthSpin->setFixedWidth(100);
     m_markdownIndentWidthSpin->setStyleSheet(inputStyle());
     mdIndentRow->addWidget(mdIndentLabel);
     mdIndentRow->addStretch();
@@ -494,7 +662,7 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 默认缩放 ----
     auto *zoomRow = new QHBoxLayout;
-    auto *zoomLabel = new QLabel(tr("默认缩放"));
+    auto *zoomLabel = new QLabel(tr("默认缩放（%）"));
     zoomLabel->setStyleSheet(labelStyle());
     zoomRow->addWidget(zoomLabel);
 
@@ -546,15 +714,9 @@ QWidget *SettingsPanel::createEditorPage()
     m_fontSizeEdit = new QLineEdit;
     m_fontSizeEdit->setValidator(new ZoomValidator(0, 9999, m_fontSizeEdit));
     m_fontSizeEdit->setText(QString::number(sliderDefault));
-    m_fontSizeEdit->setFixedWidth(cfg.settingsPanelZoomSpinboxWidth());
-    m_fontSizeEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_fontSizeEdit->setFixedWidth(100);
     m_fontSizeEdit->setStyleSheet(inputStyle());
     zoomRow->addWidget(m_fontSizeEdit);
-
-    auto *zoomPercentLabel = new QLabel(QStringLiteral("%"));
-    zoomPercentLabel->setStyleSheet(labelStyle());
-    zoomRow->addWidget(zoomPercentLabel);
-
     layout->addLayout(zoomRow);
 
     // 滑块 → 数字框
@@ -616,12 +778,11 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 保存间隔 ----
     auto *intervalRow = new QHBoxLayout;
-    auto *intervalLabel = new QLabel(tr("保存间隔"));
+    auto *intervalLabel = new QLabel(tr("保存间隔（秒）"));
     intervalLabel->setStyleSheet(labelStyle());
-    m_autoSaveIntervalSpin = new QSpinBox;
+    m_autoSaveIntervalSpin = new ClampSpinBox;
     m_autoSaveIntervalSpin->setRange(1, 300);
     m_autoSaveIntervalSpin->setValue(cfg.autoSaveIntervalMs() / 1000);
-    m_autoSaveIntervalSpin->setSuffix(tr("秒"));
     m_autoSaveIntervalSpin->setFixedWidth(100);
     m_autoSaveIntervalSpin->setStyleSheet(inputStyle());
     intervalRow->addWidget(intervalLabel);
@@ -643,8 +804,8 @@ QWidget *SettingsPanel::createEditorPage()
     auto *outFontRow = new QHBoxLayout;
     auto *outFontLabel = new QLabel(tr("字体"));
     outFontLabel->setStyleSheet(labelStyle());
-    m_outputFontFamilyCombo = new QComboBox;
-    m_outputFontFamilyCombo->setEditable(true);
+    m_outputFontFamilyCombo = new FontDropdown;
+    m_outputFontFamilyCombo->setEditable(false);
     m_outputFontFamilyCombo->setFixedWidth(180);
     m_outputFontFamilyCombo->setStyleSheet(inputStyle());
     m_outputFontFamilyCombo->addItems(families);
@@ -663,10 +824,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *outSizeRow = new QHBoxLayout;
     auto *outSizeLabel = new QLabel(tr("字号"));
     outSizeLabel->setStyleSheet(labelStyle());
-    m_outputFontSizeSpin = new QSpinBox;
+    m_outputFontSizeSpin = new ClampSpinBox;
     m_outputFontSizeSpin->setRange(8, 24);
     m_outputFontSizeSpin->setValue(cfg.outputPanelFontSize());
-    m_outputFontSizeSpin->setFixedWidth(80);
+    m_outputFontSizeSpin->setFixedWidth(100);
     m_outputFontSizeSpin->setStyleSheet(inputStyle());
     outSizeRow->addWidget(outSizeLabel);
     outSizeRow->addStretch();
@@ -681,7 +842,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *maxRow = new QHBoxLayout;
     auto *maxLabel = new QLabel(tr("最大行数"));
     maxLabel->setStyleSheet(labelStyle());
-    m_outputMaxBlocksSpin = new QSpinBox;
+    m_outputMaxBlocksSpin = new ClampSpinBox;
     m_outputMaxBlocksSpin->setRange(100, 100000);
     m_outputMaxBlocksSpin->setSingleStep(500);
     m_outputMaxBlocksSpin->setValue(cfg.outputPanelMaxBlocks());
@@ -704,13 +865,12 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 分屏防抖 ----
     auto *debounceRow = new QHBoxLayout;
-    auto *debounceLabel = new QLabel(tr("分屏防抖"));
+    auto *debounceLabel = new QLabel(tr("分屏防抖（ms）"));
     debounceLabel->setStyleSheet(labelStyle());
-    m_previewDebounceSpin = new QSpinBox;
+    m_previewDebounceSpin = new ClampSpinBox;
     m_previewDebounceSpin->setRange(100, 2000);
     m_previewDebounceSpin->setSingleStep(50);
     m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
-    m_previewDebounceSpin->setSuffix(QStringLiteral(" ms"));
     m_previewDebounceSpin->setFixedWidth(100);
     m_previewDebounceSpin->setStyleSheet(inputStyle());
     debounceRow->addWidget(debounceLabel);
@@ -724,9 +884,9 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 分屏比例 ----
     auto *ratioRow = new QHBoxLayout;
-    auto *ratioLabel = new QLabel(tr("分屏比例"));
+    auto *ratioLabel = new QLabel(tr("分屏比例（%）"));
     ratioLabel->setStyleSheet(labelStyle());
-    m_previewRatioSpin = new QSpinBox;
+    m_previewRatioSpin = new ClampSpinBox;
     m_previewRatioSpin->setRange(30, 70);
     m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
     m_previewRatioSpin->setFixedWidth(100);
@@ -734,9 +894,6 @@ QWidget *SettingsPanel::createEditorPage()
     ratioRow->addWidget(ratioLabel);
     ratioRow->addStretch();
     ratioRow->addWidget(m_previewRatioSpin);
-    auto *ratioPercentLabel = new QLabel(QStringLiteral("%"));
-    ratioPercentLabel->setStyleSheet(labelStyle());
-    ratioRow->addWidget(ratioPercentLabel);
     layout->addLayout(ratioRow);
 
     connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
@@ -753,10 +910,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *perFileRow = new QHBoxLayout;
     auto *perFileLabel = new QLabel(tr("每文件匹配数"));
     perFileLabel->setStyleSheet(labelStyle());
-    m_searchPerFileSpin = new QSpinBox;
+    m_searchPerFileSpin = new ClampSpinBox;
     m_searchPerFileSpin->setRange(1, 50);
     m_searchPerFileSpin->setValue(cfg.searchMaxPerFile());
-    m_searchPerFileSpin->setFixedWidth(80);
+    m_searchPerFileSpin->setFixedWidth(100);
     m_searchPerFileSpin->setStyleSheet(inputStyle());
     perFileRow->addWidget(perFileLabel);
     perFileRow->addStretch();
@@ -771,7 +928,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *totalRow = new QHBoxLayout;
     auto *totalLabel = new QLabel(tr("最大结果总数"));
     totalLabel->setStyleSheet(labelStyle());
-    m_searchTotalSpin = new QSpinBox;
+    m_searchTotalSpin = new ClampSpinBox;
     m_searchTotalSpin->setRange(50, 2000);
     m_searchTotalSpin->setSingleStep(50);
     m_searchTotalSpin->setValue(cfg.searchMaxTotalResults());
@@ -790,11 +947,11 @@ QWidget *SettingsPanel::createEditorPage()
     auto *snippetRow = new QHBoxLayout;
     auto *snippetLabel = new QLabel(tr("片段最大长度"));
     snippetLabel->setStyleSheet(labelStyle());
-    m_searchSnippetSpin = new QSpinBox;
+    m_searchSnippetSpin = new ClampSpinBox;
     m_searchSnippetSpin->setRange(50, 500);
     m_searchSnippetSpin->setSingleStep(10);
     m_searchSnippetSpin->setValue(cfg.searchSnippetMaxLength());
-    m_searchSnippetSpin->setFixedWidth(80);
+    m_searchSnippetSpin->setFixedWidth(100);
     m_searchSnippetSpin->setStyleSheet(inputStyle());
     snippetRow->addWidget(snippetLabel);
     snippetRow->addStretch();
@@ -841,7 +998,7 @@ QWidget *SettingsPanel::createAppearancePage()
     themeLabel->setStyleSheet(labelStyle());
     m_themeCombo = new QComboBox;
     m_themeCombo->setStyleSheet(inputStyle());
-    m_themeCombo->setFixedWidth(200);
+    m_themeCombo->setFixedWidth(180);
 
     auto &tm = ThemeManager::instance();
     m_themeCombo->addItems(tm.availableThemes());
@@ -894,13 +1051,12 @@ QWidget *SettingsPanel::createAppearancePage()
 
     // ---- 文件树条目高度 ----
     auto *treeItemHeightRow = new QHBoxLayout;
-    auto *treeItemHeightLabel = new QLabel(tr("条目行高"));
+    auto *treeItemHeightLabel = new QLabel(tr("条目行高（px）"));
     treeItemHeightLabel->setStyleSheet(labelStyle());
-    m_fileTreeItemHeightSpin = new QSpinBox;
+    m_fileTreeItemHeightSpin = new ClampSpinBox;
     m_fileTreeItemHeightSpin->setRange(24, 32);
     m_fileTreeItemHeightSpin->setValue(cfg.editorFileTreeItemHeight());
-    m_fileTreeItemHeightSpin->setFixedWidth(80);
-    m_fileTreeItemHeightSpin->setSuffix(" px");
+    m_fileTreeItemHeightSpin->setFixedWidth(100);
     m_fileTreeItemHeightSpin->setStyleSheet(inputStyle());
     treeItemHeightRow->addWidget(treeItemHeightLabel);
     treeItemHeightRow->addStretch();
@@ -910,6 +1066,24 @@ QWidget *SettingsPanel::createAppearancePage()
     connect(m_fileTreeItemHeightSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
         emit appearanceSettingChanged("editor.file_tree_item_height", val);
     });
+
+    layout->addSpacing(4);
+    layout->addWidget(createSectionLabel(tr("标签页")));
+
+    // ---- 等宽标签页 ----
+    auto *equalWidthRow = new QHBoxLayout;
+    auto *equalWidthLabel = new QLabel(tr("等宽标签页"));
+    equalWidthLabel->setStyleSheet(labelStyle());
+    m_equalWidthTabToggle = new ToggleSwitch;
+    m_equalWidthTabToggle->setChecked(
+        SettingsManager::instance().value("editor.equal_width_tab", false).toBool());
+    m_equalWidthTabToggle->onToggled = [this](bool checked) {
+        emit appearanceSettingChanged("editor.equal_width_tab", checked);
+    };
+    equalWidthRow->addWidget(equalWidthLabel);
+    equalWidthRow->addStretch();
+    equalWidthRow->addWidget(m_equalWidthTabToggle);
+    layout->addLayout(equalWidthRow);
 
     // ====================================================================
     // Collapsible Color Sections
@@ -1179,7 +1353,7 @@ QWidget *SettingsPanel::createShortcutsPage()
 
     // Header row
     m_shortcutsHeaderRow = new QWidget;
-    m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
+    m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
     auto *headerLayout = new QHBoxLayout(m_shortcutsHeaderRow);
     headerLayout->setContentsMargins(8, 4, 8, 4);
     auto *nameHeader = new QLabel(tr("操作"));
@@ -1193,7 +1367,7 @@ QWidget *SettingsPanel::createShortcutsPage()
 
     // Build a container for the list
     m_shortcutsListContainer = new QWidget;
-    m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
+    m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
     auto *listLayout = new QVBoxLayout(m_shortcutsListContainer);
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
@@ -1231,19 +1405,18 @@ QWidget *SettingsPanel::createShortcutsPage()
 
         // Insert group header before the first item of each group
         if (markerIdx < 5 && i == markers[markerIdx].index) {
-            if (i > 0) {
-                auto *sep = new QFrame;
-                sep->setFrameShape(QFrame::HLine);
-                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
-                sep->setFixedHeight(1);
-                listLayout->addWidget(sep);
-                listLayout->addSpacing(4);
-            }
+            listLayout->addSpacing(16);
             auto *groupLabel = new QLabel(markers[markerIdx].name);
+            groupLabel->setObjectName("shortcutsGroupLabel");
+            QFont gf = groupLabel->font();
+            gf.setPixelSize(18);
+            gf.setBold(true);
+            groupLabel->setFont(gf);
             groupLabel->setStyleSheet(QStringLiteral(
-                "color: %1; font-size: 13px; font-weight: bold; padding: 10px 8px 10px 8px; background: transparent;")
-                .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+                "color: %1; padding: 0px 8px; background: transparent;")
+                .arg(ThemeManager::instance().color("editor.foreground").name()));
             listLayout->addWidget(groupLabel);
+            listLayout->addSpacing(4);
             ++markerIdx;
         }
 
@@ -1274,14 +1447,25 @@ QWidget *SettingsPanel::createShortcutsPage()
             updateConflictIndicators();
         });
 
-        listLayout->addWidget(row);
+        // Separator before row (skip before first item of each group)
+        if (i > 0) {
+            bool isGroupStart = false;
+            for (int m = 0; m < 5; ++m) {
+                if (i == markers[m].index) {
+                    isGroupStart = true;
+                    break;
+                }
+            }
+            if (!isGroupStart) {
+                auto *sep = new QFrame;
+                sep->setFrameShape(QFrame::HLine);
+                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
+                sep->setFixedHeight(1);
+                listLayout->addWidget(sep);
+            }
+        }
 
-        // Separator
-        auto *sep = new QFrame;
-        sep->setFrameShape(QFrame::HLine);
-        sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
-        sep->setFixedHeight(1);
-        listLayout->addWidget(sep);
+        listLayout->addWidget(row);
     }
 
     // Mark any pre-existing conflicts from saved settings
@@ -1429,11 +1613,11 @@ QWidget *SettingsPanel::createAiServicePage()
     auto *tokensRow = new QHBoxLayout;
     auto *tokensLabel = new QLabel(tr("Max Tokens"));
     tokensLabel->setStyleSheet(labelStyle());
-    m_aiMaxTokensSpin = new QSpinBox;
+    m_aiMaxTokensSpin = new ClampSpinBox;
     m_aiMaxTokensSpin->setRange(256, 16384);
     m_aiMaxTokensSpin->setSingleStep(256);
     m_aiMaxTokensSpin->setValue(cfg.aiMaxTokens());
-    m_aiMaxTokensSpin->setFixedWidth(120);
+    m_aiMaxTokensSpin->setFixedWidth(100);
     m_aiMaxTokensSpin->setStyleSheet(inputStyle());
     tokensRow->addWidget(tokensLabel);
     tokensRow->addStretch();
@@ -1442,26 +1626,6 @@ QWidget *SettingsPanel::createAiServicePage()
 
     connect(m_aiMaxTokensSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
         emit aiSettingChanged("ai.max_tokens", val);
-    });
-
-    // ---- Temperature ----
-    auto *tempRow = new QHBoxLayout;
-    auto *tempLabel = new QLabel(tr("Temperature"));
-    tempLabel->setStyleSheet(labelStyle());
-    m_aiTemperatureSpin = new QDoubleSpinBox;
-    m_aiTemperatureSpin->setRange(0.0, 2.0);
-    m_aiTemperatureSpin->setSingleStep(0.1);
-    m_aiTemperatureSpin->setDecimals(1);
-    m_aiTemperatureSpin->setValue(cfg.aiTemperature());
-    m_aiTemperatureSpin->setFixedWidth(120);
-    m_aiTemperatureSpin->setStyleSheet(inputStyle());
-    tempRow->addWidget(tempLabel);
-    tempRow->addStretch();
-    tempRow->addWidget(m_aiTemperatureSpin);
-    layout->addLayout(tempRow);
-
-    connect(m_aiTemperatureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
-        emit aiSettingChanged("ai.temperature", val);
     });
 
     // ---- 系统提示词 ----
@@ -1665,14 +1829,13 @@ QWidget *SettingsPanel::createToolsPage()
 
     // ---- 时间限制 ----
     auto *timeLimitRow = new QHBoxLayout;
-    auto *timeLimitLabel = new QLabel(tr("时间限制"));
+    auto *timeLimitLabel = new QLabel(tr("时间限制（ms）"));
     timeLimitLabel->setStyleSheet(labelStyle());
-    m_judgeTimeLimitSpin = new QSpinBox;
+    m_judgeTimeLimitSpin = new ClampSpinBox;
     m_judgeTimeLimitSpin->setRange(100, 10000);
     m_judgeTimeLimitSpin->setSingleStep(100);
     m_judgeTimeLimitSpin->setValue(cfg.judgeTimeLimitMs());
-    m_judgeTimeLimitSpin->setSuffix(QStringLiteral(" ms"));
-    m_judgeTimeLimitSpin->setFixedWidth(120);
+    m_judgeTimeLimitSpin->setFixedWidth(100);
     m_judgeTimeLimitSpin->setStyleSheet(inputStyle());
     timeLimitRow->addWidget(timeLimitLabel);
     timeLimitRow->addStretch();
@@ -1685,14 +1848,13 @@ QWidget *SettingsPanel::createToolsPage()
 
     // ---- 内存限制 ----
     auto *memLimitRow = new QHBoxLayout;
-    auto *memLimitLabel = new QLabel(tr("内存限制"));
+    auto *memLimitLabel = new QLabel(tr("内存限制（MB）"));
     memLimitLabel->setStyleSheet(labelStyle());
-    m_judgeMemoryLimitSpin = new QSpinBox;
+    m_judgeMemoryLimitSpin = new ClampSpinBox;
     m_judgeMemoryLimitSpin->setRange(16, 1024);
     m_judgeMemoryLimitSpin->setSingleStep(16);
     m_judgeMemoryLimitSpin->setValue(cfg.judgeMemoryLimitKb() / 1024);
-    m_judgeMemoryLimitSpin->setSuffix(QStringLiteral(" MB"));
-    m_judgeMemoryLimitSpin->setFixedWidth(120);
+    m_judgeMemoryLimitSpin->setFixedWidth(100);
     m_judgeMemoryLimitSpin->setStyleSheet(inputStyle());
     memLimitRow->addWidget(memLimitLabel);
     memLimitRow->addStretch();
@@ -1848,6 +2010,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     if (m_fileTreeItemHeightSpin) {
         m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
     }
+    if (m_equalWidthTabToggle) {
+        m_equalWidthTabToggle->setChecked(sm.value("editor.equal_width_tab", false).toBool());
+    }
 
     // Refresh color controls (appearance page)
     for (const auto &cc : m_colorControls) {
@@ -1909,8 +2074,6 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_aiModelEdit->setText(sm.value("ai.model", cfg.aiModel()).toString());
     if (m_aiMaxTokensSpin)
         m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
-    if (m_aiTemperatureSpin)
-        m_aiTemperatureSpin->setValue(sm.value("ai.temperature", cfg.aiTemperature()).toDouble());
     if (m_aiSystemPromptEdit)
         m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
 
@@ -2116,5 +2279,9 @@ bool SettingsPanel::eventFilter(QObject *watched, QEvent *event)
         emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
         m_aiPromptDebounceTimer->stop();
     }
+    if (event->type() == QEvent::Wheel && qobject_cast<QComboBox*>(watched))
+        return true;
     return QWidget::eventFilter(watched, event);
 }
+
+#include "settingspanel.moc"

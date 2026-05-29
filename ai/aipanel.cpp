@@ -311,9 +311,9 @@ void AiPanel::refreshStyle()
         "  background-color: %4;"
         "  color: %5;"
         "}"
-    ).arg(tm.color("button.background").name(),
-          tm.color("button.foreground").name(),
-          tm.color("button.hoverBackground").name(),
+    ).arg(tm.color("badge.background").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("badge.background").lighter(115).name(),
           tm.color("input.background").name(),
           tm.color("editorLineNumber.foreground").name()));
 

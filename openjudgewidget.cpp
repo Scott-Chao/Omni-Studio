@@ -182,7 +182,7 @@ void OpenJudgeWidget::setupUi()
         "QPushButton:hover { background: %2; } "
         "QPushButton:disabled { background: %3; color: %4; }")
         .arg(tm.color("badge.background").name(),
-             tm.color("button.hoverBackground").name(),
+             tm.color("badge.background").lighter(115).name(),
              btnBg.name(), disabledFg.name()));
     m_selectBtn->setVisible(false);
 
@@ -1214,8 +1214,8 @@ void OpenJudgeWidget::updateSelectButtonStyle(bool selected)
             "border: none; border-radius: 4px; padding: 6px 20px; } "
             "QPushButton:hover { background: %2; } "
             "QPushButton:disabled { background: %3; color: %4; }")
-            .arg(tm.color("button.background").lighter(130).name(),
-                 tm.color("button.hoverBackground").lighter(130).name(),
+            .arg(tm.color("badge.background").lighter(130).name(),
+                 tm.color("badge.background").lighter(145).name(),
                  tm.color("input.background").name(),
                  tm.color("tab.inactiveForeground").name()));
     } else {
@@ -1225,7 +1225,7 @@ void OpenJudgeWidget::updateSelectButtonStyle(bool selected)
             "QPushButton:hover { background: %2; } "
             "QPushButton:disabled { background: %3; color: %4; }")
             .arg(tm.color("badge.background").name(),
-                 tm.color("button.hoverBackground").name(),
+                 tm.color("badge.background").lighter(115).name(),
                  tm.color("input.background").name(),
                  tm.color("tab.inactiveForeground").name()));
     }

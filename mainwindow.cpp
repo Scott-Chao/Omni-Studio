@@ -11,9 +11,8 @@ class OverlayWidget : public QWidget
 {
 public:
     explicit OverlayWidget(QWidget *parent = nullptr)
-        : QWidget(parent)
+        : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint)
     {
-        setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_ShowWithoutActivating, true);
     }
@@ -598,16 +597,26 @@ MainWindow::MainWindow(QWidget *parent)
     m_runMenu->addAction(m_compileRunAction);
     m_runMenu->setTitle(tr("运行"));
 
+    // 工具栏运行按钮（带下拉菜单），直接点击默认编译运行
     m_runToolAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
     m_runToolAction->setMenu(m_runMenu);
-    m_runToolAction->setToolTip(tr("运行 (编译/运行/编译运行)"));
+    m_runToolAction->setToolTip(tr("编译运行 (编译/运行/编译运行)"));
     m_runToolAction->setVisible(false); // 只对代码文件显示
+    connect(m_runToolAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
     m_toolBar->addAction(m_runToolAction);
 
     // Title bar uses ThemeManager colors, refresh on theme change
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             this, &MainWindow::refreshTitleBarStyle);
     refreshTitleBarStyle();
+
+    // 主题切换时刷新标签页栏背景
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() { m_tabManager->update(); });
+
+    // 主题切换时刷新缩放按钮样式
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &MainWindow::refreshZoomButtonStyle);
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
@@ -665,26 +674,31 @@ MainWindow::MainWindow(QWidget *parent)
     m_zoomLabel->setAlignment(Qt::AlignCenter);
 
     // 把 QAction 包装成 QToolButton，便于放入布局
-    QToolButton *zoomOutBtn = new QToolButton;
-    zoomOutBtn->setDefaultAction(m_zoomOutAction);
-    zoomOutBtn->setText("-");
+    m_zoomOutBtn = new QToolButton;
+    m_zoomOutBtn->setDefaultAction(m_zoomOutAction);
+    m_zoomOutBtn->setText("-");
+    m_zoomOutBtn->setAutoRaise(true);
 
-    QToolButton *zoomInBtn = new QToolButton;
-    zoomInBtn->setDefaultAction(m_zoomInAction);
-    zoomInBtn->setText("+");
+    m_zoomInBtn = new QToolButton;
+    m_zoomInBtn->setDefaultAction(m_zoomInAction);
+    m_zoomInBtn->setText("+");
+    m_zoomInBtn->setAutoRaise(true);
 
-    QToolButton *zoomResetBtn = new QToolButton;
-    zoomResetBtn->setDefaultAction(m_zoomResetAction);
-    zoomResetBtn->setText("重置");
+    m_zoomResetBtn = new QToolButton;
+    m_zoomResetBtn->setDefaultAction(m_zoomResetAction);
+    m_zoomResetBtn->setText("重置");
+    m_zoomResetBtn->setAutoRaise(true);
+
+    refreshZoomButtonStyle();
 
     // 将按钮和标签放入一个水平布局的 Widget
     QWidget *zoomWidget = new QWidget();
     QHBoxLayout *zoomLayout = new QHBoxLayout(zoomWidget);
     zoomLayout->setContentsMargins(0, 0, 0, 0);
-    zoomLayout->addWidget(zoomOutBtn);
+    zoomLayout->addWidget(m_zoomOutBtn);
     zoomLayout->addWidget(m_zoomLabel);
-    zoomLayout->addWidget(zoomInBtn);
-    zoomLayout->addWidget(zoomResetBtn);
+    zoomLayout->addWidget(m_zoomInBtn);
+    zoomLayout->addWidget(m_zoomResetBtn);
 
     // 添加到状态栏
     status->addPermanentWidget(zoomWidget);
@@ -705,10 +719,37 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // ----- 设置面板（悬浮遮罩 + 面板）-----
+    m_settingsOverlay = new OverlayWidget();
+    m_settingsOverlay->installEventFilter(this);
+    m_settingsOverlay->hide();
+    m_settingsPanel = new SettingsPanel(m_settingsOverlay);
+    connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
+    connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
+    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
+    connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
+    connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
+
+    // ----- 帮助面板（悬浮遮罩 + 面板）-----
+    m_helpOverlay = new OverlayWidget();
+    m_helpOverlay->installEventFilter(this);
+    m_helpOverlay->hide();
+    m_helpPanel = new HelpPanel(m_helpOverlay);
+    connect(m_helpPanel, &HelpPanel::closeRequested, this, &MainWindow::toggleHelp);
+
     // 应用保存的文件树条目高度
     int treeItemHeight = m_settings->value("editor.file_tree_item_height",
                                            ConfigManager::instance().editorFileTreeItemHeight()).toInt();
     m_explorer->setItemHeight(treeItemHeight);
+
+    // 应用保存的等宽标签页设置
+    applyEqualWidthTab(m_settings->value("editor.equal_width_tab", false).toBool());
 
     // ----- AI 助手面板 -----
     m_aiPanel = new AiPanel(this);
@@ -890,6 +931,13 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshOutline();
                 filterAiHistoryByCurrentFile();
                 updateCurrentEditorCompletions();
+                updateRunActions();
+
+                // 更新导出PDF按钮可见性（预览标签复用时不会触发 currentChanged）
+                bool isMd = current->currentFilePath().toLower().endsWith(".md");
+                m_exportPdfAction->setEnabled(isMd);
+                m_exportPdfAction->setVisible(isMd);
+                m_activityBar->setExportPdfVisible(isMd);
             });
         }
 
@@ -1310,24 +1358,6 @@ void MainWindow::moveEvent(QMoveEvent *event)
 
 void MainWindow::toggleSettings()
 {
-    if (!m_settingsOverlay) {
-        m_settingsOverlay = new OverlayWidget();
-        m_settingsOverlay->installEventFilter(this);
-        m_settingsOverlay->hide();
-        m_settingsPanel = new SettingsPanel(m_settingsOverlay);
-        connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
-        connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
-        connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
-        connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
-        connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
-    }
-
     if (m_settingsOverlay->isVisible()) {
         m_settingsOverlay->hide();
         if (auto *editor = m_tabManager->currentEditor())
@@ -1342,14 +1372,6 @@ void MainWindow::toggleSettings()
 
 void MainWindow::toggleHelp()
 {
-    if (!m_helpOverlay) {
-        m_helpOverlay = new OverlayWidget();
-        m_helpOverlay->installEventFilter(this);
-        m_helpOverlay->hide();
-        m_helpPanel = new HelpPanel(m_helpOverlay);
-        connect(m_helpPanel, &HelpPanel::closeRequested, this, &MainWindow::toggleHelp);
-    }
-
     if (m_helpOverlay->isVisible()) {
         m_helpOverlay->hide();
     } else {
@@ -1423,6 +1445,10 @@ void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &
 
     if (key == "editor.file_tree_item_height") {
         m_explorer->setItemHeight(value.toInt());
+        return;
+    }
+    if (key == "editor.equal_width_tab") {
+        applyEqualWidthTab(value.toBool());
         return;
     }
 
@@ -1645,6 +1671,9 @@ void MainWindow::onResetToDefaults()
     m_settingsPanel->setDefaultZoom(cfg.zoomDefault());
     m_settingsPanel->syncFromSettings(*m_settings);
 
+    // Apply default equal-width tab setting
+    applyEqualWidthTab(false);
+
     // Apply default zoom + editor font to all editors
     for (int i = 0; i < m_tabManager->count(); ++i) {
         if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
@@ -1689,6 +1718,12 @@ void MainWindow::onResetToDefaults()
     }
 }
 
+void MainWindow::applyEqualWidthTab(bool enabled)
+{
+    if (auto *bar = qobject_cast<CustomTabBar*>(m_tabManager->tabBar()))
+        bar->setEqualWidth(enabled);
+}
+
 // 缩放相关槽函数
 void MainWindow::onZoomIn()
 {
@@ -1720,6 +1755,26 @@ void MainWindow::updateZoomLabel()
     } else {
         m_zoomLabel->setText(QStringLiteral("100%"));
     }
+}
+
+void MainWindow::refreshZoomButtonStyle()
+{
+    auto &tm = ThemeManager::instance();
+    QString zoomBtnStyle = QStringLiteral(
+        "QToolButton { background: transparent; color: %1; border: none; border-radius: 3px;"
+        "  padding: 0px 4px; font-size: 18px; font-weight: bold; min-height: 24px; max-height: 24px; }"
+        "QToolButton:hover { background: %2; }"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("button.hoverBackground").name());
+    QString zoomResetBtnStyle = QStringLiteral(
+        "QToolButton { background: transparent; color: %1; border: none; border-radius: 3px;"
+        "  padding: 0px 4px; min-height: 24px; max-height: 24px; }"
+        "QToolButton:hover { background: %2; }"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("button.hoverBackground").name());
+    if (m_zoomOutBtn) m_zoomOutBtn->setStyleSheet(zoomBtnStyle);
+    if (m_zoomInBtn) m_zoomInBtn->setStyleSheet(zoomBtnStyle);
+    if (m_zoomResetBtn) m_zoomResetBtn->setStyleSheet(zoomResetBtnStyle);
 }
 
 void MainWindow::connectCurrentEditorZoomSignal()
@@ -2217,6 +2272,16 @@ void MainWindow::refreshTitleBarStyle()
     ).arg(tm.color("titleBar.foreground").name(),
           tm.color("titleBar.buttonHover").name()));
 
+    // Run button — green icon with extra space before dropdown arrow
+    if (auto *btn = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(m_runToolAction))) {
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton {"
+            "  background: transparent; border: none; padding: 4px 14px 4px 8px;"
+            "}"
+            "QToolButton:hover { background: %1; }"
+        ).arg(tm.color("titleBar.buttonHover").name()));
+    }
+
     // File menu dropdown
     m_fileMenu->setStyleSheet(QStringLiteral(
         "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
@@ -2250,7 +2315,7 @@ void MainWindow::refreshTitleBarStyle()
     m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
     m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
     if (m_runToolAction)
-        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", titleFg));
+        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
 }
 
 // ============================================================
@@ -3438,6 +3503,31 @@ void MainWindow::checkCrashRecovery()
     QPushButton *restoreBtn = msgBox.addButton(tr("恢复(&R)"), QMessageBox::AcceptRole);
     msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
     msgBox.setDefaultButton(restoreBtn);
+    auto &tm = ThemeManager::instance();
+    msgBox.setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "   min-width: 80px; padding: 6px 16px;"
+        "   background: %1; color: %2;"
+        "   border: 1px solid %3; border-radius: 3px;"
+        "}"
+        "QPushButton:hover { background: %4; }"
+        "QPushButton:default {"
+        "   background: %5; color: %2;"
+        "   border: 1px solid %5;"
+        "}"
+        "QPushButton:default:hover {"
+        "   background: %6;"
+        "}"
+    ).arg(tm.color("button.background").name(),
+          tm.color("button.foreground").name(),
+          tm.color("input.border").name(),
+          tm.color("button.hoverBackground").name(),
+          QColor(tm.color("badge.background").red(),
+                 tm.color("badge.background").green(),
+                 tm.color("badge.background").blue(), 45).name(QColor::HexArgb),
+          QColor(tm.color("badge.background").red(),
+                 tm.color("badge.background").green(),
+                 tm.color("badge.background").blue(), 80).name(QColor::HexArgb)));
     msgBox.exec();
 
     if (msgBox.clickedButton() == restoreBtn) {

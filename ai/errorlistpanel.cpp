@@ -440,9 +440,9 @@ void ErrorDetailWidget::refreshStyles()
         "  border-radius: 4px; font-size: 11px; padding: 0 12px;"
         "}"
         "QPushButton:hover { background-color: %3; }"
-    ).arg(tm.color("button.background").name(),
-          tm.color("button.foreground").name(),
-          tm.color("button.hoverBackground").name()));
+    ).arg(tm.color("badge.background").name(),
+          tm.color("badge.foreground").name(),
+          tm.color("badge.background").lighter(115).name()));
 
     m_deleteBtn->setStyleSheet(QStringLiteral(
         "QPushButton {"

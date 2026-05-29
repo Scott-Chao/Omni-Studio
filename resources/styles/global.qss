@@ -88,7 +88,7 @@ QDockWidget::title {
 
 /* ===== Tab Widget ===== */
 QTabWidget {
-    background: %%tab.activeBackground%%;
+    background: %%tab.inactiveBackground%%;
 }
 QTabWidget::pane {
     background: %%tab.activeBackground%%;

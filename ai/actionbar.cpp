@@ -117,7 +117,7 @@ void ActionBar::rebuildButtons()
               tm.color("input.border").name(),
               tm.color("aiAssistant.actionButtonHoverBackground").name(),
               tm.color("activityBar.activeBorder").name(),
-              tm.color("button.foreground").name(),
+              tm.color("badge.foreground").name(),
               tm.color("menu.background").name(),
               tm.color("menu.foreground").name(),
               tm.color("menu.separatorColor").name()));
