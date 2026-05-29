@@ -10,9 +10,13 @@
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QApplication>
 #include <QLineEdit>
 #include <QPainter>
+#include <QPainterPath>
+#include <QProxyStyle>
+#include <QStyleOption>
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QResizeEvent>
@@ -36,6 +40,78 @@ QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
+
+// QProxyStyle that draws ">" / "v" chevrons instead of Fusion's solid triangles
+// for tree branch expand/collapse indicators. Preserves Fusion's connecting lines.
+class TreeBranchStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
+                       QPainter *painter, const QWidget *widget) const override
+    {
+        if (element == PE_IndicatorBranch && (option->state & (State_Children | State_Open))) {
+            // Draw connecting lines via base (without the triangle)
+            QStyleOption opt = *option;
+            opt.state &= ~State_Children;
+            QProxyStyle::drawPrimitive(element, &opt, painter, widget);
+
+            // Draw custom chevron
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing);
+            QColor color = option->palette.color(QPalette::Text);
+            color.setAlpha(160);
+            painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap));
+            painter->setBrush(Qt::NoBrush);
+            QRect r = option->rect;
+            const int cx = r.center().x();
+            const int cy = r.center().y();
+            const int s = r.width() / 4;
+            QPainterPath path;
+            if (option->state & State_Open) {
+                path.moveTo(cx - s, cy - s / 2.0);
+                path.lineTo(cx, cy + s / 2.0);
+                path.lineTo(cx + s, cy - s / 2.0);
+            } else {
+                path.moveTo(cx - s / 2.0, cy - s);
+                path.lineTo(cx + s / 2.0, cy);
+                path.lineTo(cx - s / 2.0, cy + s);
+            }
+            painter->drawPath(path);
+            painter->restore();
+            return;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+};
+
+// QTreeView subclass that handles branch clicks on expanded items, even when
+// QFileSystemModel reports no children (empty folders). The default QTreeView
+// refuses to collapse items where isExpandable() returns false.
+class FileTreeView : public QTreeView
+{
+public:
+    using QTreeView::QTreeView;
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        const QModelIndex index = indexAt(event->pos());
+        if (index.isValid() && isExpanded(index)) {
+            int depth = 0;
+            for (QModelIndex p = index.parent(); p.isValid(); p = p.parent())
+                ++depth;
+            QRect br = visualRect(index);
+            br.setWidth(indentation() * (depth + 1));
+            if (br.contains(event->pos())) {
+                collapse(index);
+                return;
+            }
+        }
+        QTreeView::mousePressEvent(event);
+    }
+};
 
 } // namespace
 
@@ -187,8 +263,10 @@ protected:
 FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     : QWidget(parent)
     , m_fileModel(new QFileSystemModel(this))
-    , m_treeView(new QTreeView(this))
+    , m_treeView(new FileTreeView(this))
 {
+    // Apply custom chevron branch indicator style
+    m_treeView->setStyle(new TreeBranchStyle(m_treeView->style()));
     // 设置布局，使树视图填满当前控件
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -253,7 +331,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 配置树视图外观（主题颜色在 refreshStyle 中设置）
     m_treeView->header()->hide(); // 隐藏表头
-    m_treeView->setIndentation(17); // 调整缩进
+    m_treeView->setIndentation(20); // 调整缩进
     m_treeView->setUniformRowHeights(true); // 所有行高度一致（样式表已固定24px），避免逐行查询高度
     m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头
     m_treeView->hideColumn(1); // 隐藏大小列
