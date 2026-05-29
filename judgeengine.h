@@ -19,6 +19,8 @@ public:
         QString name;
         QString inputFile;
         QString expectedOutputFile;
+        QString inputData;
+        QString expectedOutput;
     };
 
     struct TestResult {

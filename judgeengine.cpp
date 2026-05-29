@@ -49,6 +49,8 @@ QVector<JudgeEngine::TestCase> JudgeEngine::discoverTests() const
             tc.name = baseName;
             tc.inputFile = inInfo.absoluteFilePath();
             tc.expectedOutputFile = outPath;
+            tc.inputData = readFile(tc.inputFile);
+            tc.expectedOutput = readFile(tc.expectedOutputFile);
             tests.append(tc);
         }
     }
@@ -313,8 +315,7 @@ void JudgeEngine::runNextTest()
     captureMemory();
 
     // Write .in content to stdin
-    const QString input = readFile(tc.inputFile);
-    m_testProcess->write(input.toUtf8());
+    m_testProcess->write(tc.inputData.toUtf8());
     m_testProcess->closeWriteChannel();
 
     m_testElapsed.start();
@@ -348,7 +349,7 @@ void JudgeEngine::onTestProcessFinished(int exitCode, QProcess::ExitStatus exitS
     }
 
     const bool normalExit = (exitStatus == QProcess::NormalExit);
-    const QString expected = readFile(m_tests[m_currentTestIndex].expectedOutputFile);
+    const QString expected = m_tests[m_currentTestIndex].expectedOutput;
 
     if (!normalExit) {
         finishCurrentTest(false, QStringLiteral("RE"),
@@ -431,8 +432,8 @@ void JudgeEngine::finishCurrentTest(bool passed, const QString &statusCode, cons
     // Only capture actual output for non-AC results (save memory)
     if (!passed)
         result.actualOutput = m_actualOutput.trimmed();
-    result.expectedOutput = readFile(tc.expectedOutputFile);
-    result.inputData = readFile(tc.inputFile);
+    result.expectedOutput = tc.expectedOutput;
+    result.inputData = tc.inputData;
     result.detail = detail;
 
     m_results.append(result);
