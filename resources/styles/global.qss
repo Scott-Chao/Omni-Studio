@@ -86,6 +86,22 @@ QDockWidget::title {
     padding-left: 8px;
 }
 
+/* ===== Dock Title Bar (custom widget replacement) ===== */
+#dockTitleBar {
+    background: %%titleBar.background%%;
+}
+#dockTitleBarLabel {
+    color: %%titleBar.foreground%%;
+    font-size: 13px;
+}
+#dockTitleCloseBtn {
+    background: transparent;
+    border: none;
+}
+#dockTitleCloseBtn:hover {
+    background: %%titleBar.buttonCloseHover%%;
+}
+
 /* ===== Tab Widget ===== */
 QTabWidget {
     background: %%tab.inactiveBackground%%;

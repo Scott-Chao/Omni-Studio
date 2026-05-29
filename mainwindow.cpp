@@ -158,32 +158,23 @@ static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int siz
 // ── Helper: dock widget title bar with themed close button ──────
 static QWidget *createDockTitleBar(const QString &title, QDockWidget *dock)
 {
-    auto &tm = ThemeManager::instance();
-
     auto *bar = new QWidget;
-    bar->setStyleSheet(QStringLiteral(
-        "background: %1;")
-        .arg(tm.color("titleBar.background").name()));
+    bar->setObjectName("dockTitleBar");
 
     auto *layout = new QHBoxLayout(bar);
     layout->setContentsMargins(8, 0, 4, 0);
     layout->setSpacing(0);
 
     auto *label = new QLabel(title);
-    label->setStyleSheet(QStringLiteral(
-        "color: %1; font-size: 13px;")
-        .arg(tm.color("titleBar.foreground").name()));
+    label->setObjectName("dockTitleBarLabel");
 
     auto *closeBtn = new QPushButton;
+    closeBtn->setObjectName("dockTitleCloseBtn");
     closeBtn->setIcon(QIcon(":/icons/close"));
     closeBtn->setIconSize(QSize(16, 16));
     closeBtn->setFixedSize(22, 22);
     closeBtn->setFlat(true);
     closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: transparent; border: none; }"
-        "QPushButton:hover { background: %1; border-radius: 3px; }")
-        .arg(tm.color("titleBar.buttonCloseHover").name()));
 
     QObject::connect(closeBtn, &QPushButton::clicked, dock, &QDockWidget::hide);
 
