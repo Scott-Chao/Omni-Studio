@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.9）
+## 功能说明文档（v0.13.10）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,11 +60,14 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.9
-- UI 细节优化调整
-
-### 修复
-- 按钮颜色调整
+### 重构 v0.13.10
+- 重构：提取 StringUtils 公共函数（sanitizeForPython/completionKindToString）
+- 重构：添加 ThemeManager::watchTheme 模板消除 30+ 处主题连接重复
+- 重构：添加 TextFileUtils I/O 工具函数（readTextFile/writeTextFile/readJsonFile/writeJsonFile/isSafeRootPath）
+- 重构：添加 ThemeManager::colorStyle 简化 QSS 颜色插值
+- 重构：统一 MessageRole 枚举（替代 aiprovider.h 内联枚举和 ChatBubble::Role）
+- 重构：提取 TabButtonGroup 消除 BottomPanel/AiPanel tab 切换重复
+- 重构：提取 WindowDragHelper 消除 HelpPanel/SettingsPanel 鼠标拖拽重复
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -574,10 +577,15 @@
 
 **职责**：
 - 统一定义项目中支持的文本文件扩展名列表（40+ 种），涵盖编程语言、Web、配置、脚本等常见文本格式。
-- 提供三个内联工具函数，供其他模块引用：
+- 提供以下内联工具函数，供其他模块引用：
   - `textExtensions()`：返回支持的文本文件扩展名列表（`QStringList`），`.md` 排在首位以保证 Wiki 链接优先匹配 Markdown 文件。
   - `scanNameFilters()`：返回 `QDirIterator` 所需的名称过滤器列表（如 `*.md`、`*.txt`、`*.cpp` 等）。
   - `isTextExtension(const QString &suffix)`：判断给定的后缀是否在已知文本扩展名列表中。
+  - `readTextFile(const QString &path)`：打开文件并以 UTF-8 文本模式读取全部内容，返回 `QString`。文件不存在或打开失败返回空字符串。消除项目中 12+ 处的 QFile+QTextStream 打开-读取样板代码。
+  - `writeTextFile(const QString &path, const QString &content)`：以 UTF-8 文本模式写入文件。打开失败返回 `false`。消除 5+ 处的 QFile+QTextStream 写入样板代码。
+  - `readJsonFile(const QString &path)`：打开文件并解析为 `QJsonDocument`。文件不存在或 JSON 解析失败返回空文档。消除多处 QFile+readAll+fromJson 样板代码。
+  - `writeJsonFile(const QString &path, const QJsonDocument &doc)`：将 JSON 文档以缩进格式写入文件。消除 4 处的 QFile+write+toJson 样板代码。
+  - `isSafeRootPath(const QString &rootPath)`：检查路径是否为安全的根目录（非空、非系统根 `/`、非用户 home 目录）。消除 `backlinkindex.cpp` 和 `indexmanager.cpp` 中重复的根路径安全检查。
 
 **扩展名列表**：`md`、`markdown`、`txt`、`c`、`cpp`、`cxx`、`cc`、`h`、`hpp`、`hxx`、`hh`、`cs`、`java`、`py`、`pyw`、`pyx`、`js`、`jsx`、`ts`、`tsx`、`mjs`、`rs`、`go`、`rb`、`php`、`swift`、`kt`、`kts`、`html`、`htm`、`css`、`scss`、`sass`、`less`、`xml`、`svg`、`json`、`yaml`、`yml`、`toml`、`ini`、`cfg`、`conf`、`rst`、`tex`、`log`、`csv`、`tsv`、`sql`、`graphql`、`proto`、`in`、`out`、`sh`、`bash`、`zsh`、`fish`、`ps1`、`bat`、`cmd`、`cmake`、`mak`、`mk`、`pro`、`pri`、`qml`、`qrc`、`ui`、`diff`、`patch`。
 
@@ -1658,6 +1666,8 @@
 - `Theme currentTheme() const` / `Theme requestedTheme() const`：当前生效主题和用户请求模式。
 - `void refreshSystemTheme()`：System 模式下重新检测。
 - `QColor color(const QString &key) const` / `QString hex(const QString &key) const`：语义化颜色查询。
+- `QString colorStyle(const QString &property, const QString &colorKey) const`：直接生成 CSS 属性值字符串，如 `colorStyle("background-color", "editor.background")` 返回 `"background-color: #1e1e1e;"`。消除项目中 15+ 处 `QString("background-color: %1;").arg(tm.color("xxx").name())` 重复。
+- `template<typename Receiver> static void watchTheme(Receiver *receiver, void (Receiver::*slot)())`：便利模板函数，封装 `connect(&ThemeManager::instance(), &ThemeManager::themeChanged, receiver, slot)`。消除项目中 30+ 处完全相同的三行样板连接代码。
 - `bool applyCurrentTheme()`：重新发射 `themeChanged` 信号。
 - `void setStyleSheetTarget(QWidget *w)`：设置 QSS 作用目标。`loadQss()` 将样式表应用到指定 widget 树而非 `qApp`，避免 Qt 重新样式化整个应用程序。为 `nullptr` 时回退到 `qApp->setStyleSheet()`。
 
@@ -1668,10 +1678,90 @@
 - 由 `MainWindow` 在构造时调用 `ThemeManager::instance().setTheme(...)` 初始化，同时调用 `setStyleSheetTarget(this)` 将 QSS 作用域限定在 MainWindow 对象树内。
 - `MainWindow::onAppearanceSettingChanged("theme", val)` 中调用 `setTheme(static_cast<Theme>(val))`。
 - `ConfigManager` 提供 `theme` 默认值（0=Dark）。
-- 各 widget 的 `setupStyles()`/`reloadColors()` 连接 `themeChanged` 信号实现响应。
+- 各 widget 通过 `ThemeManager::watchTheme(this, &Xxx::refreshStyle)` 或传统的 `connect(&ThemeManager::instance(), ...)` 连接 `themeChanged` 信号实现响应。
+- `watchTheme` 模板被项目中约 30+ 个 widget 使用，已逐步替换原有的手动连接模式。
 
 
-### 34. `CompilerErrorParser` — 编译器/Python 错误解析器
+### 34. `StringUtils` — 通用字符串工具命名空间
+
+**文件**：`stringutils.h`
+
+**职责**：
+- 头文件（header-only）工具命名空间，提供项目中多处重复的字符串处理函数。
+- 消除 `pythoncompletionprovider.cpp` 和 `smdlspmanager.cpp` 之间完全一致的 `sanitizeForPython()` 重复。
+- 消除 `cppcompletionprovider.cpp` 和 `smdlspmanager.cpp` 之间 `completionKindToString()` 的 LSP Kind 映射重复。
+
+**接口**：
+- `QString sanitizeForPython(const QString &s)`：规范化 Python 消费的字符串，执行 `\r\n` → `\n`、`\r` → `\n`、孤立代理替换（`\xFFFD`）、UTF-8 往返校验。Qt 字符串可能携带 Windows 换行符和 UTF-16 代理对，Python 的 `compile()` 无法处理这些。
+- `QString completionKindToString(int kind)`：将 LSP `CompletionItemKind` 整数代码（1-25）转换为人类可读的字符串。覆盖所有 25 个标准 LSP 类型：Text/Method/Function/Constructor/Field/Variable/Class/Interface/Module/Property/Unit/Value/Enum/Keyword/Snippet/Reference/EnumMember/Constant/Struct/Event/Operator/TypeParameter。不匹配时默认返回 "Text"。
+
+**协作关系**：
+- `sanitizeForPython()` 被 `PythonCompletionProvider`（作为控制文本输入）和 `SmdLspManager`（拼接虚拟文档时使用）调用。
+- `completionKindToString()` 被 `CppCompletionProvider` 和 `SmdLspManager` 调用，用于将 LSP 补全项类型显示在弹出列表中。
+
+
+### 35. `MessageRole` — AI 消息角色统一枚举
+
+**文件**：`ai/messagerole.h`
+
+**内容**：
+```cpp
+enum class MessageRole { User, Assistant, System };
+```
+
+**职责**：
+- 将分散在各文件中的角色枚举合并为统一的一份定义。
+- 取代 `aiprovider.h` 中内联的 `enum class MessageRole`，消除与 `ChatBubble` 中 `enum Role { User, Assistant }` 的概念重叠。
+
+**协作关系**：
+- 被 `aiprovider.h`（`Message` 结构体）和 `chatbubble.h`（构造参数和 `role()` 访问器）引用。
+- `ChatBubble::Role` 已完全替换为 `MessageRole`，删除旧枚举。
+
+
+### 36. `TabButtonGroup` — Tab 按钮组控制器
+
+**文件**：`tabbuttongroup.h` / `tabbuttongroup.cpp`
+
+**职责**：
+- 轻量 `QObject` 子类，封装 `QPushButton` → `QStackedWidget` 的 tab 切换模式。
+- 消除 `BottomPanel` 和 `AiPanel` 之间高度相似的 tab 切换逻辑重复（每个面板都手动连接按钮的 `clicked` 信号、管理索引、刷新样式）。
+
+**主要接口**：
+- `TabButtonGroup(QStackedWidget *stack, QObject *parent = nullptr)`：绑定目标 `QStackedWidget`。
+- `void addTab(QPushButton *button, int index)`：注册一个按钮并绑定其点击事件到对应页面索引。
+- `void setCurrentIndex(int index)`：切换到指定索引，自动更新 `QStackedWidget` 和按钮样式。
+- `int currentIndex() const`：返回当前选中索引。
+- `void setStyleProvider(StyleProvider provider)`：设置样式回调 `QString(*)(int index, bool active)`，在切换时为每个按钮生成活跃/非活跃 QSS。
+- `void refreshStyles()`：手动触发所有按钮的样式刷新。
+
+**信号**：
+- `void currentChanged(int index)`：切换完成时发出。
+
+**协作关系**：
+- 由 `BottomPanel` 和 `AiPanel` 创建并使用，替代各自原有的手动 `connect(button, clicked, ...)` + 样式切换代码。
+- `BottomPanel` 注入 lambda 样式提供器，根据标签页切换生成活跃/非活跃 QSS 字符串。
+
+
+### 37. `WindowDragHelper` — 无边框窗口拖拽辅助
+
+**文件**：`windowdraghelper.h` / `windowdraghelper.cpp`
+
+**职责**：
+- 轻量非 `QObject` 值类型辅助类（作为成员变量使用），封装 frameless 面板拖拽移动的 `mousePressEvent`/`mouseMoveEvent`/`mouseReleaseEvent` 样板代码。
+- 消除 `HelpPanel` 和 `SettingsPanel` 中重复的鼠标拖拽实现。
+
+**主要接口**：
+- `bool handlePress(QWidget *widget, QMouseEvent *event, int titleBarHeight)`：在 `mousePressEvent` 中调用。当鼠标左键点击在标题栏区域内（`y ≤ titleBarHeight`）时开始拖拽，返回 `true`。
+- `bool handleMove(QWidget *widget, QMouseEvent *event)`：在 `mouseMoveEvent` 中调用。拖拽进行时计算位移并移动控件位置，返回值表明拖拽是否活跃（调用方应跳过默认处理）。
+- `bool handleRelease(QMouseEvent *event)`：在 `mouseReleaseEvent` 中调用。结束拖拽，返回 `true` 表示之前处于拖拽状态。
+- `bool isDragging() const`：查询当前是否正在拖拽。
+
+**协作关系**：
+- 作为成员变量（`WindowDragHelper m_dragHelper`）内嵌在 `HelpPanel` 和 `SettingsPanel` 中。
+- 对应的 `mousePressEvent()` `mouseMoveEvent()` `mouseReleaseEvent()` 重写中将事件直接委托给 helper，消除重复的位置跟踪和几何计算代码。
+
+
+### 38. `CompilerErrorParser` — 编译器/Python 错误解析器
 
 **文件**：`compilererrorparser.h`
 
@@ -1687,7 +1777,7 @@
 - 被 `MainWindow::parseAndShowBlockDiagnostics()` 调用，根据 `m_currentBlockLanguage`（`"cpp"` / `"python"`）选择对应的解析函数。
 
 
-### 35. MD 代码块诊断（Preview Code Block Diagnostics）
+### 39. MD 代码块诊断（Preview Code Block Diagnostics）
 
 **概述**：
 - MD 文件预览模式下，点击代码块的 ▶ Run 按钮运行代码后，底部面板诊断标签页显示当前代码块的编译器/运行时错误诊断。预览中的代码块对应行通过 JS 注入红色/黄色波浪线（与 `CodeEditor` 的 `WaveUnderline` 样式一致）。
@@ -1739,7 +1829,7 @@
 - `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
 
 
-### 36. `AiConversation` / `AiMessage` — 对话数据结构
+### 40. `AiConversation` / `AiMessage` — 对话数据结构
 
 **文件**：`aiconversation.h`
 
@@ -1764,7 +1854,7 @@
 - 被 `AiHistoryListWidget` 用于构建历史列表 UI。
 
 
-### 37. `AiHistoryManager` — 对话历史管理器
+### 41. `AiHistoryManager` — 对话历史管理器
 
 **文件**：`aihistorymanager.h` / `aihistorymanager.cpp`
 
@@ -1791,7 +1881,7 @@
 - `AiHistoryListWidget` 通过信号 `conversationSelected` / `renameRequested` / `deleteRequested` / `exportRequested` 间接操作管理器。
 
 
-### 38. `AiHistoryListWidget` — 历史对话列表 UI
+### 42. `AiHistoryListWidget` — 历史对话列表 UI
 
 **文件**：`aihistorylistwidget.h` / `aihistorylistwidget.cpp`
 
@@ -1819,7 +1909,7 @@
 - `AiHistoryManager::conversationListChanged` 信号触发 `MainWindow::filterAiHistoryByCurrentFile()` 刷新列表。
 - 切换到历史标签页时（`AiPanel::historyListVisibilityChanged`），同样刷新列表并更新活跃对话绿色圆点。
 
-### 39. `AiRequestHandler` — AI 请求管理器
+### 43. `AiRequestHandler` — AI 请求管理器
 
 **文件**：`ai/airequesthandler.h` / `ai/airequesthandler.cpp`
 
@@ -1840,7 +1930,7 @@
 - 由 `MainWindow` 创建并持有，接收 `AiPanel`、`TabManager`、`SettingsManager` 依赖注入。
 - `AiPanel` 的 `sendMessage`/`actionTriggered`/`clearRequested`/`newConversationRequested` 信号通过 MainWindow 路由到 handler。
 
-### 40. `IndexManager` — 索引管理器
+### 44. `IndexManager` — 索引管理器
 
 **文件**：`indexmanager.h` / `indexmanager.cpp`
 
@@ -1862,7 +1952,7 @@
 - 由 `MainWindow` 创建并持有，接收 `TabManager` 依赖注入（用于重命名时更新编辑器标签路径）。
 - `MainWindow` 连接 `fullIndexReady` 信号刷新反链面板、标签面板和补全列表。
 
-### 41. `CrashRecoveryManager` — 崩溃恢复管理器
+### 45. `CrashRecoveryManager` — 崩溃恢复管理器
 
 **文件**：`crashrecoverymanager.h` / `crashrecoverymanager.cpp`
 

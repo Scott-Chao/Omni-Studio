@@ -8,7 +8,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── AiRequestHandler    → AI request lifecycle (provider management, streaming, history, token estimation / context pruning)
   ├── IndexManager        → File index, backlinks, tags, async index build, wiki-link resolution, completion data
   ├── CrashRecoveryManager→ Stale recovery file cleanup, recovery directory management
-  ├── ThemeManager        → Singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect, system theme 5-min refresh
+  ├── ThemeManager        → Singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect, system theme 5-min refresh. Provides **watchTheme<Receiver>(slot)** template and **colorStyle(property, colorKey)** helper.
   ├── ActivityBar         → 48px fixed left bar, 5 SVG icon buttons (Search/AI/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
   ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
   ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree (in splitter, left of editor)
@@ -154,6 +154,7 @@ Writes config.ini next to executable. Runtime state: geometry, recent files, OJ 
 
 ### TextFileUtils (`fileutils.h`)
 Header-only. 40+ text extension list + scan name filters.
+**I/O helpers** (added v0.13.10): `readTextFile(path)`, `writeTextFile(path, content)`, `readJsonFile(path)`, `writeJsonFile(path, doc)`, `isSafeRootPath(path)` — eliminate 20+ QFile/QTextStream/QJsonDocument boilerplate blocks across the project.
 
 ### WikiLinkTextEdit (`wikilinktextedit.h/cpp`)
 QTextEdit with QCompleter. `[[` triggers filename popup (case-insensitive prefix). `#` triggers tag autocomplete. Tab accepts, first item auto-selected.
@@ -270,6 +271,18 @@ Floating overlay with dimming background. Category sidebar (now 7 pages includin
 
 ### FlowLayout (`flowlayout.h/cpp`)
 Custom QLayout implementing auto-wrapping. heightForWidth() for constrained containers. Used by breadcrumb bar.
+
+### TabButtonGroup (`tabbuttongroup.h/cpp`)
+QObject subclass encapsulating QPushButton → QStackedWidget tab switching. `addTab(button, index)` wires clicked → switch; optional `StyleProvider` callback for per-tab active/inactive stylesheets. Replaces duplicated tab-switching logic in BottomPanel and AiPanel.
+
+### WindowDragHelper (`windowdraghelper.h/cpp`)
+Lightweight non-QObject value-type helper encapsulating mouse-press/move/release drag-to-move boilerplate. `handlePress(widget, event, titleBarHeight)`/`handleMove(widget, event)`/`handleRelease(event)`. Used by HelpPanel and SettingsPanel for consistent frameless dragging.
+
+### StringUtils (`stringutils.h`)
+Header-only namespace. `sanitizeForPython(s)` normalizes line endings and lone surrogates; `completionKindToString(kind)` maps LSP CompletionItemKind codes (1-25) to human-readable strings. Shared by CppCompletionProvider, PythonCompletionProvider, and SmdLspManager.
+
+### MessageRole (`ai/messagerole.h`)
+Standalone header: `enum class MessageRole { User, Assistant, System }`. Replaces separate role enums in `aiprovider.h` and `chatbubble.h` for unified AI message role typing.
 
 ### HelpPanel (`helppanel.h/cpp`)
 Floating overlay help panel, same pattern as SettingsPanel but simpler. Semi-transparent overlay (`rgba(0,0,0,128)`) covers the full window, panel centered on top. Title bar with "帮助" label + close button, drag-move only (no resize). Left: QListWidget (170px) with 14 category items storing section IDs in Qt::UserRole. Right: QTextBrowser loading HTML from `:/help/content` resource. Scroll sync: `showEvent` triggers `computeSectionPositions()` using `QTextDocument::find()` + `blockBoundingRect().y()` for pixel-accurate Y positions; `onScrollChanged` compares scrollbar pixel value against positions and auto-highlights matching category. `m_updatingCategory` guard prevents feedback loop. Toggled via toolbar [帮助] button or F1 shortcut, handled by MainWindow::toggleHelp().

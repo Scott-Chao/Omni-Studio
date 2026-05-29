@@ -34,7 +34,7 @@ MainWindow → frameless orchestrator
  ├── AiRequestHandler       → AI request lifecycle (provider, streaming, history pruning)
  ├── IndexManager           → file index, backlinks, tags, async index build
  ├── CrashRecoveryManager   → stale recovery file cleanup
- ├── ThemeManager           → singleton, Dark/Light palettes, Windows registry auto-detect
+ ├── ThemeManager           → singleton, Dark/Light palettes, Windows registry auto-detect, **watchTheme() template** + **colorStyle()** helper
  ├── ActivityBar            → 48px left bar: Search/AI/Settings/Export PDF/Judge buttons
  ├── FileExplorerWidget     → QTreeView + QFileSystemModel, breadcrumb bar, toolbar
  ├── TabManager             → QTabWidget, owns EditorWidget tabs
@@ -63,6 +63,12 @@ MainWindow → frameless orchestrator
 - **QSS scoped to MainWindow**: `ThemeManager::setStyleSheetTarget()`, not `qApp->setStyleSheet()`.
 - **QWebEngineView lazy**: Created on first preview demand, released when exiting preview mode.
 - **Right panel auto-hide**: Uses `QApplication::focusChanged` + `QTimer::singleShot(0)` — no global event filter.
+- **ThemeManager::watchTheme**: `CodeEditor::CodeEditor()` uses `ThemeManager::watchTheme(this, &CodeEditor::reloadColors)` — a template convenience that encapsulates `connect(&ThemeManager::instance(), &ThemeManager::themeChanged, ...)`, eliminating 30+ identical connection blocks across the project.
+- **TextFileUtils I/O helpers**: `readTextFile(path)`, `writeTextFile(path, content)`, `readJsonFile(path)`, `writeJsonFile(path, doc)`, and `isSafeRootPath(path)` eliminate 20+ inline QFile/QTextStream/QJsonDocument boilerplate blocks.
+- **TabButtonGroup**: Encapsulates a QPushButton → QStackedWidget tab switching pattern with an optional `StyleProvider` callback for per-tab active/inactive styling. Used by BottomPanel and AiPanel.
+- **WindowDragHelper**: Value-type member (non-QObject) encapsulating press/move/release boilerplate for frameless panel dragging. Used by HelpPanel and SettingsPanel.
+- **StringUtils**: Header-only namespace with `sanitizeForPython()` and `completionKindToString()` — shared between PythonCompletionProvider, SmdLspManager, and CppCompletionProvider.
+- **MessageRole**: Standalone `enum class MessageRole { User, Assistant, System }` in `ai/messagerole.h`. Replaces both `aiprovider.h`'s inline enum and `ChatBubble::Role`.
 - **ChatBubble streaming**: 80ms debounce coalesces SSE chunks; incremental HTML with full rebuild on structural changes (code fences, headings, lists).
 - **Markdown indent**: Default 2 spaces, configurable via `editor.markdown_indent_width`. Code indent defaults to 4 — don't assume they're the same.
 - **OpenJudge tab**: Non-file tab in TabManager — `closeTab()` removes directly without save prompts.
