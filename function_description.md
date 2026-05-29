@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 修复切换主题后 LSP 悬停提示不更新的问题
+- 确保主题切换后，设置面板中外观页面的颜色及时更新
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -711,7 +711,7 @@
 **职责**：
 - 继承 `QSyntaxHighlighter`，对 C/C++ 源代码进行语法高亮，颜色**跟随当前 ThemeManager 主题（深色/浅色）自动切换**。
 - 采用 **Regex + LSP Semantic Tokens 混合策略**：Regex 提供即时高亮（关键字/类型/字符串/注释/数字），LSP Semantic Tokens 提供正则无法处理的语义级高亮（函数名/方法名/参数名/变量名）。
-- **颜色来源链**：`ConfigManager::syntaxXxx()` → `syntaxThemeOr(token, darkFallback, lightFallback)` → 优先从 `ThemeManager::color("syntax.xxx")` 读取当前主题 JSON，缺失则按 `currentThemeType()` 选择深色/浅色硬编码默认值。
+- **颜色来源链**：所有外观颜色（语法高亮、编辑器、输出面板、搜索、预览、Judge 状态）统一使用 `ConfigManager::xxx()` → `syntaxThemeOr(token, darkFallback, lightFallback)` → 优先从 `ThemeManager::color(token)` 读取当前主题 JSON 值（主题切换时自动跟随），缺失则按 `currentThemeType()` 选择深色/浅色硬编码默认值。不再使用 `colorValue()` 直接读 `config.json`（会卡死在旧主题颜色值）。
 - **主题切换实时刷新**：构造函数末尾连接 `ThemeManager::themeChanged` 信号 → `initFormats()` 重建全部 Regex 规则 + `rehighlight()` 重绘。所有格式初始化逻辑抽取为 `initFormats()` 私有方法，构造函数和信号槽共用。
 - 高亮规则及应用优先级（低→高，后应用者覆盖前者）：
 
@@ -719,10 +719,10 @@
 |--------|------|----------|----------|----------|
 | 1 (最低) | **函数/方法调用** `\b(\w+)(?=\s*\()` | `syntax.functions` | `#dcdcaa` 金 | `#6b3a00` 深棕 |
 | 2 | **`::` 作用域** `\b(\w+)(?=\s*::)` | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
-| 3 | **关键字**（所有，粗体） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
-| 4 | **控制流关键字** `if/for/while/return` 等（粗体，覆盖普通关键字） | `syntax.controlKeywords` | `#c792ea` 紫 | `#0000ff` 蓝 |
-| 5 | **基本/内置类型** `int/double/char/bool/float/size_t` 等（蓝色无粗体，不包括 STL 类型） | `syntax.keywords` | `#569CD6` 蓝 | `#0000ff` 蓝 |
-| 6 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#C586C0` 紫 | `#800080` 紫 |
+| 3 | **关键字**（存储修饰/类型声明/替代运算符） | `syntax.keywords` | `#569CD6` 蓝 | `#0000FF` 蓝 |
+| 4 | **控制流/操作符关键字** `if/for/return/new/using/operator` 等（覆盖普通关键字） | `syntax.controlKeywords` | `#D192CC` 紫 | `#AF00DB` 紫 |
+| 5 | **基本/内置类型** `int/double/char/bool/float/size_t` 等（不包括 STL 类型） | `syntax.keywords` | `#569CD6` 蓝 | `#0000FF` 蓝 |
+| 6 | **预处理器** `^\s*#\s*\w+` | `syntax.preprocessor` | `#D192CC` 紫 | `#AF00DB` 紫 |
 | 7 | **STL/Qt 类型** `vector/map/QString` 等 | `syntax.types` | `#4EC9B0` 青 | `#267f99` 青 |
 | 8 | class/struct/enum 声明名 | `syntax.types` | 同上 | 同上 |
 | 9 | **数字** | `syntax.numbers` | `#B5CEA8` 绿 | `#098658` 绿 |
@@ -732,24 +732,24 @@
 | — | **单行/多行注释** | `syntax.comments` | `#6A9955` 绿 | `#008000` 绿 |
 
 - **函数调用规则最先应用**作为 fallback，后续关键字规则覆盖 `for (`/`while (`/`if (` 等，使控制流关键字在深色模式下保持紫色而非函数金色。
-- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static` 等，蓝色粗体）规则先应用；控制流关键字（`if`/`for`/`while`/`return`/`switch` 等 14 个，深色紫色/浅色蓝色粗体）规则随后覆盖。
+- **关键字分为两层**：普通关键字（`void`/`const`/`class`/`static`/`sizeof`/`template`/`namespace` 等存储修饰/类型操作/替代运算符，蓝色无加粗）规则先应用；控制流+操作符关键字（`if`/`for`/`return`/`new`/`using`/`operator` 等 28 个，深色紫 `#D192CC` / 浅色紫 `#AF00DB` 无加粗）规则随后覆盖。
 - **基本/内置类型独立分类**：`bool`/`char`/`int`/`double`/`float`/`long`/`short`/`wchar_t` 及 `size_t`/`intN_t`/`uintN_t` 等从 `cppCommonTypes()` 中拆分至新函数 `cppPrimitiveTypes()`，使用关键字蓝色但**不加粗**，与控制流关键字区分。STL 容器/智能指针/IO 流等保留在 `cppCommonTypes()` 中，使用类型青色（`syntax.types`）。`cout`/`cin`/`endl` 已从 `cppCommonTypes()` 移除，由 LSP semantic tokens 作为 `variable` 类型高亮为浅蓝色。
 - `#include` 路径规则在所有 regex 规则中**最后应用**（最高优先级），覆盖 `<>` 内的关键字、类型、`::`、数字等匹配，确保 include 路径颜色统一为字符串色。
 - 注释通过 `highlightBlock` 中的字符扫描在**所有 regex 规则之后**执行，跟踪字符串/字符状态避免误着色。
 
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
-- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的括号显示红色（含开括号和闭括号） `#FF0000`。
-	- **跨类型括号匹配**：闭括号不再仅检查栈顶，而是**搜索整个括号栈**寻找最近同类型开括号。若栈顶有不同类型括号介入（如 `([)` 中的 `[`），这些"交叉"括号被标记为红色（未配对）并从栈中移除，外层的同类型开括号与当前闭括号正常配对着色。这实现了 rainbow brackets 风格的跨类型独立匹配（`([)]` 中的 `(` 配 `)`、`[` 配 `]` 各自配对）。
-	- **前行扫描未匹配开括号**：行内处理完毕后，若括号栈仍有未匹配的开括号且其中有来自当前行（`pos >= 0`）的，向前遍历后续所有 `QTextBlock` 维持栈匹配逻辑，判断这些开括号在文档后续是否有匹配的闭括号。若无，则将其重新着为红色。这使得 `()` 删除 `)` 后 `(` 能正确显示为红色。
+- **颜色规则**：3 种颜色按嵌套层级循环，从 `ConfigManager::syntaxBracket(depth)` 读取（主题文件 token `syntax.brackets0-2`，深色默认 `#FFD700` / `#DA70D6` / `#179FFF`，浅色默认 `#0431FA` / `#AF00DB` / `#267F99`），加粗显示；未配对括号色从 `ConfigManager::syntaxUnpairedBracket()` 读取（token `syntax.unpairedBracket`，默认 `#FF0000`）。颜色不再硬编码在 `BracketHighlighter` 成员变量中，可通过主题文件自定义。
+	- **跨类型括号匹配**：闭括号搜索整个括号栈寻找最近同类型开括号（非仅检查栈顶）。向前扫描同样使用向后搜索匹配：闭括号在 pending 列表中向后搜索最近同类型开括号并移除（而非 LIFO `pending.last()` 检查），确保不同类型未匹配括号不会互相阻挡——如 `{ { ( } }` 中 `(` 不会阻止 `}` 匹配 `{`。
+	- **前行扫描未匹配开括号**：pending 列表每项附带 `pos` 标记（`>= 0` = 当前行位置，`-1` = 前序/后续行）。扫描结束后，所有 `pos >= 0` 的残留项即为当前行真正未配对括号，标记为红色。此前的前缀比较逻辑（`pending[i] == bracketStack[i]`）在 pending 中间项被移除时失效，已改为位置标记方案。
 - **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 注释状态 0/1，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型 0=`(` 1=`[` 2=`{`，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈，实现跨行括号配对识别。解码时对 `-1` 初始值做 `if (prevState < 0) prevState = 0` 归零处理，防止首次高亮时深度被误读为 31。
 - **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()`、`syntaxStrings()` 或 `syntaxPreprocessor()`，若匹配则跳过该括号。使用 `format()` 而非 `QTextLayout::formats()`，因为后者在 `highlightBlock()` 执行期间尚未被 Qt 提交更新，查询结果为空或陈旧。
 - **开括号着色时机**：开括号入栈时立即以当前深度暂定颜色着色；同行配对时在匹配闭括号处重新着色双方（含交叉括号清理后的深度重算）；跨行配对时仅重新着色闭括号（开括号已在前一行着色）。
 
 **指针/引用运算符高亮**：
 - 两层机制高亮 C++ 代码中声明上下文里的 `*`（指针）和 `&`（引用/取地址）运算符为蓝色（`syntax.keywords`，`#569CD6`）。
-- **Regex 快速通道**：`\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)\b`，使用 `captureGroup = 2`。在字符串 regex 规则之前添加，确保字符串内的字符被覆盖。
-- **clangd 语义驱动**：`highlightBlock()` 在 semantic token 应用后，遍历当前 block 的类型 token（`type`/`class`/`struct`/`enum`/`typeParameter`），检查其后紧跟字符（跳过空白）是否为 `*` 或 `&`，若是则高亮。仅在目标位置未被前层着色时才设置，避免覆盖字符串/注释/regex 快速通道。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
+- **Regex 快速通道**：`\b(?:const\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\s*([*&]+)(?![*&=])`，使用 `captureGroup = 1`（此前错误地设为 2 导致规则从未生效）。`(?![*&=])` 负向先行断言替代了原来的 `\b`，允许 `*` 后跟空格，同时防止误匹配 `&=`/`*=` 复合赋值运算符。
+- **clangd 语义驱动**：`highlightBlock()` 在 semantic token 应用后，遍历当前 block 的类型 token（`type`/`class`/`struct`/`enum`/`typeParameter`），检查其后紧跟字符（跳过空白、模板 `>`、cv-qualifiers）是否为 `*` 或 `&`，若是则高亮。仅在目标位置未被前层着色时才设置，避免覆盖字符串/注释/regex 快速通道。此层覆盖所有自定义类型（`QString &a`、`MyClass* ptr`、`std::shared_ptr<int>*` 等）。
 - 两层互补：Regex 通道立即生效（无需等待 clangd 响应），clangd 通道提供完整类型覆盖（300ms 后 `rehighlight()` 触发）。
 
 **语义高亮 (Semantic Tokens) 叠加机制**：
@@ -775,7 +775,7 @@
 **职责**：
 - Python 语法高亮，继承 `QSyntaxHighlighter`，颜色**跟随当前 ThemeManager 主题自动切换**。
 - 关键字（所有）：`syntax.keywords` 配色（深色蓝色 `#569CD6` / 浅色蓝色 `#0000ff`，加粗）。
-- **控制流关键字**（`if`/`elif`/`else`/`for`/`while`/`try`/`except`/`finally`/`with`/`return`/`yield`/`break`/`continue`/`raise`/`assert`/`pass`/`match`/`case`，18 个）：`syntax.controlKeywords` 配色（深色紫色 `#c792ea` / 浅色蓝色 `#0000ff`，加粗），规则置于普通关键字之后以覆盖。
+- **控制流关键字**（`if`/`elif`/`else`/`for`/`while`/`try`/`except`/`finally`/`with`/`return`/`yield`/`break`/`continue`/`raise`/`assert`/`pass`/`match`/`case`，18 个）：`syntax.controlKeywords` 配色（深色紫 `#D192CC` / 浅色紫 `#AF00DB`，无加粗），规则置于普通关键字之后以覆盖。
 - 内建类型与函数（`int`/`str`/`list`/`print`/`len`/`Exception` 等）：`syntax.types` 配色。
 - 常量（`True`/`False`/`None`，已包含在 pyKeywords 中）：随普通关键字配色。
 - 装饰器（`@` 开头）：`syntax.pythonDecorators` 配色。
@@ -789,9 +789,7 @@
 
 **括号对着色（`highlightBrackets()`）**：
 - `highlightBlock()` 末尾调用 `highlightBrackets(text)`，对 `()`、`[]`、`{}` 括号字符进行 VS Code 风格的括号对着色。
-- **颜色规则**：3 种颜色按嵌套层级循环——0 级金色 `#FFD700`、1 级紫红 `#DA70D6`、2 级浅蓝 `#179FFF`，加粗显示；未配对的括号显示红色（含开括号和闭括号） `#FF0000`。
-	- **跨类型括号匹配**：闭括号不再仅检查栈顶，而是**搜索整个括号栈**寻找最近同类型开括号。若栈顶有不同类型括号介入（如 `([)` 中的 `[`），这些"交叉"括号被标记为红色（未配对）并从栈中移除，外层的同类型开括号与当前闭括号正常配对着色。这实现了 rainbow brackets 风格的跨类型独立匹配（`([)]` 中的 `(` 配 `)`、`[` 配 `]` 各自配对）。
-	- **前行扫描未匹配开括号**：行内处理完毕后，若括号栈仍有未匹配的开括号且其中有来自当前行（`pos >= 0`）的，向前遍历后续所有 `QTextBlock` 维持栈匹配逻辑，判断这些开括号在文档后续是否有匹配的闭括号。若无，则将其重新着为红色。这使得 `()` 删除 `)` 后 `(` 能正确显示为红色。
+- **颜色规则**：3 种颜色按嵌套层级循环，从 `ConfigManager::syntaxBracket(depth)` 读取（token `syntax.brackets0-2`），加粗显示；未配对括号色从 `ConfigManager::syntaxUnpairedBracket()` 读取（token `syntax.unpairedBracket`）。颜色不再硬编码，可通过主题文件自定义。
 - **跨行状态跟踪**：通过 `setCurrentBlockState()` 编码括号栈（bits 0-2: 三引号状态 0/1/2，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层），`previousBlockState()` 解码恢复前一行括号栈。与三引号字符串的跨行状态在同一 `int` 中编码，互不干扰。解码时对 `-1` 初始值做归零处理，防止深度字段被误读。
 - **字符串/注释保护**：通过 `QSyntaxHighlighter::format(pos)` 查询当前高亮周期内已应用的格式，检查前景色是否匹配 `syntaxComments()` 或 `syntaxStrings()`，若匹配则跳过。C++ 版本额外检查 `syntaxPreprocessor()`。
 
@@ -1143,7 +1141,7 @@
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
 - **7 个分类页面**：
   - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（`FontDropdown` 自定义控件，系统字体列表，最多显示 10 行并滚动）、字号微调框（8-24）。
-  - **外观**：主题选择下拉框（深色/浅色/跟随系统）+ 恢复主题默认值按钮；文件树条目行高微调框（24-32px，默认 28px，实时生效）；6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
+  - **外观**：主题选择下拉框（深色/浅色）+ 恢复主题默认值按钮；文件树条目行高微调框（24-32px，默认 28px，实时生效）；可折叠分组颜色按钮+十六进制预览标签——编辑器（6 色）、语法高亮（11 色）、输出面板（4 色）、搜索（2 色）、预览（2 色）、Judge 状态（8 色）。点击弹出 `QColorDialog`，实时应用并持久化。**主题感知刷新**：`ColorControl` 存储 `std::function<QColor()>` 而非缓存 `QColor`，切换主题后从 `ConfigManager` 重新获取当前主题默认色；`themeChanged` 处理器遍历 `m_colorControls` 刷新按钮和预览文本；`settingOverride()` 仅检查用户显式修改值（不再用 `value()` 读 `config.json` 旧值）。Section header 按钮（QToolButton）存储在 `m_sectionButtons` 中，主题切换时在 `refreshStyle()` 末尾重新设置 stylesheet。
   - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
   - **预览**：分屏防抖延迟微调框（100-2000ms）、分屏比例微调框（30-70）。所有带单位的微调框，单位统一以括号形式标注在左侧标签中（如"分屏防抖（ms）"、"分屏比例（%）"），微调框本身为纯数字输入框，无箭头按钮和单位后缀。
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。

@@ -159,9 +159,10 @@ private:
         QPushButton *btn;
         QLabel *preview;
         QString configKey;
-        QColor defaultColor;
+        std::function<QColor()> themeDefault; // returns the current theme's default colour
     };
     QVector<ColorControl> m_colorControls;
+    QVector<QToolButton *> m_sectionButtons;
 
     // Shortcuts
     QMap<QString, KeyRecorder*> m_keyRecorders;

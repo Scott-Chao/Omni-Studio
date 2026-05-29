@@ -711,24 +711,6 @@ QString ConfigManager::translationPrefix() const { return stringValue("translati
 QString ConfigManager::translationPath() const { return stringValue("translation.path", ":/i18n/"); }
 
 // ---- Colors ----
-QColor ConfigManager::editorBackground() const { return colorValue("appearance.colors.editor.background", QColor("#1E1E1E")); }
-QColor ConfigManager::editorForeground() const { return colorValue("appearance.colors.editor.foreground", QColor("#D4D4D4")); }
-QColor ConfigManager::editorSelection() const { return colorValue("appearance.colors.editor.selection", QColor("#264F78")); }
-QColor ConfigManager::lineNumberBackground() const { return colorValue("appearance.colors.line_number.background", QColor("#252525")); }
-QColor ConfigManager::lineNumberForeground() const { return colorValue("appearance.colors.line_number.foreground", QColor("#858585")); }
-QColor ConfigManager::currentLineHighlight() const { return colorValue("appearance.colors.current_line.highlight", QColor("#2A2D2E")); }
-QColor ConfigManager::outputPanelBackground() const { return colorValue("appearance.colors.output_panel.background", QColor("#1E1E1E")); }
-QColor ConfigManager::outputPanelForeground() const { return colorValue("appearance.colors.output_panel.foreground", QColor("#D4D4D4")); }
-QColor ConfigManager::outputPanelSelection() const { return colorValue("appearance.colors.output_panel.selection", QColor("#264F78")); }
-QColor ConfigManager::outputStderr() const { return colorValue("appearance.colors.output_panel.stderr", QColor("#F48771")); }
-QColor ConfigManager::outputErrorStatus() const { return colorValue("appearance.colors.output_panel.error_status", QColor("#F48771")); }
-QColor ConfigManager::outputSuccessStatus() const { return colorValue("appearance.colors.output_panel.success_status", QColor("#6A9955")); }
-QColor ConfigManager::searchHighlightBackground() const { return colorValue("appearance.colors.search.highlight_background", QColor("#FFD700")); }
-QColor ConfigManager::searchHighlightForeground() const { return colorValue("appearance.colors.search.highlight_foreground", QColor("#000000")); }
-QColor ConfigManager::previewContainerBackground() const { return colorValue("appearance.colors.preview.container_background", QColor("#2d2d2d")); }
-QColor ConfigManager::previewWebEngineBackground() const { return colorValue("appearance.colors.preview.webengine_background", QColor("#2d2d2d")); }
-
-// ---- Syntax Highlighting ----
 // Resolve via ThemeManager theme JSON first, falling back to per-theme
 // hardcoded defaults when the JSON token is missing (stale QRC, etc.).
 
@@ -745,6 +727,39 @@ QColor syntaxThemeOr(const char *token, const QColor &dark, const QColor &light)
 }
 
 } // anonymous namespace
+
+QColor ConfigManager::editorBackground() const
+    { return syntaxThemeOr("editor.background", QColor("#121314"), QColor("#FFFFFF")); }
+QColor ConfigManager::editorForeground() const
+    { return syntaxThemeOr("editor.foreground", QColor("#BBBEBF"), QColor("#000000")); }
+QColor ConfigManager::editorSelection() const
+    { return syntaxThemeOr("editor.selectionBackground", QColor("#276782dd"), QColor("#ADD6FF")); }
+QColor ConfigManager::lineNumberBackground() const
+    { return syntaxThemeOr("editorLineNumber.background", QColor("#121314"), QColor("#F3F3F3")); }
+QColor ConfigManager::lineNumberForeground() const
+    { return syntaxThemeOr("editorLineNumber.foreground", QColor("#858889"), QColor("#237893")); }
+QColor ConfigManager::currentLineHighlight() const
+    { return syntaxThemeOr("editor.lineHighlightBackground", QColor("#242526"), QColor("#F5F5F5")); }
+QColor ConfigManager::outputPanelBackground() const
+    { return syntaxThemeOr("output.background", QColor("#191A1B"), QColor("#FFFFFF")); }
+QColor ConfigManager::outputPanelForeground() const
+    { return syntaxThemeOr("output.foreground", QColor("#bfbfbf"), QColor("#000000")); }
+QColor ConfigManager::outputPanelSelection() const
+    { return syntaxThemeOr("output.selectionBackground", QColor("#3994BC26"), QColor("#ADD6FF")); }
+QColor ConfigManager::outputStderr() const
+    { return syntaxThemeOr("output.stderr", QColor("#f48771"), QColor("#A31515")); }
+QColor ConfigManager::outputErrorStatus() const
+    { return syntaxThemeOr("output.errorStatus", QColor("#f48771"), QColor("#A31515")); }
+QColor ConfigManager::outputSuccessStatus() const
+    { return syntaxThemeOr("output.successStatus", QColor("#73c991"), QColor("#008000")); }
+QColor ConfigManager::searchHighlightBackground() const
+    { return syntaxThemeOr("search.highlightBackground", QColor("#27678280"), QColor("#FFFF00")); }
+QColor ConfigManager::searchHighlightForeground() const
+    { return syntaxThemeOr("search.highlightForeground", QColor("#bfbfbf"), QColor("#000000")); }
+QColor ConfigManager::previewContainerBackground() const
+    { return syntaxThemeOr("preview.containerBackground", QColor("#242526"), QColor("#F5F5F5")); }
+QColor ConfigManager::previewWebEngineBackground() const
+    { return syntaxThemeOr("preview.webEngineBackground", QColor("#121314"), QColor("#FFFFFF")); }
 
 QColor ConfigManager::syntaxKeywords() const
     { return syntaxThemeOr("syntax.keywords", QColor("#569CD6"), QColor("#0000FF")); }
@@ -780,14 +795,22 @@ QColor ConfigManager::syntaxUnpairedBracket() const
     { return syntaxThemeOr("syntax.unpairedBracket", QColor("#FF0000"), QColor("#FF0000")); }
 
 // ---- Judge Status Colors ----
-QColor ConfigManager::judgeColorAc() const { return colorValue("appearance.colors.judge_status.ac", QColor("#52C41A")); }
-QColor ConfigManager::judgeColorWa() const { return colorValue("appearance.colors.judge_status.wa", QColor("#E74C3C")); }
-QColor ConfigManager::judgeColorTle() const { return colorValue("appearance.colors.judge_status.tle", QColor("#3498DB")); }
-QColor ConfigManager::judgeColorMle() const { return colorValue("appearance.colors.judge_status.mle", QColor("#9B59B6")); }
-QColor ConfigManager::judgeColorRe() const { return colorValue("appearance.colors.judge_status.re", QColor("#F39C12")); }
-QColor ConfigManager::judgeColorPe() const { return colorValue("appearance.colors.judge_status.pe", QColor("#E67E22")); }
-QColor ConfigManager::judgeColorOle() const { return colorValue("appearance.colors.judge_status.ole", QColor("#FF6B6B")); }
-QColor ConfigManager::judgeColorCe() const { return colorValue("appearance.colors.judge_status.ce", QColor("#F39C12")); }
+QColor ConfigManager::judgeColorAc() const
+    { return syntaxThemeOr("judge.ac", QColor("#73c991"), QColor("#587c0c")); }
+QColor ConfigManager::judgeColorWa() const
+    { return syntaxThemeOr("judge.wa", QColor("#f48771"), QColor("#ad0707")); }
+QColor ConfigManager::judgeColorTle() const
+    { return syntaxThemeOr("judge.tle", QColor("#48A0C7"), QColor("#0069CC")); }
+QColor ConfigManager::judgeColorMle() const
+    { return syntaxThemeOr("judge.mle", QColor("#d2a8ff"), QColor("#652D90")); }
+QColor ConfigManager::judgeColorRe() const
+    { return syntaxThemeOr("judge.re", QColor("#e5ba7d"), QColor("#d18616")); }
+QColor ConfigManager::judgeColorPe() const
+    { return syntaxThemeOr("judge.pe", QColor("#e5ba7d"), QColor("#667309")); }
+QColor ConfigManager::judgeColorOle() const
+    { return syntaxThemeOr("judge.ole", QColor("#ff7b72"), QColor("#ad0707")); }
+QColor ConfigManager::judgeColorCe() const
+    { return syntaxThemeOr("judge.ce", QColor("#e5ba7d"), QColor("#d18616")); }
 
 // ---- Shortcuts ----
 QString ConfigManager::shortcut(const QString &actionName, const QString &defaultValue) const
