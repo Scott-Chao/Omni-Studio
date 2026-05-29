@@ -89,8 +89,6 @@ protected:
             emit signatureHelpReady({}, 0); break;
         case PendingRequest::SemanticTokens:
             emit semanticTokensReady({}); break;
-        case PendingRequest::Diagnostics:
-            emit diagnosticsUpdated({}); break;
         default:
             break;
         }

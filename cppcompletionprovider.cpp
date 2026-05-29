@@ -734,7 +734,9 @@ void CppCompletionProvider::onRequestTimeout()
     case PendingRequest::SignatureHelp:
         m_signatureHelpRequestId = -1; break;
     case PendingRequest::SemanticTokens:
-        m_semanticTokensRequestId = -1; break;
+        m_semanticTokensRequestId = -1;
+        m_pendingRequest = PendingRequest::None;
+        return;  // Keep stale tokens on timeout (no emitEmptyResults)
     default:
         break;
     }

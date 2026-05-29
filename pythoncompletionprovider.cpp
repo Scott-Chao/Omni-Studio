@@ -383,6 +383,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
     QJsonDocument doc = QJsonDocument::fromJson(line, &err);
     if (err.error != QJsonParseError::NoError) {
         qWarning() << "PythonCompletionProvider: JSON parse error:" << err.errorString();
+        m_tokensPending = false;
         emitEmptyResults();
         return;
     }
@@ -397,6 +398,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         // If jedi is unavailable, mark it and terminate the process
         if (!m_jediAvailable) {
             // Already known — just emit empty
+            m_tokensPending = false;
             emitEmptyResults();
             return;
         }
@@ -413,6 +415,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
             return;
         }
 
+        m_tokensPending = false;
         emitEmptyResults();
         return;
     }
