@@ -52,9 +52,11 @@ protected:
     void drainBuffer();
     virtual void parseSseFrame(const QString &frame) = 0;
 
+    void handleNetworkError();
+
+public: // called as slots from derived class constructors
     void onTimeout();
     void onFinished();
-    void handleNetworkError();
 
     QNetworkAccessManager *m_net = nullptr;
     QNetworkReply *m_reply = nullptr;

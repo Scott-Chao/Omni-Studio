@@ -23,7 +23,7 @@ void OpenAiProvider::chatStream(const QList<Message> &messages)
         url += QLatin1Char('/');
     url += QStringLiteral("chat/completions");
 
-    QNetworkRequest request(QUrl(url));
+    QNetworkRequest request{QUrl(url)};
     request.setRawHeader("Authorization", ("Bearer " + m_apiKey).toUtf8());
     request.setRawHeader("Content-Type", "application/json");
 

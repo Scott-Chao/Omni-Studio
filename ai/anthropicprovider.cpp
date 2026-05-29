@@ -23,7 +23,7 @@ void AnthropicProvider::chatStream(const QList<Message> &messages)
         url += QLatin1Char('/');
     url += QStringLiteral("messages");
 
-    QNetworkRequest request(QUrl(url));
+    QNetworkRequest request{QUrl(url)};
     request.setRawHeader("x-api-key", m_apiKey.toUtf8());
     request.setRawHeader("anthropic-version", "2023-06-01");
     request.setRawHeader("Content-Type", "application/json");

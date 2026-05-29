@@ -350,6 +350,7 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
         }
     }
 
+    const auto &cfg = ConfigManager::instance();
     highlightBrackets(text,
                       cfg.syntaxComments(), cfg.syntaxStrings(),
                       cfg.syntaxPreprocessor(), /*checkPreprocessor=*/true);
