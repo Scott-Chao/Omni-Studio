@@ -1,6 +1,6 @@
 #include "bottompanel.h"
 #include "outputpanel.h"
-#include "smddiagnosticspanel.h"
+#include "diagnosticsection.h"
 #include "codeeditor.h"
 #include "debuglog.h"
 #include "thememanager.h"

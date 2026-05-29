@@ -41,6 +41,7 @@ SOURCES += \
     cppcompletionprovider.cpp \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
+    diagnosticsection.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
     hovermanager.cpp \
@@ -114,6 +115,7 @@ HEADERS += \
     cppkeywords.h \
     cppsyntaxhighlighter.h \
     crawler.h \
+    diagnosticsection.h \
     editorwidget.h \
     flowlayout.h \
     hovermanager.h \
