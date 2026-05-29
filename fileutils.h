@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDir>
+#include <QJsonDocument>
 #include "configmanager.h"
 
 namespace TextFileUtils {
@@ -55,6 +56,23 @@ inline bool isSafeRootPath(const QString &rootPath)
     return !rootPath.isEmpty()
         && !QDir(rootPath).isRoot()
         && rootPath != QDir::homePath();
+}
+
+inline QJsonDocument readJsonFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    return QJsonDocument::fromJson(file.readAll());
+}
+
+inline bool writeJsonFile(const QString &path, const QJsonDocument &doc)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    file.write(doc.toJson(QJsonDocument::Indented));
+    return true;
 }
 
 } // namespace TextFileUtils

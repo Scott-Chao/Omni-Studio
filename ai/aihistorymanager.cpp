@@ -1,4 +1,5 @@
 #include "aihistorymanager.h"
+#include "fileutils.h"
 
 #include <QDir>
 #include <QFile>
@@ -46,11 +47,11 @@ void AiHistoryManager::loadIndex()
     m_conversations.clear();
     m_currentConvId.clear();
 
-    QFile file(storageDir() + QStringLiteral("/index.json"));
-    if (!file.open(QIODevice::ReadOnly))
+    const QJsonDocument doc = TextFileUtils::readJsonFile(storageDir() + QStringLiteral("/index.json"));
+    if (doc.isNull())
         return;
 
-    const QJsonArray arr = QJsonDocument::fromJson(file.readAll()).array();
+    const QJsonArray arr = doc.array();
     for (const QJsonValue &val : arr) {
         m_conversations.append(AiConversation::fromJson(val.toObject()));
     }
@@ -62,10 +63,7 @@ void AiHistoryManager::saveIndex()
     for (const auto &conv : m_conversations)
         arr.append(conv.toJson());
 
-    const QString path = storageDir() + QStringLiteral("/index.json");
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+    TextFileUtils::writeJsonFile(storageDir() + QStringLiteral("/index.json"), QJsonDocument(arr));
 }
 
 // ── Conversation management ───────────────────────────────────────────
@@ -84,9 +82,7 @@ QString AiHistoryManager::createConversation(const QString &title, const QString
     m_currentConvId = conv.id;
 
     // Create empty message file
-    QFile file(conversationFilePath(conv.id));
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(QJsonDocument(QJsonArray()).toJson(QJsonDocument::Indented));
+    TextFileUtils::writeJsonFile(conversationFilePath(conv.id), QJsonDocument(QJsonArray()));
 
     saveIndex();
     emit conversationListChanged();
@@ -148,10 +144,7 @@ void AiHistoryManager::appendMessage(const QString &convId, const AiMessage &msg
     for (const auto &m : messages)
         arr.append(m.toJson());
 
-    const QString path = conversationFilePath(convId);
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+    TextFileUtils::writeJsonFile(conversationFilePath(convId), QJsonDocument(arr));
 
     // Update conversation metadata
     for (auto &conv : m_conversations) {
@@ -169,11 +162,11 @@ QList<AiMessage> AiHistoryManager::loadMessages(const QString &convId) const
 {
     QList<AiMessage> messages;
 
-    QFile file(conversationFilePath(convId));
-    if (!file.open(QIODevice::ReadOnly))
+    const QJsonDocument doc = TextFileUtils::readJsonFile(conversationFilePath(convId));
+    if (doc.isNull())
         return messages;
 
-    const QJsonArray arr = QJsonDocument::fromJson(file.readAll()).array();
+    const QJsonArray arr = doc.array();
     for (const QJsonValue &val : arr)
         messages.append(AiMessage::fromJson(val.toObject()));
 

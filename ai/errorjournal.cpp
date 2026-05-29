@@ -1,4 +1,5 @@
 #include "errorjournal.h"
+#include "fileutils.h"
 #include "aiproviderfactory.h"
 #include "aiprovider.h"
 #include "anthropicprovider.h"
@@ -389,19 +390,15 @@ void ErrorJournal::save()
         arr.append(recordToJson(rec));
     root[QStringLiteral("records")] = arr;
 
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    TextFileUtils::writeJsonFile(path, QJsonDocument(root));
 }
 
 void ErrorJournal::load()
 {
     const QString path = storagePath();
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+    const QJsonDocument doc = TextFileUtils::readJsonFile(path);
+    if (doc.isNull())
         return;
-
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     if (!doc.isObject())
         return;
 

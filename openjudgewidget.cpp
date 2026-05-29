@@ -4,6 +4,7 @@
 #include "settingsmanager.h"
 #include "configmanager.h"
 #include "thememanager.h"
+#include "fileutils.h"
 
 #include <QComboBox>
 #include <QFrame>
@@ -1337,13 +1338,9 @@ int OpenJudgeWidget::loadLastIdeLanguage() const
     if (m_currentProblem.title.isEmpty())
         return -1;
 
-    QString path = ideLangCacheFilePath();
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+    QJsonDocument doc = TextFileUtils::readJsonFile(ideLangCacheFilePath());
+    if (doc.isNull())
         return -1;
-
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    file.close();
     if (!doc.isObject())
         return -1;
 
