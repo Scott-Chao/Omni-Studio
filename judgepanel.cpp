@@ -166,7 +166,7 @@ void JudgePanel::refreshStyle()
     ).arg(tm.color("input.background").name(),
           tm.color("input.foreground").name(),
           tm.color("input.border").name(),
-          tm.color("scrollbarSlider.hoverBackground").name(),
+          tm.color("button.hoverBackground").name(),
           tm.color("tab.inactiveForeground").name(),
           tm.color("tab.inactiveBackground").name());
 

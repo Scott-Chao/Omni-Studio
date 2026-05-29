@@ -170,7 +170,8 @@ static QWidget *createDockTitleBar(const QString &title, QDockWidget *dock)
 
     auto *closeBtn = new QPushButton;
     closeBtn->setObjectName("dockTitleCloseBtn");
-    closeBtn->setIcon(QIcon(":/icons/close"));
+    closeBtn->setIcon(coloredSvgIcon(":/icons/close",
+        ThemeManager::instance().color("titleBar.foreground"), 16));
     closeBtn->setIconSize(QSize(16, 16));
     closeBtn->setFixedSize(22, 22);
     closeBtn->setFlat(true);
@@ -468,6 +469,7 @@ MainWindow::MainWindow(QWidget *parent)
                 "QPushButton { background: transparent; border: none; }"
                 "QPushButton:hover { background: %1; border-radius: 3px; }")
                 .arg(tm.color("titleBar.buttonCloseHover").name()));
+            m_leftSearchCloseBtn = closeBtn;
         }
         connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
         hdrLayout->addWidget(title);
@@ -503,6 +505,7 @@ MainWindow::MainWindow(QWidget *parent)
                 "QPushButton { background: transparent; border: none; }"
                 "QPushButton:hover { background: %1; border-radius: 3px; }")
                 .arg(tm.color("titleBar.buttonCloseHover").name()));
+            m_leftJudgeCloseBtn = closeBtn;
         }
         connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
         hdrLayout->addWidget(title);
@@ -2368,6 +2371,18 @@ void MainWindow::refreshTitleBarStyle()
     m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
     if (m_runToolAction)
         m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
+
+    // Themed close button icons — adapt to titleBar.foreground for light/dark mode
+    QColor closeFg = tm.color("titleBar.foreground");
+    auto recolorCloseBtn = [&](QPushButton *btn) {
+        if (btn) btn->setIcon(coloredSvgIcon(":/icons/close", closeFg, 16));
+    };
+    recolorCloseBtn(m_leftSearchCloseBtn);
+    recolorCloseBtn(m_leftJudgeCloseBtn);
+    for (auto *dock : {m_dockRightPanel, m_dockAi}) {
+        if (dock)
+            recolorCloseBtn(dock->findChild<QPushButton*>("dockTitleCloseBtn"));
+    }
 }
 
 // ============================================================
