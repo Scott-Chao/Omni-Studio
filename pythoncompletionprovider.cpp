@@ -1,5 +1,6 @@
 #include "pythoncompletionprovider.h"
 #include "configmanager.h"
+#include "stringutils.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -167,26 +168,6 @@ void PythonCompletionProvider::onDiagnosticsDebounce()
 
 // ---- Request sending ----
 
-static QString sanitizeForPython(const QString &s)
-{
-    QString out = s;
-    out.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    out.replace(QLatin1Char('\r'), QLatin1Char('\n'));
-    for (int i = 0; i < out.size(); ++i) {
-        QChar ch = out.at(i);
-        if (ch.isLowSurrogate() && (i == 0 || !out.at(i - 1).isHighSurrogate()))
-            out[i] = QChar(QChar::ReplacementCharacter);
-        else if (ch.isHighSurrogate()
-                 && (i + 1 >= out.size() || !out.at(i + 1).isLowSurrogate()))
-            out[i] = QChar(QChar::ReplacementCharacter);
-    }
-    // UTF-8 round-trip: correctly encodes valid surrogate pairs and
-    // replaces any remaining lone surrogates with U+FFFD, ensuring
-    // the Python json parser never sees bare surrogates.
-    out = QString::fromUtf8(out.toUtf8());
-    return out;
-}
-
 void PythonCompletionProvider::sendRequest(const QString &action, const QString &text, int cursorPos)
 {
     if (!m_jediAvailable) {
@@ -216,7 +197,7 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
 
     // Sanitize before computing coordinates so lone surrogates and
     // \r/\r\n line endings don't cause position mismatches with Jedi.
-    QString safeText = sanitizeForPython(text);
+    QString safeText = StringUtils::sanitizeForPython(text);
 
     // Compute 0-based line/col from the original text.  sanitizeForPython
     // replaces lone surrogates with U+FFFD (still 1 QChar) and \r\n→\n
@@ -284,7 +265,7 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
     m_requestTimer.stop();
 
     // Sanitize lone surrogates before sending to Python
-    QString safeText = sanitizeForPython(text);
+    QString safeText = StringUtils::sanitizeForPython(text);
     // Base64-encode the code to avoid JSON escaping issues (matching SMD cell format)
     QByteArray codeBase64 = safeText.toUtf8().toBase64();
 
@@ -321,7 +302,7 @@ void PythonCompletionProvider::requestSemanticTokens()
         return;
     }
 
-    QString text = sanitizeForPython(m_lastDiagnosticsText);
+    QString text = StringUtils::sanitizeForPython(m_lastDiagnosticsText);
     // Skip large files to avoid performance issues
     if (text.length() > 200 * 1024)
         return;

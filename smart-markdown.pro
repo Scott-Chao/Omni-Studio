@@ -161,6 +161,7 @@ HEADERS += \
     processutils.h \
     settingsmanager.h \
     signaturehelpmanager.h \
+    stringutils.h \
     tabmanager.h
 
 FORMS += \

@@ -1,6 +1,7 @@
 #include "smdlspmanager.h"
 #include "configmanager.h"
 #include "lspclient.h"
+#include "stringutils.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -1119,37 +1120,12 @@ void SmdLspManager::startPythonProcess()
     // startup is async — started / errorOccurred signals handle result
 }
 
-// Normalize line-endings and lone surrogates for Python consumption.
-// Qt strings may carry \r\n (Windows) or lone surrogates (UTF-16 artifacts);
-// Python's compile() chokes on both.
-static QString sanitizeForPython(const QString &s)
-{
-    QString out = s;
-    // Normalize line endings: \r\n → \n, bare \r → \n
-    out.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    out.replace(QLatin1Char('\r'), QLatin1Char('\n'));
-    // Replace lone surrogates
-    for (int i = 0; i < out.size(); ++i) {
-        QChar ch = out.at(i);
-        if (ch.isLowSurrogate() && (i == 0 || !out.at(i - 1).isHighSurrogate()))
-            out[i] = QChar(QChar::ReplacementCharacter);
-        else if (ch.isHighSurrogate()
-                 && (i + 1 >= out.size() || !out.at(i + 1).isLowSurrogate()))
-            out[i] = QChar(QChar::ReplacementCharacter);
-    }
-    // UTF-8 round-trip: correctly encodes valid surrogate pairs and
-    // replaces any remaining lone surrogates with U+FFFD, ensuring
-    // the Python json parser never sees bare surrogates.
-    out = QString::fromUtf8(out.toUtf8());
-    return out;
-}
-
 QString SmdLspManager::pythonVirtualDoc() const
 {
     QStringList lines;
     for (int ci : m_pyServer.cellOrder) {
         lines.append(QStringLiteral("# --- smd:cell:%1 ---").arg(ci));
-        QString content = sanitizeForPython(m_pyCellContents.value(ci));
+        QString content = StringUtils::sanitizeForPython(m_pyCellContents.value(ci));
         if (!content.isEmpty())
             lines.append(content.split(QLatin1Char('\n')));
     }
@@ -1205,7 +1181,7 @@ void SmdLspManager::sendPythonHoverLocal(int cellIndex, int line, int col)
     // bypassing the virtual-document mapping entirely.  This makes hover
     // immune to off-by-one errors in rebuildVirtualDoc / cellLocalToVirtual
     // and is consistent with how diagnostics uses cell-local coordinates.
-    QString code = sanitizeForPython(m_pyCellContents.value(cellIndex));
+    QString code = StringUtils::sanitizeForPython(m_pyCellContents.value(cellIndex));
     QByteArray codeB64 = code.toUtf8().toBase64();
 
     QJsonObject req;
@@ -1236,7 +1212,7 @@ void SmdLspManager::requestPythonDiagnostics()
     for (int ci : m_pyServer.cellOrder) {
         QJsonObject cell;
         cell[QStringLiteral("cellIndex")] = ci;
-        QString code = sanitizeForPython(m_pyCellContents.value(ci));
+        QString code = StringUtils::sanitizeForPython(m_pyCellContents.value(ci));
         // Base64-encode to avoid JSON newline escaping issues
         cell[QStringLiteral("code")] = QString::fromLatin1(
             code.toUtf8().toBase64());
