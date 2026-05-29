@@ -46,6 +46,30 @@ public:
     }
 };
 
+// QSpinBox subclass: allows out-of-range input, auto-clamps on confirm
+class ClampSpinBox : public QSpinBox
+{
+public:
+    using QSpinBox::QSpinBox;
+    QValidator::State validate(QString &input, int &pos) const override
+    {
+        Q_UNUSED(pos);
+        bool ok;
+        int val = input.toInt(&ok);
+        if (!ok) return QValidator::Intermediate;
+        if (val < minimum() || val > maximum())
+            return QValidator::Intermediate;
+        return QValidator::Acceptable;
+    }
+    void fixup(QString &input) const override
+    {
+        bool ok;
+        int val = input.toInt(&ok);
+        if (ok)
+            input = QString::number(qBound(minimum(), val, maximum()));
+    }
+};
+
 static QString labelStyle() {
     auto &tm = ThemeManager::instance();
     return QStringLiteral("color: %1; font-size: 12px;")
@@ -438,10 +462,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *fontSizeRow = new QHBoxLayout;
     auto *fontSizeLabel = new QLabel(tr("字号"));
     fontSizeLabel->setStyleSheet(labelStyle());
-    m_fontSizeSpin = new QSpinBox;
+    m_fontSizeSpin = new ClampSpinBox;
     m_fontSizeSpin->setRange(8, 24);
     m_fontSizeSpin->setValue(cfg.editorFontSize());
-    m_fontSizeSpin->setFixedWidth(80);
+    m_fontSizeSpin->setFixedWidth(100);
     m_fontSizeSpin->setStyleSheet(inputStyle());
     fontSizeRow->addWidget(fontSizeLabel);
     fontSizeRow->addStretch();
@@ -457,10 +481,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *indentRow = new QHBoxLayout;
     auto *indentLabel = new QLabel(tr("缩进宽度"));
     indentLabel->setStyleSheet(labelStyle());
-    m_indentWidthSpin = new QSpinBox;
+    m_indentWidthSpin = new ClampSpinBox;
     m_indentWidthSpin->setRange(1, 8);
     m_indentWidthSpin->setValue(indentDef);
-    m_indentWidthSpin->setFixedWidth(80);
+    m_indentWidthSpin->setFixedWidth(100);
     m_indentWidthSpin->setStyleSheet(inputStyle());
     indentRow->addWidget(indentLabel);
     indentRow->addStretch();
@@ -476,10 +500,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *mdIndentRow = new QHBoxLayout;
     auto *mdIndentLabel = new QLabel(tr("MD 缩进宽度"));
     mdIndentLabel->setStyleSheet(labelStyle());
-    m_markdownIndentWidthSpin = new QSpinBox;
+    m_markdownIndentWidthSpin = new ClampSpinBox;
     m_markdownIndentWidthSpin->setRange(1, 8);
     m_markdownIndentWidthSpin->setValue(mdIndentDef);
-    m_markdownIndentWidthSpin->setFixedWidth(80);
+    m_markdownIndentWidthSpin->setFixedWidth(100);
     m_markdownIndentWidthSpin->setStyleSheet(inputStyle());
     mdIndentRow->addWidget(mdIndentLabel);
     mdIndentRow->addStretch();
@@ -544,8 +568,7 @@ QWidget *SettingsPanel::createEditorPage()
     m_fontSizeEdit = new QLineEdit;
     m_fontSizeEdit->setValidator(new ZoomValidator(0, 9999, m_fontSizeEdit));
     m_fontSizeEdit->setText(QString::number(sliderDefault));
-    m_fontSizeEdit->setFixedWidth(cfg.settingsPanelZoomSpinboxWidth());
-    m_fontSizeEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_fontSizeEdit->setFixedWidth(100);
     m_fontSizeEdit->setStyleSheet(inputStyle());
     zoomRow->addWidget(m_fontSizeEdit);
     layout->addLayout(zoomRow);
@@ -611,7 +634,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *intervalRow = new QHBoxLayout;
     auto *intervalLabel = new QLabel(tr("保存间隔（秒）"));
     intervalLabel->setStyleSheet(labelStyle());
-    m_autoSaveIntervalSpin = new QSpinBox;
+    m_autoSaveIntervalSpin = new ClampSpinBox;
     m_autoSaveIntervalSpin->setRange(1, 300);
     m_autoSaveIntervalSpin->setValue(cfg.autoSaveIntervalMs() / 1000);
     m_autoSaveIntervalSpin->setFixedWidth(100);
@@ -655,10 +678,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *outSizeRow = new QHBoxLayout;
     auto *outSizeLabel = new QLabel(tr("字号"));
     outSizeLabel->setStyleSheet(labelStyle());
-    m_outputFontSizeSpin = new QSpinBox;
+    m_outputFontSizeSpin = new ClampSpinBox;
     m_outputFontSizeSpin->setRange(8, 24);
     m_outputFontSizeSpin->setValue(cfg.outputPanelFontSize());
-    m_outputFontSizeSpin->setFixedWidth(80);
+    m_outputFontSizeSpin->setFixedWidth(100);
     m_outputFontSizeSpin->setStyleSheet(inputStyle());
     outSizeRow->addWidget(outSizeLabel);
     outSizeRow->addStretch();
@@ -673,7 +696,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *maxRow = new QHBoxLayout;
     auto *maxLabel = new QLabel(tr("最大行数"));
     maxLabel->setStyleSheet(labelStyle());
-    m_outputMaxBlocksSpin = new QSpinBox;
+    m_outputMaxBlocksSpin = new ClampSpinBox;
     m_outputMaxBlocksSpin->setRange(100, 100000);
     m_outputMaxBlocksSpin->setSingleStep(500);
     m_outputMaxBlocksSpin->setValue(cfg.outputPanelMaxBlocks());
@@ -698,7 +721,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *debounceRow = new QHBoxLayout;
     auto *debounceLabel = new QLabel(tr("分屏防抖（ms）"));
     debounceLabel->setStyleSheet(labelStyle());
-    m_previewDebounceSpin = new QSpinBox;
+    m_previewDebounceSpin = new ClampSpinBox;
     m_previewDebounceSpin->setRange(100, 2000);
     m_previewDebounceSpin->setSingleStep(50);
     m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
@@ -717,7 +740,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *ratioRow = new QHBoxLayout;
     auto *ratioLabel = new QLabel(tr("分屏比例（%）"));
     ratioLabel->setStyleSheet(labelStyle());
-    m_previewRatioSpin = new QSpinBox;
+    m_previewRatioSpin = new ClampSpinBox;
     m_previewRatioSpin->setRange(30, 70);
     m_previewRatioSpin->setValue(cfg.previewSplitPreviewRatio());
     m_previewRatioSpin->setFixedWidth(100);
@@ -741,10 +764,10 @@ QWidget *SettingsPanel::createEditorPage()
     auto *perFileRow = new QHBoxLayout;
     auto *perFileLabel = new QLabel(tr("每文件匹配数"));
     perFileLabel->setStyleSheet(labelStyle());
-    m_searchPerFileSpin = new QSpinBox;
+    m_searchPerFileSpin = new ClampSpinBox;
     m_searchPerFileSpin->setRange(1, 50);
     m_searchPerFileSpin->setValue(cfg.searchMaxPerFile());
-    m_searchPerFileSpin->setFixedWidth(80);
+    m_searchPerFileSpin->setFixedWidth(100);
     m_searchPerFileSpin->setStyleSheet(inputStyle());
     perFileRow->addWidget(perFileLabel);
     perFileRow->addStretch();
@@ -759,7 +782,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *totalRow = new QHBoxLayout;
     auto *totalLabel = new QLabel(tr("最大结果总数"));
     totalLabel->setStyleSheet(labelStyle());
-    m_searchTotalSpin = new QSpinBox;
+    m_searchTotalSpin = new ClampSpinBox;
     m_searchTotalSpin->setRange(50, 2000);
     m_searchTotalSpin->setSingleStep(50);
     m_searchTotalSpin->setValue(cfg.searchMaxTotalResults());
@@ -778,11 +801,11 @@ QWidget *SettingsPanel::createEditorPage()
     auto *snippetRow = new QHBoxLayout;
     auto *snippetLabel = new QLabel(tr("片段最大长度"));
     snippetLabel->setStyleSheet(labelStyle());
-    m_searchSnippetSpin = new QSpinBox;
+    m_searchSnippetSpin = new ClampSpinBox;
     m_searchSnippetSpin->setRange(50, 500);
     m_searchSnippetSpin->setSingleStep(10);
     m_searchSnippetSpin->setValue(cfg.searchSnippetMaxLength());
-    m_searchSnippetSpin->setFixedWidth(80);
+    m_searchSnippetSpin->setFixedWidth(100);
     m_searchSnippetSpin->setStyleSheet(inputStyle());
     snippetRow->addWidget(snippetLabel);
     snippetRow->addStretch();
@@ -829,7 +852,7 @@ QWidget *SettingsPanel::createAppearancePage()
     themeLabel->setStyleSheet(labelStyle());
     m_themeCombo = new QComboBox;
     m_themeCombo->setStyleSheet(inputStyle());
-    m_themeCombo->setFixedWidth(200);
+    m_themeCombo->setFixedWidth(180);
 
     auto &tm = ThemeManager::instance();
     m_themeCombo->addItems(tm.availableThemes());
@@ -884,10 +907,10 @@ QWidget *SettingsPanel::createAppearancePage()
     auto *treeItemHeightRow = new QHBoxLayout;
     auto *treeItemHeightLabel = new QLabel(tr("条目行高（px）"));
     treeItemHeightLabel->setStyleSheet(labelStyle());
-    m_fileTreeItemHeightSpin = new QSpinBox;
+    m_fileTreeItemHeightSpin = new ClampSpinBox;
     m_fileTreeItemHeightSpin->setRange(24, 32);
     m_fileTreeItemHeightSpin->setValue(cfg.editorFileTreeItemHeight());
-    m_fileTreeItemHeightSpin->setFixedWidth(80);
+    m_fileTreeItemHeightSpin->setFixedWidth(100);
     m_fileTreeItemHeightSpin->setStyleSheet(inputStyle());
     treeItemHeightRow->addWidget(treeItemHeightLabel);
     treeItemHeightRow->addStretch();
@@ -1434,11 +1457,11 @@ QWidget *SettingsPanel::createAiServicePage()
     auto *tokensRow = new QHBoxLayout;
     auto *tokensLabel = new QLabel(tr("Max Tokens"));
     tokensLabel->setStyleSheet(labelStyle());
-    m_aiMaxTokensSpin = new QSpinBox;
+    m_aiMaxTokensSpin = new ClampSpinBox;
     m_aiMaxTokensSpin->setRange(256, 16384);
     m_aiMaxTokensSpin->setSingleStep(256);
     m_aiMaxTokensSpin->setValue(cfg.aiMaxTokens());
-    m_aiMaxTokensSpin->setFixedWidth(120);
+    m_aiMaxTokensSpin->setFixedWidth(100);
     m_aiMaxTokensSpin->setStyleSheet(inputStyle());
     tokensRow->addWidget(tokensLabel);
     tokensRow->addStretch();
@@ -1447,26 +1470,6 @@ QWidget *SettingsPanel::createAiServicePage()
 
     connect(m_aiMaxTokensSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
         emit aiSettingChanged("ai.max_tokens", val);
-    });
-
-    // ---- Temperature ----
-    auto *tempRow = new QHBoxLayout;
-    auto *tempLabel = new QLabel(tr("Temperature"));
-    tempLabel->setStyleSheet(labelStyle());
-    m_aiTemperatureSpin = new QDoubleSpinBox;
-    m_aiTemperatureSpin->setRange(0.0, 2.0);
-    m_aiTemperatureSpin->setSingleStep(0.1);
-    m_aiTemperatureSpin->setDecimals(1);
-    m_aiTemperatureSpin->setValue(cfg.aiTemperature());
-    m_aiTemperatureSpin->setFixedWidth(120);
-    m_aiTemperatureSpin->setStyleSheet(inputStyle());
-    tempRow->addWidget(tempLabel);
-    tempRow->addStretch();
-    tempRow->addWidget(m_aiTemperatureSpin);
-    layout->addLayout(tempRow);
-
-    connect(m_aiTemperatureSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
-        emit aiSettingChanged("ai.temperature", val);
     });
 
     // ---- 系统提示词 ----
@@ -1672,11 +1675,11 @@ QWidget *SettingsPanel::createToolsPage()
     auto *timeLimitRow = new QHBoxLayout;
     auto *timeLimitLabel = new QLabel(tr("时间限制（ms）"));
     timeLimitLabel->setStyleSheet(labelStyle());
-    m_judgeTimeLimitSpin = new QSpinBox;
+    m_judgeTimeLimitSpin = new ClampSpinBox;
     m_judgeTimeLimitSpin->setRange(100, 10000);
     m_judgeTimeLimitSpin->setSingleStep(100);
     m_judgeTimeLimitSpin->setValue(cfg.judgeTimeLimitMs());
-    m_judgeTimeLimitSpin->setFixedWidth(120);
+    m_judgeTimeLimitSpin->setFixedWidth(100);
     m_judgeTimeLimitSpin->setStyleSheet(inputStyle());
     timeLimitRow->addWidget(timeLimitLabel);
     timeLimitRow->addStretch();
@@ -1691,11 +1694,11 @@ QWidget *SettingsPanel::createToolsPage()
     auto *memLimitRow = new QHBoxLayout;
     auto *memLimitLabel = new QLabel(tr("内存限制（MB）"));
     memLimitLabel->setStyleSheet(labelStyle());
-    m_judgeMemoryLimitSpin = new QSpinBox;
+    m_judgeMemoryLimitSpin = new ClampSpinBox;
     m_judgeMemoryLimitSpin->setRange(16, 1024);
     m_judgeMemoryLimitSpin->setSingleStep(16);
     m_judgeMemoryLimitSpin->setValue(cfg.judgeMemoryLimitKb() / 1024);
-    m_judgeMemoryLimitSpin->setFixedWidth(120);
+    m_judgeMemoryLimitSpin->setFixedWidth(100);
     m_judgeMemoryLimitSpin->setStyleSheet(inputStyle());
     memLimitRow->addWidget(memLimitLabel);
     memLimitRow->addStretch();
@@ -1915,8 +1918,6 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_aiModelEdit->setText(sm.value("ai.model", cfg.aiModel()).toString());
     if (m_aiMaxTokensSpin)
         m_aiMaxTokensSpin->setValue(sm.value("ai.max_tokens", cfg.aiMaxTokens()).toInt());
-    if (m_aiTemperatureSpin)
-        m_aiTemperatureSpin->setValue(sm.value("ai.temperature", cfg.aiTemperature()).toDouble());
     if (m_aiSystemPromptEdit)
         m_aiSystemPromptEdit->setPlainText(sm.value("ai.system_prompt", cfg.aiSystemPrompt()).toString());
 

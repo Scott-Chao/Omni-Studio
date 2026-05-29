@@ -176,7 +176,6 @@ private:
     QPushButton *m_aiApiKeyToggleBtn = nullptr;
     QLineEdit *m_aiModelEdit = nullptr;
     QSpinBox *m_aiMaxTokensSpin = nullptr;
-    QDoubleSpinBox *m_aiTemperatureSpin = nullptr;
     QTextEdit *m_aiSystemPromptEdit = nullptr;
     QTimer *m_aiPromptDebounceTimer = nullptr;
 
