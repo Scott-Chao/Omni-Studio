@@ -733,7 +733,7 @@ QColor ConfigManager::editorBackground() const
 QColor ConfigManager::editorForeground() const
     { return syntaxThemeOr("editor.foreground", QColor("#BBBEBF"), QColor("#000000")); }
 QColor ConfigManager::editorSelection() const
-    { return syntaxThemeOr("editor.selectionBackground", QColor("#276782dd"), QColor("#ADD6FF")); }
+    { return syntaxThemeOr("editor.selectionBackground", QColor("#276782dd"), QColor("#BBDEFB")); }
 QColor ConfigManager::lineNumberBackground() const
     { return syntaxThemeOr("editorLineNumber.background", QColor("#121314"), QColor("#F3F3F3")); }
 QColor ConfigManager::lineNumberForeground() const

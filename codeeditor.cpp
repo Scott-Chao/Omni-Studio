@@ -1306,9 +1306,10 @@ void CodeEditor::paintEvent(QPaintEvent *event)
     {
         QPainter painter(viewport());
         QColor selBg = m_cachedSelectionBg;
-        // Higher alpha in dark themes for sufficient contrast against dark backgrounds
+        // Light theme uses a very light blue base, so use higher alpha for visibility;
+        // dark theme uses lower alpha to keep contrast against dark backgrounds
         bool isDark = ThemeManager::instance().currentThemeType() == ThemeManager::Dark;
-        selBg.setAlpha(isDark ? 120 : 80);
+        selBg.setAlpha(isDark ? 100 : 120);
 
         QTextDocument *doc = document();
         QTextBlock block = doc->findBlock(selStart);
