@@ -60,31 +60,6 @@ private:
     int m_cellIndex;
 };
 
-// ─── Completion kind helper ──────────────────────────────────────────
-
-static QString completionKindToString(int kind)
-{
-    switch (kind) {
-    case 1:  return QStringLiteral("Text");
-    case 2:  return QStringLiteral("Method");
-    case 3:  return QStringLiteral("Function");
-    case 4:  return QStringLiteral("Constructor");
-    case 5:  return QStringLiteral("Field");
-    case 6:  return QStringLiteral("Variable");
-    case 7:  return QStringLiteral("Class");
-    case 8:  return QStringLiteral("Interface");
-    case 9:  return QStringLiteral("Module");
-    case 10: return QStringLiteral("Property");
-    case 11: return QStringLiteral("Unit");
-    case 12: return QStringLiteral("Value");
-    case 13: return QStringLiteral("Enum");
-    case 14: return QStringLiteral("Keyword");
-    case 15: return QStringLiteral("Snippet");
-    case 22: return QStringLiteral("Struct");
-    default: return QStringLiteral("Text");
-    }
-}
-
 // ─── LanguageServer helper ───────────────────────────────────────────
 
 void SmdLspManager::LanguageServer::reset()
@@ -655,7 +630,7 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
             ci.name = insertText.trimmed();
             ci.detail = item.value(QStringLiteral("detail")).toString();
             int kind = item.value(QStringLiteral("kind")).toInt(0);
-            ci.type = completionKindToString(kind);
+            ci.type = StringUtils::completionKindToString(kind);
             ci.signature = ci.name;
             QJsonValue docVal = item.value(QStringLiteral("documentation"));
             if (docVal.isString())

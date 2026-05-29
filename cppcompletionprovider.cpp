@@ -1,6 +1,7 @@
 #include "cppcompletionprovider.h"
 #include "configmanager.h"
 #include "lspclient.h"
+#include "stringutils.h"
 #include "debuglog.h"
 #include <QFileInfo>
 #include <QJsonObject>
@@ -408,31 +409,7 @@ void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos
 
 QString CppCompletionProvider::completionKindToString(int kind)
 {
-    switch (kind) {
-    case 1:  return QStringLiteral("Text");
-    case 2:  return QStringLiteral("Method");
-    case 3:  return QStringLiteral("Function");
-    case 4:  return QStringLiteral("Constructor");
-    case 5:  return QStringLiteral("Field");
-    case 6:  return QStringLiteral("Variable");
-    case 7:  return QStringLiteral("Class");
-    case 8:  return QStringLiteral("Interface");
-    case 9:  return QStringLiteral("Module");
-    case 10: return QStringLiteral("Property");
-    case 11: return QStringLiteral("Unit");
-    case 12: return QStringLiteral("Value");
-    case 13: return QStringLiteral("Enum");
-    case 14: return QStringLiteral("Keyword");
-    case 15: return QStringLiteral("Snippet");
-    case 18: return QStringLiteral("Reference");
-    case 20: return QStringLiteral("EnumMember");
-    case 21: return QStringLiteral("Constant");
-    case 22: return QStringLiteral("Struct");
-    case 23: return QStringLiteral("Event");
-    case 24: return QStringLiteral("Operator");
-    case 25: return QStringLiteral("TypeParameter");
-    default: return QStringLiteral("Text");
-    }
+    return StringUtils::completionKindToString(kind);
 }
 
 QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJsonObject &result)
