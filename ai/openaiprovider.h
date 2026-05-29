@@ -9,19 +9,10 @@ class OpenAiProvider : public AiProvider
 public:
     explicit OpenAiProvider(QObject *parent = nullptr);
 
-    void setApiKey(const QString &key) override;
-    void setModel(const QString &model) override;
-    void setSystemPrompt(const QString &prompt) override;
-    void setMaxTokens(int maxTokens) override;
-    void setEndpoint(const QString &endpoint);
     void chatStream(const QList<Message> &messages) override;
 
-private slots:
-    void onReadyRead();
-
 private:
-    void drainBuffer() override;
-    void parseSseBuffer();
+    void parseSseFrame(const QString &frame) override;
 };
 
 #endif // OPENAIProvider_H

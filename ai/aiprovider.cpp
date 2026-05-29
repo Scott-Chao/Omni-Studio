@@ -1,6 +1,26 @@
 #include "aiprovider.h"
 #include <QNetworkRequest>
 
+void AiProvider::setApiKey(const QString &key) { m_apiKey = key; }
+void AiProvider::setModel(const QString &model) { m_model = model; }
+void AiProvider::setSystemPrompt(const QString &prompt) { m_systemPrompt = prompt; }
+void AiProvider::setMaxTokens(int maxTokens) { m_maxTokens = maxTokens; }
+void AiProvider::setEndpoint(const QString &endpoint) { m_endpoint = endpoint; }
+
+QNetworkReply* AiProvider::postStreamRequest(const QNetworkRequest &request, const QByteArray &data)
+{
+    cancel();
+    m_buffer.clear();
+    m_finished = false;
+
+    m_reply = m_net->post(request, data);
+    connect(m_reply, &QNetworkReply::readyRead, this, &AiProvider::onReadyRead);
+    connect(m_reply, &QNetworkReply::finished, this, &AiProvider::onFinished);
+
+    m_timeoutTimer->start();
+    return m_reply;
+}
+
 void AiProvider::cancel()
 {
     if (m_reply) {
@@ -10,6 +30,34 @@ void AiProvider::cancel()
     }
     if (m_timeoutTimer)
         m_timeoutTimer->stop();
+}
+
+void AiProvider::onReadyRead()
+{
+    m_timeoutTimer->start();
+
+    if (!m_reply)
+        return;
+
+    m_buffer += QString::fromUtf8(m_reply->readAll());
+
+    while (true) {
+        int idx = m_buffer.indexOf(QStringLiteral("\n\n"));
+        if (idx < 0)
+            break;
+
+        QString frame = m_buffer.left(idx);
+        m_buffer = m_buffer.mid(idx + 2);
+        parseSseFrame(frame);
+    }
+}
+
+void AiProvider::drainBuffer()
+{
+    if (!m_buffer.isEmpty()) {
+        parseSseFrame(m_buffer);
+        m_buffer.clear();
+    }
 }
 
 void AiProvider::onFinished()

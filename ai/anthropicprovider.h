@@ -9,19 +9,10 @@ class AnthropicProvider : public AiProvider
 public:
     explicit AnthropicProvider(QObject *parent = nullptr);
 
-    void setApiKey(const QString &key) override;
-    void setModel(const QString &model) override;
-    void setSystemPrompt(const QString &prompt) override;
-    void setMaxTokens(int maxTokens) override;
-    void setEndpoint(const QString &endpoint);
     void chatStream(const QList<Message> &messages) override;
 
-private slots:
-    void onReadyRead();
-
 private:
-    void drainBuffer() override;
-    void parseSseFrame(const QString &frame);
+    void parseSseFrame(const QString &frame) override;
 };
 
 #endif // ANTHROPICPROVIDER_H

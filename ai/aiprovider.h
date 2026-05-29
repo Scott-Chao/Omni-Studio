@@ -5,6 +5,7 @@
 #include <QString>
 #include <QList>
 #include <QJsonObject>
+#include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QTimer>
@@ -31,12 +32,13 @@ class AiProvider : public QObject
 public:
     using QObject::QObject;
 
-    virtual void setApiKey(const QString &key) = 0;
-    virtual void setModel(const QString &model) = 0;
-    virtual void setSystemPrompt(const QString &prompt) = 0;
-    virtual void setMaxTokens(int maxTokens) = 0;
-    virtual void chatStream(const QList<Message> &messages) = 0;
+    void setApiKey(const QString &key);
+    void setModel(const QString &model);
+    void setSystemPrompt(const QString &prompt);
+    void setMaxTokens(int maxTokens);
+    void setEndpoint(const QString &endpoint);
 
+    virtual void chatStream(const QList<Message> &messages) = 0;
     void cancel();
 
 signals:
@@ -44,13 +46,15 @@ signals:
     void finished();
     void error(const QString &message);
 
-public:
+protected:
+    QNetworkReply* postStreamRequest(const QNetworkRequest &request, const QByteArray &data);
+    void onReadyRead();
+    void drainBuffer();
+    virtual void parseSseFrame(const QString &frame) = 0;
+
     void onTimeout();
     void onFinished();
-
-protected:
     void handleNetworkError();
-    virtual void drainBuffer() = 0;
 
     QNetworkAccessManager *m_net = nullptr;
     QNetworkReply *m_reply = nullptr;
