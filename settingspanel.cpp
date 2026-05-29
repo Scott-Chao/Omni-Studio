@@ -69,18 +69,16 @@ static QString inputStyle() {
     QString fg = tm.color("input.foreground").name();
     QString border = tm.color("input.border").name();
     QString accent = tm.color("badge.background").name();
+    QString hoverBg = tm.color("aiAssistant.actionButtonHoverBackground").name();
     return QStringLiteral(
         "QSpinBox, QLineEdit, QComboBox { background-color: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 2px 4px; font-size: 12px; min-height: 20px; }"
         "QSpinBox:focus, QLineEdit:focus, QComboBox:focus { border-color: %4; }"
         "QComboBox::drop-down { border: none; width: 20px; }"
         "QComboBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; margin-right: 4px; }"
         "QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3; selection-background-color: %4; }"
-        "QSpinBox::up-button, QSpinBox::down-button { width: 20px; border: none; background-color: %1; }"
-        "QSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; border-left: 1px solid %3; border-top-right-radius: 3px; }"
-        "QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; border-left: 1px solid %3; border-bottom-right-radius: 3px; }"
-        "QSpinBox::up-arrow { image: url(:/preview/spin-up.svg); width: 10px; height: 7px; }"
-        "QSpinBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; }"
-    ).arg(bg, fg, border, accent);
+        "QSpinBox::up-button, QSpinBox::down-button { width: 0px; border: none; }"
+        "QComboBox::drop-down:hover { background-color: %5; }"
+    ).arg(bg, fg, border, accent, hoverBg);
 }
 
 
@@ -494,7 +492,7 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 默认缩放 ----
     auto *zoomRow = new QHBoxLayout;
-    auto *zoomLabel = new QLabel(tr("默认缩放"));
+    auto *zoomLabel = new QLabel(tr("默认缩放（%）"));
     zoomLabel->setStyleSheet(labelStyle());
     zoomRow->addWidget(zoomLabel);
 
@@ -550,11 +548,6 @@ QWidget *SettingsPanel::createEditorPage()
     m_fontSizeEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_fontSizeEdit->setStyleSheet(inputStyle());
     zoomRow->addWidget(m_fontSizeEdit);
-
-    auto *zoomPercentLabel = new QLabel(QStringLiteral("%"));
-    zoomPercentLabel->setStyleSheet(labelStyle());
-    zoomRow->addWidget(zoomPercentLabel);
-
     layout->addLayout(zoomRow);
 
     // 滑块 → 数字框
@@ -616,12 +609,11 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 保存间隔 ----
     auto *intervalRow = new QHBoxLayout;
-    auto *intervalLabel = new QLabel(tr("保存间隔"));
+    auto *intervalLabel = new QLabel(tr("保存间隔（秒）"));
     intervalLabel->setStyleSheet(labelStyle());
     m_autoSaveIntervalSpin = new QSpinBox;
     m_autoSaveIntervalSpin->setRange(1, 300);
     m_autoSaveIntervalSpin->setValue(cfg.autoSaveIntervalMs() / 1000);
-    m_autoSaveIntervalSpin->setSuffix(tr("秒"));
     m_autoSaveIntervalSpin->setFixedWidth(100);
     m_autoSaveIntervalSpin->setStyleSheet(inputStyle());
     intervalRow->addWidget(intervalLabel);
@@ -704,13 +696,12 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 分屏防抖 ----
     auto *debounceRow = new QHBoxLayout;
-    auto *debounceLabel = new QLabel(tr("分屏防抖"));
+    auto *debounceLabel = new QLabel(tr("分屏防抖（ms）"));
     debounceLabel->setStyleSheet(labelStyle());
     m_previewDebounceSpin = new QSpinBox;
     m_previewDebounceSpin->setRange(100, 2000);
     m_previewDebounceSpin->setSingleStep(50);
     m_previewDebounceSpin->setValue(cfg.previewSplitDebounceMs());
-    m_previewDebounceSpin->setSuffix(QStringLiteral(" ms"));
     m_previewDebounceSpin->setFixedWidth(100);
     m_previewDebounceSpin->setStyleSheet(inputStyle());
     debounceRow->addWidget(debounceLabel);
@@ -724,7 +715,7 @@ QWidget *SettingsPanel::createEditorPage()
 
     // ---- 分屏比例 ----
     auto *ratioRow = new QHBoxLayout;
-    auto *ratioLabel = new QLabel(tr("分屏比例"));
+    auto *ratioLabel = new QLabel(tr("分屏比例（%）"));
     ratioLabel->setStyleSheet(labelStyle());
     m_previewRatioSpin = new QSpinBox;
     m_previewRatioSpin->setRange(30, 70);
@@ -734,9 +725,6 @@ QWidget *SettingsPanel::createEditorPage()
     ratioRow->addWidget(ratioLabel);
     ratioRow->addStretch();
     ratioRow->addWidget(m_previewRatioSpin);
-    auto *ratioPercentLabel = new QLabel(QStringLiteral("%"));
-    ratioPercentLabel->setStyleSheet(labelStyle());
-    ratioRow->addWidget(ratioPercentLabel);
     layout->addLayout(ratioRow);
 
     connect(m_previewRatioSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
@@ -894,13 +882,12 @@ QWidget *SettingsPanel::createAppearancePage()
 
     // ---- 文件树条目高度 ----
     auto *treeItemHeightRow = new QHBoxLayout;
-    auto *treeItemHeightLabel = new QLabel(tr("条目行高"));
+    auto *treeItemHeightLabel = new QLabel(tr("条目行高（px）"));
     treeItemHeightLabel->setStyleSheet(labelStyle());
     m_fileTreeItemHeightSpin = new QSpinBox;
     m_fileTreeItemHeightSpin->setRange(24, 32);
     m_fileTreeItemHeightSpin->setValue(cfg.editorFileTreeItemHeight());
     m_fileTreeItemHeightSpin->setFixedWidth(80);
-    m_fileTreeItemHeightSpin->setSuffix(" px");
     m_fileTreeItemHeightSpin->setStyleSheet(inputStyle());
     treeItemHeightRow->addWidget(treeItemHeightLabel);
     treeItemHeightRow->addStretch();
@@ -1683,13 +1670,12 @@ QWidget *SettingsPanel::createToolsPage()
 
     // ---- 时间限制 ----
     auto *timeLimitRow = new QHBoxLayout;
-    auto *timeLimitLabel = new QLabel(tr("时间限制"));
+    auto *timeLimitLabel = new QLabel(tr("时间限制（ms）"));
     timeLimitLabel->setStyleSheet(labelStyle());
     m_judgeTimeLimitSpin = new QSpinBox;
     m_judgeTimeLimitSpin->setRange(100, 10000);
     m_judgeTimeLimitSpin->setSingleStep(100);
     m_judgeTimeLimitSpin->setValue(cfg.judgeTimeLimitMs());
-    m_judgeTimeLimitSpin->setSuffix(QStringLiteral(" ms"));
     m_judgeTimeLimitSpin->setFixedWidth(120);
     m_judgeTimeLimitSpin->setStyleSheet(inputStyle());
     timeLimitRow->addWidget(timeLimitLabel);
@@ -1703,13 +1689,12 @@ QWidget *SettingsPanel::createToolsPage()
 
     // ---- 内存限制 ----
     auto *memLimitRow = new QHBoxLayout;
-    auto *memLimitLabel = new QLabel(tr("内存限制"));
+    auto *memLimitLabel = new QLabel(tr("内存限制（MB）"));
     memLimitLabel->setStyleSheet(labelStyle());
     m_judgeMemoryLimitSpin = new QSpinBox;
     m_judgeMemoryLimitSpin->setRange(16, 1024);
     m_judgeMemoryLimitSpin->setSingleStep(16);
     m_judgeMemoryLimitSpin->setValue(cfg.judgeMemoryLimitKb() / 1024);
-    m_judgeMemoryLimitSpin->setSuffix(QStringLiteral(" MB"));
     m_judgeMemoryLimitSpin->setFixedWidth(120);
     m_judgeMemoryLimitSpin->setStyleSheet(inputStyle());
     memLimitRow->addWidget(memLimitLabel);
