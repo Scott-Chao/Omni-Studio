@@ -30,12 +30,10 @@ void ChatArea::refreshStyle()
     auto &tm = ThemeManager::instance();
 
     setStyleSheet(QStringLiteral(
-        "QScrollArea { background-color: %1; border: none; }"
-    ).arg(tm.color("editor.background").name()));
+        "QScrollArea { %1 border: none; }"
+    ).arg(tm.colorStyle("background-color", "editor.background")));
 
-    m_container->setStyleSheet(QStringLiteral(
-        "background-color: %1;"
-    ).arg(tm.color("editor.background").name()));
+    m_container->setStyleSheet(tm.colorStyle("background-color", "editor.background"));
 }
 
 void ChatArea::addMessage(ChatBubble::Role role, const QString &text)

@@ -19,6 +19,14 @@ public:
 
     bool loadTheme(const QString &name);
     QColor color(const QString &token) const;
+
+    // Generate a CSS property: value string from a theme color key.
+    // Example: colorStyle("background-color", "editor.background") → "background-color: #1e1e1e;"
+    QString colorStyle(const QString &property, const QString &colorKey) const
+    {
+        return QStringLiteral("%1: %2;").arg(property, color(colorKey).name());
+    }
+
     void setOverride(const QString &token, const QColor &color);
     void clearOverrides();
 
@@ -31,9 +39,6 @@ public:
 
     void applyPalette();
 
-signals:
-    void themeChanged();
-
     // Convenience: connect themeChanged to a member function slot.
     // Usage: ThemeManager::watchTheme(this, &MyWidget::refreshStyle);
     template<typename Receiver>
@@ -41,6 +46,9 @@ signals:
     {
         QObject::connect(&instance(), &ThemeManager::themeChanged, receiver, slot);
     }
+
+signals:
+    void themeChanged();
 
 private:
     ThemeManager();

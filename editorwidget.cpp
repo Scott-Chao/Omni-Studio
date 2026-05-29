@@ -134,8 +134,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
     m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
     m_pdfView->setStyleSheet(
-        QStringLiteral("background-color: %1;")
-            .arg(ThemeManager::instance().color("editor.background").name()));
+        ThemeManager::instance().colorStyle("background-color", "editor.background"));
     m_pdfView->installEventFilter(this);
     if (auto *vp = m_pdfView->viewport())
         vp->installEventFilter(this);

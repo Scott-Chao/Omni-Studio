@@ -148,8 +148,8 @@ void JudgePanel::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
-    setStyleSheet(QString("JudgePanel { background-color: %1; }")
-        .arg(tm.color("editor.background").name()));
+    setStyleSheet(QString("JudgePanel { %1 }")
+        .arg(tm.colorStyle("background-color", "editor.background")));
 
     m_folderEdit->setStyleSheet(QString(
         "QLineEdit { background: %1; color: %2; border: 1px solid %3;"

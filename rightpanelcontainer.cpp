@@ -79,8 +79,7 @@ void RightPanelContainer::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
-    m_tabBar->setStyleSheet(QString("background-color: %1;")
-        .arg(tm.color("editorLineNumber.background").name()));
+    m_tabBar->setStyleSheet(tm.colorStyle("background-color", "editorLineNumber.background"));
 
     setStyleSheet(QString(
         "RightPanelContainer { background-color: %1; }"
