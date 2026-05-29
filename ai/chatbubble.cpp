@@ -12,90 +12,94 @@
 
 // ── Markdown → HTML converter (lightweight) ──────────────────────────
 
-// Process inline formatting: `code`, **bold**, *italic*
+// Process inline formatting: `code`, **bold**, *italic*, [links](url)
+// Single-pass character-level state machine — avoids 5 separate regex scans and
+// intermediate QString allocations of the original approach.
 static QString processInline(const QString &text, const QColor &codeBg,
                               const QColor &codeFg, const QColor &linkColor)
 {
-    // Must escape HTML first, then apply inline markup
-
-    // 1. Inline code `code` — protect from other transformations
     QString result;
-    static const QRegularExpression codeRe(QStringLiteral("`([^`]+)`"));
-    QStringList codePlaceholders;
-    int codeIdx = 0;
-    {
-        int last = 0;
-        QRegularExpressionMatchIterator it = codeRe.globalMatch(text);
-        while (it.hasNext()) {
-            QRegularExpressionMatch m = it.next();
-            result += text.mid(last, m.capturedStart() - last).toHtmlEscaped();
-            QString placeholder = QStringLiteral("\x01CODE%1\x01").arg(codeIdx++);
-            codePlaceholders.append(m.captured(1).toHtmlEscaped());
-            result += placeholder;
-            last = m.capturedEnd();
-        }
-        result += text.mid(last).toHtmlEscaped();
-    }
+    result.reserve(text.size() + (text.size() / 4));
 
-    // 2. Bold **text**
-    {
-        static const QRegularExpression boldRe(QStringLiteral("\\*\\*(.+?)\\*\\*"));
-        QString tmp;
-        int last = 0;
-        QRegularExpressionMatchIterator it = boldRe.globalMatch(result);
-        while (it.hasNext()) {
-            QRegularExpressionMatch m = it.next();
-            tmp += result.mid(last, m.capturedStart() - last);
-            tmp += QStringLiteral("<b>") + m.captured(1) + QStringLiteral("</b>");
-            last = m.capturedEnd();
-        }
-        tmp += result.mid(last);
-        result = tmp;
-    }
+    int i = 0;
+    const int len = text.length();
 
-    // 3. Italic *text*
-    {
-        static const QRegularExpression italicRe(QStringLiteral("\\*(.+?)\\*"));
-        QString tmp;
-        int last = 0;
-        QRegularExpressionMatchIterator it = italicRe.globalMatch(result);
-        while (it.hasNext()) {
-            QRegularExpressionMatch m = it.next();
-            tmp += result.mid(last, m.capturedStart() - last);
-            tmp += QStringLiteral("<i>") + m.captured(1) + QStringLiteral("</i>");
-            last = m.capturedEnd();
-        }
-        tmp += result.mid(last);
-        result = tmp;
-    }
+    while (i < len) {
+        const QChar c = text[i];
 
-    // 4. Links [text](url)
-    {
-        static const QRegularExpression linkRe(QStringLiteral("\\[([^\\]]+)\\]\\(([^)]+)\\)"));
-        QString tmp;
-        int last = 0;
-        QRegularExpressionMatchIterator it = linkRe.globalMatch(result);
-        while (it.hasNext()) {
-            QRegularExpressionMatch m = it.next();
-            tmp += result.mid(last, m.capturedStart() - last);
-            tmp += QStringLiteral("<a href=\"") + m.captured(2).toHtmlEscaped()
-                 + QStringLiteral("\" style=\"color:") + linkColor.name()
-                 + QStringLiteral(";\">")
-                 + m.captured(1).toHtmlEscaped() + QStringLiteral("</a>");
-            last = m.capturedEnd();
+        // Inline code `code` — processed first so its content is never
+        // mistaken for bold/italic markers.
+        if (c == QLatin1Char('`')) {
+            int end = text.indexOf(QLatin1Char('`'), i + 1);
+            if (end != -1) {
+                result += QStringLiteral("<code style=\"background-color:%1; color:%2; "
+                                        "padding:1px 4px; border-radius:3px; font-size:12px;\">")
+                         .arg(codeBg.name(), codeFg.name())
+                         + text.mid(i + 1, end - i - 1).toHtmlEscaped()
+                         + QStringLiteral("</code>");
+                i = end + 1;
+                continue;
+            }
         }
-        tmp += result.mid(last);
-        result = tmp;
-    }
 
-    // 5. Restore code placeholders
-    for (int i = 0; i < codePlaceholders.size(); ++i) {
-        result.replace(QStringLiteral("\x01CODE%1\x01").arg(i),
-                       QStringLiteral("<code style=\"background-color:%1; color:%2; "
-                                      "padding:1px 4px; border-radius:3px; font-size:12px;\">")
-                       .arg(codeBg.name(), codeFg.name())
-                       + codePlaceholders[i]
-                       + QStringLiteral("</code>"));
+        // Link [label](url)
+        if (c == QLatin1Char('[')) {
+            int bracketEnd = text.indexOf(QStringLiteral("]("), i + 1);
+            if (bracketEnd != -1) {
+                int parenEnd = text.indexOf(QLatin1Char(')'), bracketEnd + 2);
+                if (parenEnd != -1) {
+                    result += QStringLiteral("<a href=\"")
+                            + text.mid(bracketEnd + 2, parenEnd - bracketEnd - 2).toHtmlEscaped()
+                            + QStringLiteral("\" style=\"color:") + linkColor.name()
+                            + QStringLiteral(";\">")
+                            + text.mid(i + 1, bracketEnd - i - 1).toHtmlEscaped()
+                            + QStringLiteral("</a>");
+                    i = parenEnd + 1;
+                    continue;
+                }
+            }
+        }
+
+        // Bold **text** — checked before single-* italic
+        if (c == QLatin1Char('*') && i + 1 < len && text[i + 1] == QLatin1Char('*')) {
+            int end = text.indexOf(QStringLiteral("**"), i + 2);
+            if (end != -1) {
+                result += QStringLiteral("<b>")
+                        + processInline(text.mid(i + 2, end - i - 2), codeBg, codeFg, linkColor)
+                        + QStringLiteral("</b>");
+                i = end + 2;
+                continue;
+            }
+        }
+
+        // Italic *text* — closing * must not be part of **, search past ** pairs
+        if (c == QLatin1Char('*')) {
+            int end = i + 1;
+            while (end < len) {
+                end = text.indexOf(QLatin1Char('*'), end);
+                if (end == -1) break;
+                if (end > i + 1 && (end + 1 >= len || text[end + 1] != QLatin1Char('*')))
+                    break;  // valid closing *
+                end += 2;  // skip past the whole ** pair and keep looking
+            }
+            if (end > i + 1) {
+                result += QStringLiteral("<i>")
+                        + processInline(text.mid(i + 1, end - i - 1), codeBg, codeFg, linkColor)
+                        + QStringLiteral("</i>");
+                i = end + 1;
+                continue;
+            }
+        }
+
+        // Regular character: HTML escape and append
+        switch (c.unicode()) {
+        case '<':  result += QStringLiteral("&lt;"); break;
+        case '>':  result += QStringLiteral("&gt;"); break;
+        case '&':  result += QStringLiteral("&amp;"); break;
+        case '"':  result += QStringLiteral("&quot;"); break;
+        default:   result += c; break;
+        }
+        ++i;
     }
 
     return result;
@@ -115,6 +119,8 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
 
     bool inCodeBlock = false;
     QString codeBlockContent;
+    bool inUL = false;
+    bool inOL = false;
 
     for (const QString &rawLine : lines) {
         QString line = rawLine;
@@ -144,6 +150,8 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
         }
 
         if (line.trimmed().isEmpty()) {
+            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
+            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
             continue;
         }
 
@@ -151,6 +159,8 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
         static const QRegularExpression hRe(QStringLiteral("^(#{1,6})\\s+(.+)$"));
         QRegularExpressionMatch hMatch = hRe.match(line);
         if (hMatch.hasMatch()) {
+            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
+            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
             int level = hMatch.captured(1).length();
             QString headingText = processInline(hMatch.captured(2), codeBg, codeFg, linkColor);
             html += QStringLiteral("<h%1 style=\"color:%2; margin:8px 0 4px 0;\">%3</h%1>\n")
@@ -162,6 +172,11 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
         static const QRegularExpression ulRe(QStringLiteral("^[\\*\\-]\\s+(.+)$"));
         QRegularExpressionMatch ulMatch = ulRe.match(line);
         if (ulMatch.hasMatch()) {
+            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
+            if (!inUL) {
+                html += QStringLiteral("<ul style=\"margin:4px 0; padding-left:20px;\">\n");
+                inUL = true;
+            }
             html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
                         .arg(textColor.name(), processInline(ulMatch.captured(1), codeBg, codeFg, linkColor));
             continue;
@@ -171,6 +186,11 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
         static const QRegularExpression olRe(QStringLiteral("^\\d+\\.\\s+(.+)$"));
         QRegularExpressionMatch olMatch = olRe.match(line);
         if (olMatch.hasMatch()) {
+            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
+            if (!inOL) {
+                html += QStringLiteral("<ol style=\"margin:4px 0; padding-left:20px;\">\n");
+                inOL = true;
+            }
             html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
                         .arg(textColor.name(), processInline(olMatch.captured(1), codeBg, codeFg, linkColor));
             continue;
@@ -179,15 +199,23 @@ QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
         // Horizontal rule ---
         static const QRegularExpression hrRe(QStringLiteral("^\\-{3,}\\s*$"));
         if (hrRe.match(line).hasMatch()) {
+            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
+            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
             html += QStringLiteral("<hr style=\"border:0; border-top:1px solid %1; margin:8px 0;\">\n")
                         .arg(codeBg.name());
             continue;
         }
 
         // Regular paragraph line
+        if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
+        if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
         html += QStringLiteral("<p style=\"color:%1; margin:4px 0;\">%2</p>\n")
                     .arg(textColor.name(), processInline(line, codeBg, codeFg, linkColor));
     }
+
+    // Close any open lists at end of content
+    if (inUL) html += QStringLiteral("</ul>\n");
+    if (inOL) html += QStringLiteral("</ol>\n");
 
     // Close unclosed code block
     if (inCodeBlock) {
@@ -413,15 +441,16 @@ void ChatBubble::updateContent()
             // Incremental: only process new text since last conversion
             QString delta = m_text.mid(m_lastProcessedLength);
             if (!delta.isEmpty()) {
-                // Recalculate code block state from full text so that fence
-                // markers split across chunk boundaries (e.g. delta 1 = "``",
-                // delta 2 = "`\n") are correctly detected.
-                m_inCodeBlock = false;
+                // Toggle code block state by counting fences only in the delta,
+                // avoiding an O(n) re-scan of the full accumulated text each tick.
+                int fenceCount = 0;
                 int fenceIdx = 0;
-                while ((fenceIdx = m_text.indexOf(QStringLiteral("```"), fenceIdx)) != -1) {
-                    m_inCodeBlock = !m_inCodeBlock;
+                while ((fenceIdx = delta.indexOf(QStringLiteral("```"), fenceIdx)) != -1) {
+                    ++fenceCount;
                     fenceIdx += 3;
                 }
+                if (fenceCount % 2 == 1)
+                    m_inCodeBlock = !m_inCodeBlock;
 
                 if (isStructuralDelta(delta)) {
                     // Structural boundary → full rebuild for correctness
