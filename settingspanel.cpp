@@ -30,8 +30,127 @@
 #include <QMessageBox>
 #include <QMap>
 #include <QTimer>
+#include <QPointer>
+#include <QScreen>
+#include <QGuiApplication>
 #include <functional>
 #include "keyrecorder.h"
+
+// ============================================================
+// FontDropdown — QComboBox subclass that bypasses Qt's broken
+// stylesheet-popup sizing by using a custom popup QListWidget.
+// ============================================================
+class FontDropdown : public QComboBox
+{
+    Q_OBJECT
+public:
+    using QComboBox::QComboBox;
+
+    void showPopup() override
+    {
+        if (count() == 0)
+            return;
+
+        closePopup();
+
+        auto &tm = ThemeManager::instance();
+
+        m_popup = new QListWidget;
+        m_popup->setWindowFlags(Qt::Popup);
+        m_popup->setAttribute(Qt::WA_DeleteOnClose);
+        m_popup->setFont(font());
+
+        const int itemH = qMax(fontMetrics().height() + 8, 28);
+        constexpr int kMaxVisible = 10;
+        const int visible = qMin(count(), kMaxVisible);
+        const int popupW = width();
+        const int popupH = visible * itemH + 2;
+
+        for (int i = 0; i < count(); ++i) {
+            auto *item = new QListWidgetItem(itemText(i), m_popup);
+            item->setSizeHint(QSize(0, itemH));
+        }
+
+        m_popup->setCurrentRow(currentIndex());
+        m_popup->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_popup->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+        QPoint pos = mapToGlobal(QPoint(0, height()));
+        if (auto *screen = QGuiApplication::screenAt(pos)) {
+            const QRect avail = screen->availableGeometry();
+            if (pos.y() + popupH > avail.bottom())
+                pos.setY(qMax(avail.top(), mapToGlobal(QPoint(0, 0)).y() - popupH));
+        }
+
+        m_popup->setGeometry(pos.x(), pos.y(), popupW, popupH);
+
+        const QString bg   = tm.color("menu.background").name();
+        const QString fg   = tm.color("input.foreground").name();
+        const QString bd   = tm.color("input.border").name();
+        const QString sel  = tm.color("badge.background").name();
+        const QString hbar = tm.color("scrollbarSlider.hoverBackground").name();
+
+        m_popup->setStyleSheet(QStringLiteral(
+            "QListWidget { background-color: %1; color: %2; border: 1px solid %3; outline: none; }"
+            "QListWidget::item { padding: 0px 8px; }"
+            "QListWidget::item:selected { background-color: %4; }"
+            "QScrollBar:vertical { background: %1; width: 10px; margin: 0; }"
+            "QScrollBar::handle:vertical { background: %5; min-height: 30px; border-radius: 5px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }"
+        ).arg(bg, fg, bd, sel, hbar));
+
+        connect(m_popup, &QListWidget::itemClicked, this, &FontDropdown::onItemSelected);
+        connect(m_popup, &QListWidget::itemActivated, this, &FontDropdown::onItemSelected);
+
+        qApp->installEventFilter(this);
+        m_popup->show();
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (!m_popup)
+            return QComboBox::eventFilter(watched, event);
+
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto *me = static_cast<QMouseEvent *>(event);
+            QPoint gp = me->globalPosition().toPoint();
+            QRect popupRect(m_popup->mapToGlobal(QPoint(0, 0)), m_popup->size());
+            QRect comboRect(mapToGlobal(QPoint(0, 0)), size());
+            if (!popupRect.contains(gp) && !comboRect.contains(gp)) {
+                closePopup();
+                // Don't consume — let the click reach its target
+            }
+        } else if (event->type() == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if (ke->key() == Qt::Key_Escape) {
+                closePopup();
+                return true; // consume Escape
+            }
+        }
+        return QComboBox::eventFilter(watched, event);
+    }
+
+private:
+    void closePopup()
+    {
+        if (m_popup) {
+            qApp->removeEventFilter(this);
+            m_popup->close();
+            m_popup = nullptr;
+        }
+    }
+
+    void onItemSelected(QListWidgetItem *item)
+    {
+        if (!m_popup)
+            return;
+        setCurrentIndex(m_popup->row(item));
+        closePopup();
+    }
+
+    QPointer<QListWidget> m_popup;
+};
 
 namespace {
 
@@ -443,7 +562,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *fontRow = new QHBoxLayout;
     auto *fontLabel = new QLabel(tr("字体"));
     fontLabel->setStyleSheet(labelStyle());
-    m_fontFamilyCombo = new QComboBox;
+    m_fontFamilyCombo = new FontDropdown;
     m_fontFamilyCombo->setEditable(false);
     m_fontFamilyCombo->setFixedWidth(180);
     m_fontFamilyCombo->setStyleSheet(inputStyle());
@@ -662,7 +781,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *outFontRow = new QHBoxLayout;
     auto *outFontLabel = new QLabel(tr("字体"));
     outFontLabel->setStyleSheet(labelStyle());
-    m_outputFontFamilyCombo = new QComboBox;
+    m_outputFontFamilyCombo = new FontDropdown;
     m_outputFontFamilyCombo->setEditable(false);
     m_outputFontFamilyCombo->setFixedWidth(180);
     m_outputFontFamilyCombo->setStyleSheet(inputStyle());
@@ -2131,3 +2250,5 @@ bool SettingsPanel::eventFilter(QObject *watched, QEvent *event)
         return true;
     return QWidget::eventFilter(watched, event);
 }
+
+#include "settingspanel.moc"

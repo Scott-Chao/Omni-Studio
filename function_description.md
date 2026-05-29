@@ -61,9 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-设置面板字体选项样式调整
-- 字体选项禁用光标修改
-- 箭头图标居中
+设置面板字体下拉菜单样式调整
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1144,7 +1142,7 @@
 - 标题栏（36px 高）：左侧 "设置" 标签（`#cccccc`，13px 粗体），右侧关闭按钮（`✕`，悬停变红色 `#c42b1c`）。
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
 - **7 个分类页面**：
-  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（系统字体列表）、字号微调框（8-24）。
+  - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（`FontDropdown` 自定义控件，系统字体列表，最多显示 10 行并滚动）、字号微调框（8-24）。
   - **外观**：主题选择下拉框（深色/浅色/跟随系统）+ 恢复主题默认值按钮；文件树条目行高微调框（24-32px，默认 28px，实时生效）；6 个颜色按钮+十六进制预览标签——编辑器背景/前景、行号背景/前景、当前行高亮、搜索高亮。点击弹出 `QColorDialog`，实时应用并持久化。
   - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
   - **预览**：分屏防抖延迟微调框（100-2000ms）、分屏比例微调框（30-70）。所有带单位的微调框，单位统一以括号形式标注在左侧标签中（如"分屏防抖（ms）"、"分屏比例（%）"），微调框本身为纯数字输入框，无箭头按钮和单位后缀。
@@ -1169,6 +1167,14 @@
 - `MainWindow::resizeEvent()` 和 `moveEvent()` 中跟踪 overlay 位置同步（`mapToGlobal` 定位），`changeEvent` 中最小化时自动隐藏 overlay。
 - 点击 overlay 背景区域（设置面板外部）通过 `eventFilter` 监听 `MouseButtonPress` 自动关闭面板。
 - `MainWindow` 连接所有 5 个分类信号到对应 slot，每个 slot 调用 `m_settings->setSettingOverride(key, value)` 持久化并遍历所有编辑器实时应用设置。
+
+**`FontDropdown` 自定义控件**（`settingspanel.cpp` 匿名命名空间外定义，继承 `QComboBox`）：
+- 替代标准 `QComboBox` 用于编辑器字体和输出面板字体的下拉选择。初衷是绕过 Qt `QComboBox` + 样式表（`QStyleSheetStyle`）场景下的下拉弹窗高度异常问题——弹窗容器会以全部条目（系统字体列表有数百项）计算高度，导致近乎全屏的不透明弹窗。
+- 覆盖 `showPopup()`，不调用基类实现，而是创建独立的 `QListWidget`（`Qt::Popup` 窗口，`WA_DeleteOnClose`），手动填充条目并设置几何位置（面板正下方，宽度对齐控件，高度 = 最多 10 行 × 单行高度）。
+- 每项通过 `QListWidgetItem::setSizeHint()` 显式设置固定行高（`qMax(fontMetrics().height() + 8, 28)` px），消除 QSS `min-height` 与委托绘制不一致导致的选中高亮矩形偏大问题。
+- 点击外部关闭：`showPopup()` 末尾通过 `qApp->installEventFilter(this)` 安装全局事件过滤器；`eventFilter()` 监听 `MouseButtonPress`，若点击位置不在弹窗矩形内且不在组合框自身矩形内，则调用 `closePopup()`（移除事件过滤器并关闭弹窗）。`Escape` 键直接关闭弹窗并消费事件。
+- 点击条目或按 `Enter` 选中后关闭弹窗并更新 `QComboBox::setCurrentIndex()`，确保 `currentTextChanged` 信号正常触发。
+- 样式通过内联 `setStyleSheet()` 应用，颜色取自 `ThemeManager`，与设置面板主题一致。
 
 ---
 
