@@ -58,7 +58,7 @@ private slots:
     void refreshStyle();
 
 private:
-    void updateTabButtonStyle();
+    static QString tabButtonStyle(int index, bool active);
     void updateErrorBadge();
 
     ChatArea *m_chatArea;
@@ -74,10 +74,10 @@ private:
     QPushButton *m_aiTabBtn;
     QPushButton *m_errorTabBtn;
     QPushButton *m_historyTabBtn;
+    class TabButtonGroup *m_tabGroup;
     ErrorListPanel *m_errorListPanel;
     AiHistoryListWidget *m_historyListWidget;
     QWidget *m_inputBar;
-    int m_currentTab = ChatTab;
 };
 
 #endif // AIPANEL_H

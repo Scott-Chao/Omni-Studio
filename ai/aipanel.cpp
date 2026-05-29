@@ -5,6 +5,7 @@
 #include "errorjournal.h"
 #include "aihistorylistwidget.h"
 #include "thememanager.h"
+#include "tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -96,13 +97,14 @@ AiPanel::AiPanel(QWidget *parent)
     mainLayout->addWidget(m_stackedWidget, 1);
     mainLayout->addWidget(m_inputBar);
 
-    // ── Start on chat tab ──
-    m_stackedWidget->setCurrentIndex(ChatTab);
-
-    // ── Connections ──
-    connect(m_aiTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ChatTab); });
-    connect(m_errorTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(ErrorTab); });
-    connect(m_historyTabBtn, &QPushButton::clicked, this, [this]() { onTabSwitch(HistoryTab); });
+    // ── Tab button group (starts on chat tab) ──
+    m_tabGroup = new TabButtonGroup(m_stackedWidget, this);
+    m_tabGroup->addTab(m_aiTabBtn, ChatTab);
+    m_tabGroup->addTab(m_errorTabBtn, ErrorTab);
+    m_tabGroup->addTab(m_historyTabBtn, HistoryTab);
+    m_tabGroup->setStyleProvider(&AiPanel::tabButtonStyle);
+    connect(m_tabGroup, &TabButtonGroup::currentChanged, this, &AiPanel::onTabSwitch);
+    m_tabGroup->setCurrentIndex(ChatTab);
 
     connect(m_actionBar, &ActionBar::actionTriggered, this, [this](AiAction action) {
         emit actionTriggered(static_cast<int>(action));
@@ -172,13 +174,6 @@ AiPanel::AiPanel(QWidget *parent)
 
 void AiPanel::onTabSwitch(int index)
 {
-    if (index == m_currentTab)
-        return;
-
-    m_currentTab = index;
-    m_stackedWidget->setCurrentIndex(index);
-    updateTabButtonStyle();
-
     // Show/hide chat-specific UI
     bool isChat = (index == ChatTab);
     m_actionBar->setVisible(isChat);
@@ -193,10 +188,26 @@ void AiPanel::onTabSwitch(int index)
     }
 }
 
-void AiPanel::updateTabButtonStyle()
+// ── Static tab button style provider ──
+
+QString AiPanel::tabButtonStyle(int /*index*/, bool active)
 {
     auto &tm = ThemeManager::instance();
-    auto inactiveStyle = QStringLiteral(
+    if (active) {
+        return QStringLiteral(
+            "QPushButton {"
+            "  background: transparent;"
+            "  color: %1;"
+            "  border: none;"
+            "  border-bottom: 2px solid %2;"
+            "  font-size: 12px;"
+            "  font-weight: bold;"
+            "  padding: 0 10px;"
+            "}"
+        ).arg(tm.color("workbench.foreground").name(),
+              tm.color("activityBar.activeBorder").name());
+    }
+    return QStringLiteral(
         "QPushButton {"
         "  background: transparent;"
         "  color: %1;"
@@ -211,23 +222,6 @@ void AiPanel::updateTabButtonStyle()
         "}"
     ).arg(tm.color("tab.inactiveForeground").name(),
           tm.color("editorLineNumber.foreground").name());
-
-    auto activeStyle = QStringLiteral(
-        "QPushButton {"
-        "  background: transparent;"
-        "  color: %1;"
-        "  border: none;"
-        "  border-bottom: 2px solid %2;"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  padding: 0 10px;"
-        "}"
-    ).arg(tm.color("workbench.foreground").name(),
-          tm.color("activityBar.activeBorder").name());
-
-    m_aiTabBtn->setStyleSheet(m_currentTab == ChatTab ? activeStyle : inactiveStyle);
-    m_errorTabBtn->setStyleSheet(m_currentTab == ErrorTab ? activeStyle : inactiveStyle);
-    m_historyTabBtn->setStyleSheet(m_currentTab == HistoryTab ? activeStyle : inactiveStyle);
 }
 
 void AiPanel::refreshStyle()
@@ -316,7 +310,7 @@ void AiPanel::refreshStyle()
           tm.color("input.background").name(),
           tm.color("editorLineNumber.foreground").name()));
 
-    updateTabButtonStyle();
+    m_tabGroup->refreshStyles();
 }
 
 void AiPanel::updateErrorBadge()

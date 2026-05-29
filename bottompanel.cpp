@@ -4,6 +4,7 @@
 #include "codeeditor.h"
 #include "debuglog.h"
 #include "thememanager.h"
+#include "tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -105,27 +106,38 @@ BottomPanel::BottomPanel(QWidget *parent)
 
     mainLayout->addWidget(m_stack);
 
-    // ---- Tab button connections ----
-    connect(m_runTabBtn, &QPushButton::clicked, this, &BottomPanel::showRunTab);
-    connect(m_diagnosticsTabBtn, &QPushButton::clicked, this, &BottomPanel::showDiagnosticsTab);
+    // ---- Tab button group ----
+    m_tabGroup = new TabButtonGroup(m_stack, this);
+    m_tabGroup->addTab(m_runTabBtn, RunTab);
+    m_tabGroup->addTab(m_diagnosticsTabBtn, DiagnosticsTab);
+    m_tabGroup->setStyleProvider(&BottomPanel::tabButtonStyle);
+    m_tabGroup->setCurrentIndex(RunTab);
 
     ThemeManager::watchTheme(this, &BottomPanel::refreshStyle);
     refreshStyle();
-    m_stack->setCurrentIndex(0);
 }
 
-void BottomPanel::showRunTab()
-{
-    m_currentTab = RunTab;
-    m_stack->setCurrentIndex(0);
-    updateTabButtonStyles();
-}
+// ── Static tab button style provider ──
 
-void BottomPanel::showDiagnosticsTab()
+QString BottomPanel::tabButtonStyle(int /*index*/, bool active)
 {
-    m_currentTab = DiagnosticsTab;
-    m_stack->setCurrentIndex(1);
-    updateTabButtonStyles();
+    auto &tm = ThemeManager::instance();
+    if (active) {
+        return QStringLiteral(
+            "QPushButton { background: %1; border: none; border-radius: 3px; "
+            "color: %2; font-size: 11px; font-weight: bold; padding: 2px 10px; }"
+            "QPushButton:hover { background: %3; }"
+        ).arg(tm.color("titleBar.background").name(),
+              tm.color("workbench.foreground").name(),
+              tm.color("tab.hoverBackground").name());
+    }
+    return QStringLiteral(
+        "QPushButton { background: transparent; border: none; border-radius: 3px; "
+        "color: %1; font-size: 11px; padding: 2px 10px; }"
+        "QPushButton:hover { background: %2; color: %3; }"
+    ).arg(tm.color("editorLineNumber.foreground").name(),
+          tm.color("list.hoverBackground").name(),
+          tm.color("workbench.foreground").name());
 }
 
 void BottomPanel::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
@@ -203,29 +215,5 @@ void BottomPanel::refreshStyle()
     m_warningSection->refreshStyle();
     rebuildDiagnostics();
 
-    updateTabButtonStyles();
-}
-
-void BottomPanel::updateTabButtonStyles()
-{
-    auto &tm = ThemeManager::instance();
-
-    auto activeStyle = QStringLiteral(
-        "QPushButton { background: %1; border: none; border-radius: 3px; "
-        "color: %2; font-size: 11px; font-weight: bold; padding: 2px 10px; }"
-        "QPushButton:hover { background: %3; }"
-    ).arg(tm.color("titleBar.background").name(),
-          tm.color("workbench.foreground").name(),
-          tm.color("tab.hoverBackground").name());
-
-    auto inactiveStyle = QStringLiteral(
-        "QPushButton { background: transparent; border: none; border-radius: 3px; "
-        "color: %1; font-size: 11px; padding: 2px 10px; }"
-        "QPushButton:hover { background: %2; color: %3; }"
-    ).arg(tm.color("editorLineNumber.foreground").name(),
-          tm.color("list.hoverBackground").name(),
-          tm.color("workbench.foreground").name());
-
-    m_runTabBtn->setStyleSheet(m_currentTab == RunTab ? activeStyle : inactiveStyle);
-    m_diagnosticsTabBtn->setStyleSheet(m_currentTab == DiagnosticsTab ? activeStyle : inactiveStyle);
+    m_tabGroup->refreshStyles();
 }

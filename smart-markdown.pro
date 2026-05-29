@@ -59,6 +59,7 @@ SOURCES += \
     openjudgewidget.cpp \
     outlinepanel.cpp \
     bottompanel.cpp \
+    tabbuttongroup.cpp \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
@@ -136,6 +137,7 @@ HEADERS += \
     outlinepanel.h \
     outlineutils.h \
     bottompanel.h \
+    tabbuttongroup.h \
     smddiagnostic.h \
     outputpanel.h \
     processrunner.h \
