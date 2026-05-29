@@ -13,7 +13,7 @@ void BacklinkIndex::buildIndex(const QString &rootPath, const QMap<QString, QStr
     m_backlinks.clear();
     m_forwardLinks.clear();
 
-    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath()) return;
+    if (!TextFileUtils::isSafeRootPath(rootPath)) return;
 
     QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
@@ -26,7 +26,7 @@ BacklinkIndex::BacklinkData BacklinkIndex::buildFromPath(const QString &rootPath
 {
     BacklinkData data;
 
-    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath())
+    if (!TextFileUtils::isSafeRootPath(rootPath))
         return data;
 
     // Same recursive regex used in EditorWidget::refreshPreview
@@ -147,13 +147,9 @@ void BacklinkIndex::removeFile(const QString &path)
 void BacklinkIndex::addFileLinks(const QString &filePath, const QString &rootPath,
                                   const QMap<QString, QStringList> &fileIndex)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    QString content = TextFileUtils::readTextFile(filePath);
+    if (content.isNull())
         return;
-
-    QTextStream in(&file);
-    QString content = in.readAll();
-    file.close();
 
     // Same recursive regex used in EditorWidget::refreshPreview
     static const QRegularExpression wikiRegExp(

@@ -1,4 +1,5 @@
 #include "tagindex.h"
+#include "fileutils.h"
 
 #include <QFile>
 #include <QDir>
@@ -98,13 +99,9 @@ TagIndex::TagData TagIndex::buildFromPath(const QString &rootPath)
 
     while (it.hasNext()) {
         QString filePath = it.next();
-        QFile file(filePath);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        QString content = TextFileUtils::readTextFile(filePath);
+        if (content.isNull())
             continue;
-
-        QTextStream stream(&file);
-        QString content = stream.readAll();
-        file.close();
 
         QStringList tags = extractTagsFromContent(content);
         if (tags.isEmpty())
@@ -179,13 +176,9 @@ void TagIndex::removeFile(const QString &path)
 
 void TagIndex::addFileTags(const QString &filePath)
 {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    QString content = TextFileUtils::readTextFile(filePath);
+    if (content.isNull())
         return;
-
-    QTextStream stream(&file);
-    QString content = stream.readAll();
-    file.close();
 
     if (!content.contains(QLatin1Char('#')))
         return;

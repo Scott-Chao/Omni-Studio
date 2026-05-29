@@ -46,7 +46,7 @@ void IndexManager::startAsyncIndexBuild(const QString &rootPath)
     m_scanCancelled = std::make_shared<std::atomic<bool>>(false);
     uint64_t scanId = ++m_scanId;
 
-    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath()) {
+    if (!TextFileUtils::isSafeRootPath(rootPath)) {
         m_fileIndex.clear();
         m_backlinkIndex->setData({});
         emit fileIndexReady();
@@ -99,7 +99,7 @@ void IndexManager::buildFileIndexAsync(const QString &rootPath,
     m_fileIdxCancelled = std::make_shared<std::atomic<bool>>(false);
     uint64_t scanId = ++m_fileIdxScanId;
 
-    if (rootPath.isEmpty() || QDir(rootPath).isRoot() || rootPath == QDir::homePath()) {
+    if (!TextFileUtils::isSafeRootPath(rootPath)) {
         m_fileIndex.clear();
         emit fileIndexReady();
         if (onComplete)
