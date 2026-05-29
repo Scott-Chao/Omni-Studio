@@ -101,7 +101,7 @@ CodeEditor::CodeEditor(QWidget *parent)
         "QPlainTextEdit { background-color: %1; color: %2; "
         "selection-background-color: %3; }"
     )
-        .arg(tm.color("editor.background").name())
+        .arg(tm.color("sideBar.background").name())
         .arg(tm.color("editor.foreground").name())
         .arg(tm.color("editor.selectionBackground").name()));
 
@@ -113,7 +113,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * m_indentWidth);
 
     // Cache paint-time colors from ThemeManager
-    m_cachedLnBg = tm.color("editorLineNumber.background");
+    m_cachedLnBg = tm.color("sideBar.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
     m_cachedSelectionBg = tm.color("editor.selectionBackground");
@@ -181,11 +181,11 @@ void CodeEditor::reloadColors()
         "QPlainTextEdit { background-color: %1; color: %2; "
         "selection-background-color: %3; }"
     )
-        .arg(tm.color("editor.background").name())
+        .arg(tm.color("sideBar.background").name())
         .arg(tm.color("editor.foreground").name())
         .arg(tm.color("editor.selectionBackground").name()));
 
-    m_cachedLnBg = tm.color("editorLineNumber.background");
+    m_cachedLnBg = tm.color("sideBar.background");
     m_cachedLnFg = tm.color("editorLineNumber.foreground");
     m_cachedCurrentLine = tm.color("editor.lineHighlightBackground");
     m_cachedSelectionBg = tm.color("editor.selectionBackground");
