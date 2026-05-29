@@ -1,4 +1,5 @@
 #include "brackethighlighter.h"
+#include "configmanager.h"
 #include <QTextBlock>
 
 void BracketHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)
@@ -64,8 +65,9 @@ void BracketHighlighter::highlightBrackets(const QString &text,
         if (ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{')) {
             bracketStack.append({i, ch});
             const int depth = bracketStack.size() - 1;
+            const auto &cfg = ConfigManager::instance();
             QTextCharFormat fmt;
-            fmt.setForeground(m_bracketColors[depth % 3]);
+            fmt.setForeground(cfg.syntaxBracket(depth));
             fmt.setFontWeight(QFont::Bold);
             setFormat(i, 1, fmt);
         } else {
@@ -85,11 +87,12 @@ void BracketHighlighter::highlightBrackets(const QString &text,
                 }
             }
 
+            const auto &cfg = ConfigManager::instance();
             if (matchIdx >= 0) {
                 for (int j = matchIdx + 1; j < bracketStack.size(); ++j) {
                     if (bracketStack[j].pos >= 0) {
                         QTextCharFormat errFmt;
-                        errFmt.setForeground(m_unpairedBracketColor);
+                        errFmt.setForeground(cfg.syntaxUnpairedBracket());
                         errFmt.setFontWeight(QFont::Bold);
                         setFormat(bracketStack[j].pos, 1, errFmt);
                     }
@@ -98,14 +101,14 @@ void BracketHighlighter::highlightBrackets(const QString &text,
                 bracketStack.resize(matchIdx);
                 const int depth = matchIdx;
                 QTextCharFormat fmt;
-                fmt.setForeground(m_bracketColors[depth % 3]);
+                fmt.setForeground(cfg.syntaxBracket(depth));
                 fmt.setFontWeight(QFont::Bold);
                 if (opener.pos >= 0)
                     setFormat(opener.pos, 1, fmt);
                 setFormat(i, 1, fmt);
             } else {
                 QTextCharFormat fmt;
-                fmt.setForeground(m_unpairedBracketColor);
+                fmt.setForeground(cfg.syntaxUnpairedBracket());
                 fmt.setFontWeight(QFont::Bold);
                 setFormat(i, 1, fmt);
             }
@@ -152,10 +155,11 @@ void BracketHighlighter::highlightBrackets(const QString &text,
         }
 
         // Any remaining brackets that belong to the current line are unpaired
+        const auto &cfg = ConfigManager::instance();
         for (const auto &p : pending) {
             if (p.pos >= 0) {
                 QTextCharFormat errFmt;
-                errFmt.setForeground(m_unpairedBracketColor);
+                errFmt.setForeground(cfg.syntaxUnpairedBracket());
                 errFmt.setFontWeight(QFont::Bold);
                 setFormat(p.pos, 1, errFmt);
             }

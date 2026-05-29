@@ -749,9 +749,9 @@ QColor syntaxThemeOr(const char *token, const QColor &dark, const QColor &light)
 QColor ConfigManager::syntaxKeywords() const
     { return syntaxThemeOr("syntax.keywords", QColor("#569CD6"), QColor("#0000ff")); }
 QColor ConfigManager::syntaxControlKeywords() const
-    { return syntaxThemeOr("syntax.controlKeywords", QColor("#c792ea"), QColor("#0000ff")); }
+    { return syntaxThemeOr("syntax.controlKeywords", QColor("#DA70D6"), QColor("#0000ff")); }
 QColor ConfigManager::syntaxPreprocessor() const
-    { return syntaxThemeOr("syntax.preprocessor", QColor("#C586C0"), QColor("#800080")); }
+    { return syntaxThemeOr("syntax.preprocessor", QColor("#DA70D6"), QColor("#800080")); }
 QColor ConfigManager::syntaxTypes() const
     { return syntaxThemeOr("syntax.types", QColor("#4EC9B0"), QColor("#267f99")); }
 QColor ConfigManager::syntaxNumbers() const
@@ -768,6 +768,16 @@ QColor ConfigManager::syntaxFunctions() const
     { return syntaxThemeOr("syntax.functions", QColor("#DCDCAA"), QColor("#6b3a00")); }
 QColor ConfigManager::syntaxParameters() const
     { return syntaxThemeOr("syntax.parameters", QColor("#9CDCFE"), QColor("#001080")); }
+QColor ConfigManager::syntaxBracket(int depth) const
+{
+    const char *tokens[] = { "syntax.brackets0", "syntax.brackets1", "syntax.brackets2" };
+    const QColor darkDefaults[] = { QColor("#FFD700"), QColor("#DA70D6"), QColor("#179FFF") };
+    const QColor lightDefaults[] = { QColor("#800000"), QColor("#6b20a0"), QColor("#0451a5") };
+    int i = qBound(0, depth, 2);
+    return syntaxThemeOr(tokens[i], darkDefaults[i], lightDefaults[i]);
+}
+QColor ConfigManager::syntaxUnpairedBracket() const
+    { return syntaxThemeOr("syntax.unpairedBracket", QColor("#FF0000"), QColor("#FF0000")); }
 
 // ---- Judge Status Colors ----
 QColor ConfigManager::judgeColorAc() const { return colorValue("appearance.colors.judge_status.ac", QColor("#52C41A")); }

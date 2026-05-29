@@ -237,13 +237,18 @@
       },
       "syntax_highlight": {
         "keywords": "#569CD6",
-        "preprocessor": "#C586C0",
+        "preprocessor": "#DA70D6",
+        "controlKeywords": "#DA70D6",
         "types": "#4EC9B0",
         "numbers": "#B5CEA8",
         "strings": "#CE9178",
         "comments": "#6A9955",
-        "python_decorators": "#C586C0",
-        "python_self_cls": "#DCDCDC"
+        "python_decorators": "#DA70D6",
+        "python_self_cls": "#DCDCDC",
+        "brackets0": "#FFD700",
+        "brackets1": "#DA70D6",
+        "brackets2": "#179FFF",
+        "unpairedBracket": "#FF0000"
       },
       "judge_status": {
         "ac": "#52C41A",

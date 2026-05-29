@@ -47,7 +47,6 @@ void CppSyntaxHighlighter::initFormats()
 
     // --- Keyword format ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
-    m_keywordFormat.setFontWeight(QFont::Bold);
 
     for (const QString &kw : cppKeywords()) {
         HighlightingRule rule;
@@ -58,7 +57,6 @@ void CppSyntaxHighlighter::initFormats()
 
     // --- Control-flow keyword format (purple in dark, overrides regular keyword blue) ---
     m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
-    m_controlKeywordFormat.setFontWeight(QFont::Bold);
     for (const QString &kw : cppControlKeywords()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
