@@ -188,16 +188,41 @@ bool TabManager::closeTab(int index)
         msgBox.setDefaultButton(QMessageBox::Save);
 
         // 对话框样式更改
-        msgBox.setStyleSheet(
+        auto &tm = ThemeManager::instance();
+        msgBox.setStyleSheet(QStringLiteral(
             "QMessageBox {"
             "   min-width: 400px;"
             "   min-height: 200px;"
             "}"
             "QPushButton {"
             "   min-width: 80px;"
-            "   padding: 4px;"
+            "   padding: 6px 16px;"
+            "   background: %1;"
+            "   color: %2;"
+            "   border: 1px solid %3;"
+            "   border-radius: 3px;"
             "}"
-            );
+            "QPushButton:hover {"
+            "   background: %4;"
+            "}"
+            "QPushButton:default {"
+            "   background: %5;"
+            "   color: %2;"
+            "   border: 1px solid %5;"
+            "}"
+            "QPushButton:default:hover {"
+            "   background: %6;"
+            "}"
+            ).arg(tm.color("button.background").name(),
+                  tm.color("button.foreground").name(),
+                  tm.color("input.border").name(),
+                  tm.color("button.hoverBackground").name(),
+                  QColor(tm.color("badge.background").red(),
+                         tm.color("badge.background").green(),
+                         tm.color("badge.background").blue(), 45).name(QColor::HexArgb),
+                  QColor(tm.color("badge.background").red(),
+                         tm.color("badge.background").green(),
+                         tm.color("badge.background").blue(), 80).name(QColor::HexArgb)));
 
         int ret = msgBox.exec();   // 返回 QMessageBox::StandardButton 枚举值
 

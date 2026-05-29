@@ -614,6 +614,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             this, [this]() { m_tabManager->update(); });
 
+    // 主题切换时刷新缩放按钮样式
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &MainWindow::refreshZoomButtonStyle);
+
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);
     m_stopAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("stop_process", "Ctrl+Break")));
@@ -670,26 +674,31 @@ MainWindow::MainWindow(QWidget *parent)
     m_zoomLabel->setAlignment(Qt::AlignCenter);
 
     // 把 QAction 包装成 QToolButton，便于放入布局
-    QToolButton *zoomOutBtn = new QToolButton;
-    zoomOutBtn->setDefaultAction(m_zoomOutAction);
-    zoomOutBtn->setText("-");
+    m_zoomOutBtn = new QToolButton;
+    m_zoomOutBtn->setDefaultAction(m_zoomOutAction);
+    m_zoomOutBtn->setText("-");
+    m_zoomOutBtn->setAutoRaise(true);
 
-    QToolButton *zoomInBtn = new QToolButton;
-    zoomInBtn->setDefaultAction(m_zoomInAction);
-    zoomInBtn->setText("+");
+    m_zoomInBtn = new QToolButton;
+    m_zoomInBtn->setDefaultAction(m_zoomInAction);
+    m_zoomInBtn->setText("+");
+    m_zoomInBtn->setAutoRaise(true);
 
-    QToolButton *zoomResetBtn = new QToolButton;
-    zoomResetBtn->setDefaultAction(m_zoomResetAction);
-    zoomResetBtn->setText("重置");
+    m_zoomResetBtn = new QToolButton;
+    m_zoomResetBtn->setDefaultAction(m_zoomResetAction);
+    m_zoomResetBtn->setText("重置");
+    m_zoomResetBtn->setAutoRaise(true);
+
+    refreshZoomButtonStyle();
 
     // 将按钮和标签放入一个水平布局的 Widget
     QWidget *zoomWidget = new QWidget();
     QHBoxLayout *zoomLayout = new QHBoxLayout(zoomWidget);
     zoomLayout->setContentsMargins(0, 0, 0, 0);
-    zoomLayout->addWidget(zoomOutBtn);
+    zoomLayout->addWidget(m_zoomOutBtn);
     zoomLayout->addWidget(m_zoomLabel);
-    zoomLayout->addWidget(zoomInBtn);
-    zoomLayout->addWidget(zoomResetBtn);
+    zoomLayout->addWidget(m_zoomInBtn);
+    zoomLayout->addWidget(m_zoomResetBtn);
 
     // 添加到状态栏
     status->addPermanentWidget(zoomWidget);
@@ -1746,6 +1755,26 @@ void MainWindow::updateZoomLabel()
     } else {
         m_zoomLabel->setText(QStringLiteral("100%"));
     }
+}
+
+void MainWindow::refreshZoomButtonStyle()
+{
+    auto &tm = ThemeManager::instance();
+    QString zoomBtnStyle = QStringLiteral(
+        "QToolButton { background: transparent; color: %1; border: none; border-radius: 3px;"
+        "  padding: 0px 4px; font-size: 18px; font-weight: bold; min-height: 24px; max-height: 24px; }"
+        "QToolButton:hover { background: %2; }"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("button.hoverBackground").name());
+    QString zoomResetBtnStyle = QStringLiteral(
+        "QToolButton { background: transparent; color: %1; border: none; border-radius: 3px;"
+        "  padding: 0px 4px; min-height: 24px; max-height: 24px; }"
+        "QToolButton:hover { background: %2; }"
+    ).arg(tm.color("workbench.foreground").name(),
+          tm.color("button.hoverBackground").name());
+    if (m_zoomOutBtn) m_zoomOutBtn->setStyleSheet(zoomBtnStyle);
+    if (m_zoomInBtn) m_zoomInBtn->setStyleSheet(zoomBtnStyle);
+    if (m_zoomResetBtn) m_zoomResetBtn->setStyleSheet(zoomResetBtnStyle);
 }
 
 void MainWindow::connectCurrentEditorZoomSignal()
@@ -3474,6 +3503,31 @@ void MainWindow::checkCrashRecovery()
     QPushButton *restoreBtn = msgBox.addButton(tr("恢复(&R)"), QMessageBox::AcceptRole);
     msgBox.addButton(tr("丢弃(&D)"), QMessageBox::DestructiveRole);
     msgBox.setDefaultButton(restoreBtn);
+    auto &tm = ThemeManager::instance();
+    msgBox.setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "   min-width: 80px; padding: 6px 16px;"
+        "   background: %1; color: %2;"
+        "   border: 1px solid %3; border-radius: 3px;"
+        "}"
+        "QPushButton:hover { background: %4; }"
+        "QPushButton:default {"
+        "   background: %5; color: %2;"
+        "   border: 1px solid %5;"
+        "}"
+        "QPushButton:default:hover {"
+        "   background: %6;"
+        "}"
+    ).arg(tm.color("button.background").name(),
+          tm.color("button.foreground").name(),
+          tm.color("input.border").name(),
+          tm.color("button.hoverBackground").name(),
+          QColor(tm.color("badge.background").red(),
+                 tm.color("badge.background").green(),
+                 tm.color("badge.background").blue(), 45).name(QColor::HexArgb),
+          QColor(tm.color("badge.background").red(),
+                 tm.color("badge.background").green(),
+                 tm.color("badge.background").blue(), 80).name(QColor::HexArgb)));
     msgBox.exec();
 
     if (msgBox.clickedButton() == restoreBtn) {
