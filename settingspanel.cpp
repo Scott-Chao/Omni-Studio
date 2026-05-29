@@ -1199,11 +1199,14 @@ QWidget *SettingsPanel::createAppearancePage()
         layout->addWidget(btn);
 
         addColorRow(cl, tr("关键字"),       "appearance.colors.syntax_highlight.keywords",         cfg.syntaxKeywords());
+        addColorRow(cl, tr("控制关键字"),   "appearance.colors.syntax_highlight.controlKeywords",  cfg.syntaxControlKeywords());
         addColorRow(cl, tr("预处理指令"),   "appearance.colors.syntax_highlight.preprocessor",     cfg.syntaxPreprocessor());
         addColorRow(cl, tr("类型"),         "appearance.colors.syntax_highlight.types",            cfg.syntaxTypes());
         addColorRow(cl, tr("数字"),         "appearance.colors.syntax_highlight.numbers",          cfg.syntaxNumbers());
         addColorRow(cl, tr("字符串"),       "appearance.colors.syntax_highlight.strings",          cfg.syntaxStrings());
         addColorRow(cl, tr("注释"),         "appearance.colors.syntax_highlight.comments",         cfg.syntaxComments());
+        addColorRow(cl, tr("函数"),         "appearance.colors.syntax_highlight.functions",        cfg.syntaxFunctions());
+        addColorRow(cl, tr("参数"),         "appearance.colors.syntax_highlight.parameters",       cfg.syntaxParameters());
         addColorRow(cl, tr("Python 装饰器"), "appearance.colors.syntax_highlight.python_decorators", cfg.syntaxPythonDecorators());
         addColorRow(cl, tr("Python self/cls"), "appearance.colors.syntax_highlight.python_self_cls", cfg.syntaxPythonSelfCls());
 
