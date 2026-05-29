@@ -112,11 +112,17 @@ void BracketHighlighter::highlightBrackets(const QString &text,
         }
     }
 
-    // Recolor unmatched opening brackets from the current line as red
+    // Recolor unmatched opening brackets from the current line as red.
+    // Scan forward through subsequent blocks; any opening bracket from the
+    // current line that never finds its closer in future lines is marked red.
     if (!bracketStack.isEmpty()) {
-        QVector<QChar> pending;
+        struct Pending {
+            QChar ch;
+            int pos; // >= 0 = bracket is on the current line at this position
+        };
+        QVector<Pending> pending;
         for (const auto &b : bracketStack)
-            pending.append(b.ch);
+            pending.append({b.ch, b.pos});
 
         QTextBlock nextBlock = currentBlock().next();
         while (nextBlock.isValid() && !pending.isEmpty()) {
@@ -124,34 +130,34 @@ void BracketHighlighter::highlightBrackets(const QString &text,
             for (int i = 0; i < nextText.length() && !pending.isEmpty(); ++i) {
                 QChar ch = nextText.at(i);
                 if (ch == QLatin1Char('(') || ch == QLatin1Char('[') || ch == QLatin1Char('{')) {
-                    pending.append(ch);
+                    pending.append({ch, -1});
                 } else if (ch == QLatin1Char(')') || ch == QLatin1Char(']') || ch == QLatin1Char('}')) {
                     QChar expected;
                     if (ch == QLatin1Char(')')) expected = QLatin1Char('(');
                     else if (ch == QLatin1Char(']')) expected = QLatin1Char('[');
                     else expected = QLatin1Char('{');
-                    if (!pending.isEmpty() && pending.last() == expected)
-                        pending.removeLast();
+                    // Search backwards for the nearest opener of the same type.
+                    // A plain LIFO stack (pending.last()) would fail when an
+                    // unmatched bracket of a different type sits on top — e.g.
+                    // unmatched '(' blocks a '}' from reaching the '{' below.
+                    for (int j = pending.size() - 1; j >= 0; --j) {
+                        if (pending[j].ch == expected) {
+                            pending.removeAt(j);
+                            break;
+                        }
+                    }
                 }
             }
             nextBlock = nextBlock.next();
         }
 
-        int unmatchedCount = 0;
-        for (int i = 0; i < pending.size() && i < bracketStack.size(); ++i) {
-            if (bracketStack[i].ch == pending[i])
-                ++unmatchedCount;
-            else
-                break;
-        }
-
-        if (unmatchedCount > 0) {
-            QTextCharFormat errFmt;
-            errFmt.setForeground(m_unpairedBracketColor);
-            errFmt.setFontWeight(QFont::Bold);
-            for (int i = 0; i < unmatchedCount; ++i) {
-                if (bracketStack[i].pos >= 0)
-                    setFormat(bracketStack[i].pos, 1, errFmt);
+        // Any remaining brackets that belong to the current line are unpaired
+        for (const auto &p : pending) {
+            if (p.pos >= 0) {
+                QTextCharFormat errFmt;
+                errFmt.setForeground(m_unpairedBracketColor);
+                errFmt.setFontWeight(QFont::Bold);
+                setFormat(p.pos, 1, errFmt);
             }
         }
     }
