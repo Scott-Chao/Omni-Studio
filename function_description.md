@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.7）
+## 功能说明文档（v0.13.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,8 +60,12 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.7
-- 修复启动时短暂闪现白色小窗口的问题：将 `OverlayWidget`（设置/帮助面板遮罩层）从构造函数中提前创建改为在 `toggleSettings()` / `toggleHelp()` 中延迟初始化，避免 `MainWindow` 构造阶段产生顶层 `Qt::Tool` 窗口的原生 HWND 闪烁
+### 重构 v0.13.8
+- 提取 DiagnosticSection 到独立文件 diagnosticsection.h/cpp，消除 bottompanel 对 smddiagnosticspanel.h 的不必要依赖（-172 行）
+- JudgeEngine 改用 ProcessUtils::cleanup() 替换内联 QProcess 清理模式（-6 行）
+- 提取括号高亮逻辑到公共基类 BracketHighlighter，消除 cppsyntaxhighlighter 和 pythonsyntaxhighlighter 之间 165 行完全重复的括号匹配和 semantic tokens 管理（-173 行）
+- 合并 AI Provider 公共代码到基类 AiProvider，setApiKey/setModel/setSystemPrompt/setMaxTokens/setEndpoint 改为非虚方法，提取共享的 postStreamRequest/onReadyRead/drainBuffer（-110 行）
+- 提取 CompletionProvider 公共枚举和辅助方法，PendingRequest/m_pendingRequest/m_requestTimer/emitEmptyResults/serverReady/serverFailed 移入基类（-16 行）
 
 ### 1. `MainWindow` - 主窗口控制器
 
