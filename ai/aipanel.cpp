@@ -337,12 +337,12 @@ void AiPanel::setCurrentTab(int index)
 
 void AiPanel::addUserMessage(const QString &text)
 {
-    m_chatArea->addMessage(ChatBubble::User, text);
+    m_chatArea->addMessage(MessageRole::User, text);
 }
 
 void AiPanel::addAssistantMessage(const QString &text)
 {
-    m_chatArea->addMessage(ChatBubble::Assistant, text);
+    m_chatArea->addMessage(MessageRole::Assistant, text);
 }
 
 void AiPanel::appendToLastAssistant(const QString &text)
@@ -383,7 +383,7 @@ QString AiPanel::lastAssistantContent() const
     if (m_chatArea->messageCount() == 0)
         return {};
     ChatBubble *last = m_chatArea->lastBubble();
-    if (!last || last->role() != ChatBubble::Assistant)
+    if (!last || last->role() != MessageRole::Assistant)
         return {};
     return last->text();
 }
@@ -393,5 +393,5 @@ bool AiPanel::hasStreamingTarget() const
     if (m_chatArea->messageCount() == 0)
         return false;
     ChatBubble *last = m_chatArea->lastBubble();
-    return last && last->role() == ChatBubble::Assistant && last->text().isEmpty();
+    return last && last->role() == MessageRole::Assistant && last->text().isEmpty();
 }

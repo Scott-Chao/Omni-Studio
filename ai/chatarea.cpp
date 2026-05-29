@@ -36,7 +36,7 @@ void ChatArea::refreshStyle()
     m_container->setStyleSheet(tm.colorStyle("background-color", "editor.background"));
 }
 
-void ChatArea::addMessage(ChatBubble::Role role, const QString &text)
+void ChatArea::addMessage(MessageRole role, const QString &text)
 {
     auto *bubble = new ChatBubble(role, text, m_container);
 

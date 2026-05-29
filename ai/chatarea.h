@@ -15,7 +15,7 @@ class ChatArea : public QScrollArea
 public:
     explicit ChatArea(QWidget *parent = nullptr);
 
-    void addMessage(ChatBubble::Role role, const QString &text);
+    void addMessage(MessageRole role, const QString &text);
     void appendToLastMessage(const QString &text);
     void flushPendingUpdates();
     void clear();

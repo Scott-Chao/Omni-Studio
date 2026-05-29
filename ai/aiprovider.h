@@ -9,8 +9,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QTimer>
-
-enum class MessageRole { User, Assistant, System };
+#include "messagerole.h"
 
 struct Message {
     MessageRole role = MessageRole::User;

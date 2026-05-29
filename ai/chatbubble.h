@@ -10,19 +10,19 @@ class QLabel;
 class QResizeEvent;
 class QTimer;
 
+#include "messagerole.h"
+
 class ChatBubble : public QWidget
 {
     Q_OBJECT
 
 public:
-    enum Role { User, Assistant };
-
-    ChatBubble(Role role, const QString &text, QWidget *parent = nullptr);
+    ChatBubble(MessageRole role, const QString &text, QWidget *parent = nullptr);
 
     void setText(const QString &text);
     void appendText(const QString &text);
     void flushUpdate();
-    Role role() const { return m_role; }
+    MessageRole role() const { return m_role; }
     QString text() const { return m_text; }
 
     static QString markdownToHtml(const QString &md, const QColor &textColor = QColor("#D4D4D4"),
@@ -45,7 +45,7 @@ private:
                                 const QColor &codeBg, const QColor &codeFg,
                                 const QColor &linkColor) const;
 
-    Role m_role;
+    MessageRole m_role;
     QString m_text;
     QTextBrowser *m_browser;
     QLabel *m_roleLabel;

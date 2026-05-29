@@ -278,7 +278,7 @@ QString ChatBubble::processSimpleDelta(const QString &delta,
 
 // ── ChatBubble ─────────────────────────────────────────────────────
 
-ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
+ChatBubble::ChatBubble(MessageRole role, const QString &text, QWidget *parent)
     : QWidget(parent)
     , m_role(role)
     , m_text(text)
@@ -290,7 +290,7 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     outerLayout->setSpacing(2);
 
     // Role label
-    m_roleLabel = new QLabel(role == User ? tr("你") : tr("AI 助手"));
+    m_roleLabel = new QLabel(role == MessageRole::User ? tr("你") : tr("AI 助手"));
 
     // Content browser (QTextBrowser for HTML rendering)
     m_browser = new QTextBrowser(this);
@@ -318,7 +318,7 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
     innerLayout->setSpacing(0);
     innerLayout->addWidget(m_browser);
 
-    if (role == User) {
+    if (role == MessageRole::User) {
         bubbleRow->addStretch();
         bubbleRow->addWidget(bubbleInner);
         outerLayout->addWidget(m_roleLabel, 0, Qt::AlignRight);
@@ -353,8 +353,8 @@ void ChatBubble::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
 
-    QColor roleColor = tm.color(m_role == User ? "aiAssistant.roleUser" : "aiAssistant.roleAssistant");
-    QColor bubbleBg = tm.color(m_role == User ? "aiAssistant.bubbleUser" : "aiAssistant.bubbleAssistant");
+    QColor roleColor = tm.color(m_role == MessageRole::User ? "aiAssistant.roleUser" : "aiAssistant.roleAssistant");
+    QColor bubbleBg = tm.color(m_role == MessageRole::User ? "aiAssistant.bubbleUser" : "aiAssistant.bubbleAssistant");
 
     m_roleLabel->setStyleSheet(QStringLiteral(
         "color: %1; font-size: 11px; font-weight: bold; padding: 0 4px;"
@@ -419,7 +419,7 @@ void ChatBubble::updateContent()
     // occurs when QTextDocument clears its content before re-parsing.
     m_browser->setUpdatesEnabled(false);
 
-    if (m_role == Assistant) {
+    if (m_role == MessageRole::Assistant) {
         if (m_fullRebuildNeeded || m_accumulatedHtml.isEmpty()) {
             // Full rebuild: theme change, first-time, or final flush
             m_accumulatedHtml = markdownToHtml(m_text, textColor, codeBg, codeFg,
