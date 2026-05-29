@@ -2,17 +2,17 @@
 #define BOTTOMPANEL_H
 
 #include <QWidget>
+#include <QStackedWidget>
 #include <QList>
 
 #include "smddiagnostic.h"
+#include "tabbuttongroup.h"
 
 class QPushButton;
-class QStackedWidget;
 class OutputPanel;
 class DiagnosticSection;
 class CodeEditor;
 class QScrollArea;
-class TabButtonGroup;
 
 class BottomPanel : public QWidget
 {
@@ -26,6 +26,8 @@ public:
     OutputPanel *outputPanel() const { return m_outputPanel; }
 
     Tab currentTab() const { return static_cast<Tab>(m_tabGroup->currentIndex()); }
+    void showRunTab() { m_tabGroup->setCurrentIndex(RunTab); }
+    void showDiagnosticsTab() { m_tabGroup->setCurrentIndex(DiagnosticsTab); }
 
     void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
     void clearDiagnostics();

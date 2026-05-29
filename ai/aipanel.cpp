@@ -147,12 +147,12 @@ AiPanel::AiPanel(QWidget *parent)
     // Delete actions
     connect(m_errorListPanel, &ErrorListPanel::deleteAllRequested, this, [this]() {
         ErrorJournal::instance().clearAll();
-        if (m_currentTab == ErrorTab)
+        if (m_tabGroup->currentIndex() == ErrorTab)
             m_errorListPanel->loadRecords();
     });
     connect(m_errorListPanel, &ErrorListPanel::deleteRecordRequested, this, [this](const QString &recordId) {
         ErrorJournal::instance().deleteRecord(recordId);
-        if (m_currentTab == ErrorTab)
+        if (m_tabGroup->currentIndex() == ErrorTab)
             m_errorListPanel->loadRecords();
     });
 
@@ -160,7 +160,7 @@ AiPanel::AiPanel(QWidget *parent)
     connect(&ErrorJournal::instance(), &ErrorJournal::recordsChanged,
             this, [this]() {
         updateErrorBadge();
-        if (m_currentTab == ErrorTab)
+        if (m_tabGroup->currentIndex() == ErrorTab)
             m_errorListPanel->loadRecords();
     });
 

@@ -2,6 +2,7 @@
 #include "configmanager.h"
 #include "settingsmanager.h"
 #include "thememanager.h"
+#include "windowdraghelper.h"
 
 #include <QLabel>
 #include <QListWidget>
@@ -2188,10 +2189,9 @@ void SettingsPanel::mousePressEvent(QMouseEvent *event)
             m_dragEdge = edge;
             m_dragStartPos = event->globalPosition().toPoint();
             m_dragStartGeometry = geometry();
-        } else if (event->pos().y() < kTitleBarHeight) {
-            m_dragging = true;
-            m_dragEdge = Edge::None;
-            m_dragStartPos = event->globalPosition().toPoint() - frameGeometry().topLeft();
+        } else if (!m_dragHelper.handlePress(this, event, kTitleBarHeight)) {
+            QWidget::mousePressEvent(event);
+            return;
         }
     }
     QWidget::mousePressEvent(event);
@@ -2238,15 +2238,10 @@ void SettingsPanel::mouseMoveEvent(QMouseEvent *event)
             }
 
             setGeometry(newGeo);
-        } else {
-            QPoint newPos = event->globalPosition().toPoint() - m_dragStartPos;
-            if (overlay) {
-                newPos.setX(qBound(0, newPos.x(), overlay->width() - width()));
-                newPos.setY(qBound(0, newPos.y(), overlay->height() - height()));
-            }
-            move(newPos);
         }
     } else {
+        if (m_dragHelper.handleMove(this, event))
+            return;
         Edge edge = detectEdge(event->pos());
         updateCursorForEdge(edge);
     }
@@ -2258,6 +2253,7 @@ void SettingsPanel::mouseReleaseEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton) {
         m_dragging = false;
         m_dragEdge = Edge::None;
+        m_dragHelper.handleRelease(event);
     }
     QWidget::mouseReleaseEvent(event);
 }

@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QVector>
 #include <QString>
+#include "windowdraghelper.h"
 
 class QLabel;
 class QListWidget;
@@ -45,10 +46,8 @@ private:
     QListWidget *m_categoryList;
     QTextBrowser *m_contentBrowser;
     QScrollBar *m_scrollBar = nullptr;
+    WindowDragHelper m_dragHelper;
 
-    bool m_dragging = false;
-    QPoint m_dragStartPos;
-    QRect m_dragStartGeometry;
     bool m_updatingCategory = false;
 
     QVector<SectionInfo> m_sectionInfo;

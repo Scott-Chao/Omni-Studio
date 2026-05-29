@@ -7,6 +7,7 @@
 #include <QMap>
 #include <QVector>
 #include <functional>
+#include "windowdraghelper.h"
 
 class QLabel;
 class QListWidget;
@@ -201,6 +202,7 @@ private:
     QLineEdit *m_openJudgePasswordEdit = nullptr;
     QPushButton *m_openJudgePasswordToggleBtn = nullptr;
 
+    WindowDragHelper m_dragHelper;
     bool m_dragging = false;
     Edge m_dragEdge = Edge::None;
     QPoint m_dragStartPos;

@@ -1,5 +1,6 @@
 #include "helppanel.h"
 #include "thememanager.h"
+#include "windowdraghelper.h"
 
 #include <QLabel>
 #include <QListWidget>
@@ -274,33 +275,19 @@ void HelpPanel::onScrollChanged(int value)
 
 void HelpPanel::mousePressEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton && event->position().y() <= kTitleBarHeight) {
-        m_dragging = true;
-        m_dragStartPos = event->globalPosition().toPoint();
-        m_dragStartGeometry = geometry();
-    }
+    m_dragHelper.handlePress(this, event, kTitleBarHeight);
     QWidget::mousePressEvent(event);
 }
 
 void HelpPanel::mouseMoveEvent(QMouseEvent *event)
 {
-    if (m_dragging) {
-        QPoint delta = event->globalPosition().toPoint() - m_dragStartPos;
-        QRect newGeo = m_dragStartGeometry.translated(delta);
-        if (auto *p = parentWidget()) {
-            newGeo.setLeft(qMax(0, newGeo.left()));
-            newGeo.setTop(qMax(0, newGeo.top()));
-            newGeo.setRight(qMin(p->width(), newGeo.right()));
-            newGeo.setBottom(qMin(p->height(), newGeo.bottom()));
-        }
-        move(newGeo.topLeft());
-    }
-    QWidget::mouseMoveEvent(event);
+    if (!m_dragHelper.handleMove(this, event))
+        QWidget::mouseMoveEvent(event);
 }
 
 void HelpPanel::mouseReleaseEvent(QMouseEvent *event)
 {
-    m_dragging = false;
+    m_dragHelper.handleRelease(event);
     QWidget::mouseReleaseEvent(event);
 }
 

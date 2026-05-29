@@ -60,6 +60,7 @@ SOURCES += \
     outlinepanel.cpp \
     bottompanel.cpp \
     tabbuttongroup.cpp \
+    windowdraghelper.cpp \
     outputpanel.cpp \
     processrunner.cpp \
     pythonsyntaxhighlighter.cpp \
@@ -138,6 +139,7 @@ HEADERS += \
     outlineutils.h \
     bottompanel.h \
     tabbuttongroup.h \
+    windowdraghelper.h \
     smddiagnostic.h \
     outputpanel.h \
     processrunner.h \
