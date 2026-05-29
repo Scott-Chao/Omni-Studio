@@ -363,10 +363,7 @@ void JudgeEngine::onTestTimeout()
     m_testHandled = true;
     m_memPollTimer->stop();
 
-    if (m_testProcess) {
-        m_testProcess->disconnect();
-        m_testProcess->kill();
-    }
+    ProcessUtils::cleanup(m_testProcess);
 
     finishCurrentTest(false, QStringLiteral("TLE"),
                       tr("超出时间限制 (%1 ms)").arg(m_timeLimitMs));
@@ -385,10 +382,7 @@ void JudgeEngine::onMemoryCheck()
         m_testTimer->stop();
         m_memPollTimer->stop();
 
-        if (m_testProcess) {
-            m_testProcess->disconnect();
-            m_testProcess->kill();
-        }
+        ProcessUtils::cleanup(m_testProcess);
 
         finishCurrentTest(false, QStringLiteral("MLE"),
                           tr("超出内存限制 (%1 KB)").arg(m_memoryLimitKb));
