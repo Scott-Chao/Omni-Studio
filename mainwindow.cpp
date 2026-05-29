@@ -155,6 +155,45 @@ static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int siz
     return QIcon(QPixmap::fromImage(img));
 }
 
+// ── Helper: dock widget title bar with themed close button ──────
+static QWidget *createDockTitleBar(const QString &title, QDockWidget *dock)
+{
+    auto &tm = ThemeManager::instance();
+
+    auto *bar = new QWidget;
+    bar->setStyleSheet(QStringLiteral(
+        "background: %1;")
+        .arg(tm.color("titleBar.background").name()));
+
+    auto *layout = new QHBoxLayout(bar);
+    layout->setContentsMargins(8, 0, 4, 0);
+    layout->setSpacing(0);
+
+    auto *label = new QLabel(title);
+    label->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 13px;")
+        .arg(tm.color("titleBar.foreground").name()));
+
+    auto *closeBtn = new QPushButton;
+    closeBtn->setIcon(QIcon(":/icons/close"));
+    closeBtn->setIconSize(QSize(16, 16));
+    closeBtn->setFixedSize(22, 22);
+    closeBtn->setFlat(true);
+    closeBtn->setCursor(Qt::PointingHandCursor);
+    closeBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: transparent; border: none; }"
+        "QPushButton:hover { background: %1; border-radius: 3px; }")
+        .arg(tm.color("titleBar.buttonCloseHover").name()));
+
+    QObject::connect(closeBtn, &QPushButton::clicked, dock, &QDockWidget::hide);
+
+    layout->addWidget(label);
+    layout->addStretch();
+    layout->addWidget(closeBtn);
+
+    return bar;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -218,7 +257,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_dockRightPanel = new QDockWidget(tr("面板"), this);
     m_dockRightPanel->setWidget(m_rightPanel);
-    m_dockRightPanel->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    m_dockRightPanel->setFeatures(QDockWidget::DockWidgetMovable);
+    m_dockRightPanel->setTitleBarWidget(createDockTitleBar(tr("面板"), m_dockRightPanel));
     addDockWidget(Qt::RightDockWidgetArea, m_dockRightPanel);
     m_dockRightPanel->hide();
 
@@ -425,10 +465,19 @@ MainWindow::MainWindow(QWidget *parent)
         QHBoxLayout *hdrLayout = new QHBoxLayout(header);
         hdrLayout->setContentsMargins(8, 4, 4, 4);
         QLabel *title = new QLabel(tr("搜索"));
-        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        QPushButton *closeBtn = new QPushButton;
+        closeBtn->setIcon(QIcon(":/icons/close"));
+        closeBtn->setIconSize(QSize(16, 16));
         closeBtn->setFixedSize(22, 22);
         closeBtn->setFlat(true);
         closeBtn->setCursor(Qt::PointingHandCursor);
+        {
+            auto &tm = ThemeManager::instance();
+            closeBtn->setStyleSheet(QStringLiteral(
+                "QPushButton { background: transparent; border: none; }"
+                "QPushButton:hover { background: %1; border-radius: 3px; }")
+                .arg(tm.color("titleBar.buttonCloseHover").name()));
+        }
         connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
         hdrLayout->addWidget(title);
         hdrLayout->addStretch();
@@ -451,10 +500,19 @@ MainWindow::MainWindow(QWidget *parent)
         QHBoxLayout *hdrLayout = new QHBoxLayout(header);
         hdrLayout->setContentsMargins(8, 4, 4, 4);
         QLabel *title = new QLabel(tr("代码评测"));
-        QPushButton *closeBtn = new QPushButton(QString(QChar(0xD7)));
+        QPushButton *closeBtn = new QPushButton;
+        closeBtn->setIcon(QIcon(":/icons/close"));
+        closeBtn->setIconSize(QSize(16, 16));
         closeBtn->setFixedSize(22, 22);
         closeBtn->setFlat(true);
         closeBtn->setCursor(Qt::PointingHandCursor);
+        {
+            auto &tm = ThemeManager::instance();
+            closeBtn->setStyleSheet(QStringLiteral(
+                "QPushButton { background: transparent; border: none; }"
+                "QPushButton:hover { background: %1; border-radius: 3px; }")
+                .arg(tm.color("titleBar.buttonCloseHover").name()));
+        }
         connect(closeBtn, &QPushButton::clicked, this, [this]() { showLeftPanel(0); });
         hdrLayout->addWidget(title);
         hdrLayout->addStretch();
@@ -750,7 +808,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_aiPanel = new AiPanel(this);
     m_dockAi = new QDockWidget(tr("AI 助手"), this);
     m_dockAi->setWidget(m_aiPanel);
-    m_dockAi->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    m_dockAi->setFeatures(QDockWidget::DockWidgetMovable);
+    m_dockAi->setTitleBarWidget(createDockTitleBar(tr("AI 助手"), m_dockAi));
     addDockWidget(Qt::RightDockWidgetArea, m_dockAi);
     tabifyDockWidget(m_dockRightPanel, m_dockAi);
     m_dockAi->hide();
