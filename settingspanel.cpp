@@ -444,11 +444,11 @@ void SettingsPanel::refreshStyle()
                  tm.color("aiAssistant.actionButtonHoverBackground").name()));
     }
     if (m_shortcutsHeaderRow) {
-        m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;")
+        m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: none;")
             .arg(tm.color("activityBar.background").name(), tm.color("panel.border").name()));
     }
     if (m_shortcutsListContainer) {
-        m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;")
+        m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: 1px solid %2;")
             .arg(tm.color("menu.background").name(), tm.color("panel.border").name()));
     }
     if (m_shortcutsResetBtn) {
@@ -498,6 +498,11 @@ void SettingsPanel::refreshPageTree(QWidget *w)
             content->setStyleSheet(QStringLiteral("background: %1;").arg(tm.color("menu.background").name()));
         }
     } else if (auto *label = qobject_cast<QLabel*>(w)) {
+        if (label->objectName() == QStringLiteral("shortcutsGroupLabel")) {
+            label->setStyleSheet(QStringLiteral("color: %1; padding: 0px 8px; background: transparent;")
+                .arg(tm.color("editor.foreground").name()));
+            return; // font is set via QFont — only refresh color here
+        }
         QString ss = label->styleSheet();
         if (ss.contains(QStringLiteral("font-size: 14px")))
             label->setStyleSheet(sectionLabelStyle());
@@ -1330,7 +1335,7 @@ QWidget *SettingsPanel::createShortcutsPage()
 
     // Header row
     m_shortcutsHeaderRow = new QWidget;
-    m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
+    m_shortcutsHeaderRow->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: none;").arg(ThemeManager::instance().color("activityBar.background").name(), ThemeManager::instance().color("panel.border").name()));
     auto *headerLayout = new QHBoxLayout(m_shortcutsHeaderRow);
     headerLayout->setContentsMargins(8, 4, 8, 4);
     auto *nameHeader = new QLabel(tr("操作"));
@@ -1344,7 +1349,7 @@ QWidget *SettingsPanel::createShortcutsPage()
 
     // Build a container for the list
     m_shortcutsListContainer = new QWidget;
-    m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
+    m_shortcutsListContainer->setStyleSheet(QStringLiteral("background: %1; border-top: 1px solid %2; border-right: 1px solid %2; border-bottom: 1px solid %2;").arg(ThemeManager::instance().color("menu.background").name(), ThemeManager::instance().color("panel.border").name()));
     auto *listLayout = new QVBoxLayout(m_shortcutsListContainer);
     listLayout->setContentsMargins(0, 0, 0, 0);
     listLayout->setSpacing(0);
@@ -1382,19 +1387,18 @@ QWidget *SettingsPanel::createShortcutsPage()
 
         // Insert group header before the first item of each group
         if (markerIdx < 5 && i == markers[markerIdx].index) {
-            if (i > 0) {
-                auto *sep = new QFrame;
-                sep->setFrameShape(QFrame::HLine);
-                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
-                sep->setFixedHeight(1);
-                listLayout->addWidget(sep);
-                listLayout->addSpacing(4);
-            }
+            listLayout->addSpacing(16);
             auto *groupLabel = new QLabel(markers[markerIdx].name);
+            groupLabel->setObjectName("shortcutsGroupLabel");
+            QFont gf = groupLabel->font();
+            gf.setPixelSize(18);
+            gf.setBold(true);
+            groupLabel->setFont(gf);
             groupLabel->setStyleSheet(QStringLiteral(
-                "color: %1; font-size: 13px; font-weight: bold; padding: 10px 8px 10px 8px; background: transparent;")
-                .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+                "color: %1; padding: 0px 8px; background: transparent;")
+                .arg(ThemeManager::instance().color("editor.foreground").name()));
             listLayout->addWidget(groupLabel);
+            listLayout->addSpacing(4);
             ++markerIdx;
         }
 
@@ -1425,14 +1429,25 @@ QWidget *SettingsPanel::createShortcutsPage()
             updateConflictIndicators();
         });
 
-        listLayout->addWidget(row);
+        // Separator before row (skip before first item of each group)
+        if (i > 0) {
+            bool isGroupStart = false;
+            for (int m = 0; m < 5; ++m) {
+                if (i == markers[m].index) {
+                    isGroupStart = true;
+                    break;
+                }
+            }
+            if (!isGroupStart) {
+                auto *sep = new QFrame;
+                sep->setFrameShape(QFrame::HLine);
+                sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
+                sep->setFixedHeight(1);
+                listLayout->addWidget(sep);
+            }
+        }
 
-        // Separator
-        auto *sep = new QFrame;
-        sep->setFrameShape(QFrame::HLine);
-        sep->setStyleSheet(QStringLiteral("color: %1;").arg(ThemeManager::instance().color("panel.border").name()));
-        sep->setFixedHeight(1);
-        listLayout->addWidget(sep);
+        listLayout->addWidget(row);
     }
 
     // Mark any pre-existing conflicts from saved settings
