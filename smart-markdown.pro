@@ -154,6 +154,7 @@ HEADERS += \
     tagindex.h \
     tagpanel.h \
     mainwindow.h \
+    processutils.h \
     settingsmanager.h \
     signaturehelpmanager.h \
     tabmanager.h

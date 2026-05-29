@@ -11,6 +11,7 @@
 #include "settingsmanager.h"
 #include "languageutils.h"
 #include "thememanager.h"
+#include "processutils.h"
 
 #include <QFile>
 #include <QTextStream>
@@ -1377,13 +1378,7 @@ void SmdEditor::stopPythonExecProcess()
     m_executingCell = nullptr;
 
     // Disconnect before kill to prevent signal handlers from firing
-    m_pyExecProcess->disconnect();
-
-    if (m_pyExecProcess->state() != QProcess::NotRunning)
-        m_pyExecProcess->kill();
-
-    m_pyExecProcess->deleteLater();
-    m_pyExecProcess = nullptr;
+    ProcessUtils::cleanup(m_pyExecProcess);
 }
 
 void SmdEditor::onPyExecReadyRead()
@@ -1553,10 +1548,7 @@ void SmdEditor::handleProcessStop()
             m_pyExecBuffer.clear();
 
             // Disconnect before kill to prevent signal handlers
-            m_pyExecProcess->disconnect();
-            m_pyExecProcess->kill();
-            m_pyExecProcess->deleteLater();
-            m_pyExecProcess = nullptr;
+            ProcessUtils::cleanup(m_pyExecProcess);
         }
     } else {
         // Clean up temp files for C++

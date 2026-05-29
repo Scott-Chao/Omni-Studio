@@ -78,9 +78,6 @@ private:
     void onWarmupFinished();
     void runNextTest();
     void finishCurrentTest(bool passed, const QString &statusCode, const QString &detail);
-    void cleanupCompileProcess();
-    void cleanupWarmupProcess();
-    void cleanupTestProcess();
     void captureMemory();
     QString readFile(const QString &path) const;
     static bool outputMatches(const QString &actual, const QString &expected);

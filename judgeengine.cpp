@@ -1,6 +1,7 @@
 #include "judgeengine.h"
 #include "compilerutils.h"
 #include "configmanager.h"
+#include "processutils.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -100,9 +101,9 @@ void JudgeEngine::start()
 void JudgeEngine::stop()
 {
     m_running = false;
-    cleanupCompileProcess();
-    cleanupWarmupProcess();
-    cleanupTestProcess();
+    ProcessUtils::cleanup(m_compileProcess);
+    ProcessUtils::cleanup(m_warmupProcess);
+    ProcessUtils::cleanup(m_testProcess);
     if (m_testTimer)
         m_testTimer->stop();
     if (m_memPollTimer)
@@ -114,7 +115,7 @@ void JudgeEngine::stop()
 
 void JudgeEngine::runCompile()
 {
-    cleanupCompileProcess();
+    ProcessUtils::cleanup(m_compileProcess);
     m_compileStderr.clear();
 
     CompilerInfo compiler = CompilerUtils::defaultCompiler();
@@ -165,7 +166,7 @@ void JudgeEngine::onCompileProcessFinished(int exitCode, QProcess::ExitStatus ex
         m_running = false;
         emit allTestsFinished(0, m_tests.size());
     }
-    cleanupCompileProcess();
+    ProcessUtils::cleanup(m_compileProcess);
 }
 
 void JudgeEngine::onCompileProcessError(QProcess::ProcessError error)
@@ -175,25 +176,14 @@ void JudgeEngine::onCompileProcessError(QProcess::ProcessError error)
     emit compileFinished(false, m_compileStderr);
     m_running = false;
     emit allTestsFinished(0, m_tests.size());
-    cleanupCompileProcess();
-}
-
-void JudgeEngine::cleanupCompileProcess()
-{
-    if (m_compileProcess) {
-        if (m_compileProcess->state() != QProcess::NotRunning)
-            m_compileProcess->kill();
-        m_compileProcess->disconnect();
-        m_compileProcess->deleteLater();
-        m_compileProcess = nullptr;
-    }
+    ProcessUtils::cleanup(m_compileProcess);
 }
 
 // ---- Warmup phase ----
 
 void JudgeEngine::runWarmup()
 {
-    cleanupWarmupProcess();
+    ProcessUtils::cleanup(m_warmupProcess);
 
     QString program;
     QStringList args;
@@ -233,19 +223,8 @@ void JudgeEngine::runWarmup()
 void JudgeEngine::onWarmupFinished()
 {
     emit judgeOutput(tr("预热完成。\n"), false);
-    cleanupWarmupProcess();
+    ProcessUtils::cleanup(m_warmupProcess);
     runNextTest();
-}
-
-void JudgeEngine::cleanupWarmupProcess()
-{
-    if (m_warmupProcess) {
-        if (m_warmupProcess->state() != QProcess::NotRunning)
-            m_warmupProcess->kill();
-        m_warmupProcess->disconnect();
-        m_warmupProcess->deleteLater();
-        m_warmupProcess = nullptr;
-    }
 }
 
 // ---- Test phase ----
@@ -269,7 +248,7 @@ void JudgeEngine::runNextTest()
     emit judgeOutput(tr("[%1/%2] 运行: %3 ... ")
                         .arg(m_currentTestIndex + 1).arg(m_tests.size()).arg(tc.name), false);
 
-    cleanupTestProcess();
+    ProcessUtils::cleanup(m_testProcess);
     m_actualOutput.clear();
     m_testHandled = false;
 
@@ -445,21 +424,10 @@ void JudgeEngine::finishCurrentTest(bool passed, const QString &statusCode, cons
     }
 
     emit testFinished(m_currentTestIndex, result);
-    cleanupTestProcess();
+    ProcessUtils::cleanup(m_testProcess);
 
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     runNextTest();
-}
-
-void JudgeEngine::cleanupTestProcess()
-{
-    if (m_testProcess) {
-        if (m_testProcess->state() != QProcess::NotRunning)
-            m_testProcess->kill();
-        m_testProcess->disconnect();
-        m_testProcess->deleteLater();
-        m_testProcess = nullptr;
-    }
 }
 
 // ---- Memory monitoring ----
