@@ -98,8 +98,9 @@ static QString inputStyle() {
         "QSpinBox, QLineEdit, QComboBox { background-color: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 2px 4px; font-size: 12px; min-height: 20px; }"
         "QSpinBox:focus, QLineEdit:focus, QComboBox:focus { border-color: %4; }"
         "QComboBox::drop-down { border: none; width: 20px; }"
-        "QComboBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; margin-right: 4px; }"
-        "QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3; selection-background-color: %4; }"
+        "QComboBox::down-arrow { image: url(:/preview/spin-down.svg); width: 10px; height: 7px; }"
+        "QComboBox QAbstractItemView { background-color: %1; color: %2; border: 1px solid %3; selection-background-color: %4; outline: none; max-height: 240px; padding: 0px; }"
+        "QComboBox QAbstractItemView::item { min-height: 24px; padding: 2px 8px; }"
         "QSpinBox::up-button, QSpinBox::down-button { width: 0px; border: none; }"
         "QComboBox::drop-down:hover { background-color: %5; }"
     ).arg(bg, fg, border, accent, hoverBg);
@@ -393,8 +394,11 @@ void SettingsPanel::refreshPageTree(QWidget *w)
         // Doing so would apply inputStyle (min-height:20px) to those internal
         // widgets, forcing the parent to grow taller than the intended 26px
         // and breaking label–control vertical alignment.
-        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w))
+        if (qobject_cast<QSpinBox*>(w) || qobject_cast<QComboBox*>(w)) {
+            if (qobject_cast<QComboBox*>(w))
+                w->installEventFilter(this);
             return;
+        }
     }
 
     for (auto *child : w->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) {
@@ -659,7 +663,7 @@ QWidget *SettingsPanel::createEditorPage()
     auto *outFontLabel = new QLabel(tr("字体"));
     outFontLabel->setStyleSheet(labelStyle());
     m_outputFontFamilyCombo = new QComboBox;
-    m_outputFontFamilyCombo->setEditable(true);
+    m_outputFontFamilyCombo->setEditable(false);
     m_outputFontFamilyCombo->setFixedWidth(180);
     m_outputFontFamilyCombo->setStyleSheet(inputStyle());
     m_outputFontFamilyCombo->addItems(families);
@@ -2123,5 +2127,7 @@ bool SettingsPanel::eventFilter(QObject *watched, QEvent *event)
         emit aiSettingChanged("ai.system_prompt", m_aiSystemPromptEdit->toPlainText());
         m_aiPromptDebounceTimer->stop();
     }
+    if (event->type() == QEvent::Wheel && qobject_cast<QComboBox*>(watched))
+        return true;
     return QWidget::eventFilter(watched, event);
 }
