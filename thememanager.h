@@ -34,6 +34,14 @@ public:
 signals:
     void themeChanged();
 
+    // Convenience: connect themeChanged to a member function slot.
+    // Usage: ThemeManager::watchTheme(this, &MyWidget::refreshStyle);
+    template<typename Receiver>
+    static void watchTheme(Receiver *receiver, void (Receiver::*slot)())
+    {
+        QObject::connect(&instance(), &ThemeManager::themeChanged, receiver, slot);
+    }
+
 private:
     ThemeManager();
     ~ThemeManager() = default;

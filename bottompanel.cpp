@@ -109,8 +109,7 @@ BottomPanel::BottomPanel(QWidget *parent)
     connect(m_runTabBtn, &QPushButton::clicked, this, &BottomPanel::showRunTab);
     connect(m_diagnosticsTabBtn, &QPushButton::clicked, this, &BottomPanel::showDiagnosticsTab);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &BottomPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &BottomPanel::refreshStyle);
     refreshStyle();
     m_stack->setCurrentIndex(0);
 }

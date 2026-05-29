@@ -61,8 +61,7 @@ OutlinePanel::OutlinePanel(QWidget *parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_listWidget);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &OutlinePanel::refreshStyle);
+    ThemeManager::watchTheme(this, &OutlinePanel::refreshStyle);
 }
 
 void OutlinePanel::showHeadings(const QVector<HeadingItem> &headings)

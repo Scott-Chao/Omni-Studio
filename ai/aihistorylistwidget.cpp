@@ -49,8 +49,7 @@ AiHistoryListWidget::AiHistoryListWidget(QWidget *parent)
     connect(m_listWidget, &QListWidget::itemClicked, this, &AiHistoryListWidget::onItemClicked);
     connect(m_listWidget, &QListWidget::customContextMenuRequested, this, &AiHistoryListWidget::onContextMenu);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &AiHistoryListWidget::refreshStyle);
+    ThemeManager::watchTheme(this, &AiHistoryListWidget::refreshStyle);
     refreshStyle();
 }
 

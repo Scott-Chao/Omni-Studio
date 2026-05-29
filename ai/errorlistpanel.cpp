@@ -568,8 +568,7 @@ ErrorListPanel::ErrorListPanel(QWidget *parent)
     connect(m_deleteAllBtn, &QPushButton::clicked,
             this, &ErrorListPanel::deleteAllRequested);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ErrorListPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &ErrorListPanel::refreshStyle);
     refreshStyle();
 }
 

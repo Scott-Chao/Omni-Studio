@@ -129,8 +129,7 @@ OpenJudgeWidget::OpenJudgeWidget(SettingsManager *settings, QWidget *parent)
 
     // Login dialog is triggered by MainWindow::onOpenJudgeRequested after widget is shown
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &OpenJudgeWidget::refreshStyle);
+    ThemeManager::watchTheme(this, &OpenJudgeWidget::refreshStyle);
 
     m_listWidget->installEventFilter(this);
 }

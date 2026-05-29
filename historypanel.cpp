@@ -20,7 +20,7 @@ HistoryPanel::HistoryPanel(SettingsManager *settings, QWidget *parent)
     layout->addWidget(m_listWidget);
     layout->addWidget(m_clearButton);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, &HistoryPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &HistoryPanel::refreshStyle);
     refreshStyle();
 }
 

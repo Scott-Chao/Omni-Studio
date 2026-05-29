@@ -10,8 +10,7 @@ SubmitResultPanel::SubmitResultPanel(QWidget *parent)
     : QWidget(parent)
 {
     setupUi();
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SubmitResultPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &SubmitResultPanel::refreshStyle);
 }
 
 static QString submitResultPanelStyle(const ThemeManager &tm)

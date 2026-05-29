@@ -111,8 +111,7 @@ SmdDiagnosticsPanel::SmdDiagnosticsPanel(SmdEditor *editor, QWidget *parent)
     m_refreshTimer->setInterval(500);
     connect(m_refreshTimer, &QTimer::timeout, this, &SmdDiagnosticsPanel::refresh);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SmdDiagnosticsPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &SmdDiagnosticsPanel::refreshStyle);
 }
 
 void SmdDiagnosticsPanel::refresh()

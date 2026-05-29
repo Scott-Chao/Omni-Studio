@@ -30,8 +30,7 @@ SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     connect(m_outputEdit->document(), &QTextDocument::blockCountChanged,
             this, &SmdOutputWidget::updateHeight);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SmdOutputWidget::refreshStyle);
+    ThemeManager::watchTheme(this, &SmdOutputWidget::refreshStyle);
     refreshStyle();
 
     setVisible(false);

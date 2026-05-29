@@ -71,8 +71,7 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
     connect(m_backlinksPanel, &BacklinksPanel::fileClicked,
             this, &RightPanelContainer::fileClicked);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &RightPanelContainer::refreshStyle);
+    ThemeManager::watchTheme(this, &RightPanelContainer::refreshStyle);
     refreshStyle();
 }
 

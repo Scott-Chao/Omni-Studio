@@ -33,8 +33,7 @@ JudgePanel::JudgePanel(QWidget *parent)
 
     setupUi();
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &JudgePanel::refreshStyle);
+    ThemeManager::watchTheme(this, &JudgePanel::refreshStyle);
     refreshStyle();
 }
 

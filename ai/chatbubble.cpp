@@ -345,8 +345,7 @@ ChatBubble::ChatBubble(Role role, const QString &text, QWidget *parent)
             m_browser->setMaximumWidth(qMax(200, pw * 7 / 10));
     }
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ChatBubble::refreshStyle);
+    ThemeManager::watchTheme(this, &ChatBubble::refreshStyle);
     refreshStyle();
 }
 

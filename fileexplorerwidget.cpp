@@ -297,8 +297,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     reloadShortcuts();
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &FileExplorerWidget::refreshStyle);
+    ThemeManager::watchTheme(this, &FileExplorerWidget::refreshStyle);
     refreshStyle();
 }
 

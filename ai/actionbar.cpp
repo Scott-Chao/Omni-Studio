@@ -31,8 +31,7 @@ ActionBar::ActionBar(QWidget *parent)
     m_separator->setFrameShape(QFrame::HLine);
     mainLayout->addWidget(m_separator);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ActionBar::refreshStyle);
+    ThemeManager::watchTheme(this, &ActionBar::refreshStyle);
     refreshStyle();
 }
 

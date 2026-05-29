@@ -53,8 +53,7 @@ ActivityBar::ActivityBar(QWidget *parent)
     connect(m_exportPdfBtn, &QPushButton::clicked, this, &ActivityBar::exportPdfClicked);
     connect(m_judgeBtn,     &QPushButton::clicked, this, &ActivityBar::judgeClicked);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ActivityBar::refreshStyle);
+    ThemeManager::watchTheme(this, &ActivityBar::refreshStyle);
     refreshStyle();
 }
 

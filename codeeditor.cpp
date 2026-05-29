@@ -153,8 +153,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     // Also intercept ShortcutOverride on this widget (not just viewport)
     installEventFilter(this);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &CodeEditor::reloadColors);
+    ThemeManager::watchTheme(this, &CodeEditor::reloadColors);
 }
 
 void CodeEditor::reloadShortcuts()

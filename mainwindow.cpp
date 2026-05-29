@@ -606,8 +606,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolBar->addAction(m_runToolAction);
 
     // Title bar uses ThemeManager colors, refresh on theme change
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &MainWindow::refreshTitleBarStyle);
+    ThemeManager::watchTheme(this, &MainWindow::refreshTitleBarStyle);
     refreshTitleBarStyle();
 
     // 主题切换时刷新标签页栏背景
@@ -615,8 +614,7 @@ MainWindow::MainWindow(QWidget *parent)
             this, [this]() { m_tabManager->update(); });
 
     // 主题切换时刷新缩放按钮样式
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &MainWindow::refreshZoomButtonStyle);
+    ThemeManager::watchTheme(this, &MainWindow::refreshZoomButtonStyle);
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     m_stopAction = new QAction(tr("终止"), this);

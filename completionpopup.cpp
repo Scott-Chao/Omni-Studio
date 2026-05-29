@@ -108,8 +108,7 @@ CompletionPopup::CompletionPopup(QWidget *parent)
         hide();
     });
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &CompletionPopup::refreshStyle);
+    ThemeManager::watchTheme(this, &CompletionPopup::refreshStyle);
     refreshStyle();
 }
 

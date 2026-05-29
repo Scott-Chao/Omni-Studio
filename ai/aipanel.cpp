@@ -166,8 +166,7 @@ AiPanel::AiPanel(QWidget *parent)
     updateErrorBadge();
 
     // ── Theme support ──
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &AiPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &AiPanel::refreshStyle);
     refreshStyle();
 }
 

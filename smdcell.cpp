@@ -190,8 +190,7 @@ void SmdCell::setupUi(CellType type)
     updateBorderStyle();
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SmdCell::refreshStyle);
+    ThemeManager::watchTheme(this, &SmdCell::refreshStyle);
     refreshStyle();
 
     // Catch Move events on self to repaint QWebEngineView during scroll

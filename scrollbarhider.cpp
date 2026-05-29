@@ -8,8 +8,7 @@
 ScrollbarHider::ScrollbarHider(QObject *parent)
     : QObject(parent)
 {
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ScrollbarHider::refreshAll);
+    ThemeManager::watchTheme(this, &ScrollbarHider::refreshAll);
 }
 
 void ScrollbarHider::manage(QAbstractScrollArea *area)

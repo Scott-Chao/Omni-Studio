@@ -114,8 +114,7 @@ HelpPanel::HelpPanel(QWidget *parent)
     // Select first category
     m_categoryList->setCurrentRow(0);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &HelpPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &HelpPanel::refreshStyle);
     refreshStyle();
 }
 

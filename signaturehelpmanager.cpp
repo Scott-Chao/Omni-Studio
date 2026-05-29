@@ -48,8 +48,7 @@ SignatureHelpPopup::SignatureHelpPopup(QWidget *parent)
 
     setCursor(Qt::ArrowCursor);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SignatureHelpPopup::refreshStyle);
+    ThemeManager::watchTheme(this, &SignatureHelpPopup::refreshStyle);
     refreshStyle();
 }
 

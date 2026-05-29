@@ -21,8 +21,7 @@ ChatArea::ChatArea(QWidget *parent)
 
     setWidget(m_container);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &ChatArea::refreshStyle);
+    ThemeManager::watchTheme(this, &ChatArea::refreshStyle);
     refreshStyle();
 }
 

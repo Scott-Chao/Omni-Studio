@@ -223,8 +223,7 @@ EditorWidget::EditorWidget(QWidget *parent)
     });
     m_originalContent = normalizeTrailingNewlines(toPlainText()); // 记录当前内容，用于内容比较
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &EditorWidget::reloadEditorColors);
+    ThemeManager::watchTheme(this, &EditorWidget::reloadEditorColors);
 }
 
 // ---- 懒创建预览视图 ----

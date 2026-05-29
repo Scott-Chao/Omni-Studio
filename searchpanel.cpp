@@ -46,8 +46,7 @@ SearchPanel::SearchPanel(QWidget *parent)
     connect(m_resultList, &QListWidget::itemClicked,
             this, &SearchPanel::onResultItemClicked);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SearchPanel::refreshStyle);
+    ThemeManager::watchTheme(this, &SearchPanel::refreshStyle);
     refreshStyle();
 }
 

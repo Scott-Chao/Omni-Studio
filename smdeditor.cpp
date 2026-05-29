@@ -225,8 +225,7 @@ SmdEditor::SmdEditor(QWidget *parent)
 
     m_processRunner = new ProcessRunner(this);
 
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, &SmdEditor::refreshStyle);
+    ThemeManager::watchTheme(this, &SmdEditor::refreshStyle);
 
     setFocusPolicy(Qt::StrongFocus);
     installEventFilter(this);
