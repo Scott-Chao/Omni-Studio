@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include <QIcon>
+#include <QTimer>
 
 #include "smddiagnostic.h"
 
@@ -67,6 +68,36 @@ signals:
     void signatureHelpReady(QList<SignatureInfo> signatures, int activeIndex);
     void diagnosticsUpdated(QList<SmdDiagnostic> diagnostics);
     void semanticTokensReady(QList<SemanticToken> tokens);
+    void serverReady();
+    void serverFailed(const QString &reason);
+
+protected:
+    enum class PendingRequest { None, Completion, Hover, SignatureHelp, SemanticTokens, Diagnostics };
+
+    void emitEmptyResults()
+    {
+        PendingRequest pending = m_pendingRequest;
+        m_pendingRequest = PendingRequest::None;
+        m_requestTimer.stop();
+
+        switch (pending) {
+        case PendingRequest::Completion:
+            emit completionReady({}); break;
+        case PendingRequest::Hover:
+            emit hoverReady({}); break;
+        case PendingRequest::SignatureHelp:
+            emit signatureHelpReady({}, 0); break;
+        case PendingRequest::SemanticTokens:
+            emit semanticTokensReady({}); break;
+        case PendingRequest::Diagnostics:
+            emit diagnosticsUpdated({}); break;
+        default:
+            break;
+        }
+    }
+
+    PendingRequest m_pendingRequest = PendingRequest::None;
+    QTimer m_requestTimer;
 };
 
 #endif // COMPLETIONPROVIDER_H

@@ -12,8 +12,8 @@
 PythonCompletionProvider::PythonCompletionProvider(QObject *parent)
     : CompletionProvider(parent)
 {
-    m_timeoutTimer.setSingleShot(true);
-    connect(&m_timeoutTimer, &QTimer::timeout, this, &PythonCompletionProvider::onTimeout);
+    m_requestTimer.setSingleShot(true);
+    connect(&m_requestTimer, &QTimer::timeout, this, &PythonCompletionProvider::onTimeout);
 
     m_diagnosticsTimer.setSingleShot(true);
     m_diagnosticsTimer.setInterval(500);
@@ -47,7 +47,7 @@ void PythonCompletionProvider::shutdown()
         m_process = nullptr;
     }
 
-    m_timeoutTimer.stop();
+    m_requestTimer.stop();
     m_diagnosticsTimer.stop();
     m_semanticTokensTimer.stop();
     m_pendingRequest = PendingRequest::None;
@@ -212,7 +212,7 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
 
     // Cancel any previous pending request
     m_pendingRequest = PendingRequest::None;
-    m_timeoutTimer.stop();
+    m_requestTimer.stop();
 
     // Sanitize before computing coordinates so lone surrogates and
     // \r/\r\n line endings don't cause position mismatches with Jedi.
@@ -260,7 +260,7 @@ void PythonCompletionProvider::sendRequest(const QString &action, const QString 
     else if (action == QStringLiteral("signature"))
         m_pendingRequest = PendingRequest::SignatureHelp;
 
-    m_timeoutTimer.start(500);
+    m_requestTimer.start(500);
 }
 
 void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
@@ -281,7 +281,7 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
 
     // Cancel previous pending request
     m_pendingRequest = PendingRequest::None;
-    m_timeoutTimer.stop();
+    m_requestTimer.stop();
 
     // Sanitize lone surrogates before sending to Python
     QString safeText = sanitizeForPython(text);
@@ -301,7 +301,7 @@ void PythonCompletionProvider::sendDiagnosticsRequest(const QString &text)
     m_process->write(payload);
 
     m_pendingRequest = PendingRequest::Diagnostics;
-    m_timeoutTimer.start(500);
+    m_requestTimer.start(500);
 }
 
 void PythonCompletionProvider::requestSemanticTokens()
@@ -377,7 +377,7 @@ void PythonCompletionProvider::onReadyRead()
 
 void PythonCompletionProvider::processResponse(const QByteArray &line)
 {
-    m_timeoutTimer.stop();
+    m_requestTimer.stop();
 
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(line, &err);
@@ -449,7 +449,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
                 emit semanticTokensReady(tokens);
                 if (m_pendingRequest == PendingRequest::SemanticTokens) {
                     m_pendingRequest = PendingRequest::None;
-                    m_timeoutTimer.stop();
+                    m_requestTimer.stop();
                 }
                 return;
             }
@@ -477,7 +477,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
                 emit diagnosticsUpdated(diagnostics);
                 if (m_pendingRequest == PendingRequest::Diagnostics) {
                     m_pendingRequest = PendingRequest::None;
-                    m_timeoutTimer.stop();
+                    m_requestTimer.stop();
                 }
                 return;
             }
@@ -495,7 +495,7 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
             emit hoverReady(info);
             if (m_pendingRequest == PendingRequest::Hover) {
                 m_pendingRequest = PendingRequest::None;
-                m_timeoutTimer.stop();
+                m_requestTimer.stop();
             }
             return;
         }
@@ -554,31 +554,6 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
     }
 }
 
-void PythonCompletionProvider::emitEmptyResults()
-{
-    PendingRequest pending = m_pendingRequest;
-    m_pendingRequest = PendingRequest::None;
-    m_timeoutTimer.stop();
-
-    switch (pending) {
-    case PendingRequest::Completion:
-        emit completionReady({});
-        break;
-    case PendingRequest::Hover:
-        emit hoverReady({});
-        break;
-    case PendingRequest::SignatureHelp:
-        emit signatureHelpReady({}, 0);
-        break;
-    case PendingRequest::SemanticTokens:
-        m_tokensPending = false;
-        emit semanticTokensReady({});
-        break;
-    default:
-        break;
-    }
-}
-
 // ---- Timeout ----
 
 void PythonCompletionProvider::onTimeout()
@@ -586,6 +561,10 @@ void PythonCompletionProvider::onTimeout()
     if (!m_process)
         return;
     qWarning() << "PythonCompletionProvider: request timed out after 500ms";
+
+    if (m_pendingRequest == PendingRequest::SemanticTokens)
+        m_tokensPending = false;
+
     emitEmptyResults();
 }
 

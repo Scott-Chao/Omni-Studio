@@ -725,28 +725,19 @@ void CppCompletionProvider::onRequestTimeout()
     if (!m_client || !m_initialized)
         return;
     qWarning() << "CppCompletionProvider: request timed out after 500ms";
-    m_requestTimer.stop();
 
-    PendingRequest timedOut = m_pendingRequest;
-    m_pendingRequest = PendingRequest::None;
-
-    switch (timedOut) {
+    switch (m_pendingRequest) {
     case PendingRequest::Completion:
-        m_completionRequestId = -1;
-        emit completionReady({});
-        break;
+        m_completionRequestId = -1; break;
     case PendingRequest::Hover:
-        m_hoverRequestId = -1;
-        emit hoverReady({});
-        break;
+        m_hoverRequestId = -1; break;
     case PendingRequest::SignatureHelp:
-        m_signatureHelpRequestId = -1;
-        emit signatureHelpReady({}, 0);
-        break;
+        m_signatureHelpRequestId = -1; break;
     case PendingRequest::SemanticTokens:
-        m_semanticTokensRequestId = -1;
-        break;
+        m_semanticTokensRequestId = -1; break;
     default:
         break;
     }
+
+    emitEmptyResults();
 }

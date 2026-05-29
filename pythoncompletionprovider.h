@@ -24,9 +24,6 @@ public:
     void updateText(const QString &text) override;
 
 signals:
-    void serverReady();
-    void serverFailed(const QString &reason);
-
 private slots:
     void onReadyRead();
     void onProcessError(QProcess::ProcessError err);
@@ -41,18 +38,13 @@ private:
     void sendRequest(const QString &action, const QString &text, int cursorPos);
     void sendDiagnosticsRequest(const QString &text);
     void processResponse(const QByteArray &line);
-    void emitEmptyResults();
 
     QProcess *m_process = nullptr;
-    QTimer m_timeoutTimer;
     QTimer m_diagnosticsTimer;
     QTimer m_semanticTokensTimer;
     QString m_lastDiagnosticsText;
     bool m_jediAvailable = true;
     bool m_tokensPending = false;
-
-    enum class PendingRequest { None, Completion, Hover, SignatureHelp, Diagnostics, SemanticTokens };
-    PendingRequest m_pendingRequest = PendingRequest::None;
 };
 
 #endif // PYTHONCOMPLETIONPROVIDER_H

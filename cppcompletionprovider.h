@@ -30,10 +30,6 @@ public:
 
     void shutdown();
 
-signals:
-    void serverReady();
-    void serverFailed(const QString &reason);
-
 private slots:
     void onResponseReceived(int id, QJsonObject result);
     void onNotificationReceived(QString method, QJsonObject params);
@@ -53,11 +49,6 @@ private:
     int m_hoverRequestId = -1;
     int m_signatureHelpRequestId = -1;
     int m_semanticTokensRequestId = -1;
-
-    // Request timeout
-    QTimer m_requestTimer;
-    enum class PendingRequest { None, Completion, Hover, SignatureHelp, SemanticTokens };
-    PendingRequest m_pendingRequest = PendingRequest::None;
 
     // Semantic tokens debounce
     QTimer m_semanticTokensTimer;
