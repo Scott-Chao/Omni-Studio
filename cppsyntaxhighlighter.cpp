@@ -116,14 +116,14 @@ void CppSyntaxHighlighter::initFormats()
     m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+(<[^>]+>)"));
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s*(<[^>]+>)"));
         rule.format = m_includeHeaderFormat;
         rule.captureGroup = 1;
         m_rules.append(rule);
     }
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+\"([^\"]+)\""));
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s*\"([^\"]+)\""));
         rule.format = m_includeHeaderFormat;
         rule.captureGroup = 1;
         m_rules.append(rule);
