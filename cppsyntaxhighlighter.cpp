@@ -130,13 +130,15 @@ void CppSyntaxHighlighter::initFormats()
     }
 
     // --- Pointer / reference operator format (blue, same as keywords) ---
+    // Regex covers primitive types. User-defined/template types are handled by
+    // the clangd-driven * / & pass below (see semantic token loop).
     m_operatorFormat.setForeground(cfg.syntaxKeywords());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
-            QStringLiteral("\\b(?:const\\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\\s*([*&]+)\\b"));
+            QStringLiteral("\\b(?:const\\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\\s*([*&]+)(?![*&=])"));
         rule.format = m_operatorFormat;
-        rule.captureGroup = 2;
+        rule.captureGroup = 1;
         m_rules.append(rule);
     }
 
