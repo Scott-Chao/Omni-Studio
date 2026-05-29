@@ -61,7 +61,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 高亮颜色调整，浅色代码高亮重新设计
+- 修复切换主题后 LSP 悬停提示不更新的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -593,7 +593,7 @@
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
 - **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
   - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
-  - **LSP 悬停提示（自定义浮窗）**：使用自定义 `QFrame`（`Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`，无焦点可交互的浮动窗口），内含 `QScrollArea` + `QLabel`。`QTextDocument::setHtml()` + `setTextWidth()` 精确测量内容渲染高度实现自适应尺寸：短内容紧凑无滚动条，长内容上限 300px 并显示垂直滚动条（宽度 8px，仅在需要时出现）。布局边距 6/4/6/4 px，圆角 5px。背景色和边框色均从 `QPalette::ToolTipBase` 推导（边框 = 背景色 ±55 亮度偏移），统一写入 stylesheet 确保视觉一致。
+  - **LSP 悬停提示（自定义浮窗）**：使用自定义 `QFrame`（`Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`，无焦点可交互的浮动窗口），内含 `QScrollArea` + `QLabel`。`QTextDocument::setHtml()` + `setTextWidth()` 精确测量内容渲染高度实现自适应尺寸：短内容紧凑无滚动条，长内容上限 300px 并显示垂直滚动条（宽度 8px，仅在需要时出现）。布局边距 6/4/6/4 px，圆角 5px。**主题感知**：`createTooltipWidget()` 在所有子控件创建完毕后调用 `refreshTooltipStyle()` 设置初始样式。`HoverManager` 构造函数连接 `ThemeManager::themeChanged`，当主题切换且弹窗已创建时自动调用 `refreshTooltipStyle()` 刷新。`refreshTooltipStyle()` 通过 `ThemeManager::color("menu.background")` / `menu.foreground` / `menu.separatorColor` 直接读取当前主题颜色（不依赖 widget 缓存 palette — 父 QFrame 有 stylesheet 时子控件不会自动继承 `QApplication::setPalette()` 的变更），计算边框色后写入 QFrame stylesheet，并显式构建 `QPalette`（`ToolTipBase` / `ToolTipText` / `Base` / `Text` / `Window` / `WindowText`）propagate 到 `m_tooltipScrollArea`、viewport 和 `m_tooltipLabel`。所有子控件均设置 `setAutoFillBackground(true)`。
   - **定位**：弹窗紧贴悬停文字行正下方 1px（若下方空间不足则移至行上方），水平方向从鼠标位置向左偏移 15px，并 clamp 在编辑器视口边界内，确保弹窗不超出编辑器窗口。
   - **鼠标追踪**：`HoverManager` 通过 `eventFilter` 监听编辑器视口和弹窗窗口。`MouseMove` 中通过 `isSameWord()` 检测鼠标是否仍在悬停单词范围内（字母/数字/下划线边界），避免左右微移导致弹窗闪烁。`Leave` 事件使用 `m_mouseInTooltip` 标志（弹窗 `Enter`/`Leave` 事件维护）和 `QCursor::pos()` 双重检查，使鼠标从文字移至弹窗时弹窗不消失。弹窗上的滚轮事件转发至 `QScrollArea` 实现滚动阅读，点击弹窗内部不关闭。应用失焦时自动隐藏。
 - **签名帮助（SignatureHelpManager + SignatureHelpPopup）**：光标进入 `(` 后 200ms 防抖触发，`SignatureHelpPopup` 为 `Qt::Tool` 浮动窗口，**始终定位在文本光标上方**（避免被 cell 边界遮挡），显示函数签名（活动参数 `#569CD6` 蓝色加粗高亮）、文档和重载导航 `◀ 1/3 ▶`。关闭条件：输入 `)`、光标移出括号区域、Esc、编辑器失焦、鼠标点击外部、cell 执行时主动隐藏。`SignatureHelpManager::hide()` 暴露为 `CodeEditor::hideSignatureHelp()` 供 SmdEditor 在执行 cell 前调用。
