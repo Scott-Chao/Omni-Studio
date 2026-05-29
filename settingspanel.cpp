@@ -482,6 +482,24 @@ void SettingsPanel::refreshStyle()
                  tm.color("badge.background").name()));
     }
 
+    auto refreshSmallButton = [&](QPushButton *btn, bool hasPadding) {
+        if (!btn) return;
+        QString padding = hasPadding ? QStringLiteral("padding: 4px 12px;") : QString();
+        btn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: %1; color: %2; border: 1px solid %3;"
+            "  %4 border-radius: 3px; font-size: 12px; }"
+            "QPushButton:hover { background: %5; }")
+            .arg(tm.color("input.background").name(),
+                 tm.color("input.foreground").name(),
+                 tm.color("input.border").name(),
+                 padding,
+                 tm.color("aiAssistant.actionButtonHoverBackground").name()));
+    };
+    refreshSmallButton(m_aiApiKeyToggleBtn, false);
+    refreshSmallButton(m_clangdBrowseBtn, true);
+    refreshSmallButton(m_pythonBrowseBtn, true);
+    refreshSmallButton(m_openJudgePasswordToggleBtn, false);
+
     // Refresh all inner page content (scroll areas, labels, inputs)
     for (int i = 0; i < m_stackedWidget->count(); ++i) {
         refreshPageTree(m_stackedWidget->widget(i));
