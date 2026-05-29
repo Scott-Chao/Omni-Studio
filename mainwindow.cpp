@@ -922,6 +922,13 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshOutline();
                 filterAiHistoryByCurrentFile();
                 updateCurrentEditorCompletions();
+                updateRunActions();
+
+                // 更新导出PDF按钮可见性（预览标签复用时不会触发 currentChanged）
+                bool isMd = current->currentFilePath().toLower().endsWith(".md");
+                m_exportPdfAction->setEnabled(isMd);
+                m_exportPdfAction->setVisible(isMd);
+                m_activityBar->setExportPdfVisible(isMd);
             });
         }
 
