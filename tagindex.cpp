@@ -1,5 +1,5 @@
 #include "tagindex.h"
-#include "fileutils.h"
+#include "utilities.h"
 
 #include <QFile>
 #include <QDir>

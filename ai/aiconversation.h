@@ -4,7 +4,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QJsonObject>
-#include "aiprovider.h"
+#include "aiproviders.h"
 
 struct AiConversation {
     QString id;

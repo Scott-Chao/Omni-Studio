@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QList>
-#include "aiprovider.h"
+#include "aiproviders.h"
 #include "prompttemplates.h"
 
 class AiPanel;

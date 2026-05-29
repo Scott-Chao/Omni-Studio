@@ -38,10 +38,7 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
   ├── ErrorListPanel      → QWidget with status filter (ComboBox: 全部/WA/RE/TLE/MLE), keyword search (LineEdit), scrollable error list (QListWidget), expand-to-detail view (QStackedWidget switching list↔detail). Detail shows problem info, I/O comparison, AI analysis Markdown rendering, action buttons (re-analyze/delete/review). Delete/delete-all/clear-all operations through ErrorJournal.
   ├── AiContextManager    → Static utility class. collectContext(EditorWidget*) returns ContextBundle{mode, filePath, fileContent, selectedText, language, cursorLine/Column, plus error analysis fields}. currentEditorMode() returns AiEditorMode::Markdown|Code|Unknown. Handles SMD cells, PDF view, code files.
   ├── PromptTemplates     → Header-only (prompttemplates.h). buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. AiAction enum covers 10 actions + FreeChat (added ErrorAnalysis). actionsForMode(mode) maps editor mode to available action list. Metadata in actionInfos() provides display labels/tooltips.
-  ├── AiProvider (abs)    → QObject abstract class. Signals: partialResponse(text), finished(), error(msg). Virtual: setApiKey, setModel, setSystemPrompt, setMaxTokens, chatStream(messages), cancel.
-  │   ├── AnthropicProvider → POST {endpoint}/messages, x-api-key auth, SSE parse: event/`data:` dual lines → content_block_delta→`delta.text`. `m_finished` guard prevents duplicate `finished()` emission from repeated `message_stop`. 30s timeout. Error codes: 401→invalid key, 429→rate limit.
-  │   └── OpenAiProvider  → POST {endpoint}/chat/completions, Bearer auth, SSE parse: `data:` lines → choices[0].delta.content → partialResponse. `m_finished` guard prevents duplicate `finished()` from `data: [DONE]` / `finish_reason` overlap. 30s timeout. Compatible with DeepSeek, OpenAI, etc.
-  ├── AiProviderFactory   → Static factory: createProvider(Anthropic|OpenAiCompatible, parent), typeFromString("Anthropic"|"OpenAI"), availableProviders(). Used in settings page ComboBox + MainWindow::startAiRequest().
+  ├── AiProviders          → `ai/aiproviders.h/cpp`: AiProvider (abstract), AnthropicProvider, OpenAiProvider, AiProviderFactory, Message struct, MessageRole enum. All AI provider classes in one unit.
   ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
   ├── JudgePanel          → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
   │   └── JudgeEngine     → QObject managing compile→test QProcess pipeline, OJ-style results (AC/WA/RE/TLE/MLE)
@@ -137,13 +134,13 @@ Title outline panel hosted in RightPanelContainer (tab 1). Parses current docume
 ### BacklinkIndex
 Reverse index (target→sources) + forward index (source→targets) for `[[wikilinks]]`. Async full build via static `buildFromPath()`. Target resolution: exact path → global index by baseName → shortest-path tiebreaker. Unlike `IndexManager::findWikiTarget` (which disambiguates via current editor context), `resolveTarget` is purely deterministic with no editor bias. Incremental ops synchronous. Owned by `IndexManager`.
 
-### BacklinksPanel
+### BacklinksPanel (`sidebarpanels.h/cpp`)
 Display-only QListWidget (NoSelection). Hosted inside RightPanelContainer (right dock, tab 3). Shows placeholder when empty. Min width 200px.
 
 ### TagIndex
 Non-QObject bidirectional index. Unicode-aware regex `(*UCP)#(?!\s)([\w-]+)`. Scans only `.md`/`.markdown`. Async Phase 3 of startup scan. Owned by `IndexManager`.
 
-### TagPanel
+### TagPanel (`sidebarpanels.h/cpp`)
 Dual-mode: tag list ↔ files per tag. Back button to return. Hosted inside RightPanelContainer (right dock, tab 2).
 
 ### ConfigManager
@@ -152,7 +149,7 @@ Singleton, reads config.json. Dot-path resolution (e.g. `"editor.zoom.min"`). Bu
 ### SettingsManager
 Writes config.ini next to executable. Runtime state: geometry, recent files, OJ credentials (base64-obfuscated), user overrides. Singleton with override→ConfigManager→default chain.
 
-### TextFileUtils (`fileutils.h`)
+### TextFileUtils (`utilities.h`)
 Header-only. 40+ text extension list + scan name filters.
 **I/O helpers** (added v0.13.10): `readTextFile(path)`, `writeTextFile(path, content)`, `readJsonFile(path)`, `writeJsonFile(path, doc)`, `isSafeRootPath(path)` — eliminate 20+ QFile/QTextStream/QJsonDocument boilerplate blocks across the project.
 
@@ -245,17 +242,8 @@ QWidget per message. Two roles: User (right-aligned, blue bg #1a3a5c) and Assist
 ### AiContextManager (`ai/aicontextmanager.h/cpp`)
 Static utility class. collectContext(EditorWidget*) returns ContextBundle: mode (Markdown/Code/Unknown), filePath, fileContent (full when no selection), selectedText, language (via LanguageUtils + extra map for html/css/js/go/rust etc.), cursorLine/Column, plus error analysis fields (errorStatusCode, actualOutput, expectedOutput, inputData, elapsedMs, memoryKb, errorDetail). currentEditorMode(editor) detects mode: SMD cells check active cell type, code files → Code, everything else → Markdown. languageForFile(ext) maps extensions to language strings (markdown, cpp, python, html, javascript, etc.).
 
-### AiProvider (`ai/aiprovider.h`)
-Abstract QObject base class. Message struct with User/Assistant/System roles and roleToJson() conversion. Interface: setApiKey, setModel, setSystemPrompt, setMaxTokens, chatStream(messages), cancel(). Signals: partialResponse(text), finished(), error(message).
-
-### AnthropicProvider (`ai/anthropicprovider.h/cpp`)
-POST to `{endpoint}/messages`. Headers: x-api-key, anthropic-version: 2023-06-01, application/json. Body: {model, max_tokens, stream:true, system, messages[{role, content:[{type:"text", text}]}]}. SSE parsing: event/data dual-line frames → content_block_delta→delta.text→partialResponse, message_stop→finished, error→error(). 30s timeout via QTimer. Error HTTP 401/403→invalid key, 429→rate limit.
-
-### OpenAiProvider (`ai/openaiprovider.h/cpp`)
-POST to `{endpoint}/chat/completions`. Headers: Bearer auth, application/json. Body: {model, max_tokens, stream:true, messages[{system, user, assistant}]} (OpenAI format). SSE parsing: data: lines → choices[0].delta.content→partialResponse, finish_reason or data: [DONE]→finished, error→error(). Default endpoint https://api.deepseek.com/v1. 30s timeout. Compatible with DeepSeek, OpenAI, etc.
-
-### AiProviderFactory (`ai/aiproviderfactory.h/cpp`)
-Static factory. enum ProviderType { Anthropic, OpenAiCompatible }. createProvider(type, parent) returns new AnthropicProvider or OpenAiProvider. typeFromString("Anthropic"/"OpenAI") maps settings panel strings. availableProviders() returns {"Anthropic", "OpenAI"}.
+### AiProviders (`ai/aiproviders.h/cpp`)
+All AI provider classes in one unit. **AiProvider**: abstract QObject base class with Message struct, MessageRole enum, chatStream/cancel API, SSE frame buffer, 30s timeout. **AnthropicProvider**: POST `{endpoint}/messages`, x-api-key auth, event/data SSE dual parsing → content_block_delta→partialResponse. **OpenAiProvider** (DeepSeek-compatible): POST `{endpoint}/chat/completions`, Bearer auth, `data:` SSE lines → choices[0].delta.content→partialResponse, `[DONE]`→finished. **AiProviderFactory**: static factory, createProvider(Anthropic|OpenAiCompatible). Both providers guard against duplicate `finished()` via `m_finished` flag.
 
 ### PromptTemplates (`ai/prompttemplates.h`)
 Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. 10 predefined AiActions: ImproveWriting, SummarizeNote, ExtractTags, SelfTest, Translate (Markdown); ExplainCode, FindBugs, AddComments, OptimizeCode (Code); ErrorAnalysis (Judge — no button, triggered by ErrorJournal); FreeChat (general). Each has tailored Chinese system prompt and user prompt template. ErrorAnalysis uses ctx.errorStatusCode/elapsedMs/inputData/expectedOutput/actualOutput/errorDetail fields for the prompt. actionsForMode(mode) returns appropriate action list per editor context. ActionInfo struct and actionInfos() supply display labels and tooltips for UI buttons.
@@ -278,10 +266,10 @@ QObject subclass encapsulating QPushButton → QStackedWidget tab switching. `ad
 ### WindowDragHelper (`windowdraghelper.h/cpp`)
 Lightweight non-QObject value-type helper encapsulating mouse-press/move/release drag-to-move boilerplate. `handlePress(widget, event, titleBarHeight)`/`handleMove(widget, event)`/`handleRelease(event)`. Used by HelpPanel and SettingsPanel for consistent frameless dragging.
 
-### StringUtils (`stringutils.h`)
+### StringUtils (`utilities.h`)
 Header-only namespace. `sanitizeForPython(s)` normalizes line endings and lone surrogates; `completionKindToString(kind)` maps LSP CompletionItemKind codes (1-25) to human-readable strings. Shared by CppCompletionProvider, PythonCompletionProvider, and SmdLspManager.
 
-### MessageRole (`ai/messagerole.h`)
+### MessageRole (`ai/aiproviders.h`)
 Standalone header: `enum class MessageRole { User, Assistant, System }`. Replaces separate role enums in `aiprovider.h` and `chatbubble.h` for unified AI message role typing.
 
 ### HelpPanel (`helppanel.h/cpp`)

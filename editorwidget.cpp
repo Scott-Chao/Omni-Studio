@@ -4,14 +4,12 @@
 #include "smdeditor.h"
 #include "tagindex.h"
 #include "languageutils.h"
-#include "pykeywords.h"
+#include "keywords.h"
 #include <memory>
-#include "fileutils.h"
+#include "utilities.h"
 #include "configmanager.h"
 #include "thememanager.h"
 #include "settingsmanager.h"
-#include "cppkeywords.h"
-#include "debuglog.h"
 #include <QFile>
 #include <QTextStream>
 #include <QUuid>

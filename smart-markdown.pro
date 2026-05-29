@@ -19,9 +19,7 @@ SOURCES += \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
-    ai/aiprovider.cpp \
-    ai/aiproviderfactory.cpp \
-    ai/anthropicprovider.cpp \
+    ai/aiproviders.cpp \
     ai/chatarea.cpp \
     ai/chatbubble.cpp \
     ai/errorjournal.cpp \
@@ -29,16 +27,14 @@ SOURCES += \
     ai/aihistorylistwidget.cpp \
     ai/aihistorymanager.cpp \
     ai/airequesthandler.cpp \
-    ai/openaiprovider.cpp \
     activitybar.cpp \
     configmanager.cpp \
     crashrecoverymanager.cpp \
     backlinkindex.cpp \
-    backlinkspanel.cpp \
+    sidebarpanels.cpp \
     brackethighlighter.cpp \
     codeeditor.cpp \
     completionpopup.cpp \
-    compilerutils.h \
     cppcompletionprovider.cpp \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
@@ -78,7 +74,6 @@ SOURCES += \
     smdoutputwidget.cpp \
     submissionpanel.cpp \
     tagindex.cpp \
-    tagpanel.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
@@ -91,9 +86,7 @@ HEADERS += \
     ai/actionbar.h \
     ai/aicontextmanager.h \
     ai/aipanel.h \
-    ai/aiprovider.h \
-    ai/aiproviderfactory.h \
-    ai/anthropicprovider.h \
+    ai/aiproviders.h \
     ai/chatarea.h \
     ai/chatbubble.h \
     ai/aiconversation.h \
@@ -102,13 +95,14 @@ HEADERS += \
     ai/aihistorylistwidget.h \
     ai/aihistorymanager.h \
     ai/airequesthandler.h \
-    ai/openaiprovider.h \
     ai/prompttemplates.h \
     activitybar.h \
     configmanager.h \
     crashrecoverymanager.h \
+    utilities.h \
+    keywords.h \
+    sidebarpanels.h \
     backlinkindex.h \
-    backlinkspanel.h \
     codeeditor.h \
     completionpopup.h \
     completionprovider.h \
@@ -116,7 +110,6 @@ HEADERS += \
     compilerutils.h \
     brackethighlighter.h \
     cppcompletionprovider.h \
-    cppkeywords.h \
     cppsyntaxhighlighter.h \
     crawler.h \
     diagnosticsection.h \
@@ -128,7 +121,6 @@ HEADERS += \
     lspclient.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \
-    fileutils.h \
     historypanel.h \
     judgeengine.h \
     judgepanel.h \
@@ -136,7 +128,6 @@ HEADERS += \
     logindialog.h \
     openjudgewidget.h \
     outlinepanel.h \
-    outlineutils.h \
     bottompanel.h \
     tabbuttongroup.h \
     windowdraghelper.h \
@@ -144,7 +135,6 @@ HEADERS += \
     outputpanel.h \
     processrunner.h \
     pythonsyntaxhighlighter.h \
-    pykeywords.h \
     pythoncompletionprovider.h \
     rightpanelcontainer.h \
     scrollbarhider.h \
@@ -160,12 +150,9 @@ HEADERS += \
     smdoutputwidget.h \
     submissionpanel.h \
     tagindex.h \
-    tagpanel.h \
     mainwindow.h \
-    processutils.h \
     settingsmanager.h \
     signaturehelpmanager.h \
-    stringutils.h \
     tabmanager.h
 
 FORMS += \

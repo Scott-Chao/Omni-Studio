@@ -1,5 +1,5 @@
 #include "pythonsyntaxhighlighter.h"
-#include "pykeywords.h"
+#include "keywords.h"
 #include "configmanager.h"
 #include "thememanager.h"
 

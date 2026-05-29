@@ -1,6 +1,6 @@
 #include "pythoncompletionprovider.h"
 #include "configmanager.h"
-#include "stringutils.h"
+#include "utilities.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>

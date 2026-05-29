@@ -1,6 +1,5 @@
 #include "keywordcompletionprovider.h"
-#include "cppkeywords.h"
-#include "pykeywords.h"
+#include "keywords.h"
 #include <QDebug>
 #include <QRegularExpression>
 

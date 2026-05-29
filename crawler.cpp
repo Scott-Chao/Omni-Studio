@@ -19,7 +19,7 @@ static const QByteArray &ua()
 }
 
 // Debug logging – delegates to shared debugLog/clearLog via ConfigManager path
-#include "debuglog.h"
+#include "utilities.h"
 
 static void crawlerLog(const QString &msg)
 {

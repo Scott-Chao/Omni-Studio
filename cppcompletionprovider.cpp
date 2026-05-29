@@ -1,8 +1,7 @@
 #include "cppcompletionprovider.h"
 #include "configmanager.h"
 #include "lspclient.h"
-#include "stringutils.h"
-#include "debuglog.h"
+#include "utilities.h"
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QJsonArray>

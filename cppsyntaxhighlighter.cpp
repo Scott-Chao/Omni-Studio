@@ -1,7 +1,7 @@
 #include "cppsyntaxhighlighter.h"
 #include "configmanager.h"
 #include "thememanager.h"
-#include "cppkeywords.h"
+#include "keywords.h"
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)
     : BracketHighlighter(parent)

@@ -1,7 +1,7 @@
 #include "smdlspmanager.h"
 #include "configmanager.h"
 #include "lspclient.h"
-#include "stringutils.h"
+#include "utilities.h"
 
 #include <QCoreApplication>
 #include <QDir>

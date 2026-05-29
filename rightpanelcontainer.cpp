@@ -2,8 +2,7 @@
 #include "thememanager.h"
 #include "historypanel.h"
 #include "outlinepanel.h"
-#include "tagpanel.h"
-#include "backlinkspanel.h"
+#include "sidebarpanels.h"
 #include "settingsmanager.h"
 
 #include <QVBoxLayout>

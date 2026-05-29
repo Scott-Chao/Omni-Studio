@@ -1,7 +1,9 @@
-#ifndef CPPKEYWORDS_H
-#define CPPKEYWORDS_H
+#ifndef KEYWORDS_H
+#define KEYWORDS_H
 
 #include <QStringList>
+
+// ── C++ keywords ────────────────────────────────────────────────────────────
 
 inline const QStringList &cppKeywords()
 {
@@ -38,8 +40,6 @@ inline const QStringList &cppKeywords()
     return keywords;
 }
 
-// Control-flow / branching keywords — highlighted differently from other keywords
-// (e.g. purple instead of blue in dark mode)
 inline const QStringList &cppControlKeywords()
 {
     static const QStringList keywords = {
@@ -52,7 +52,6 @@ inline const QStringList &cppControlKeywords()
     return keywords;
 }
 
-// Built-in / primitive types — highlighted in keyword color (blue), no bold
 inline const QStringList &cppPrimitiveTypes()
 {
     static const QStringList types = {
@@ -71,50 +70,93 @@ inline const QStringList &cppPrimitiveTypes()
 inline const QStringList &cppCommonTypes()
 {
     static const QStringList types = {
-        // Namespace
         QStringLiteral("std"),
-        // Strings
         QStringLiteral("string"), QStringLiteral("wstring"), QStringLiteral("u16string"),
         QStringLiteral("u32string"), QStringLiteral("string_view"),
-        // Containers
         QStringLiteral("vector"), QStringLiteral("map"), QStringLiteral("set"),
         QStringLiteral("list"), QStringLiteral("deque"), QStringLiteral("queue"),
         QStringLiteral("stack"), QStringLiteral("array"), QStringLiteral("tuple"),
         QStringLiteral("pair"), QStringLiteral("initializer_list"),
-        // Optional / variant
         QStringLiteral("optional"), QStringLiteral("variant"),
-        // Smart pointers
         QStringLiteral("unique_ptr"), QStringLiteral("shared_ptr"), QStringLiteral("weak_ptr"),
-        // Functional
         QStringLiteral("function"),
-        // Concurrency
         QStringLiteral("mutex"), QStringLiteral("lock_guard"), QStringLiteral("unique_lock"),
         QStringLiteral("shared_lock"), QStringLiteral("condition_variable"),
         QStringLiteral("promise"), QStringLiteral("future"), QStringLiteral("atomic"),
-        // Thread
         QStringLiteral("thread"), QStringLiteral("jthread"),
-        // Filesystem
         QStringLiteral("filesystem"), QStringLiteral("path"),
         QStringLiteral("error_code"), QStringLiteral("error_category"),
-        // I/O
         QStringLiteral("istream"), QStringLiteral("ostream"), QStringLiteral("iostream"),
         QStringLiteral("fstream"), QStringLiteral("sstream"), QStringLiteral("stringstream"),
         QStringLiteral("ifstream"), QStringLiteral("ofstream"),
-        // Qt core
         QStringLiteral("QString"), QStringLiteral("QStringList"), QStringLiteral("QVariant"),
-        // Qt containers
         QStringLiteral("QList"), QStringLiteral("QVector"), QStringLiteral("QMap"),
         QStringLiteral("QSet"), QStringLiteral("QHash"), QStringLiteral("QPair"),
-        // Qt smart pointers
         QStringLiteral("QSharedPointer"), QStringLiteral("QScopedPointer"),
-        // Qt IO
         QStringLiteral("QDebug"), QStringLiteral("QFile"), QStringLiteral("QDir"),
-        // Qt utilities
         QStringLiteral("QTimer"), QStringLiteral("QProcess"), QStringLiteral("QThread"),
-        // Qt widgets
         QStringLiteral("QWidget"), QStringLiteral("QObject"),
     };
     return types;
 }
 
-#endif // CPPKEYWORDS_H
+// ── Python keywords ─────────────────────────────────────────────────────────
+
+inline const QStringList &pyKeywords()
+{
+    static const QStringList keywords = {
+        QStringLiteral("False"), QStringLiteral("None"), QStringLiteral("True"),
+        QStringLiteral("and"), QStringLiteral("as"), QStringLiteral("assert"),
+        QStringLiteral("async"), QStringLiteral("await"), QStringLiteral("break"),
+        QStringLiteral("class"), QStringLiteral("continue"), QStringLiteral("def"),
+        QStringLiteral("del"), QStringLiteral("elif"), QStringLiteral("else"),
+        QStringLiteral("except"), QStringLiteral("finally"), QStringLiteral("for"),
+        QStringLiteral("from"), QStringLiteral("global"), QStringLiteral("if"),
+        QStringLiteral("import"), QStringLiteral("in"), QStringLiteral("is"),
+        QStringLiteral("lambda"), QStringLiteral("match"), QStringLiteral("case"),
+        QStringLiteral("nonlocal"), QStringLiteral("not"), QStringLiteral("or"),
+        QStringLiteral("pass"), QStringLiteral("raise"), QStringLiteral("return"),
+        QStringLiteral("try"), QStringLiteral("while"), QStringLiteral("with"),
+        QStringLiteral("yield"),
+    };
+    return keywords;
+}
+
+inline const QStringList &pyBuiltins()
+{
+    static const QStringList builtins = {
+        QStringLiteral("int"), QStringLiteral("float"), QStringLiteral("str"),
+        QStringLiteral("list"), QStringLiteral("dict"), QStringLiteral("tuple"),
+        QStringLiteral("set"), QStringLiteral("bool"), QStringLiteral("bytes"),
+        QStringLiteral("bytearray"), QStringLiteral("complex"), QStringLiteral("frozenset"),
+        QStringLiteral("range"), QStringLiteral("slice"), QStringLiteral("type"),
+        QStringLiteral("super"), QStringLiteral("object"), QStringLiteral("property"),
+        QStringLiteral("staticmethod"), QStringLiteral("classmethod"),
+        QStringLiteral("enumerate"), QStringLiteral("zip"), QStringLiteral("map"),
+        QStringLiteral("filter"), QStringLiteral("len"), QStringLiteral("print"),
+        QStringLiteral("open"), QStringLiteral("isinstance"), QStringLiteral("hasattr"),
+        QStringLiteral("getattr"), QStringLiteral("setattr"), QStringLiteral("sorted"),
+        QStringLiteral("reversed"), QStringLiteral("iter"), QStringLiteral("next"),
+        QStringLiteral("any"), QStringLiteral("all"), QStringLiteral("sum"),
+        QStringLiteral("min"), QStringLiteral("max"), QStringLiteral("abs"),
+        QStringLiteral("round"), QStringLiteral("ord"), QStringLiteral("chr"),
+        QStringLiteral("repr"), QStringLiteral("input"), QStringLiteral("format"),
+        QStringLiteral("id"), QStringLiteral("dir"), QStringLiteral("vars"),
+        QStringLiteral("callable"), QStringLiteral("issubclass"), QStringLiteral("eval"),
+        QStringLiteral("exec"), QStringLiteral("compile"), QStringLiteral("locals"),
+        QStringLiteral("globals"), QStringLiteral("hash"),
+        QStringLiteral("ValueError"), QStringLiteral("TypeError"),
+        QStringLiteral("KeyError"), QStringLiteral("IndexError"),
+        QStringLiteral("AttributeError"), QStringLiteral("ImportError"),
+        QStringLiteral("ModuleNotFoundError"), QStringLiteral("NameError"),
+        QStringLiteral("FileNotFoundError"), QStringLiteral("ZeroDivisionError"),
+        QStringLiteral("StopIteration"), QStringLiteral("RuntimeError"),
+        QStringLiteral("OSError"), QStringLiteral("IOError"),
+        QStringLiteral("Exception"), QStringLiteral("BaseException"),
+        QStringLiteral("Warning"), QStringLiteral("UserWarning"),
+        QStringLiteral("DeprecationWarning"),
+    };
+    return builtins;
+}
+
+#endif // KEYWORDS_H

@@ -10,7 +10,7 @@ class QLabel;
 class QResizeEvent;
 class QTimer;
 
-#include "messagerole.h"
+#include "aiproviders.h"
 
 class ChatBubble : public QWidget
 {

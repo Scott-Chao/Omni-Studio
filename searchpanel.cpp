@@ -1,6 +1,6 @@
 #include "searchpanel.h"
 #include "thememanager.h"
-#include "fileutils.h"
+#include "utilities.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
 

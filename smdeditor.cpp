@@ -11,7 +11,7 @@
 #include "settingsmanager.h"
 #include "languageutils.h"
 #include "thememanager.h"
-#include "processutils.h"
+#include "utilities.h"
 
 #include <QFile>
 #include <QTextStream>

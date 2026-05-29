@@ -4,7 +4,7 @@
 #include "settingsmanager.h"
 #include "configmanager.h"
 #include "thememanager.h"
-#include "fileutils.h"
+#include "utilities.h"
 
 #include <QComboBox>
 #include <QFrame>

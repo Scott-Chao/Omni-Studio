@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.10）
+## 功能说明文档（v0.13.11）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -60,14 +60,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 重构 v0.13.10
-- 重构：提取 StringUtils 公共函数（sanitizeForPython/completionKindToString）
-- 重构：添加 ThemeManager::watchTheme 模板消除 30+ 处主题连接重复
-- 重构：添加 TextFileUtils I/O 工具函数（readTextFile/writeTextFile/readJsonFile/writeJsonFile/isSafeRootPath）
-- 重构：添加 ThemeManager::colorStyle 简化 QSS 颜色插值
-- 重构：统一 MessageRole 枚举（替代 aiprovider.h 内联枚举和 ChatBubble::Role）
-- 重构：提取 TabButtonGroup 消除 BottomPanel/AiPanel tab 切换重复
-- 重构：提取 WindowDragHelper 消除 HelpPanel/SettingsPanel 鼠标拖拽重复
+### 重构 v0.13.11
+- 重构：合并 stringutils.h/fileutils.h/processutils.h/debuglog.h → utilities.h
+- 重构：合并 cppkeywords.h/pykeywords.h → keywords.h
+- 重构：合并 outlineutils.h → outlinepanel.h
+- 重构：合并 backlinkspanel + tagpanel 为 sidebarpanels
+- 重构：合并 ai/provider 文件（messagerole.h/aiprovider/aiproviderfactory/anthropicprovider/openaiprovider）→ ai/aiproviders.h/.cpp
+- 重构：净减少 15 个源文件
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -446,7 +445,7 @@
 
 ### 8. `BacklinksPanel` - 反向链接面板
 
-**文件**：`backlinkspanel.h` / `backlinkspanel.cpp`
+**文件**：`sidebarpanels.h` / `sidebarpanels.cpp`
 
 **职责**：
 - 以 `QListWidget` 纵向展示引用当前文件的来源文件列表。
@@ -503,7 +502,7 @@
 
 ### 8.6. `TagPanel` — 标签面板
 
-**文件**：`tagpanel.h` / `tagpanel.cpp`
+**文件**：`sidebarpanels.h` / `sidebarpanels.cpp`
 
 **职责**：
 - 以 `QListWidget` 双级导航展示标签系统：标签总览 → 点击标签 → 关联文件列表。
@@ -573,7 +572,7 @@
 
 ### 11. `TextFileUtils` — 文本文件工具命名空间
 
-**文件**：`fileutils.h`
+**文件**：`utilities.h`
 
 **职责**：
 - 统一定义项目中支持的文本文件扩展名列表（40+ 种），涵盖编程语言、Web、配置、脚本等常见文本格式。
@@ -1684,7 +1683,7 @@
 
 ### 34. `StringUtils` — 通用字符串工具命名空间
 
-**文件**：`stringutils.h`
+**文件**：`utilities.h`
 
 **职责**：
 - 头文件（header-only）工具命名空间，提供项目中多处重复的字符串处理函数。
@@ -1702,7 +1701,7 @@
 
 ### 35. `MessageRole` — AI 消息角色统一枚举
 
-**文件**：`ai/messagerole.h`
+**文件**：`ai/aiproviders.h`
 
 **内容**：
 ```cpp

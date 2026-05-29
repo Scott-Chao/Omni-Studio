@@ -2,7 +2,7 @@
 #include "outputpanel.h"
 #include "diagnosticsection.h"
 #include "codeeditor.h"
-#include "debuglog.h"
+#include "utilities.h"
 #include "thememanager.h"
 #include "tabbuttongroup.h"
 
