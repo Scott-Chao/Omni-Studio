@@ -8,46 +8,60 @@
 inline const QStringList &cppKeywords()
 {
     static const QStringList keywords = {
-        QStringLiteral("alignas"), QStringLiteral("alignof"), QStringLiteral("and"),
-        QStringLiteral("and_eq"), QStringLiteral("asm"), QStringLiteral("auto"),
-        QStringLiteral("bitand"), QStringLiteral("bitor"), QStringLiteral("break"),
-        QStringLiteral("case"), QStringLiteral("catch"), QStringLiteral("class"),
-        QStringLiteral("compl"), QStringLiteral("concept"), QStringLiteral("const"),
+        // Storage / modifier keywords — blue
+        QStringLiteral("alignas"), QStringLiteral("asm"), QStringLiteral("auto"),
+        QStringLiteral("class"), QStringLiteral("const"),
         QStringLiteral("consteval"), QStringLiteral("constexpr"), QStringLiteral("constinit"),
-        QStringLiteral("const_cast"), QStringLiteral("continue"), QStringLiteral("co_await"),
-        QStringLiteral("co_return"), QStringLiteral("co_yield"), QStringLiteral("decltype"),
-        QStringLiteral("default"), QStringLiteral("delete"), QStringLiteral("do"),
-        QStringLiteral("dynamic_cast"), QStringLiteral("else"), QStringLiteral("enum"),
+        QStringLiteral("const_cast"), QStringLiteral("dynamic_cast"), QStringLiteral("enum"),
         QStringLiteral("explicit"), QStringLiteral("export"), QStringLiteral("extern"),
-        QStringLiteral("false"), QStringLiteral("final"), QStringLiteral("for"),
-        QStringLiteral("friend"), QStringLiteral("goto"), QStringLiteral("if"),
-        QStringLiteral("inline"), QStringLiteral("mutable"), QStringLiteral("namespace"),
-        QStringLiteral("new"), QStringLiteral("noexcept"), QStringLiteral("not"),
-        QStringLiteral("not_eq"), QStringLiteral("nullptr"), QStringLiteral("operator"),
-        QStringLiteral("or"), QStringLiteral("or_eq"), QStringLiteral("override"),
+        QStringLiteral("false"), QStringLiteral("final"),
+        QStringLiteral("friend"),
+        QStringLiteral("inline"), QStringLiteral("mutable"),
+        QStringLiteral("nullptr"), QStringLiteral("override"),
         QStringLiteral("private"), QStringLiteral("protected"), QStringLiteral("public"),
-        QStringLiteral("register"), QStringLiteral("reinterpret_cast"), QStringLiteral("requires"),
-        QStringLiteral("return"), QStringLiteral("signed"), QStringLiteral("sizeof"),
+        QStringLiteral("register"), QStringLiteral("reinterpret_cast"), QStringLiteral("signed"),
         QStringLiteral("static"), QStringLiteral("static_assert"), QStringLiteral("static_cast"),
-        QStringLiteral("struct"), QStringLiteral("switch"), QStringLiteral("template"),
-        QStringLiteral("this"), QStringLiteral("thread_local"), QStringLiteral("throw"),
-        QStringLiteral("true"), QStringLiteral("try"), QStringLiteral("typedef"),
-        QStringLiteral("typeid"), QStringLiteral("typename"), QStringLiteral("union"),
-        QStringLiteral("unsigned"), QStringLiteral("using"), QStringLiteral("virtual"),
-        QStringLiteral("void"), QStringLiteral("volatile"), QStringLiteral("while"),
-        QStringLiteral("xor"), QStringLiteral("xor_eq")
+        QStringLiteral("struct"), QStringLiteral("this"), QStringLiteral("thread_local"),
+        QStringLiteral("true"), QStringLiteral("typedef"),
+        QStringLiteral("union"),
+        QStringLiteral("unsigned"), QStringLiteral("virtual"),
+        QStringLiteral("void"), QStringLiteral("volatile"),
+        // Type operators — blue (except using which is purple)
+        QStringLiteral("sizeof"), QStringLiteral("alignof"), QStringLiteral("typeid"),
+        QStringLiteral("noexcept"), QStringLiteral("decltype"),
+        // Template / type keywords — blue (except using which is purple)
+        QStringLiteral("template"), QStringLiteral("typename"), QStringLiteral("namespace"),
+        // Alternative operator tokens — blue
+        QStringLiteral("and"), QStringLiteral("or"), QStringLiteral("not"),
+        QStringLiteral("xor"), QStringLiteral("bitand"), QStringLiteral("bitor"),
+        QStringLiteral("compl"),
+        QStringLiteral("and_eq"), QStringLiteral("or_eq"),
+        QStringLiteral("not_eq"), QStringLiteral("xor_eq"),
     };
     return keywords;
 }
 
+// Keywords that get preprocessor-purple in dark mode — same colour as #include.
+// Applied after regular keywords so they override blue with purple.
 inline const QStringList &cppControlKeywords()
 {
     static const QStringList keywords = {
+        // Control flow
         QStringLiteral("if"), QStringLiteral("else"), QStringLiteral("for"),
         QStringLiteral("while"), QStringLiteral("do"), QStringLiteral("switch"),
         QStringLiteral("case"), QStringLiteral("default"), QStringLiteral("break"),
         QStringLiteral("continue"), QStringLiteral("return"), QStringLiteral("goto"),
         QStringLiteral("try"), QStringLiteral("catch"), QStringLiteral("throw"),
+        // Coroutine control flow
+        QStringLiteral("co_await"), QStringLiteral("co_return"), QStringLiteral("co_yield"),
+        // Memory / object operators
+        QStringLiteral("new"), QStringLiteral("delete"),
+        // Type alias / using-directive (only using is purple — template/typename/namespace are blue)
+        QStringLiteral("using"),
+        // Operator overloading
+        QStringLiteral("operator"),
+        // C++20 concepts
+        QStringLiteral("concept"), QStringLiteral("requires"),
     };
     return keywords;
 }

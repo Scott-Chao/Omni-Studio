@@ -187,6 +187,8 @@ public:
     QColor syntaxPythonSelfCls() const;
     QColor syntaxFunctions() const;
     QColor syntaxParameters() const;
+    QColor syntaxBracket(int depth) const;
+    QColor syntaxUnpairedBracket() const;
 
     // ---- Judge Status Colors ----
     QColor judgeColorAc() const;

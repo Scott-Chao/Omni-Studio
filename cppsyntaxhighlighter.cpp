@@ -47,7 +47,6 @@ void CppSyntaxHighlighter::initFormats()
 
     // --- Keyword format ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
-    m_keywordFormat.setFontWeight(QFont::Bold);
 
     for (const QString &kw : cppKeywords()) {
         HighlightingRule rule;
@@ -58,7 +57,6 @@ void CppSyntaxHighlighter::initFormats()
 
     // --- Control-flow keyword format (purple in dark, overrides regular keyword blue) ---
     m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
-    m_controlKeywordFormat.setFontWeight(QFont::Bold);
     for (const QString &kw : cppControlKeywords()) {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(kw));
@@ -116,27 +114,29 @@ void CppSyntaxHighlighter::initFormats()
     m_includeHeaderFormat.setForeground(cfg.syntaxStrings());
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+(<[^>]+>)"));
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s*(<[^>]+>)"));
         rule.format = m_includeHeaderFormat;
         rule.captureGroup = 1;
         m_rules.append(rule);
     }
     {
         HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("#include\\s+\"([^\"]+)\""));
+        rule.pattern = QRegularExpression(QStringLiteral("#include\\s*\"([^\"]+)\""));
         rule.format = m_includeHeaderFormat;
         rule.captureGroup = 1;
         m_rules.append(rule);
     }
 
     // --- Pointer / reference operator format (blue, same as keywords) ---
+    // Regex covers primitive types. User-defined/template types are handled by
+    // the clangd-driven * / & pass below (see semantic token loop).
     m_operatorFormat.setForeground(cfg.syntaxKeywords());
     {
         HighlightingRule rule;
         rule.pattern = QRegularExpression(
-            QStringLiteral("\\b(?:const\\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\\s*([*&]+)\\b"));
+            QStringLiteral("\\b(?:const\\s+)?(?:int|char|float|double|bool|void|short|long|auto|wchar_t)\\s*([*&]+)(?![*&=])"));
         rule.format = m_operatorFormat;
-        rule.captureGroup = 2;
+        rule.captureGroup = 1;
         m_rules.append(rule);
     }
 

@@ -1,6 +1,7 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
 #include "smddiagnostic.h"
+#include "thememanager.h"
 
 #include <QApplication>
 #include <QFrame>
@@ -39,6 +40,13 @@ HoverManager::HoverManager(CodeEditor *editor, CompletionProvider *provider, QOb
     connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *) {
         if (m_tooltipShowing && !m_diagnosticTooltipActive)
             hideHover();
+    });
+
+    // Refresh tooltip background when theme changes
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this]() {
+        if (m_tooltipWidget)
+            refreshTooltipStyle();
     });
 }
 
@@ -252,20 +260,6 @@ void HoverManager::createTooltipWidget()
     m_tooltipWidget->setForegroundRole(QPalette::ToolTipText);
     m_tooltipWidget->setAutoFillBackground(true);
 
-    // Build border color from tooltip base — also set background explicitly
-    // so stylesheet doesn't override the palette role
-    QColor bg = m_tooltipWidget->palette().color(QPalette::ToolTipBase);
-    int r, g, b;
-    bg.getRgb(&r, &g, &b);
-    int lum = (r * 299 + g * 587 + b * 114) / 1000;
-    int delta = lum < 128 ? 55 : -55;
-    QColor borderColor(qBound(0, r + delta, 255),
-                       qBound(0, g + delta, 255),
-                       qBound(0, b + delta, 255));
-    m_tooltipWidget->setStyleSheet(QStringLiteral(
-        "#hoverTooltip { background-color: %1; border: 1px solid %2; border-radius: 5px; }"
-        "QScrollBar:vertical { width: 8px; }").arg(bg.name(), borderColor.name()));
-
     QVBoxLayout *layout = new QVBoxLayout(m_tooltipWidget);
     layout->setContentsMargins(6, 4, 6, 4);
     layout->setSpacing(0);
@@ -276,7 +270,9 @@ void HoverManager::createTooltipWidget()
     m_tooltipScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_tooltipScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_tooltipScrollArea->setBackgroundRole(QPalette::ToolTipBase);
+    m_tooltipScrollArea->setAutoFillBackground(true);
     m_tooltipScrollArea->viewport()->setBackgroundRole(QPalette::ToolTipBase);
+    m_tooltipScrollArea->viewport()->setAutoFillBackground(true);
 
     m_tooltipLabel = new QLabel();
     m_tooltipLabel->setWordWrap(true);
@@ -284,11 +280,51 @@ void HoverManager::createTooltipWidget()
     m_tooltipLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_tooltipLabel->setBackgroundRole(QPalette::ToolTipBase);
     m_tooltipLabel->setForegroundRole(QPalette::ToolTipText);
+    m_tooltipLabel->setAutoFillBackground(true);
 
     m_tooltipScrollArea->setWidget(m_tooltipLabel);
     layout->addWidget(m_tooltipScrollArea);
 
     m_tooltipWidget->installEventFilter(this);
+
+    refreshTooltipStyle();
+}
+
+void HoverManager::refreshTooltipStyle()
+{
+    if (!m_tooltipWidget)
+        return;
+
+    // Read colours directly from the current theme — m_tooltipWidget->palette()
+    // may still be stale after QApplication::setPalette() when a stylesheet
+    // has already been applied to this widget.
+    ThemeManager &tm = ThemeManager::instance();
+    QColor bg = tm.color(QStringLiteral("menu.background"));
+    QColor fg = tm.color(QStringLiteral("menu.foreground"));
+    QColor sep = tm.color(QStringLiteral("menu.separatorColor"));
+
+    if (!bg.isValid()) bg = QColor("#202122");
+    if (!fg.isValid()) fg = QColor("#bfbfbf");
+    if (!sep.isValid()) sep = bg.darker(130);
+
+    // Stylesheet for the outer frame + scrollbar
+    m_tooltipWidget->setStyleSheet(QStringLiteral(
+        "#hoverTooltip { background-color: %1; border: 1px solid %2; border-radius: 5px; }"
+        "QScrollBar:vertical { width: 8px; }").arg(bg.name(), sep.name()));
+
+    // Propagate palette to child widgets explicitly. When the parent QFrame
+    // has a stylesheet, child widgets stop inheriting QApplication::palette()
+    // changes automatically — we must push the new palette ourselves.
+    QPalette pal;
+    pal.setColor(QPalette::ToolTipBase, bg);
+    pal.setColor(QPalette::ToolTipText, fg);
+    pal.setColor(QPalette::Window, bg);
+    pal.setColor(QPalette::WindowText, fg);
+    pal.setColor(QPalette::Base, bg);
+    pal.setColor(QPalette::Text, fg);
+    m_tooltipScrollArea->setPalette(pal);
+    m_tooltipScrollArea->viewport()->setPalette(pal);
+    m_tooltipLabel->setPalette(pal);
 }
 
 void HoverManager::showHoverToolTip(const HoverInfo &info)

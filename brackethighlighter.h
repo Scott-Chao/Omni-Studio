@@ -24,13 +24,6 @@ protected:
                            bool checkPreprocessor = false);
 
     QMap<int, QList<SemanticToken>> m_semanticTokens;
-
-    QColor m_bracketColors[3] = {
-        QColor("#FFD700"),
-        QColor("#DA70D6"),
-        QColor("#179FFF")
-    };
-    QColor m_unpairedBracketColor = QColor("#FF0000");
 };
 
 #endif // BRACKETHIGHLIGHTER_H

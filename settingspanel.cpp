@@ -505,6 +505,16 @@ void SettingsPanel::refreshStyle()
     for (int i = 0; i < m_stackedWidget->count(); ++i) {
         refreshPageTree(m_stackedWidget->widget(i));
     }
+
+    // Refresh collapsible section header buttons — their stylesheet bakes in
+    // tab.activeForeground at creation time and must be re-applied on theme switch.
+    auto fg = tm.color("tab.activeForeground").name();
+    auto hover = tm.color("badge.background").name();
+    for (auto *btn : m_sectionButtons) {
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { color: %1; font-size: 13px; font-weight: bold; border: none; padding: 2px 0; }"
+            "QToolButton:hover { color: %2; }").arg(fg, hover));
+    }
 }
 
 void SettingsPanel::refreshPageTree(QWidget *w)
@@ -1012,6 +1022,22 @@ QWidget *SettingsPanel::createAppearancePage()
     connect(&tm, &ThemeManager::themeChanged, this, [this]() {
         m_themeCombo->setCurrentText(ThemeManager::instance().currentThemeName());
         refreshStyle();
+
+        // Refresh colour rows — theme defaults have changed.
+        // Only honour user overrides; ignore stale config.json entries.
+        auto &sm2 = SettingsManager::instance();
+        for (const auto &cc : m_colorControls) {
+            QColor curDefault = cc.themeDefault();
+            QVariant ov = sm2.settingOverride(cc.configKey);
+            QString hex = ov.isValid() ? ov.toString() : curDefault.name();
+            auto &ctm = ThemeManager::instance();
+            cc.btn->setStyleSheet(
+                QStringLiteral(
+                    "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
+                    "QPushButton:hover { border-color: %3; }"
+                ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
+            cc.preview->setText(hex);
+        }
     });
 
     m_resetThemeBtn = new QPushButton(tr("恢复主题默认值"));
@@ -1094,13 +1120,16 @@ QWidget *SettingsPanel::createAppearancePage()
 
     // Helper: create a single color picker row inside a section layout
     auto addColorRow = [&](QVBoxLayout *parent, const QString &label,
-                           const QString &configKey, const QColor &defaultColor)
+                           const QString &configKey, std::function<QColor()> defaultColorFn)
     {
         auto *row = new QHBoxLayout;
         auto *lbl = new QLabel(label);
         lbl->setStyleSheet(labelStyle());
 
-        QString currentHex = sm.value(configKey, defaultColor.name()).toString();
+        // Only honour user overrides for the initial colour; config.json may
+        // hold stale values from a different theme.
+        QVariant ov = sm.settingOverride(configKey);
+        QString currentHex = ov.isValid() ? ov.toString() : defaultColorFn().name();
 
         auto *colorBtn = new QPushButton;
         colorBtn->setFixedSize(24, 24);
@@ -1122,11 +1151,13 @@ QWidget *SettingsPanel::createAppearancePage()
                  tm.color("input.background").name(),
                  tm.color("input.border").name()));
 
-        connect(colorBtn, &QPushButton::clicked, this, [this, colorBtn, colorPreview, configKey, defaultColor]() {
+        connect(colorBtn, &QPushButton::clicked, this, [this, colorBtn, colorPreview, configKey, defaultColorFn]() {
             auto &sm2 = SettingsManager::instance();
-            QString curHex = sm2.value(configKey, defaultColor.name()).toString();
+            QColor curDefault = defaultColorFn();
+            QVariant ov = sm2.settingOverride(configKey);
+            QString curHex = ov.isValid() ? ov.toString() : curDefault.name();
             QColor curCol = QColor(curHex);
-            QColor chosen = QColorDialog::getColor(curCol.isValid() ? curCol : defaultColor,
+            QColor chosen = QColorDialog::getColor(curCol.isValid() ? curCol : curDefault,
                                                     this, tr("选择颜色"));
             if (chosen.isValid()) {
                 QString hex = chosen.name();
@@ -1147,7 +1178,7 @@ QWidget *SettingsPanel::createAppearancePage()
         row->addWidget(colorBtn);
         parent->addLayout(row);
 
-        m_colorControls.append({colorBtn, colorPreview, configKey, defaultColor});
+        m_colorControls.append({colorBtn, colorPreview, configKey, defaultColorFn});
     };
 
     // Helper: create a collapsible section with QToolButton toggle
@@ -1164,6 +1195,7 @@ QWidget *SettingsPanel::createAppearancePage()
             "QToolButton:hover { color: %2; }")
             .arg(tm.color("tab.activeForeground").name(),
                  tm.color("badge.background").name()));
+        m_sectionButtons.append(btn);
 
         auto *content = new QWidget;
         content->setVisible(defaultExpanded);
@@ -1184,12 +1216,12 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("编辑器色"), true);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("编辑器背景"),            "appearance.colors.editor.background",      cfg.editorBackground());
-        addColorRow(cl, tr("编辑器前景（文字）"),     "appearance.colors.editor.foreground",      cfg.editorForeground());
-        addColorRow(cl, tr("选中背景"),              "appearance.colors.editor.selection",       cfg.editorSelection());
-        addColorRow(cl, tr("当前行高亮"),             "appearance.colors.current_line.highlight", cfg.currentLineHighlight());
-        addColorRow(cl, tr("行号区域背景"),           "appearance.colors.line_number.background", cfg.lineNumberBackground());
-        addColorRow(cl, tr("行号文字颜色"),           "appearance.colors.line_number.foreground", cfg.lineNumberForeground());
+        addColorRow(cl, tr("编辑器背景"),            "appearance.colors.editor.background",      []{ return ConfigManager::instance().editorBackground(); });
+        addColorRow(cl, tr("编辑器前景（文字）"),     "appearance.colors.editor.foreground",      []{ return ConfigManager::instance().editorForeground(); });
+        addColorRow(cl, tr("选中背景"),              "appearance.colors.editor.selection",       []{ return ConfigManager::instance().editorSelection(); });
+        addColorRow(cl, tr("当前行高亮"),             "appearance.colors.current_line.highlight", []{ return ConfigManager::instance().currentLineHighlight(); });
+        addColorRow(cl, tr("行号区域背景"),           "appearance.colors.line_number.background", []{ return ConfigManager::instance().lineNumberBackground(); });
+        addColorRow(cl, tr("行号文字颜色"),           "appearance.colors.line_number.foreground", []{ return ConfigManager::instance().lineNumberForeground(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -1199,14 +1231,17 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("语法高亮"), false);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("关键字"),       "appearance.colors.syntax_highlight.keywords",         cfg.syntaxKeywords());
-        addColorRow(cl, tr("预处理指令"),   "appearance.colors.syntax_highlight.preprocessor",     cfg.syntaxPreprocessor());
-        addColorRow(cl, tr("类型"),         "appearance.colors.syntax_highlight.types",            cfg.syntaxTypes());
-        addColorRow(cl, tr("数字"),         "appearance.colors.syntax_highlight.numbers",          cfg.syntaxNumbers());
-        addColorRow(cl, tr("字符串"),       "appearance.colors.syntax_highlight.strings",          cfg.syntaxStrings());
-        addColorRow(cl, tr("注释"),         "appearance.colors.syntax_highlight.comments",         cfg.syntaxComments());
-        addColorRow(cl, tr("Python 装饰器"), "appearance.colors.syntax_highlight.python_decorators", cfg.syntaxPythonDecorators());
-        addColorRow(cl, tr("Python self/cls"), "appearance.colors.syntax_highlight.python_self_cls", cfg.syntaxPythonSelfCls());
+        addColorRow(cl, tr("关键字"),       "appearance.colors.syntax_highlight.keywords",         []{ return ConfigManager::instance().syntaxKeywords(); });
+        addColorRow(cl, tr("控制关键字"),   "appearance.colors.syntax_highlight.controlKeywords",  []{ return ConfigManager::instance().syntaxControlKeywords(); });
+        addColorRow(cl, tr("预处理指令"),   "appearance.colors.syntax_highlight.preprocessor",     []{ return ConfigManager::instance().syntaxPreprocessor(); });
+        addColorRow(cl, tr("类型"),         "appearance.colors.syntax_highlight.types",            []{ return ConfigManager::instance().syntaxTypes(); });
+        addColorRow(cl, tr("数字"),         "appearance.colors.syntax_highlight.numbers",          []{ return ConfigManager::instance().syntaxNumbers(); });
+        addColorRow(cl, tr("字符串"),       "appearance.colors.syntax_highlight.strings",          []{ return ConfigManager::instance().syntaxStrings(); });
+        addColorRow(cl, tr("注释"),         "appearance.colors.syntax_highlight.comments",         []{ return ConfigManager::instance().syntaxComments(); });
+        addColorRow(cl, tr("函数"),         "appearance.colors.syntax_highlight.functions",        []{ return ConfigManager::instance().syntaxFunctions(); });
+        addColorRow(cl, tr("参数"),         "appearance.colors.syntax_highlight.parameters",       []{ return ConfigManager::instance().syntaxParameters(); });
+        addColorRow(cl, tr("Python 装饰器"), "appearance.colors.syntax_highlight.python_decorators", []{ return ConfigManager::instance().syntaxPythonDecorators(); });
+        addColorRow(cl, tr("Python self/cls"), "appearance.colors.syntax_highlight.python_self_cls", []{ return ConfigManager::instance().syntaxPythonSelfCls(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -1216,10 +1251,10 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("输出面板"), false);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("背景"),       "appearance.colors.output_panel.background", cfg.outputPanelBackground());
-        addColorRow(cl, tr("前景"),       "appearance.colors.output_panel.foreground", cfg.outputPanelForeground());
-        addColorRow(cl, tr("选中色"),     "appearance.colors.output_panel.selection",  cfg.outputPanelSelection());
-        addColorRow(cl, tr("错误输出"),   "appearance.colors.output_panel.stderr",     cfg.outputStderr());
+        addColorRow(cl, tr("背景"),       "appearance.colors.output_panel.background", []{ return ConfigManager::instance().outputPanelBackground(); });
+        addColorRow(cl, tr("前景"),       "appearance.colors.output_panel.foreground", []{ return ConfigManager::instance().outputPanelForeground(); });
+        addColorRow(cl, tr("选中色"),     "appearance.colors.output_panel.selection",  []{ return ConfigManager::instance().outputPanelSelection(); });
+        addColorRow(cl, tr("错误输出"),   "appearance.colors.output_panel.stderr",     []{ return ConfigManager::instance().outputStderr(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -1229,8 +1264,8 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("搜索高亮"), false);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("高亮背景"), "appearance.colors.search.highlight_background", cfg.searchHighlightBackground());
-        addColorRow(cl, tr("高亮文字"), "appearance.colors.search.highlight_foreground", cfg.searchHighlightForeground());
+        addColorRow(cl, tr("高亮背景"), "appearance.colors.search.highlight_background", []{ return ConfigManager::instance().searchHighlightBackground(); });
+        addColorRow(cl, tr("高亮文字"), "appearance.colors.search.highlight_foreground", []{ return ConfigManager::instance().searchHighlightForeground(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -1240,8 +1275,8 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("预览"), false);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("容器背景"),         "appearance.colors.preview.container_background",   cfg.previewContainerBackground());
-        addColorRow(cl, tr("WebEngine 背景"),   "appearance.colors.preview.webengine_background",   cfg.previewWebEngineBackground());
+        addColorRow(cl, tr("容器背景"),         "appearance.colors.preview.container_background",   []{ return ConfigManager::instance().previewContainerBackground(); });
+        addColorRow(cl, tr("WebEngine 背景"),   "appearance.colors.preview.webengine_background",   []{ return ConfigManager::instance().previewWebEngineBackground(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -1251,14 +1286,14 @@ QWidget *SettingsPanel::createAppearancePage()
         auto [btn, cl] = createSection(tr("Judge 状态"), false);
         layout->addWidget(btn);
 
-        addColorRow(cl, tr("AC"),  "appearance.colors.judge_status.ac",  cfg.judgeColorAc());
-        addColorRow(cl, tr("WA"),  "appearance.colors.judge_status.wa",  cfg.judgeColorWa());
-        addColorRow(cl, tr("TLE"), "appearance.colors.judge_status.tle", cfg.judgeColorTle());
-        addColorRow(cl, tr("MLE"), "appearance.colors.judge_status.mle", cfg.judgeColorMle());
-        addColorRow(cl, tr("RE"),  "appearance.colors.judge_status.re",  cfg.judgeColorRe());
-        addColorRow(cl, tr("PE"),  "appearance.colors.judge_status.pe",  cfg.judgeColorPe());
-        addColorRow(cl, tr("OLE"), "appearance.colors.judge_status.ole", cfg.judgeColorOle());
-        addColorRow(cl, tr("CE"),  "appearance.colors.judge_status.ce",  cfg.judgeColorCe());
+        addColorRow(cl, tr("AC"),  "appearance.colors.judge_status.ac",  []{ return ConfigManager::instance().judgeColorAc(); });
+        addColorRow(cl, tr("WA"),  "appearance.colors.judge_status.wa",  []{ return ConfigManager::instance().judgeColorWa(); });
+        addColorRow(cl, tr("TLE"), "appearance.colors.judge_status.tle", []{ return ConfigManager::instance().judgeColorTle(); });
+        addColorRow(cl, tr("MLE"), "appearance.colors.judge_status.mle", []{ return ConfigManager::instance().judgeColorMle(); });
+        addColorRow(cl, tr("RE"),  "appearance.colors.judge_status.re",  []{ return ConfigManager::instance().judgeColorRe(); });
+        addColorRow(cl, tr("PE"),  "appearance.colors.judge_status.pe",  []{ return ConfigManager::instance().judgeColorPe(); });
+        addColorRow(cl, tr("OLE"), "appearance.colors.judge_status.ole", []{ return ConfigManager::instance().judgeColorOle(); });
+        addColorRow(cl, tr("CE"),  "appearance.colors.judge_status.ce",  []{ return ConfigManager::instance().judgeColorCe(); });
 
         layout->addWidget(cl->parentWidget());
     }
@@ -2015,9 +2050,12 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
         m_equalWidthTabToggle->setChecked(sm.value("editor.equal_width_tab", false).toBool());
     }
 
-    // Refresh color controls (appearance page)
+    // Refresh color controls (appearance page).
+    // Use settingOverride() — NOT value() — so config.json stale defaults
+    // don't shadow the current theme's colours. Only user overrides survive.
     for (const auto &cc : m_colorControls) {
-        QString hex = sm.value(cc.configKey, cc.defaultColor.name()).toString();
+        QVariant ov = sm.settingOverride(cc.configKey);
+        QString hex = ov.isValid() ? ov.toString() : cc.themeDefault().name();
         auto &ctm = ThemeManager::instance();
         cc.btn->setStyleSheet(
             QStringLiteral(

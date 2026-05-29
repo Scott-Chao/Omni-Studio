@@ -42,6 +42,7 @@ private:
     static constexpr int kMaxTooltipHeight = 300;
 
     void createTooltipWidget();
+    void refreshTooltipStyle();
     bool isSameWord(int posA, int posB) const;
 
     void requestHoverAt(const QPoint &viewportPos);
