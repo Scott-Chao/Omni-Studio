@@ -35,6 +35,7 @@ SOURCES += \
     crashrecoverymanager.cpp \
     backlinkindex.cpp \
     backlinkspanel.cpp \
+    brackethighlighter.cpp \
     codeeditor.cpp \
     completionpopup.cpp \
     compilerutils.h \
@@ -111,6 +112,7 @@ HEADERS += \
     completionprovider.h \
     compilererrorparser.h \
     compilerutils.h \
+    brackethighlighter.h \
     cppcompletionprovider.h \
     cppkeywords.h \
     cppsyntaxhighlighter.h \

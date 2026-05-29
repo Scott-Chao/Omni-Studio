@@ -1,23 +1,17 @@
 #ifndef CPPSYNTAXHIGHLIGHTER_H
 #define CPPSYNTAXHIGHLIGHTER_H
 
-#include <QSyntaxHighlighter>
 #include <QRegularExpression>
 #include <QVector>
-#include <QMap>
-#include <QList>
 
-#include "completionprovider.h"
+#include "brackethighlighter.h"
 
-class CppSyntaxHighlighter : public QSyntaxHighlighter
+class CppSyntaxHighlighter : public BracketHighlighter
 {
     Q_OBJECT
 
 public:
     explicit CppSyntaxHighlighter(QTextDocument *parent = nullptr);
-
-    void setSemanticTokens(const QList<SemanticToken> &tokens);
-    void clearSemanticTokens();
 
 protected:
     void highlightBlock(const QString &text) override;
@@ -44,17 +38,11 @@ private:
     QTextCharFormat m_singleLineCommentFormat;
     QTextCharFormat m_multiLineCommentFormat;
 
-    QColor m_bracketColors[3];
-    QColor m_unpairedBracketColor;
-
     QRegularExpression m_commentStartExpr;
     QRegularExpression m_commentEndExpr;
 
-    QMap<int, QList<SemanticToken>> m_semanticTokens;
-
     QTextCharFormat formatForTokenType(const QString &type) const;
     void initFormats();
-    void highlightBrackets(const QString &text);
 };
 
 #endif // CPPSYNTAXHIGHLIGHTER_H
