@@ -20,13 +20,13 @@ class TabManager;
 class FileExplorerWidget;
 class EditorWidget;
 class SettingsManager;
+class CompileRunManager;
 class QDockWidget;
 class QPushButton;
 class QToolButton;
 class QMenu;
 class RightPanelContainer;
 class SearchPanel;
-class ProcessRunner;
 class BottomPanel;
 class OutputPanel;
 class JudgePanel;
@@ -129,7 +129,7 @@ private:
     QAction *m_exportPdfAction = nullptr;
     void updatePreviewActionState();
     void updateSplitPreviewActionState();
-    void updateRunActions();
+    // 编译运行按钮状态 — 由 CompileRunManager 管理
     // 右侧统一面板（历史/大纲/标签/反链）
     RightPanelContainer *m_rightPanel;
     QDockWidget *m_dockRightPanel;
@@ -146,16 +146,10 @@ private:
     SearchPanel *m_searchPanel;
     QAction *toggleSearchAction;
 
-    // 编译运行
-    ProcessRunner *m_processRunner;
-    QAction *m_runToolAction = nullptr;
-    QMenu *m_runMenu = nullptr;
+    // 编译运行管理
+    CompileRunManager *m_compileRunMgr = nullptr;
     BottomPanel *m_bottomPanel;
     QSplitter *m_rightSplitter;
-    QAction *m_compileAction;
-    QAction *m_runAction;
-    QAction *m_compileRunAction;
-    QAction *m_stopAction;
 
     QMetaObject::Connection m_diagnosticsProviderConnection;
     QMetaObject::Connection m_codeBlockConnection;
@@ -241,12 +235,6 @@ private:
     void setupCustomTitleBar();
     void refreshTitleBarStyle();
 
-    void onCompile();
-    void onRun();
-    void onCompileAndRun();
-    void onStopProcess();
-    void onCompileFinished(bool success);
-    void onRunFinished(int exitCode);
     void onJudgeRunAll();
     void onOpenJudgeRequested();
     void onOpenJudgeSampleSelected(const QString &folderPath);
@@ -272,10 +260,7 @@ private:
     void onResetToDefaults();
     void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
     void applyEqualWidthTab(bool enabled);
-    QString saveCodeToTempFile(EditorWidget *editor);
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
-    void showOutputPanel();
-    void toggleDiagnosticsInCodeEditor();
     void convertMdToSmd(EditorWidget *editor, const QFileInfo &fi);
     void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
 

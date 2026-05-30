@@ -43,6 +43,7 @@ protected:
 #include "outputpanel.h"
 #include "bottompanel.h"
 #include "codeeditor.h"
+#include "compilerunmanager.h"
 #include "judgepanel.h"
 #include "judgeengine.h"
 #include "openjudgewidget.h"
@@ -333,11 +334,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_bottomPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
     m_bottomPanel->hide();
 
-    OutputPanel *outputPanel = m_bottomPanel->outputPanel();
-    connect(outputPanel, &OutputPanel::stopRequested, this, &MainWindow::onStopProcess);
     connect(m_bottomPanel, &BottomPanel::closeRequested, this, [this]() {
-        if (m_processRunner->isRunning())
-            onStopProcess();
+        if (m_compileRunMgr && m_compileRunMgr->isRunning())
+            m_compileRunMgr->stop();
         m_bottomPanel->hide();
     });
     connect(m_bottomPanel, &BottomPanel::diagnosticsLineClicked, this, [this](int line) {
@@ -346,51 +345,36 @@ MainWindow::MainWindow(QWidget *parent)
             editor->navigateEditorToLine(line);
     });
 
-    // ----- 编译运行管理器 -----
-    m_processRunner = new ProcessRunner(this);
-    connect(outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
-    connect(outputPanel, &OutputPanel::sendRawInput, m_processRunner, &ProcessRunner::writeRaw);
-    connect(m_processRunner, &ProcessRunner::outputReceived, outputPanel, &OutputPanel::appendOutput);
-    connect(m_processRunner, &ProcessRunner::compileFinished, this, &MainWindow::onCompileFinished);
-    connect(m_processRunner, &ProcessRunner::runFinished, this, &MainWindow::onRunFinished);
-    // Buffer stderr for MD code block diagnostics
-    m_stderrBufferConnection = connect(m_processRunner, &ProcessRunner::outputReceived,
+    // ----- 编译运行管理器（ProcessRunner + 编译/运行/终止）-----
+    m_compileRunMgr = new CompileRunManager(m_tabManager, m_bottomPanel,
+                                             m_settings, m_explorer,
+                                             m_rightSplitter, this);
+
+    // Buffer stderr for MD code block diagnostics (ProcessRunner owned by CompileRunManager)
+    m_stderrBufferConnection = connect(m_compileRunMgr->processRunner(), &ProcessRunner::outputReceived,
         this, [this](const QString &text, bool isStderr) {
             if (m_isRunningCodeBlock && isStderr)
                 m_mdStderrBuffer += text;
         });
-    connect(m_processRunner, &ProcessRunner::processStarted, this, [this]() {
-        m_stopAction->setEnabled(true);
-        m_compileAction->setEnabled(false);
-        m_runAction->setEnabled(false);
-        m_compileRunAction->setEnabled(false);
-        if (m_runToolAction) m_runToolAction->setEnabled(false);
-        OutputPanel *op = m_bottomPanel->outputPanel();
-        if (m_processRunner->isAcceptingInput()) {
-            QTimer::singleShot(50, this, [this, op]() {
-                if (m_processRunner->isRunning())
-                    op->setRunning(true);
-            });
-        } else {
-            op->enableTextSelection(false);
+
+    // Forward compile/run finished to MD code block diagnostics
+    connect(m_compileRunMgr, &CompileRunManager::compileFinished, this, [this](bool) {
+        if (m_isRunningCodeBlock) {
+            m_processManuallyStopped = m_compileRunMgr->isManualStop();
+            parseAndShowBlockDiagnostics();
         }
     });
-    connect(m_processRunner, &ProcessRunner::processStopped, this, [this]() {
-        m_stopAction->setEnabled(false);
-        OutputPanel *op = m_bottomPanel->outputPanel();
-        op->setRunning(false);
-        op->enableTextSelection(true);
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor)
-            editor->setFocus();
-        // Re-enable buttons based on current tab (code file or OpenJudge IDE mode)
-        updateRunActions();
-        // Clear MD code block state if stopped mid-run
+    connect(m_compileRunMgr, &CompileRunManager::runFinished, this, [this](int) {
+        if (m_isRunningCodeBlock) {
+            m_processManuallyStopped = m_compileRunMgr->isManualStop();
+            parseAndShowBlockDiagnostics();
+        }
+    });
+    connect(m_compileRunMgr, &CompileRunManager::processStopped, this, [this](bool) {
         if (m_isRunningCodeBlock) {
             m_isRunningCodeBlock = false;
             m_mdStderrBuffer.clear();
         }
-        m_processManuallyStopped = false;
     });
 
     // ----- 本地评测面板 -----
@@ -569,56 +553,16 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // 运行 ▼ (编译 / 运行 / 编译运行)
-    m_compileAction = new QAction(tr("编译"), this);
-    m_compileAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_only", "F6")));
-    addAction(m_compileAction);
-    connect(m_compileAction, &QAction::triggered, this, &MainWindow::onCompile);
-
-    m_runAction = new QAction(tr("运行"), this);
-    m_runAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("run_only", "F7")));
-    addAction(m_runAction);
-    connect(m_runAction, &QAction::triggered, this, &MainWindow::onRun);
-
-    m_compileRunAction = new QAction(tr("编译运行"), this);
-    m_compileRunAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("compile_and_run", "F5")));
-    addAction(m_compileRunAction);
-    connect(m_compileRunAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
+    // 运行 ▼ (编译 / 运行 / 编译运行) — actions 由 CompileRunManager 管理
+    addAction(m_compileRunMgr->compileAction());
+    addAction(m_compileRunMgr->runAction());
+    addAction(m_compileRunMgr->compileRunAction());
 
     // 工具栏运行按钮（带下拉菜单）
-    m_runMenu = new QMenu(this);
-
-    m_runMenu->addAction(m_compileAction);
-    m_runMenu->addAction(m_runAction);
-    m_runMenu->addSeparator();
-    m_runMenu->addAction(m_compileRunAction);
-    m_runMenu->setTitle(tr("运行"));
-
-    // 工具栏运行按钮（带下拉菜单），直接点击默认编译运行
-    m_runToolAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
-    m_runToolAction->setMenu(m_runMenu);
-    m_runToolAction->setToolTip(tr("编译运行 (编译/运行/编译运行)"));
-    m_runToolAction->setVisible(false); // 只对代码文件显示
-    connect(m_runToolAction, &QAction::triggered, this, &MainWindow::onCompileAndRun);
-    m_toolBar->addAction(m_runToolAction);
-
-    // Title bar uses ThemeManager colors, refresh on theme change
-    ThemeManager::watchTheme(this, &MainWindow::refreshTitleBarStyle);
-    refreshTitleBarStyle();
-
-    // 主题切换时刷新标签页栏背景
-    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
-            this, [this]() { m_tabManager->update(); });
-
-    // 主题切换时刷新缩放按钮样式
-    ThemeManager::watchTheme(this, &MainWindow::refreshZoomButtonStyle);
+    m_toolBar->addAction(m_compileRunMgr->runToolAction());
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
-    m_stopAction = new QAction(tr("终止"), this);
-    m_stopAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("stop_process", "Ctrl+Break")));
-    addAction(m_stopAction);
-    m_stopAction->setEnabled(false);
-    connect(m_stopAction, &QAction::triggered, this, &MainWindow::onStopProcess);
+    addAction(m_compileRunMgr->stopAction());
 
     // 窗口控制按钮（置于最右）
     setupCustomTitleBar();
@@ -791,10 +735,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutActions["toggle_judge"] = m_toggleJudgeAction;
     m_shortcutActions["toggle_preview"] = m_previewAction;
     m_shortcutActions["toggle_split_preview"] = m_splitPreviewAction;
-    m_shortcutActions["compile_only"] = m_compileAction;
-    m_shortcutActions["run_only"] = m_runAction;
-    m_shortcutActions["compile_and_run"] = m_compileRunAction;
-    m_shortcutActions["stop_process"] = m_stopAction;
+    m_shortcutActions["compile_only"] = m_compileRunMgr->compileAction();
+    m_shortcutActions["run_only"] = m_compileRunMgr->runAction();
+    m_shortcutActions["compile_and_run"] = m_compileRunMgr->compileRunAction();
+    m_shortcutActions["stop_process"] = m_compileRunMgr->stopAction();
     m_shortcutActions["toggle_settings"] = m_settingsAction;
     m_shortcutActions["toggle_help"] = m_helpAction;
     m_shortcutActions["export_pdf"] = m_exportPdfAction;
@@ -911,7 +855,7 @@ MainWindow::MainWindow(QWidget *parent)
         // 连接当前编辑器的诊断面板切换信号
         if (editor) {
             connect(editor, &EditorWidget::diagnosticsToggleRequested,
-                    this, &MainWindow::toggleDiagnosticsInCodeEditor,
+                    m_compileRunMgr, &CompileRunManager::toggleDiagnostics,
                     Qt::UniqueConnection);
         }
         // 连接 fileLoaded 信号：覆盖所有文件加载场景（含预览标签复用不触发 currentChanged 的情况）
@@ -926,7 +870,8 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshOutline();
                 filterAiHistoryByCurrentFile();
                 updateCurrentEditorCompletions();
-                updateRunActions();
+                if (m_compileRunMgr)
+                    m_compileRunMgr->updateActions();
 
                 // 更新导出PDF按钮可见性（预览标签复用时不会触发 currentChanged）
                 bool isMd = current->currentFilePath().toLower().endsWith(".md");
@@ -943,7 +888,8 @@ MainWindow::MainWindow(QWidget *parent)
         updateCurrentEditorCompletions();
 
         // 更新编译运行按钮状态（代码文件 或 OpenJudge IDE 模式）
-        updateRunActions();
+        if (m_compileRunMgr)
+            m_compileRunMgr->updateActions();
 
         // 导出PDF 仅对 .md 文件启用（按钮可见 + 快捷键生效）
         bool isMd = editor && editor->currentFilePath().toLower().endsWith(".md");
@@ -1104,7 +1050,8 @@ void MainWindow::onFileSelected(const QString &filePath)
     updateSplitPreviewActionState();
     addToRecentFiles(filePath);
     // 更新运行按钮显隐（代码文件 或 OpenJudge IDE 模式）
-    updateRunActions();
+    if (m_compileRunMgr)
+        m_compileRunMgr->updateActions();
     // openPreview may reuse the existing preview tab without changing
     // the current index, so currentChanged is NOT emitted. Explicitly
     // refresh side panels whose content depends on the active file.
@@ -1943,21 +1890,6 @@ void MainWindow::updateSplitPreviewActionState()
     }
 }
 
-void MainWindow::updateRunActions()
-{
-    EditorWidget *editor = m_tabManager->currentEditor();
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    bool isCode = (editor && editor->isCodeEdit()) || (oj && oj->isIdeMode());
-    bool running = m_processRunner->isRunning();
-    m_compileAction->setEnabled(isCode && !running);
-    m_runAction->setEnabled(isCode && !running);
-    m_compileRunAction->setEnabled(isCode && !running);
-    if (m_runToolAction) {
-        m_runToolAction->setVisible(isCode);
-        m_runToolAction->setEnabled(isCode && !running);
-    }
-}
-
 void MainWindow::addToRecentFiles(const QString &filePath)
 {
     QString cleanPath = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
@@ -2275,13 +2207,15 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("titleBar.buttonHover").name()));
 
     // Run button — green icon with extra space before dropdown arrow
-    if (auto *btn = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(m_runToolAction))) {
-        btn->setStyleSheet(QStringLiteral(
-            "QToolButton {"
-            "  background: transparent; border: none; padding: 4px 14px 4px 8px;"
-            "}"
-            "QToolButton:hover { background: %1; }"
-        ).arg(tm.color("titleBar.buttonHover").name()));
+    if (m_compileRunMgr) {
+        if (auto *btn = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(m_compileRunMgr->runToolAction()))) {
+            btn->setStyleSheet(QStringLiteral(
+                "QToolButton {"
+                "  background: transparent; border: none; padding: 4px 14px 4px 8px;"
+                "}"
+                "QToolButton:hover { background: %1; }"
+            ).arg(tm.color("titleBar.buttonHover").name()));
+        }
     }
 
     // File menu dropdown
@@ -2298,7 +2232,8 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("menu.separatorColor").name()));
 
     // Run menu dropdown
-    m_runMenu->setStyleSheet(QStringLiteral(
+    if (m_compileRunMgr)
+        m_compileRunMgr->runMenu()->setStyleSheet(QStringLiteral(
         "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
         "QMenu::item { padding: 6px 24px; color: %3; }"
         "QMenu::item:selected { background: %4; color: %5; }"
@@ -2316,8 +2251,8 @@ void MainWindow::refreshTitleBarStyle()
     toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
     m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
     m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
-    if (m_runToolAction)
-        m_runToolAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
+    if (m_compileRunMgr)
+        m_compileRunMgr->runToolAction()->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
 }
 
 // ============================================================
@@ -2547,211 +2482,6 @@ void MainWindow::onFileMovedOrRenamed(const QString &oldPath, const QString &new
     m_rightPanel->historyPanel()->replacePath(oldPath, newPath); // 更新历史记录中的路径
 }
 
-// ============================================================
-// 编译运行相关槽函数
-// ============================================================
-
-void MainWindow::onCompile()
-{
-    // IDE mode: use OpenJudge embedded editor
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        oj->saveIdeCodeToCache();
-        QString filePath = oj->ideCacheFilePath();
-        if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
-            m_bottomPanel->outputPanel()->setStatus(tr("提示"), false);
-            return;
-        }
-        showOutputPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_processRunner->startCompile(filePath);
-        return;
-    }
-
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit())
-        return;
-
-    QString filePath = editor->currentFilePath();
-    if (filePath.isEmpty() || editor->isModified()) {
-        filePath = saveCodeToTempFile(editor);
-        if (filePath.isEmpty())
-            return;
-    }
-
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-        showOutputPanel();
-
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->appendOutput(tr("Python 不需要编译，请使用 运行 (F7) 或 编译运行 (F5)。\n"), false);
-        m_bottomPanel->outputPanel()->setStatus(tr("提示"), false);
-        return;
-    }
-
-    showOutputPanel();
-
-    m_bottomPanel->outputPanel()->clearOutput();
-    m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-    m_processRunner->startCompile(filePath);
-}
-
-void MainWindow::onRun()
-{
-    // IDE mode: use OpenJudge embedded editor
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        oj->saveIdeCodeToCache();
-        QString filePath = oj->ideCacheFilePath();
-        if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-        if (m_processRunner->lastExecutable().isEmpty()) {
-            onCompileAndRun();
-            return;
-        }
-        showOutputPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_processRunner->startRun(m_processRunner->lastExecutable());
-        return;
-    }
-
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor)
-        return;
-
-    QString filePath = editor->currentFilePath();
-    if (!filePath.isEmpty()) {
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            if (filePath.isEmpty() || editor->isModified()) {
-                filePath = saveCodeToTempFile(editor);
-                if (filePath.isEmpty())
-                    return;
-            }
-            showOutputPanel();
-
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-    }
-
-    if (m_processRunner->lastExecutable().isEmpty()) {
-        // 还没有编译过的可执行文件，转为编译运行
-        onCompileAndRun();
-        return;
-    }
-
-    showOutputPanel();
-
-    m_bottomPanel->outputPanel()->clearOutput();
-    m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-    m_processRunner->startRun(m_processRunner->lastExecutable());
-}
-
-void MainWindow::onCompileAndRun()
-{
-    // IDE mode: use OpenJudge embedded editor
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        oj->saveIdeCodeToCache();
-        QString filePath = oj->ideCacheFilePath();
-        if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-        showOutputPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_processRunner->startCompileAndRun(filePath);
-        return;
-    }
-
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit())
-        return;
-
-    QString filePath = editor->currentFilePath();
-    if (filePath.isEmpty() || editor->isModified()) {
-        filePath = saveCodeToTempFile(editor);
-        if (filePath.isEmpty())
-            return;
-    }
-
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-        showOutputPanel();
-
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_processRunner->startRunPython(filePath);
-        return;
-    }
-
-    showOutputPanel();
-
-    m_bottomPanel->outputPanel()->clearOutput();
-    m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-    m_processRunner->startCompileAndRun(filePath);
-}
-
-void MainWindow::onStopProcess()
-{
-    m_processManuallyStopped = true;
-    m_processRunner->stop();
-    m_bottomPanel->outputPanel()->appendOutput(QStringLiteral("\n--- ") + tr("已终止") + QStringLiteral(" ---\n"), false);
-    m_bottomPanel->outputPanel()->setStatus(tr("已终止"), true);
-}
-
-void MainWindow::onCompileFinished(bool success)
-{
-    if (success) {
-        m_bottomPanel->outputPanel()->setStatus(tr("编译成功"));
-    } else {
-        m_bottomPanel->outputPanel()->setStatus(tr("编译失败"), true);
-    }
-
-    // For MD code blocks: parse compile errors on failure
-    if (m_isRunningCodeBlock && !success) {
-        parseAndShowBlockDiagnostics();
-    }
-}
-
-void MainWindow::onRunFinished(int exitCode)
-{
-    m_bottomPanel->outputPanel()->appendOutput(
-        QStringLiteral("\n--- ") + tr("进程退出 (代码: %1)").arg(exitCode) + QStringLiteral(" ---\n"), false);
-    m_bottomPanel->outputPanel()->setStatus(
-        tr("完成 (代码: %1)").arg(exitCode), exitCode != 0);
-
-    // For MD code blocks: parse runtime errors (Python traceback / C++ runtime stderr)
-    if (m_isRunningCodeBlock) {
-        parseAndShowBlockDiagnostics();
-    }
-}
 
 void MainWindow::onJudgeRunAll()
 {
@@ -2775,7 +2505,7 @@ void MainWindow::onJudgeRunAll()
         // Save current code to file (or temp file if unsaved)
         filePath = editor->currentFilePath();
         if (filePath.isEmpty() || editor->isModified()) {
-            filePath = saveCodeToTempFile(editor);
+            filePath = CompileRunManager::saveEditorToTempFile(editor, m_explorer->rootPath());
             if (filePath.isEmpty())
                 return;
         }
@@ -2817,15 +2547,16 @@ void MainWindow::onOpenJudgeRequested()
             QMessageBox::warning(this, tr("提交失败"), error);
         });
         connect(oj, &OpenJudgeWidget::ideDiagnosticsToggleRequested,
-                this, &MainWindow::toggleDiagnosticsInCodeEditor);
+                m_compileRunMgr, &CompileRunManager::toggleDiagnostics);
         connect(oj, &OpenJudgeWidget::ideModeChanged,
                 this, [this](bool ideMode) {
-            updateRunActions();
-            if (!ideMode) {
-                if (m_processRunner->isRunning())
-                    onStopProcess();
-                m_bottomPanel->hide();
+            if (m_compileRunMgr) {
+                m_compileRunMgr->updateActions();
+                if (!ideMode && m_compileRunMgr->isRunning())
+                    m_compileRunMgr->stop();
             }
+            if (!ideMode)
+                m_bottomPanel->hide();
         });
     }
 
@@ -2904,7 +2635,7 @@ void MainWindow::onSubmitToOpenJudge()
 
         filePath = editor->currentFilePath();
         if (filePath.isEmpty() || editor->isModified()) {
-            filePath = saveCodeToTempFile(editor);
+            filePath = CompileRunManager::saveEditorToTempFile(editor, m_explorer->rootPath());
             if (filePath.isEmpty()) {
                 QMessageBox::warning(this, tr("错误"),
                     tr("无法保存代码文件"));
@@ -3072,90 +2803,6 @@ void MainWindow::onOpenJudgeLoginStateChanged(bool loggedIn, const QString &user
     // Can be used to update UI state when login state changes
     if (loggedIn) {
         // Could show a status bar message
-    }
-}
-
-QString MainWindow::saveCodeToTempFile(EditorWidget *editor)
-{
-    if (!editor)
-        return {};
-
-    QString rootPath = m_explorer->rootPath();
-    if (rootPath.isEmpty())
-        rootPath = QDir::tempPath();
-
-    QString content = editor->toPlainText();
-    QString filePath = editor->currentFilePath();
-
-    if (filePath.isEmpty()) {
-        // 新建的文件：在根目录下创建临时 .cpp 文件
-        const auto &cfg = ConfigManager::instance();
-        filePath = rootPath + QStringLiteral("/") + cfg.compilerTempFilePrefix()
-                   + QString::number(QCoreApplication::applicationPid())
-                   + cfg.compilerTempFileSuffix();
-    }
-
-    QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
-        return {};
-    QTextStream out(&file);
-    out << content;
-    file.close();
-
-    editor->setFilePath(filePath);
-    editor->setModified(false);
-    return filePath;
-}
-
-void MainWindow::showOutputPanel()
-{
-    m_bottomPanel->setVisible(true);
-    m_bottomPanel->showRunTab();
-    double ratio = ConfigManager::instance().outputPanelDefaultHeightRatio();
-    int total = m_rightSplitter->height();
-    if (total > 0) {
-        int outputH = qRound(total * ratio);
-        int editorH = total - outputH;
-        QList<int> sizes;
-        sizes.reserve(m_rightSplitter->count());
-        for (int i = 0; i < m_rightSplitter->count(); ++i) {
-            QWidget *w = m_rightSplitter->widget(i);
-            if (w == m_bottomPanel)
-                sizes.append(outputH);
-            else if (w == m_tabManager)
-                sizes.append(editorH);
-            else
-                sizes.append(0);
-        }
-        m_rightSplitter->setSizes(sizes);
-    }
-}
-
-void MainWindow::toggleDiagnosticsInCodeEditor()
-{
-    // IDE mode: toggle diagnostics for embedded editor
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        if (!m_bottomPanel->isVisible()
-            || m_bottomPanel->currentTab() != BottomPanel::DiagnosticsTab) {
-            showOutputPanel();
-            m_bottomPanel->showDiagnosticsTab();
-        } else {
-            m_bottomPanel->hide();
-        }
-        return;
-    }
-
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit())
-        return;
-
-    if (!m_bottomPanel->isVisible()
-        || m_bottomPanel->currentTab() != BottomPanel::DiagnosticsTab) {
-        showOutputPanel();
-        m_bottomPanel->showDiagnosticsTab();
-    } else {
-        m_bottomPanel->hide();
     }
 }
 
@@ -3390,7 +3037,8 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
 
     if (normalizedLang.isEmpty()) {
         m_isRunningCodeBlock = false;
-        showOutputPanel();
+        m_bottomPanel->setVisible(true);
+        m_bottomPanel->showRunTab();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
             tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
@@ -3401,7 +3049,8 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
     const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
     if (filePath.isEmpty()) {
         m_isRunningCodeBlock = false;
-        showOutputPanel();
+        m_bottomPanel->setVisible(true);
+        m_bottomPanel->showRunTab();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
             tr("错误: 无法创建临时文件。\n"), true);
@@ -3409,19 +3058,20 @@ void MainWindow::onCodeBlockRequested(const QString &language, const QString &co
         return;
     }
 
-    showOutputPanel();
+    m_bottomPanel->setVisible(true);
+    m_bottomPanel->showRunTab();
     m_bottomPanel->outputPanel()->clearOutput();
 
     if (normalizedLang == QStringLiteral("python")) {
         m_bottomPanel->outputPanel()->appendOutput(
             QStringLiteral("--- ") + tr("运行 Python 代码块 ---\n"), false);
         m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_processRunner->startRunPython(filePath);
+        m_compileRunMgr->processRunner()->startRunPython(filePath);
     } else if (normalizedLang == QStringLiteral("cpp")) {
         m_bottomPanel->outputPanel()->appendOutput(
             QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
         m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_processRunner->startCompileAndRun(filePath);
+        m_compileRunMgr->processRunner()->startCompileAndRun(filePath);
     }
 }
 

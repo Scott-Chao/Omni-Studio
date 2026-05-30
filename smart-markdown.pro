@@ -35,6 +35,7 @@ SOURCES += \
     brackethighlighter.cpp \
     codeeditor.cpp \
     completionpopup.cpp \
+    compilerunmanager.cpp \
     cppcompletionprovider.cpp \
     cppsyntaxhighlighter.cpp \
     crawler.cpp \
@@ -107,6 +108,7 @@ HEADERS += \
     completionpopup.h \
     completionprovider.h \
     compilererrorparser.h \
+    compilerunmanager.h \
     compilerutils.h \
     brackethighlighter.h \
     cppcompletionprovider.h \
