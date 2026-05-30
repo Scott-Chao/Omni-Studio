@@ -132,7 +132,13 @@ EditorWidget::EditorWidget(QWidget *parent)
     m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
     m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
     m_pdfView->setStyleSheet(
-        ThemeManager::instance().colorStyle("background-color", "editor.background"));
+        ThemeManager::instance().colorStyle("background-color", "sideBar.background"));
+    if (auto *vp = m_pdfView->viewport()) {
+        vp->setAutoFillBackground(true);
+        QPalette vpPal = vp->palette();
+        vpPal.setColor(QPalette::Window, ThemeManager::instance().color("sideBar.background"));
+        vp->setPalette(vpPal);
+    }
     m_pdfView->installEventFilter(this);
     if (auto *vp = m_pdfView->viewport())
         vp->installEventFilter(this);
@@ -166,7 +172,7 @@ EditorWidget::EditorWidget(QWidget *parent)
         auto &tm = ThemeManager::instance();
         m_textEdit->setStyleSheet(QString(
             "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-        ).arg(tm.color("editor.background").name(),
+        ).arg(tm.color("sideBar.background").name(),
               tm.color("editor.foreground").name(),
               tm.color("editor.selectionBackground").name()));
     }
@@ -1396,9 +1402,21 @@ void EditorWidget::reloadEditorColors()
     auto &tm = ThemeManager::instance();
     m_textEdit->setStyleSheet(QString(
         "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-    ).arg(tm.color("editor.background").name(),
+    ).arg(tm.color("sideBar.background").name(),
           tm.color("editor.foreground").name(),
           tm.color("editor.selectionBackground").name()));
+
+    // Update PDF view background
+    if (m_pdfView) {
+        m_pdfView->setStyleSheet(
+            tm.colorStyle("background-color", "sideBar.background"));
+        if (auto *vp = m_pdfView->viewport()) {
+            vp->setAutoFillBackground(true);
+            QPalette vpPal = vp->palette();
+            vpPal.setColor(QPalette::Window, tm.color("sideBar.background"));
+            vp->setPalette(vpPal);
+        }
+    }
 
     // Re-apply search + outline highlights with new theme colors
     if (m_editorMode != CodeEdit && m_editorMode != PdfView && m_editorMode != SmdEdit)

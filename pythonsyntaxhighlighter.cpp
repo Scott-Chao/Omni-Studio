@@ -47,9 +47,8 @@ void PythonSyntaxHighlighter::initFormats()
         m_rules.append(rule);
     }
 
-    // --- Keyword format (bold) ---
+    // --- Keyword format ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
-    m_keywordFormat.setFontWeight(QFont::Bold);
 
     for (const QString &kw : pyKeywords()) {
         HighlightingRule rule;
@@ -60,7 +59,6 @@ void PythonSyntaxHighlighter::initFormats()
 
     // --- Control-flow keyword format (overrides regular keyword color) ---
     m_controlKeywordFormat.setForeground(cfg.syntaxControlKeywords());
-    m_controlKeywordFormat.setFontWeight(QFont::Bold);
     {
         const QStringList ctrl = {
             QStringLiteral("if"), QStringLiteral("elif"), QStringLiteral("else"),

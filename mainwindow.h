@@ -173,6 +173,8 @@ private:
     void showLeftPanel(int index);
     void toggleLeftPanel();
     int m_savedLeftPanelWidth = 220;
+    QPointer<QPushButton> m_leftSearchCloseBtn;
+    QPointer<QPushButton> m_leftJudgeCloseBtn;
     QAction *m_toggleExplorerAction = nullptr;
 
     // OpenJudge 提交管理

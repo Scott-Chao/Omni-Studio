@@ -18,6 +18,7 @@ public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    bool hasChildren(const QModelIndex &parent = QModelIndex()) const override;
 
 protected:
     bool lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const override;

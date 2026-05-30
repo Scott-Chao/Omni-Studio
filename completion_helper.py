@@ -37,17 +37,34 @@ def handle_complete(script, line, col):
     return items
 
 
-def handle_hover(script, line, col):
+def handle_hover(script, code, line, col):
     """Return hover info matching HoverInfo struct."""
+    # Detect whether the cursor is on a keyword argument (name, =, or value).
+    kw = _keyword_at_position(code, line, col)
+
     names = script.infer(line, col)
     if names:
         n = names[0]
+        # When infer() returns a function/method but the cursor is on a
+        # keyword argument, show parameter-level info from the signature.
+        if kw is not None and n.type in ("function", "method"):
+            param_info = _param_info_for_keyword(script, line, col, kw)
+            if param_info:
+                return param_info
+
         info = {
             "signature": f"{n.name}: {n.type}" if n.type else n.name,
             "doc": n.docstring() or "",
             "definition": n.module_name or "",
         }
         return info
+
+    # Cursor is on a keyword argument but infer() returned nothing —
+    # still try to show parameter info from the enclosing call's signature.
+    if kw is not None:
+        param_info = _param_info_for_keyword(script, line, col, kw)
+        if param_info:
+            return param_info
 
     # Fallback: use function signature
     signatures = script.get_signatures(line, col)
@@ -61,6 +78,94 @@ def handle_hover(script, line, col):
         return info
 
     return {"signature": "", "doc": "", "definition": ""}
+
+
+def _keyword_at_position(source, line_1based, col):
+    """If col falls inside a ``keyword=value`` argument, return the keyword name.
+
+    line_1based is Jedi's 1-based line number; col is 0-based.
+    Returns None when the position is not inside a keyword argument.
+    """
+    lines = source.split("\n")
+    line_idx = line_1based - 1
+    if line_idx < 0 or line_idx >= len(lines):
+        return None
+    line_text = lines[line_idx]
+    if col < 0 or col >= len(line_text):
+        return None
+
+    c = line_text[col]
+
+    # Case 1: cursor is on an identifier — check if it is followed by '='
+    if c.isalnum() or c == "_":
+        end = col
+        while end < len(line_text) and (line_text[end].isalnum() or line_text[end] == "_"):
+            end += 1
+        rest = line_text[end:].lstrip()
+        if rest and rest[0] == "=":
+            start = col
+            while start > 0 and (line_text[start - 1].isalnum() or line_text[start - 1] == "_"):
+                start -= 1
+            return line_text[start:end]
+
+        # Check if preceded by '=' (cursor on the value)
+        before = line_text[:col].rstrip()
+        if before and before[-1] == "=":
+            return _extract_kw_name_before(line_text, len(before) - 1)
+        return None
+
+    # Case 2: cursor is directly on '='
+    if c == "=":
+        return _extract_kw_name_before(line_text, col - 1)
+
+    # Case 3: cursor is on whitespace / other chars — search both sides
+    # Look left for '='
+    scan = col - 1
+    while scan >= 0 and line_text[scan].isspace():
+        scan -= 1
+    if scan >= 0 and line_text[scan] == "=":
+        return _extract_kw_name_before(line_text, scan - 1)
+    # Look right for '='
+    scan = col
+    while scan < len(line_text) and line_text[scan].isspace():
+        scan += 1
+    if scan < len(line_text) and line_text[scan] == "=":
+        return _extract_kw_name_before(line_text, col - 1)
+
+    return None
+
+
+def _extract_kw_name_before(line_text, end_pos):
+    """Extract an identifier ending at *end_pos*, scanning left past whitespace."""
+    end = end_pos
+    while end >= 0 and line_text[end].isspace():
+        end -= 1
+    if end < 0 or not (line_text[end].isalnum() or line_text[end] == "_"):
+        return None
+    start = end
+    while start > 0 and (line_text[start - 1].isalnum() or line_text[start - 1] == "_"):
+        start -= 1
+    return line_text[start:end + 1]
+
+
+def _param_info_for_keyword(script, line_1based, col, keyword_name):
+    """Build hover info for a keyword argument by matching it in the enclosing
+    function's signature."""
+    signatures = script.get_signatures(line_1based, col)
+    if not signatures:
+        return None
+    sig = signatures[0]
+    for param in sig.params:
+        if param.name == keyword_name:
+            doc = param.description.strip() if param.description else ""
+            if not doc:
+                doc = sig.docstring() or ""
+            return {
+                "signature": f"{keyword_name}: parameter of {sig.name}",
+                "doc": doc,
+                "definition": sig.module_name or "",
+            }
+    return None
 
 
 def handle_diagnostics(cells):
@@ -122,30 +227,61 @@ def handle_tokens(script, code):
     defined name and then use regex word-boundary search to find every usage
     in the source (including the definition itself).
     """
-    names = script.get_names(all_scopes=True)
-    if not names:
+    # Collect definitions first (accurate types), then references
+    # (Jedi may report less-accurate types for references — e.g. "instance"
+    # for a class accessed via module attribute).  Keeping them separate
+    # ensures definition types always win.
+    try:
+        def_names = script.get_names(all_scopes=True, definitions=True, references=False)
+        ref_names = script.get_names(all_scopes=True, definitions=False, references=True)
+    except TypeError:
+        def_names = script.get_names(all_scopes=True)
+        ref_names = []
+    if not def_names and not ref_names:
         return []
 
-    # 1. Collect (name_str, type) for each definition, keeping the most
-    #    specific type when the same name is defined in multiple scopes.
+    # 1. Collect (name_str, type) for each name, processing definitions
+    #    first so their more-accurate types take priority.
     TYPE_PRIORITY = {
         "function": 6,
         "class": 5,
-        "parameter": 4,
-        "property": 3,
-        "variable": 2,
-        "module": 1,
+        "module": 4,
+        "parameter": 3,
+        "property": 2,
+        "variable": 1,
     }
     name_type = {}  # name_str → (priority, type)
-    for n in names:
+    for n in def_names:
         token_type = _jedi_type_to_string(n.type)
-        # Keywords are already handled by the regex highlighter
         if token_type == "keyword":
             continue
         prio = TYPE_PRIORITY.get(token_type, 0)
         old = name_type.get(n.name)
         if old is None or prio > old[0]:
             name_type[n.name] = (prio, token_type)
+
+    # Fill in gaps with reference-only names (external names like
+    # json.JSONDecodeError or __name__ that have no local definition).
+    for n in ref_names:
+        if n.name in name_type:
+            continue  # definition type already known, keep it
+        token_type = _jedi_type_to_string(n.type)
+        if token_type == "keyword":
+            continue
+        # Jedi may report "instance" for references to classes accessed via
+        # attribute (e.g. json.JSONDecodeError).  Use infer() at the
+        # reference site to get the true type.
+        if token_type in ("variable", "text"):
+            try:
+                inferred = script.infer(n.line, n.column)
+                if inferred:
+                    resolved = _jedi_type_to_string(inferred[0].type)
+                    if resolved != "keyword":
+                        token_type = resolved
+            except Exception:
+                pass
+        prio = TYPE_PRIORITY.get(token_type, 0)
+        name_type[n.name] = (prio, token_type)
 
     # 2. Regex-scan the source for every occurrence of each name.
     code_lines = code.split('\n')
@@ -269,7 +405,7 @@ def main():
                 if action == "complete":
                     data = handle_complete(script, line_1based, col)
                 elif action == "hover":
-                    data = handle_hover(script, line_1based, col)
+                    data = handle_hover(script, code, line_1based, col)
                 else:
                     data = handle_signature(script, line_1based, col)
             else:

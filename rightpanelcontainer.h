@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QIcon>
 #include <QVector>
+#include <QStringList>
 
 class HistoryPanel;
 class OutlinePanel;
@@ -40,6 +41,7 @@ private:
 
     QWidget *m_tabBar;
     QVector<QPushButton*> m_tabButtons;
+    QStringList m_iconPaths;
     QStackedWidget *m_stack;
     int m_currentPanel = 0;
 

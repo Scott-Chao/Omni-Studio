@@ -10,9 +10,11 @@
 #include <QStyledItemDelegate>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QApplication>
 #include <QLineEdit>
 #include <QPainter>
+#include <QPainterPath>
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QResizeEvent>
@@ -36,6 +38,114 @@ QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
     p.end();
     return QIcon(QPixmap::fromImage(img));
 }
+
+// QTreeView subclass that draws custom ">" / "v" chevrons via drawBranches()
+// (bypassing the style/QSS chain to avoid hover-dependent layout shifts) and
+// selects items on branch-indicator clicks.
+class FileTreeView : public QTreeView
+{
+public:
+    using QTreeView::QTreeView;
+
+protected:
+    void drawBranches(QPainter *painter, const QRect &rect,
+                      const QModelIndex &index) const override
+    {
+        // Only draw custom chevrons for directories.
+        const auto *proxy = qobject_cast<const QSortFilterProxyModel*>(model());
+        if (!proxy) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        const auto *fs = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!fs) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        QModelIndex srcIdx = proxy->mapToSource(index);
+        if (!srcIdx.isValid() || !fs->isDir(srcIdx)) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+
+        // Draw custom chevron. Use a fixed size derived from indentation rather
+        // than rect.width() — the branch rect spans the full indent chain and
+        // grows with each nesting level, which would scale the chevron too.
+        // Draw right-aligned within the indent area (standard tree behaviour).
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        QColor color = palette().color(QPalette::Text);
+        color.setAlpha(160);
+        painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap));
+        painter->setBrush(Qt::NoBrush);
+        const int s = indentation() / 5;
+        const int cx = rect.right() - s - 2;
+        const int cy = rect.center().y();
+        QPainterPath path;
+        if (isExpanded(index)) {
+            // "v"
+            path.moveTo(cx - s, cy - s / 2.0);
+            path.lineTo(cx, cy + s / 2.0);
+            path.lineTo(cx + s, cy - s / 2.0);
+        } else {
+            // ">"
+            path.moveTo(cx - s / 2.0, cy - s);
+            path.lineTo(cx + s / 2.0, cy);
+            path.lineTo(cx - s / 2.0, cy + s);
+        }
+        painter->drawPath(path);
+        painter->restore();
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        m_pendingBranchSelect = QPersistentModelIndex();
+        const QModelIndex clicked = indexAt(event->pos());
+
+        if (clicked.isValid() && model()->hasChildren(clicked)) {
+            int depth = 0;
+            for (QModelIndex p = clicked.parent(); p.isValid(); p = p.parent())
+                ++depth;
+            // Branch area spans from left viewport edge (x=0) to the end of
+            // this item's indentation.  visualRect returns a viewport-relative
+            // rect whose x may be >0 (internal offset), so we force x=0.
+            QRect br = visualRect(clicked);
+            int branchWidth = indentation() * (depth + 1);
+            br.setX(0);
+            br.setWidth(branchWidth);
+
+            if (br.contains(event->pos()))
+                m_pendingBranchSelect = QPersistentModelIndex(clicked);
+        }
+
+        QTreeView::mousePressEvent(event);
+
+        // Qt's expand/collapse path in QAbstractItemView::mousePressEvent
+        // returns early without handling selection.  Select here immediately
+        // and keep m_pendingBranchSelect valid so doItemsLayout can re-apply
+        // it if a layout cycle clears the selection.
+        if (m_pendingBranchSelect.isValid()) {
+            selectionModel()->select(m_pendingBranchSelect,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(m_pendingBranchSelect);
+        }
+    }
+
+    void doItemsLayout() override
+    {
+        QTreeView::doItemsLayout();
+
+        // Re-apply selection in case the layout update cleared it.
+        if (m_pendingBranchSelect.isValid()) {
+            selectionModel()->select(m_pendingBranchSelect,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(m_pendingBranchSelect);
+        }
+    }
+
+public:
+    QPersistentModelIndex m_pendingBranchSelect;
+};
 
 } // namespace
 
@@ -187,7 +297,7 @@ protected:
 FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     : QWidget(parent)
     , m_fileModel(new QFileSystemModel(this))
-    , m_treeView(new QTreeView(this))
+    , m_treeView(new FileTreeView(this))
 {
     // 设置布局，使树视图填满当前控件
     QVBoxLayout *layout = new QVBoxLayout(this);
@@ -253,7 +363,7 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     // 配置树视图外观（主题颜色在 refreshStyle 中设置）
     m_treeView->header()->hide(); // 隐藏表头
-    m_treeView->setIndentation(17); // 调整缩进
+    m_treeView->setIndentation(20); // 调整缩进
     m_treeView->setUniformRowHeights(true); // 所有行高度一致（样式表已固定24px），避免逐行查询高度
     m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头
     m_treeView->hideColumn(1); // 隐藏大小列
@@ -299,6 +409,9 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     ThemeManager::watchTheme(this, &FileExplorerWidget::refreshStyle);
     refreshStyle();
+
+    // Prevent faint focus-rect highlight on the first item at startup.
+    m_treeView->setCurrentIndex(QModelIndex());
 }
 
 void FileExplorerWidget::reloadShortcuts()
@@ -388,6 +501,7 @@ void FileExplorerWidget::setRootPath(const QString &path)
         m_sortProxy->sort(0, Qt::AscendingOrder);
         QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
         m_treeView->setRootIndex(proxyRoot);
+        m_treeView->setCurrentIndex(QModelIndex());
         m_treeView->setUpdatesEnabled(true);
     }
     updateBreadcrumb();
@@ -774,6 +888,25 @@ QVariant FileSortProxyModel::data(const QModelIndex &index, int role) const
         }
     }
     return result;
+}
+
+bool FileSortProxyModel::hasChildren(const QModelIndex &parent) const
+{
+    // Root always has children.
+    if (!parent.isValid())
+        return true;
+
+    QFileSystemModel *fs = qobject_cast<QFileSystemModel*>(sourceModel());
+    if (!fs)
+        return QSortFilterProxyModel::hasChildren(parent);
+
+    QModelIndex srcIdx = mapToSource(parent);
+    // Directories always report true so the expand/collapse chevron is drawn
+    // even for empty folders, and collapse() works after expansion.
+    if (srcIdx.isValid() && fs->isDir(srcIdx))
+        return true;
+
+    return QSortFilterProxyModel::hasChildren(parent);
 }
 
 bool FileSortProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const

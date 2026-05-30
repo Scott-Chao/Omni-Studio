@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.14）
+## 功能说明文档（v0.13.15）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -36,7 +36,8 @@
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
 - ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI 助手/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索与 AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
-- 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。
+- 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。每个面板包装在独立页面中，带自定义标题栏（左侧标签 + 右侧 SVG 关闭按钮，悬停红色 `#c42b1c` 高亮，与文件标签页关闭按钮风格统一）。
+- 右 dock 区统一标题栏：面板 dock（右键侧栏/历史/大纲）和 AI 助手 dock 均使用自定义标题栏部件（`createDockTitleBar`），包含左侧文字标签和右侧 SVG 关闭按钮（悬停红色 `#c42b1c` 高亮），替代原生 QDockWidget 标题栏的旧式闭合按钮。
 - 设置面板：工具栏"设置"按钮（快捷键 `Ctrl+,`），打开悬浮式设置面板，背景自动变暗，支持拖拽标题栏移动和边缘拖拽调整大小，右上角关闭按钮或再次按快捷键关闭。面板内提供**默认缩放比例**设置：可拖动的滑块（范围 50%~300%，步长 10%），右侧数字框可直接输入数值（4 位限制，超出范围自动钳位，空输入恢复 100%）。设置自动保存至 `config.ini`，启动时自动读取；修改后所有已打开编辑器实时同步，新打开文件默认使用该缩放值。
 - 快捷键自定义：设置面板快捷键页面支持交互式录制。点击快捷键区域进入录制状态，按下目标组合键完成设置，Delete/Backspace 清除，Escape 取消。快捷键允许冲突（类似 Minecraft 风格），冲突的快捷键以红色文字标出，由用户自行决定是否修改。所有修改实时生效，自动持久化至 `config.ini`，支持"恢复默认"一键重置。
 - 自动保存：编辑器自动保存机制，默认开启（30 秒间隔）。文件加载后及手动保存后自动启动定时器，有修改时自动写入文件。支持在设置面板中通过开关控件实时开启/关闭。
@@ -60,15 +61,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.13
-- 修复浅色模式文本文件选中区域颜色过深的问题
-
-### 修复 v0.13.14
-- 重构：提取 `CompileRunManager` — 将编译/运行/终止（包括 IDE mode 路由、ProcessRunner 管理、输出面板显示、操作按钮状态控制）从 MainWindow 中拆分到独立类
-- 重构：提取 `CodeBlockRunner` — 将 MD 预览 ▶ 代码块执行、stderr 缓冲、CompilerErrorParser 诊断解析、诊断缓存/波浪线显示从 MainWindow 拆分到独立类
-- 重构：提取 `OpenJudgeManager` — 将 OpenJudge 标签页管理、代码提交、SubmitResultPanel 显示、失败后台回测 + ErrorJournal 记录从 MainWindow 拆分到独立类
-- 重构：提取 `SettingsChangeHandler` — 将 10 个设置变更处理方法（字体/缩进/主题颜色桥接/快捷键重绑定/重置默认等）从 MainWindow 拆分到独立类
-- 重构后 MainWindow 减少约 1200 行，职责更清晰
+### 修复 v0.13.15
+UI 及 Python 高亮问题修复
+- **Python 语义高亮增强**：`completion_helper.py` 的 `handle_tokens()` 改成分两次调用 `get_names()`（先定义后引用），定义类型始终优先，防止引用侧不准确类型（如 `module` 被 `instance` 覆盖）导致着色错误。模块优先级从 1 提升至 4（`function > class > module > parameter > property > variable`），使 `import jedi` / `except` 块中同名变量不再覆盖模块颜色。对仅引用且类型模糊的名称（如 `json.JSONDecodeError`，Jedi 返回 `instance`），使用 `infer()` 在引用位置重新解析类型，确保类自动为绿色、实例为浅蓝色。
+- **关键字参数悬停提示**：`handle_hover()` 新增 `_keyword_at_position()` / `_extract_kw_name_before()` / `_param_info_for_keyword()`，当光标位于 `keyword=value` 内且 `infer()` 返回封闭函数时，自动匹配签名参数并显示参数级信息（如 `ensure_ascii: parameter of dumps`），替代旧有函数级信息。
+- **Python 关键字去加粗**：`pythonsyntaxhighlighter.cpp` 删除 `m_keywordFormat` / `m_controlKeywordFormat` 的 `setFontWeight(QFont::Bold)` 调用。
+- **文件树修复**：文件夹展开/收起图标样式调整、异常fix、点击后选中高亮修复。文件树图标统一为 SVG。打开文件背景色微调。
+- **右面板定制标题栏**：`MainWindow` 新增 `createDockTitleBar()` 辅助函数，为右侧面板和 AI 助手 dock 提供含 SVG 关闭按钮的自定义标题栏（`dockTitleBar` / `dockTitleCloseBtn`），替代原生关闭按钮，跟随主题 `titleBar.foreground` / `titleBar.buttonCloseHover` 色值。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -102,10 +101,10 @@
   在文件打开、另存为等操作成功后自动记录历史；响应历史文件点击，打开文件并视情况切换文件树根目录（仅当文件不在当前根目录内时才切换）。通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板，而非全局事件过滤器。
 - 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
   通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。`showLeftPanel` 不再强制关闭右侧面板。
-- 管理搜索面板（`QDockWidget` + `SearchPanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
+- 管理搜索面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
 - 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时自动管理诊断 provider 连接：切换到代码文件时清空旧诊断、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
-- 管理评测面板（`QDockWidget` + `JudgePanel`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
+- 管理评测面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
 - 项目索引管理：委托给 `IndexManager` 类。`startAsyncIndexBuild()` 转发至 `IndexManager`，在后台线程依次执行文件扫描、反向链接索引构建和标签索引构建（Phase 1/2/3），使用代际计数器和取消标志防止过期结果覆盖。维护全局文件路径映射（通过 `TextFileUtils::scanNameFilters()` 扫描多种文本类型），确保双向链接在跨文件夹移动或重命名后依然有效。
@@ -401,8 +400,9 @@
   - setModelData：重写以校验用户输入。若用户清空文件夹名，或清空文件名使其只剩扩展名（如 `.md`），自动恢复为原始名称，防止产生仅含扩展名的无效文件。
 - 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
 - 提供 `deleteItem` 等公共方法，封装实际的文件系统操作。内联新建/重命名由内部方法处理。
-- 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。代理模型内置 `QFileIconProvider` 成员缓存和惰性兜底图标，避免 Windows 上 `setRootPath` 切换后 HICON 失效导致的空心图标问题，同时消除每次 fallback 时重复调用 `SHGetFileInfo` 的性能开销。
+- 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。代理模型内置 `QFileIconProvider` 成员缓存和惰性兜底图标，避免 Windows 上 `setRootPath` 切换后 HICON 失效导致的空心图标问题，同时消除每次 fallback 时重复调用 `SHGetFileInfo` 的性能开销。`hasChildren()` 对目录始终返回 `true`，确保空文件夹也显示展开/收起 chevron 且展开后可折叠。
 - `setUniformRowHeights(true)` 开启统一行高模式，样式表已强制 24px 行高，开启后 Qt 跳过逐行高度查询，大幅提升大目录滚动流畅度。
+- 内部使用 `FileTreeView`（匿名命名空间中的 `QTreeView` 子类），通过 `drawBranches()` 自定义绘制 ">" / "v" chevron 替代原生样式（绕过 QSS 链，避免 hover 触发布局偏移）。重写 `mousePressEvent` 和 `doItemsLayout`：Qt 的分支指示器点击流程（`QAbstractItemView::mousePressEvent` → `expandOrCollapseItemAtPos`）在展开/收起后提前返回且不执行选中逻辑，因此在 `mousePressEvent` 中检测分支区域点击并立即选中项；`doItemsLayout` 中重新应用选中以防布局更新清空选中状态。分支区域从 viewport 左边缘（x=0）计算至 `indentation * (depth + 1)` 处，覆盖实际 chevron 的点击范围。
 - 重写 `eventFilter`，监听 `Delete` 键，在非编辑状态下直接对选中项发起删除请求。
 - 右键菜单中使用 `DeleteKeyFilter` 事件过滤器，支持在菜单弹出时按 `Delete` 键触发删除。
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
@@ -692,7 +692,7 @@
 
 **职责**：
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
-- 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，显示深色背景（`#252525`）+ 灰色数字（`#858585`）。
+- 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，背景色与编辑区一致（跟随 `sideBar.background` 主题色），数字颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。
 - **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
   - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
@@ -904,8 +904,8 @@
 
 **Token 来源**（Jedi 子进程，非 LSP）：
 - `PythonCompletionProvider` 将文件代码经 `sanitizeForPython()` 规范化（替换 `\r\n`/`\r` → `\n`、替换孤立 surrogate 为 U+FFFD）后，通过 **base64 编码**发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。
-- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
-- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > parameter > property > variable > module）选择。
+- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，**分两次调用** `jedi.Script.get_names()`：先 `definitions=True, references=False` 获取定义（类型最准确），再 `definitions=False, references=True` 获取引用（外部名称如 `json.JSONDecodeError`、`__name__` 等）。定义类型始终优先于引用类型，避免引用侧不准确类型覆盖定义侧准确类型。最后通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
+- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > module > parameter > property > variable）选择。对仅出现在引用中且类型模糊的名称（Jedi 返回 `instance` 时映射为 `variable`），使用 `script.infer()` 在引用位置重新解析真实类型（如 `json.JSONDecodeError` 通过属性访问引用时 Jedi 可能返回 `instance`，但 `infer` 可正确返回 `class`）。旧版 Jedi 不支持分拆参数时回退至 `get_names(all_scopes=True)`。
 - Token 以 fire-and-forget 模式发送（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，确保在 Jedi 解析耗时 >500ms 时响应不会因超时被丢弃。
 - `updateText()` 添加了**内容未变则跳过**的防护（`if (text == m_lastDiagnosticsText) return;`），防止 `rehighlight()` 触发的 `QTextDocument::contentsChanged` 信号导致无限循环请求。
 
@@ -1623,7 +1623,9 @@
   - `PythonCompletionProvider::processResponse()` 改为**基于 JSON 结构的路由**：tokens（数组含 `line`+`type`）→ diagnostics（数组含 `startLine`）→ hover（对象含 `signature`）按结构优先检测，消除并发请求 pending 状态被覆盖导致响应错配的竞态条件。
   - `SmdLspManager::sendPythonHoverLocal()`：发送单个 cell 代码（base64，`code_b64` 字段）+ cell 本地坐标，绕过虚拟文档映射。
   - `completion_helper.py` main loop 统一处理：优先 `code_b64` 字段否则回退 `code` 字段，两者均 base64 解码，确保 SMD 和独立 `.py` 文件两条路径一致。
-  - `completion_helper.py` **`handle_hover()` 优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
+  - `completion_helper.py` **`handle_hover()` 增强**：
+    - **优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
+    - **关键字参数感知**：新增 `_keyword_at_position()` / `_extract_kw_name_before()` / `_param_info_for_keyword()` 三个辅助函数。当光标位于 `keyword=value` 参数内（关键字名、`=` 或值）且 `infer()` 返回封闭函数时，自动从 `get_signatures()` 匹配对应参数，显示参数级信息（如 `ensure_ascii: parameter of dumps`）而非函数级信息。支持跨行关键字参数和嵌套函数调用。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
@@ -2097,7 +2099,7 @@ enum class MessageRole { User, Assistant, System };
 - **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
-- **代码编辑器主题**：代码编辑模式采用深色开发风格主题——编辑区背景 `#1E1E1E`、前景 `#D4D4D4`，行号区背景 `#252525`、数字 `#858585`，当前行高亮 `#2A2D2E`，Consolas 12pt 等宽字体。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
+- **代码编辑器主题**：代码编辑模式背景色与文件树背景保持一致（跟随 `sideBar.background` 主题色：深色 `#191A1B`，浅色 `#FAFAFD`），前景色跟随 `editor.foreground`（深色 `#BBBEBF`，浅色 `#202020`），行号区背景与编辑区一致（不单独设色），行号颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`），当前行高亮跟随 `editor.lineHighlightBackground`（深色 `#242526`，浅色 `#EAEAEA40`）。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
 - **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层为独立顶层 `Qt::Tool` 窗口（`OverlayWidget`），在 `MainWindow` 构造函数中创建，通过 `WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)` 实现半透明背景变暗效果，由 Windows DWM 逐像素 alpha 合成。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 5 个分类（编辑器/外观/AI 服务/快捷键/工具）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。八方向边缘缩放已禁用（`kEdgeMargin = 0`）。关闭后通过 `refreshPreviewTheme()` 刷新预览主题。已知问题：程序启动时创建 `WA_TranslucentBackground` 顶层窗口可能导致短暂的白色窗口闪烁。
 - **帮助面板**：通过工具栏帮助按钮或快捷键 `F1` 打开/关闭。与设置面板相同，使用 `OverlayWidget` 顶层遮罩层 + 居中面板模式，在 `MainWindow` 构造函数中创建。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置，点击 overlay 背景自动关闭，仅支持标题栏拖拽移动，不可缩放。
