@@ -1058,35 +1058,15 @@ MainWindow::MainWindow(QWidget *parent)
         m_exportPdfAction->setVisible(isMd);
         m_activityBar->setExportPdfVisible(isMd);
 
-        // 代码编辑器诊断连接
+        // 代码编辑器诊断连接（交由统一函数处理，与 onFileSelected 共享逻辑）
         debugLog(QString("tabSwitch: editor=%1 isCode=%2 file=%3")
             .arg((quintptr)editor)
             .arg(editor ? (int)editor->isCodeEdit() : -1)
             .arg(editor ? editor->currentFilePath() : "null"));
-        if (editor && editor->isCodeEdit()) {
-            debugLog("tabSwitch: code-edit branch - keeping panel visible");
-            CodeEditor *ce = qobject_cast<CodeEditor*>(
-                editor->findChild<CodeEditor*>());
-            bool hasProvider = ce && ce->completionProvider();
-            debugLog(QString("MainWindow: CodeEdit tab, CodeEditor=%1, hasProvider=%2")
-                .arg((quintptr)ce).arg(hasProvider));
-            if (ce && hasProvider) {
-                // Switch provider connection to the new editor.
-                m_bottomPanel->setCurrentEditor(ce);
-                disconnect(m_diagnosticsProviderConnection);
-                m_diagnosticsProviderConnection = connect(
-                    ce->completionProvider(),
-                    &CompletionProvider::diagnosticsUpdated,
-                    m_bottomPanel, &BottomPanel::setDiagnostics);
-                // Apply cached diagnostics immediately (the provider won't
-                // re-emit unless the file changes).
-                m_bottomPanel->setDiagnostics(ce->diagnostics());
-            }
-        } else {
+        updateCurrentEditorDiagnostics();
+        if (editor && !editor->isCodeEdit()) {
             // Non-code file: auto-close the run panel
             debugLog("tabSwitch: non-code branch - hiding panel");
-            disconnect(m_diagnosticsProviderConnection);
-            m_bottomPanel->setCurrentEditor(nullptr);
             if (m_compileRunMgr && m_compileRunMgr->isRunning())
                 m_compileRunMgr->stop();
             QPointer<BottomPanel> bp = m_bottomPanel;
@@ -1244,6 +1224,31 @@ void MainWindow::onFileSelected(const QString &filePath)
     refreshOutline();
     filterAiHistoryByCurrentFile();
     updateCurrentEditorCompletions();
+    // Also update diagnostics — preview reuse bypasses the currentChanged
+    // handler that normally wires up the provider connection.
+    updateCurrentEditorDiagnostics();
+}
+
+void MainWindow::updateCurrentEditorDiagnostics()
+{
+    auto *editor = m_tabManager->currentEditor();
+    if (editor && editor->isCodeEdit()) {
+        CodeEditor *ce = qobject_cast<CodeEditor*>(
+            editor->findChild<CodeEditor*>());
+        if (ce && ce->completionProvider()) {
+            m_bottomPanel->setCurrentEditor(ce);
+            disconnect(m_diagnosticsProviderConnection);
+            m_diagnosticsProviderConnection = connect(
+                ce->completionProvider(),
+                &CompletionProvider::diagnosticsUpdated,
+                m_bottomPanel, &BottomPanel::setDiagnostics);
+            m_bottomPanel->setDiagnostics(ce->diagnostics());
+        }
+    } else {
+        disconnect(m_diagnosticsProviderConnection);
+        m_bottomPanel->setCurrentEditor(nullptr);
+        m_bottomPanel->clearDiagnostics();
+    }
 }
 
 void MainWindow::onFileDoubleClicked(const QString &filePath)

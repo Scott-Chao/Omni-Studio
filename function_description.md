@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.20）
+## 功能说明文档（v0.13.21）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,6 +61,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
+### 修复 v0.13.21
+代码文件诊断面板跟随当前文件更新
+  - `MainWindow` 新增 `updateCurrentEditorDiagnostics()` 方法，封装诊断 provider 连接和数据刷新逻辑，供 `currentChanged` 和 `onFileSelected` 共享调用。
+  - `EditorWidget::loadFile()` 在设置代码编辑器语言后调用 `clearDiagnostics()`，清除预览标签复用时残留的旧文件诊断缓存。
+  - `onFileSelected()`（单击文件树预览打开）新增 `updateCurrentEditorDiagnostics()` 调用，弥补预览标签复用时不触发 `currentChanged` 信号的缺失。
+  - 切换到非代码文件时自动清空底部面板诊断数据（`clearDiagnostics()`），避免手动打开面板时读到过时的诊断。
+
 ### 新增 v0.13.20
 
 - **标签页高度可配置**：将标签页栏高度从固定的 32px 改为设置面板的可配置项（外观 → 标签页高度），范围 20-40px，默认值降低至 26px。通过 `ThemeManager::setTabHeight()` 实时刷新 QSS 中的 `%%tab.height%%` 占位符，修改后立即生效。
@@ -102,7 +109,7 @@
   通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。`showLeftPanel` 不再强制关闭右侧面板。
 - 管理搜索面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
-- 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时自动管理诊断 provider 连接：切换到代码文件时清空旧诊断、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
+- 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时通过 `updateCurrentEditorDiagnostics()` 统一管理诊断 provider 连接：切换到代码文件时清空旧 provider 连接、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动清空诊断数据并隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
 - 管理评测面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
@@ -1000,7 +1007,7 @@
   - `clearDiagnostics()`：清空所有诊断。
   - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
   - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
-- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 中切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断。切换到 `.md` 文件时加载该文件缓存代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）；切换到其他非代码文件时自动 `hide()`。
+- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 和 `onFileSelected` 中调用 `updateCurrentEditorDiagnostics()` 统一处理——切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断；切换到非代码文件时 `clearDiagnostics()` 清空面板数据。切换到 `.md` 文件时加载该文件缓存代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）。v0.13.21 新增：`EditorWidget::loadFile()` 中加载代码文件时调用 `clearDiagnostics()` 清除预览复用时残留的旧诊断；`onFileSelected()` 新增诊断更新调用。`updateCurrentEditorDiagnostics()` 封装统一逻辑，消除 `currentChanged` 与预览模式间提供器连接不同步的问题。
 
 **信号**：
 - `closeRequested()`：标题栏关闭按钮点击。
@@ -1652,7 +1659,7 @@
   - **诊断**：`sendDiagnosticsRequest()` 将文件全文 base64 编码后发送至 Jedi helper 的 `diagnostics` action。`openDocument()` 立即请求诊断，`updateText()` 通过 500ms 防抖定时器延迟请求。`processResponse()` 解析诊断列表并 emit `diagnosticsUpdated`。
   - **语义高亮**：`requestSemanticTokens()` 通过 300ms 防抖定时器触发，代码经 `sanitizeForPython()` 处理（规范化行尾 + 替换孤立 surrogate）后 base64 编码发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。采用 fire-and-forget 模式（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，避免 Jedi 解析耗时较长（>500ms）导致响应被超时丢弃。`processResponse()` 中通过检测响应数据是否包含 `"line"` + `"type"` 字段来识别 tokens 响应，确保迟到响应仍被正确处理。`openDocument()` 和 `updateText()` 均启动防抖定时器，首次打开时通过 `serverReady` → `CodeEditor::onServerReady()` → `openDocument()` 链路在进程就绪后自动触发 tokens 请求。
 - `CodeEditor` 构造函数连接 `provider->diagnosticsUpdated` → `CodeEditor::setDiagnostics()`，存储诊断于 `m_diagnostics` 并绘制波浪线。
-- `MainWindow` 在 `currentChanged` 中连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()`，使 BottomPanel 诊断标签页自动同步。
+- `MainWindow` 通过 `updateCurrentEditorDiagnostics()` 统一管理诊断面板连接（v0.13.21 重构提取）：在 `currentChanged` 和 `onFileSelected` 中调用，切换到代码文件时连接 `provider->diagnosticsUpdated` → `BottomPanel::setDiagnostics()` 并立即通过 `CodeEditor::diagnostics()` 恢复缓存诊断；切换到非代码文件时清空面板。`onFileSelected` 在预览标签复用时弥补 `currentChanged` 不触发的缺失。
 - `completionReadyForCell/hoverReadyForCell/signatureHelpReadyForCell/semanticTokensReadyForCell`：LSP 响应就绪（内部使用，转发至 adapter）。
 - `serverReady/serverFailed(langId, reason)`：LSP 后端状态通知。
 

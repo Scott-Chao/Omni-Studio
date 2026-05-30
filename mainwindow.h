@@ -239,6 +239,7 @@ private:
     void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
 
     void updateCurrentEditorCompletions();
+    void updateCurrentEditorDiagnostics();
 
     // 崩溃恢复
     void checkCrashRecovery();

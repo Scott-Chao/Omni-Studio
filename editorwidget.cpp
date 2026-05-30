@@ -1111,6 +1111,7 @@ bool EditorWidget::loadFile(const QString &filePath)
         m_codeEditor->setDocumentUri(QStringLiteral("file:///") + filePath);
         debugLog(QString("EditorWidget: CodeEdit mode, uri=file:///%1").arg(filePath));
         m_codeEditor->setLanguage(lang);
+        m_codeEditor->clearDiagnostics();
         m_stackedWidget->setCurrentWidget(m_codeEditor);
             } else {
         m_editorMode = MarkdownEdit;
