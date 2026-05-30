@@ -88,10 +88,18 @@ void CodeBlockRunner::runCodeBlock(const QString &language, const QString &code,
         editor->clearBlockDiagnostics();
     m_bottomPanel->clearDiagnostics();
 
+    auto showPanel = [this]() {
+        if (m_compileRunMgr) {
+            m_compileRunMgr->showOutputPanel();
+        } else {
+            m_bottomPanel->setVisible(true);
+            m_bottomPanel->showRunTab();
+        }
+    };
+
     if (normalizedLang.isEmpty()) {
         m_isRunningCodeBlock = false;
-        m_bottomPanel->setVisible(true);
-        m_bottomPanel->showRunTab();
+        showPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
             tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
@@ -102,8 +110,7 @@ void CodeBlockRunner::runCodeBlock(const QString &language, const QString &code,
     const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
     if (filePath.isEmpty()) {
         m_isRunningCodeBlock = false;
-        m_bottomPanel->setVisible(true);
-        m_bottomPanel->showRunTab();
+        showPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->appendOutput(
             tr("错误: 无法创建临时文件。\n"), true);
@@ -111,8 +118,7 @@ void CodeBlockRunner::runCodeBlock(const QString &language, const QString &code,
         return;
     }
 
-    m_bottomPanel->setVisible(true);
-    m_bottomPanel->showRunTab();
+    showPanel();
     m_bottomPanel->outputPanel()->clearOutput();
 
     ProcessRunner *pr = m_compileRunMgr ? m_compileRunMgr->processRunner() : nullptr;

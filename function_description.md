@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.18）
+## 功能说明文档（v0.13.19）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -21,7 +21,7 @@
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
 - 文件树预览标签页：单击文件以临时标签页（斜体标题）预览，多次单击复用同一标签页；双击永久打开；编辑临时标签页内容后自动提升为永久标签页。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。**OpenJudge IDE 模式下**，编译运行使用 IDE 嵌入编辑器中的代码（通过 `oj->ideCacheFilePath()` 获取临时文件），语言由 IDE 语言选择器决定，其余流程与普通代码编辑模式一致。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。支持标准输入交互。隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。**OpenJudge IDE 模式下**，编译运行使用 IDE 嵌入编辑器中的代码（通过 `oj->ideCacheFilePath()` 获取临时文件），语言由 IDE 语言选择器决定，其余流程与普通代码编辑模式一致。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。首次显示时自动调整高度为窗口高度的 1/3（通过 `QTimer::singleShot` 延迟设置 QSplitter 尺寸，避免布局递归）。**切换至非代码文件时自动关闭面板**（通过 `currentChanged` 和 `fileLoaded` 双信号覆盖），若进程运行中则先终止后隐藏。支持标准输入交互。手动隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。
 - 异步索引构建：全量扫描（切换目录时）通过 `startAsyncIndexBuild` 在后台线程依次执行文件索引、反向链接扫描与标签索引扫描（Phase 1/2/3），UI 保持响应。增量更新（重命名/删除/另存为）通过 `buildFileIndexAsync` 仅重建文件索引，回调中执行依赖项。两者使用**独立的取消令牌和代际计数器**（`m_scanCancelled`/`m_scanId` 与 `m_fileIdxCancelled`/`m_fileIdxScanId`），增量更新不会取消全量扫描，避免启动时反向链接数据丢失。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
@@ -33,7 +33,7 @@
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
-- 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 [文件 ▼] 下拉菜单（打开目录/新建/保存/另存为），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 [面板][预览][分屏][运行 ▼] 按钮组。运行按钮含下拉菜单（编译 F6/运行 F7/编译运行 F5），仅代码文件可见。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
+- 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 **[文件 ▼]** 按钮（文字右侧 SVG chevron 箭头，`spacing: -2px` 紧凑间距，点击手动弹出菜单并限制左侧不超出屏幕边界），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 **[▶ 运行][▼]** 按钮组（绿色运行按钮 + 独立 chevron 下拉按钮，仅代码文件可见，按钮状态由 `CompileRunManager::runToolAction()` 的 `changed` 信号驱动同步）。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
 - ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI 助手/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索与 AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
 - 右侧统一面板：RightPanelContainer 组件，历史/大纲/标签/反链合并为单个 QDockWidget。顶部 32px tab 栏（图标 + 文字），下方 QStackedWidget 切换面板内容。点击外部自动隐藏。工具栏 [面板] 按钮 (toggleRightPanelAction) 或 Ctrl+Shift+E toggle。
 - 左 dock 区互斥：搜索面板与评测面板通过 tabifyDockWidget 共用左侧区域，显示一个时自动隐藏另一个。每个面板包装在独立页面中，带自定义标题栏（左侧标签 + 右侧 SVG 关闭按钮，悬停红色 `#c42b1c` 高亮，与文件标签页关闭按钮风格统一）。
@@ -60,6 +60,17 @@
   - 诊断波浪线：红色错误 / 黄色警告，cell 头部标签显示错误计数，切换 cell 时自动缓存/恢复诊断
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
+
+### 修复 v0.13.19
+
+- **输出面板高度优化**：`CompileRunManager::showOutputPanel()` 首次显示时通过延迟计时器（`QTimer::singleShot(0, ...)`）将 QSplitter 调整至 `2/3 编辑器 + 1/3 输出面板` 的比例，避免同步操作引发的布局递归问题。
+- **修复 `m_rightSplitter` 初始化顺序**：原代码在创建 `QSplitter` 之前将其未初始化的垃圾指针传入了 `CompileRunManager`，导致 `showOutputPanel()` 中访问 `m_rightSplitter->height()` 时崩溃。现已将 `m_rightSplitter` 的创建提前至 `CompileRunManager` 构造之前。
+- **切换文件自动关闭运行面板**：从代码文件切换到非代码文件（`.md`、`.smd`、OpenJudge 标签页等）时自动隐藏底部输出面板，若进程运行中则先停止再隐藏。通过 `currentChanged` 和 `fileLoaded` 双信号覆盖所有切换场景。
+- **标题栏运行按钮重构**：拆分为独立的绿色 ▶ 运行按钮（`m_toolbarRunAction`）和下拉菜单按钮（`m_toolbarDropdownAction`，使用主题 chevron 图标），替代原有的 `QToolButton` + `setMenu()` 模式。两个按钮通过 `addAction()` 添加到工具栏，状态与 `CompileRunManager::runToolAction()` 同步。
+- **文件菜单按钮优化**：移除原生 `menu-indicator`，改用主题自适应 SVG chevron 图标（`icon-chevron-down.svg`，7×7px）。点击信号手动调用 `QMenu::popup()` 并限制菜单左侧不超出屏幕边界。显式设置菜单 `layoutDirection` 为 `LeftToRight` 防止继承按钮 RTL 导致文字与快捷键位置颠倒。文字与图标间距设为 `-2px` 使视觉更紧凑。
+- **下拉箭头 SVG 图标重绘**：`icon-chevron-down.svg`（16×16 viewBox，精确 90° 夹角，`stroke-width="2"`，`stroke-linecap="square"`，`stroke-linejoin="miter"`）、`spin-down.svg` / `spin-up.svg`（14×12 viewBox，同参数设计）、`icon-collapse-all.svg`（修复半像素坐标 + 加粗描边至 2px）。去除原 `stroke-linecap="round"` 导致的端点圆弧模糊。
+- **浅色主题标题栏颜色优化**：`titleBar.foreground` 从 `#606060` 调整至 `#424242`，提升在浅色背景上的对比度与可读性。
+- **`showOutputPanel()` 公开化**：从 `CompileRunManager` 的 `private` 移至 `public`，供 `CodeBlockRunner` 调用，统一输出面板显示逻辑。
 
 ### 修复 v0.13.18
 修复启动程序时顶栏高度没有正确加载的问题
@@ -175,7 +186,7 @@
 - 封装编译/运行/终止的完整生命周期，管理 `ProcessRunner` 实例。
 - 处理 F5（编译运行）、F6（编译）、F7（运行）和 Ctrl+Break（终止）快捷键。
 - **IDE 模式路由**：当 OpenJudge IDE 模式激活时，编译/运行操作使用 IDE 内置编辑器的缓存代码（`oj->ideCacheFilePath()`）而非当前编辑器文件。
-- **输出面板管理**：调用 `showOutputPanel()` 自动显示 `BottomPanel` 并调整右侧分割器大小。
+- **输出面板管理**：调用 `showOutputPanel()`（`public`）自动显示 `BottomPanel`，通过 `QTimer::singleShot(0, ...)` 延迟设置右侧分割器尺寸，使输出面板高度为窗口高度的 1/3（编辑器 2/3 + 面板 1/3）。`showOutputPanel()` 同时生成详细调试日志（写入应用目录 `debug.log` 和 `%TEMP%/smd-debug/log.txt`）。
 - **操作按钮状态**：`updateActions()` 根据当前编辑器是否为代码文件和进程是否运行中控制编译/运行/终止按钮的启用/可见性。
 - 提供 `saveEditorToTempFile()` 静态方法供 Judge/OpenJudge 等组件使用。
 - 通过信号（`compileFinished`、`runFinished`、`processStarted`、`processStopped`）通知其他组件编译运行状态。
@@ -183,12 +194,13 @@
 **主要接口**：
 - `void compile()` / `void run()` / `void compileAndRun()` / `void stop()`
 - `void toggleDiagnostics()`：切换底部诊断面板显示
+- `void showOutputPanel()`：公开方法，显示输出面板并设置 1/3 窗口高度比例，供 `CodeBlockRunner` 统一调用
 - `ProcessRunner *processRunner() const`：暴露 ProcessRunner 供 `CodeBlockRunner` 连接 stderr 缓冲信号
 - `bool isRunning() const` / `bool isManualStop() const`
 
 **协作关系**：
-- 由 `MainWindow` 创建并持有，作为 `QObject` 子对象。
-- 编译/运行按钮的 Action 对象由 `CompileRunManager` 创建，MainWindow 通过 `getter` 获取并放入工具栏。
+- 由 `MainWindow` 创建并持有，作为 `QObject` 子对象。构造时接收已正确初始化的 `QSplitter *`（`m_rightSplitter` 已在 `MainWindow` 构造函数中提前创建）。
+- 编译/运行按钮的 Action 对象由 `CompileRunManager` 创建（`runToolAction()`），MainWindow 通过 `changed` 信号同步状态到标题栏的两个独立按钮（`m_toolbarRunAction` + `m_toolbarDropdownAction`）。
 - `ProcessRunner` 生命周期完全由 `CompileRunManager` 管理。
 - `CodeBlockRunner` 通过 `processRunner()` 获取 `ProcessRunner*` 用于 MD 代码块 stderr 缓冲。
 
@@ -200,7 +212,7 @@
 
 **职责**：
 - 处理 Markdown 预览模式 ▶ 按钮触发的代码块执行。
-- **执行流程**：`runCodeBlock()` → 保存临时文件 → 通过 `CompileRunManager::processRunner()` 启动编译运行。
+- **执行流程**：`runCodeBlock()` → 调用内部 `showPanel` lambda → 委托 `CompileRunManager::showOutputPanel()`（统一面板显示逻辑，含 1/3 高度调整）→ 保存临时文件 → 通过 `CompileRunManager::processRunner()` 启动编译运行。不再直接操作 `m_bottomPanel->setVisible()`，所有面板显示统一经 `CompileRunManager` 路由。
 - **stderr 缓冲**：连接 `ProcessRunner::outputReceived` 信号，在代码块执行期间仅缓冲 stderr，通过 `m_isRunningCodeBlock` 标志防止影响普通编译运行。
 - **诊断解析**：编译/运行完成后调用 `CompilerErrorParser::parseCompileErrors()` 或 `parsePythonTraceback()` 解析 stderr 为 `SmdDiagnostic` 列表。
 - **诊断缓存**：按文件路径 + block 索引维护 `m_mdDiagnostics` 缓存，tab 切换时通过 `loadDiagnosticsForCurrentTab()` 恢复。

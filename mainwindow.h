@@ -224,6 +224,8 @@ private:
     bool m_toolbarDragPending = false;  // 最大化时单击→拖拽区分标志
     QToolButton *m_fileMenuBtn = nullptr;
     QMenu *m_fileMenu = nullptr;
+    QAction *m_toolbarRunAction = nullptr;
+    QAction *m_toolbarDropdownAction = nullptr;
     void setupCustomTitleBar();
     void refreshTitleBarStyle();
 

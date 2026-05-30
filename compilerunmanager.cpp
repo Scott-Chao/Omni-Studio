@@ -17,6 +17,11 @@
 #include <QSplitter>
 #include <QFileInfo>
 #include <QDir>
+#include <QTimer>
+#include <QDebug>
+#include <QFile>
+#include <QDateTime>
+#include <QPointer>
 #include <QCoreApplication>
 #include <QTimer>
 #include <QDebug>
@@ -68,8 +73,7 @@ void CompileRunManager::setupActions()
     m_runMenu->addAction(m_compileRunAction);
 
     m_runToolAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
-    m_runToolAction->setMenu(m_runMenu);
-    m_runToolAction->setToolTip(tr("编译运行 (编译/运行/编译运行)"));
+    m_runToolAction->setToolTip(tr("编译运行"));
     m_runToolAction->setVisible(false);
     connect(m_runToolAction, &QAction::triggered, this, &CompileRunManager::compileAndRun);
 }
@@ -273,8 +277,9 @@ void CompileRunManager::run()
 
 void CompileRunManager::compileAndRun()
 {
-    if (!m_tabManager || !m_bottomPanel)
+    if (!m_tabManager || !m_bottomPanel) {
         return;
+    }
 
     // IDE mode
     auto *oj = m_tabManager->findOpenJudgeWidget();
@@ -300,8 +305,9 @@ void CompileRunManager::compileAndRun()
 
     // Normal mode
     auto *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit())
+    if (!editor || !editor->isCodeEdit()) {
         return;
+    }
 
     QString filePath = editor->currentFilePath();
     if (filePath.isEmpty() || editor->isModified()) {
@@ -369,32 +375,48 @@ void CompileRunManager::toggleDiagnostics()
     }
 }
 
+static void debugLog(const QString &msg)
+{
+    QFile f(QCoreApplication::applicationDirPath() + "/debug.log");
+    if (f.open(QIODevice::Append | QIODevice::Text)) {
+        f.write((QDateTime::currentDateTime().toString("hh:mm:ss.zzz") + " " + msg + "\n").toUtf8());
+        f.close();
+    }
+}
+
 void CompileRunManager::showOutputPanel()
 {
-    if (!m_bottomPanel || !m_rightSplitter)
+    debugLog("showOutputPanel: enter");
+
+    if (!m_bottomPanel || !m_rightSplitter) {
+        debugLog("showOutputPanel: null check failed, return");
         return;
+    }
+
+    debugLog(QString("showOutputPanel: splitter height=%1, sizes=[%2,%3]")
+        .arg(m_rightSplitter->height())
+        .arg(m_rightSplitter->sizes().value(0))
+        .arg(m_rightSplitter->sizes().value(1)));
 
     m_bottomPanel->setVisible(true);
     m_bottomPanel->showRunTab();
 
-    double ratio = ConfigManager::instance().outputPanelDefaultHeightRatio();
-    int total = m_rightSplitter->height();
-    if (total > 0) {
-        int outputH = qRound(total * ratio);
-        int editorH = total - outputH;
-        QList<int> sizes;
-        sizes.reserve(m_rightSplitter->count());
-        for (int i = 0; i < m_rightSplitter->count(); ++i) {
-            QWidget *w = m_rightSplitter->widget(i);
-            if (w == m_bottomPanel)
-                sizes.append(outputH);
-            else if (w == m_tabManager)
-                sizes.append(editorH);
-            else
-                sizes.append(0);
+    debugLog("showOutputPanel: panel shown, scheduling size adjustment");
+
+    QPointer<QSplitter> splitter = m_rightSplitter;
+    QTimer::singleShot(0, this, [splitter]() {
+        if (!splitter) return;
+        const int totalHeight = splitter->height();
+        debugLog(QString("showOutputPanel timer: splitter height=%1").arg(totalHeight));
+        if (totalHeight > 0) {
+            const int panelHeight = totalHeight / 3;
+            splitter->setSizes({totalHeight - panelHeight, panelHeight});
+            debugLog(QString("showOutputPanel timer: setSizes [%1, %2]")
+                .arg(totalHeight - panelHeight).arg(panelHeight));
         }
-        m_rightSplitter->setSizes(sizes);
-    }
+    });
+
+    debugLog("showOutputPanel: exit");
 }
 
 void CompileRunManager::updateActions()

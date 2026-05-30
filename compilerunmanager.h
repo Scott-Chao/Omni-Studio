@@ -34,6 +34,7 @@ public:
     bool isRunning() const { return m_running; }
     bool isManualStop() const { return m_manualStop; }
     void updateActions();
+    void showOutputPanel();
 
     // Temp file helper (used by Judge code too)
     static QString saveEditorToTempFile(EditorWidget *editor, const QString &rootPath);
@@ -54,7 +55,6 @@ signals:
 private:
     void setupActions();
     void connectProcessRunner();
-    void showOutputPanel();
     bool processCodeFile(const QString &filePath, const QString &ext);
 
     // Dependencies (raw pointers — lifetime managed by Qt parent hierarchy)

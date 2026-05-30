@@ -50,6 +50,7 @@
     <file alias="help">icons/icon-help.svg</file>
     <file alias="refresh">icons/icon-refresh.svg</file>
     <file alias="collapse-all">icons/icon-collapse-all.svg</file>
+    <file alias="chevron-down">icons/icon-chevron-down.svg</file>
     <file alias="close">icons/icon-close.svg</file>
   </qresource>
   <qresource prefix="/help">

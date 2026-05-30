@@ -376,6 +376,13 @@ MainWindow::MainWindow(QWidget *parent)
             editor->navigateEditorToLine(line);
     });
 
+    // 右侧垂直分割线：编辑器在上，输出面板在下
+    m_rightSplitter = new QSplitter(Qt::Vertical, this);
+    m_rightSplitter->addWidget(m_tabManager);
+    m_rightSplitter->addWidget(m_bottomPanel);
+    m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
+    m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
+
     // ----- 编译运行管理器（ProcessRunner + 编译/运行/终止）-----
     m_compileRunMgr = new CompileRunManager(m_tabManager, m_bottomPanel,
                                              m_settings, m_explorer,
@@ -519,11 +526,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_fileMenuBtn = new QToolButton(m_toolBar);
     m_fileMenuBtn->setText(tr("文件"));
     m_fileMenuBtn->setToolTip(tr("文件操作"));
-    m_fileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     m_fileMenuBtn->setFixedHeight(32);
+    // Replace platform dropdown arrow with themed "v" chevron on the right
+    m_fileMenuBtn->setIcon(QIcon(":/icons/chevron-down"));
+    m_fileMenuBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_fileMenuBtn->setLayoutDirection(Qt::RightToLeft); // icon → visual right
+    m_fileMenuBtn->setIconSize(QSize(7, 7));
 
     {
         m_fileMenu = new QMenu(m_fileMenuBtn);
+        m_fileMenu->setLayoutDirection(Qt::LeftToRight);
 
         QAction *openDirAct = m_fileMenu->addAction(tr("打开目录"));
         connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
@@ -547,7 +559,18 @@ MainWindow::MainWindow(QWidget *parent)
         connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
         m_shortcutActions["save_as"] = saveAsAct;
 
-        m_fileMenuBtn->setMenu(m_fileMenu);
+        // Manual popup to control position — left edge must stay on screen
+        connect(m_fileMenuBtn, &QToolButton::clicked, this, [this]() {
+            QPoint pos = m_fileMenuBtn->mapToGlobal(
+                QPoint(0, m_fileMenuBtn->height()));
+            QScreen *scr = QGuiApplication::screenAt(pos);
+            if (!scr) scr = QGuiApplication::primaryScreen();
+            const QRect screen = scr->availableGeometry();
+            if (pos.x() < screen.left())
+                pos.setX(screen.left());
+            m_fileMenu->popup(pos);
+        });
+
     }
     m_toolBar->addWidget(m_fileMenuBtn);
 
@@ -613,8 +636,33 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(m_compileRunMgr->runAction());
     addAction(m_compileRunMgr->compileRunAction());
 
-    // 工具栏运行按钮（带下拉菜单）
-    m_toolBar->addAction(m_compileRunMgr->runToolAction());
+    // ── 主运行按钮：QAction + addAction()（标准 Qt 工具栏模式）──
+    m_toolbarRunAction = new QAction(QIcon(":/icons/run"), tr("运行"), this);
+    m_toolbarRunAction->setToolTip(tr("编译运行"));
+    m_toolbarRunAction->setVisible(false);
+    connect(m_toolbarRunAction, &QAction::triggered, this, [this]() {
+        QTimer::singleShot(0, m_compileRunMgr, &CompileRunManager::compileAndRun);
+    });
+    m_toolBar->addAction(m_toolbarRunAction);
+
+    // ── 下拉 chevron 按钮：QAction + addAction() + setMenu() ──
+    m_toolbarDropdownAction = new QAction(QIcon(":/icons/chevron-down"), tr("运行选项"), this);
+    m_toolbarDropdownAction->setMenu(m_compileRunMgr->runMenu());
+    m_toolbarDropdownAction->setToolTip(tr("编译/运行/编译运行选项"));
+    m_toolbarDropdownAction->setVisible(false);
+    m_toolBar->addAction(m_toolbarDropdownAction);
+
+    // 同步：m_runToolAction 状态 → 两个工具栏 Action
+    auto syncRunBtns = [this]() {
+        if (!m_compileRunMgr) return;
+        auto *act = m_compileRunMgr->runToolAction();
+        m_toolbarRunAction->setVisible(act->isVisible());
+        m_toolbarRunAction->setEnabled(act->isEnabled());
+        m_toolbarDropdownAction->setVisible(act->isVisible());
+        m_toolbarDropdownAction->setEnabled(act->isEnabled());
+    };
+    syncRunBtns();
+    connect(m_compileRunMgr->runToolAction(), &QAction::changed, this, syncRunBtns);
 
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     addAction(m_compileRunMgr->stopAction());
@@ -923,13 +971,6 @@ MainWindow::MainWindow(QWidget *parent)
     // 左侧活动栏（搜索/设置/导出PDF/评测）
     m_activityBar = new ActivityBar(this);
 
-    // 右侧垂直分割线：编辑器在上，输出面板在下
-    m_rightSplitter = new QSplitter(Qt::Vertical, this);
-    m_rightSplitter->addWidget(m_tabManager);
-    m_rightSplitter->addWidget(m_bottomPanel);
-    m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
-    m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
-
     m_splitter->addWidget(m_activityBar);
     m_splitter->addWidget(m_leftStack);
     m_splitter->addWidget(m_rightSplitter);
@@ -979,6 +1020,20 @@ MainWindow::MainWindow(QWidget *parent)
                 m_exportPdfAction->setEnabled(isMd);
                 m_exportPdfAction->setVisible(isMd);
                 m_activityBar->setExportPdfVisible(isMd);
+
+                // Auto-close output panel for non-code files
+                if (!current->isCodeEdit()) {
+                    debugLog(QString("fileLoaded: non-code file=%1, hiding panel")
+                        .arg(current->currentFilePath()));
+                    disconnect(m_diagnosticsProviderConnection);
+                    m_bottomPanel->setCurrentEditor(nullptr);
+                    if (m_compileRunMgr && m_compileRunMgr->isRunning())
+                        m_compileRunMgr->stop();
+                    QPointer<BottomPanel> bp = m_bottomPanel;
+                    QTimer::singleShot(0, this, [bp]() {
+                        if (bp) bp->hide();
+                    });
+                }
             });
         }
 
@@ -999,7 +1054,12 @@ MainWindow::MainWindow(QWidget *parent)
         m_activityBar->setExportPdfVisible(isMd);
 
         // 代码编辑器诊断连接
+        debugLog(QString("tabSwitch: editor=%1 isCode=%2 file=%3")
+            .arg((quintptr)editor)
+            .arg(editor ? (int)editor->isCodeEdit() : -1)
+            .arg(editor ? editor->currentFilePath() : "null"));
         if (editor && editor->isCodeEdit()) {
+            debugLog("tabSwitch: code-edit branch - keeping panel visible");
             CodeEditor *ce = qobject_cast<CodeEditor*>(
                 editor->findChild<CodeEditor*>());
             bool hasProvider = ce && ce->completionProvider();
@@ -1017,14 +1077,17 @@ MainWindow::MainWindow(QWidget *parent)
                 // re-emit unless the file changes).
                 m_bottomPanel->setDiagnostics(ce->diagnostics());
             }
-        } else if (editor && editor->currentFilePath().toLower().endsWith(QStringLiteral(".md"))) {
-            // MD file: load cached code block diagnostics
+        } else {
+            // Non-code file: auto-close the run panel
+            debugLog("tabSwitch: non-code branch - hiding panel");
             disconnect(m_diagnosticsProviderConnection);
             m_bottomPanel->setCurrentEditor(nullptr);
-            if (!m_codeBlockRunner->loadDiagnosticsForCurrentTab())
-                m_bottomPanel->hide();
-        } else {
-            m_bottomPanel->hide();
+            if (m_compileRunMgr && m_compileRunMgr->isRunning())
+                m_compileRunMgr->stop();
+            QPointer<BottomPanel> bp = m_bottomPanel;
+            QTimer::singleShot(0, this, [bp]() {
+                if (bp) bp->hide();
+            });
         }
     });
 
@@ -2034,29 +2097,47 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("titleBar.buttonHover").name()));
     m_toolBar->setContentsMargins(0, 0, 0, 0);
 
-    // File menu button
+    // File menu button — wider hover, themed "v" chevron, no native menu-indicator
+    QColor fileFg = tm.color("titleBar.foreground");
+    m_fileMenuBtn->setIcon(coloredSvgIcon(":/icons/chevron-down", fileFg, 7));
     m_fileMenuBtn->setStyleSheet(QStringLiteral(
         "QToolButton {"
-        "  color: %1; background: transparent; border: none; padding: 0 8px;"
-        "  font-size: 12px;"
+        "  color: %1; background: transparent; border: none;"
+        "  padding-left: 12px; padding-right: 12px;"
+        "  font-size: 12px; spacing: -2px;"
         "}"
         "QToolButton:hover { background: %2; }"
-        "QToolButton::menu-indicator {"
-        "  subcontrol-position: right center;"
-        "}"
-    ).arg(tm.color("titleBar.foreground").name(),
+        "QToolButton::menu-indicator { image: none; width: 0px; }"
+    ).arg(fileFg.name(),
           tm.color("titleBar.buttonHover").name()));
 
-    // Run button — green icon with extra space before dropdown arrow
-    if (m_compileRunMgr) {
-        if (auto *btn = qobject_cast<QToolButton *>(m_toolBar->widgetForAction(m_compileRunMgr->runToolAction()))) {
-            btn->setStyleSheet(QStringLiteral(
-                "QToolButton {"
-                "  background: transparent; border: none; padding: 4px 14px 4px 8px;"
-                "}"
-                "QToolButton:hover { background: %1; }"
-            ).arg(tm.color("titleBar.buttonHover").name()));
-        }
+    // Run buttons: main (green ▶) + dropdown (themed chevron)
+    if (m_toolbarRunAction) {
+        m_toolbarRunAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
+    }
+    if (m_toolbarDropdownAction) {
+        m_toolbarDropdownAction->setIcon(
+            coloredSvgIcon(":/icons/chevron-down", tm.color("titleBar.foreground"), 6));
+    }
+    // Style the QToolButton widgets created by addAction()
+    if (auto *btn = qobject_cast<QToolButton *>(
+            m_toolBar->widgetForAction(m_toolbarRunAction))) {
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { background: transparent; border: none;"
+            "  padding: 4px 4px 4px 6px; }"
+            "QToolButton:hover { background: %1; }"
+        ).arg(tm.color("titleBar.buttonHover").name()));
+    }
+    if (auto *btn = qobject_cast<QToolButton *>(
+            m_toolBar->widgetForAction(m_toolbarDropdownAction))) {
+        btn->setPopupMode(QToolButton::InstantPopup);
+        btn->setIconSize(QSize(6, 6));
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { background: transparent; border: none;"
+            "  padding: 4px 4px 4px 2px; }"
+            "QToolButton:hover { background: %1; }"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
+        ).arg(tm.color("titleBar.buttonHover").name()));
     }
 
     // File menu dropdown
@@ -2072,19 +2153,21 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("badge.foreground").name(),
           tm.color("menu.separatorColor").name()));
 
-    // Run menu dropdown
-    if (m_compileRunMgr)
-        m_compileRunMgr->runMenu()->setStyleSheet(QStringLiteral(
-        "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
-        "QMenu::item { padding: 6px 24px; color: %3; }"
-        "QMenu::item:selected { background: %4; color: %5; }"
-        "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
-    ).arg(tm.color("menu.background").name(),
-          tm.color("panel.border").name(),
-          tm.color("menu.foreground").name(),
-          tm.color("menu.selectionBackground").name(),
-          tm.color("badge.foreground").name(),
-          tm.color("menu.separatorColor").name()));
+    // Run menus (main button + dropdown chevron button)
+    if (m_compileRunMgr) {
+        QString runMenuQss = QStringLiteral(
+            "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
+            "QMenu::item { padding: 6px 24px; color: %3; }"
+            "QMenu::item:selected { background: %4; color: %5; }"
+            "QMenu::separator { height: 1px; background: %6; margin: 4px 8px; }"
+        ).arg(tm.color("menu.background").name(),
+              tm.color("panel.border").name(),
+              tm.color("menu.foreground").name(),
+              tm.color("menu.selectionBackground").name(),
+              tm.color("badge.foreground").name(),
+              tm.color("menu.separatorColor").name());
+        m_compileRunMgr->runMenu()->setStyleSheet(runMenuQss);
+    }
 
     // Themed toolbar action icons — match activity bar icons
     QColor titleFg = tm.color("activityBar.foreground");
@@ -2092,8 +2175,6 @@ void MainWindow::refreshTitleBarStyle()
     toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
     m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
     m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
-    if (m_compileRunMgr)
-        m_compileRunMgr->runToolAction()->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
 
     // Themed close button icons — adapt to titleBar.foreground for light/dark mode
     QColor closeFg = tm.color("titleBar.foreground");
