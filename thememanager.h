@@ -36,6 +36,7 @@ public:
 
     void loadQss();
     void setStyleSheetTarget(QWidget *w);
+    void setTabHeight(int h);
 
     void applyPalette();
 
@@ -72,6 +73,7 @@ private:
     QMap<QString, QColor> m_overrides;
     QList<ThemeEntry> m_builtinThemes;
     bool m_loadingTheme = false;
+    int m_tabHeight = 26;
     QWidget *m_qssTarget = nullptr;
 
     bool loadThemeFromFile(const QString &path, ThemeData &out);

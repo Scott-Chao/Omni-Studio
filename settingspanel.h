@@ -153,6 +153,7 @@ private:
     // Appearance page controls
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;
+    QSpinBox *m_tabHeightSpin = nullptr;
     QPushButton *m_resetThemeBtn = nullptr;
     ToggleSwitch *m_equalWidthTabToggle = nullptr;
 

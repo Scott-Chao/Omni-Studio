@@ -776,6 +776,11 @@ MainWindow::MainWindow(QWidget *parent)
             applyEqualWidthTab(value.toBool());
             return;
         }
+        if (key == "appearance.tab_height") {
+            m_settings->setSettingOverride(key, value);
+            ThemeManager::instance().setTabHeight(value.toInt());
+            return;
+        }
         m_settingsHandler->handleAppearanceSetting(key, value);
     });
     connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, [this](const QString &key, const QVariant &value) {

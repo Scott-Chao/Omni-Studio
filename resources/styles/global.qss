@@ -128,7 +128,7 @@ QTabBar {
     border: none;
 }
 QTabBar::tab {
-    height: 32px;
+    height: %%tab.height%%px;
     margin-right: 2px;
     padding: 4px 12px;
     border-top-left-radius: 8px;

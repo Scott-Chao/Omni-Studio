@@ -168,6 +168,9 @@ void ThemeManager::loadQss()
     QString qss = QString::fromUtf8(file.readAll());
     file.close();
 
+    // Replace non-color variables before the color token pass
+    qss.replace("%%tab.height%%", QString::number(m_tabHeight));
+
     // Replace %%token.name%% placeholders with resolved colors
     static const QRegularExpression tokenRx(QStringLiteral("%%([a-zA-Z0-9.]+)%%"));
     QString result;
@@ -196,6 +199,12 @@ void ThemeManager::loadQss()
         m_qssTarget->setStyleSheet(result);
     else
         qApp->setStyleSheet(result);
+}
+
+void ThemeManager::setTabHeight(int h)
+{
+    m_tabHeight = h;
+    loadQss();
 }
 
 void ThemeManager::setStyleSheetTarget(QWidget *w)

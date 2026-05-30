@@ -1097,6 +1097,24 @@ QWidget *SettingsPanel::createAppearancePage()
     layout->addSpacing(4);
     layout->addWidget(createSectionLabel(tr("标签页")));
 
+    // ---- 标签页高度 ----
+    auto *tabHeightRow = new QHBoxLayout;
+    auto *tabHeightLabel = new QLabel(tr("标签页高度（px）"));
+    tabHeightLabel->setStyleSheet(labelStyle());
+    m_tabHeightSpin = new ClampSpinBox;
+    m_tabHeightSpin->setRange(20, 40);
+    m_tabHeightSpin->setValue(cfg.tabHeight());
+    m_tabHeightSpin->setFixedWidth(100);
+    m_tabHeightSpin->setStyleSheet(inputStyle());
+    tabHeightRow->addWidget(tabHeightLabel);
+    tabHeightRow->addStretch();
+    tabHeightRow->addWidget(m_tabHeightSpin);
+    layout->addLayout(tabHeightRow);
+
+    connect(m_tabHeightSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit appearanceSettingChanged("appearance.tab_height", val);
+    });
+
     // ---- 等宽标签页 ----
     auto *equalWidthRow = new QHBoxLayout;
     auto *equalWidthLabel = new QLabel(tr("等宽标签页"));
@@ -2045,6 +2063,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     // Appearance page
     if (m_fileTreeItemHeightSpin) {
         m_fileTreeItemHeightSpin->setValue(sm.value("editor.file_tree_item_height", cfg.editorFileTreeItemHeight()).toInt());
+    }
+    if (m_tabHeightSpin) {
+        m_tabHeightSpin->setValue(sm.value("appearance.tab_height", cfg.tabHeight()).toInt());
     }
     if (m_equalWidthTabToggle) {
         m_equalWidthTabToggle->setChecked(sm.value("editor.equal_width_tab", false).toBool());

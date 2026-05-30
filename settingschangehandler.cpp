@@ -230,6 +230,9 @@ void SettingsChangeHandler::handleResetToDefaults(const QMap<QString, QAction*> 
     m_settings->setEditorDefaultZoom(cfg.zoomDefault());
     m_settings->flushOverrides();
 
+    // Reset tab height to default and reload QSS
+    ThemeManager::instance().setTabHeight(cfg.tabHeight());
+
     // Apply default zoom + editor font to all editors
     applyToAllEditors([&cfg](EditorWidget *editor) {
         editor->setZoomFactor(cfg.zoomDefault());

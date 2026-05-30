@@ -1,11 +1,11 @@
-## 功能说明文档（v0.13.19）
+## 功能说明文档（v0.13.20）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
 - 支持多种文本文件格式（`.md`、`.txt`、`.c`、`.cpp`、`.py`、`.js`、`.html`、`.css`、`.json`、`.xml` 等 40+ 种常见文本文件扩展名），所有文件均以纯文本形式呈现在编辑器中
 - 文件的新建，保存，另存为操作，支持快捷键
 - 关闭文件时提示未保存的修改
-- 同时打开多个文件，显示在标签页栏中。标签页支持等宽/非等宽两种模式（设置面板 → 外观 → 等宽标签页开关），默认非等宽。等宽模式下所有标签等宽（140px 基准），文件名左对齐，溢出用 "..." 省略。非等宽模式下标签宽度自适应文件名。整个标签页栏水平条背景为未激活标签色（`tab.inactiveBackground`），相邻未激活标签之间有分割竖线，激活标签底部有蓝色指示线。拖拽标签页时：原位显示半透明 ghost 标签（30% 透明度），浮动标签通过 DragOverlay 覆盖层跟随鼠标。等宽模式拖拽交换带滞回和冷却距离防抖，非等宽模式拖拽标签边界越过相邻标签中心时交换。
+- 同时打开多个文件，显示在标签页栏中。标签页高度可配置（设置面板 → 外观 → 标签页高度，范围 20-40px，默认 26px）。标签页支持等宽/非等宽两种模式（设置面板 → 外观 → 等宽标签页开关），默认非等宽。等宽模式下所有标签等宽（140px 基准），文件名左对齐，溢出用 "..." 省略。非等宽模式下标签宽度自适应文件名。整个标签页栏水平条背景为未激活标签色（`tab.inactiveBackground`），相邻未激活标签之间有分割竖线，激活标签底部有蓝色指示线。拖拽标签页时：原位显示半透明 ghost 标签（30% 透明度），浮动标签通过 DragOverlay 覆盖层跟随鼠标。等宽模式拖拽交换带滞回和冷却距离防抖，非等宽模式拖拽标签边界越过相邻标签中心时交换。
 - 支持 Markdown 预览模式：可在源码编辑与渲染预览之间切换，仅在打开`.md`文件时可用。预览支持 GitHub Flavored Markdown、LaTeX 数学公式和 Mermaid 图表渲染
 - 对话框路径记忆：打开目录和另存为对话框会自动定位到上次使用的文件夹，两个路径独立记忆
 - 字体缩放：支持对编辑器和 Markdown 预览进行字体缩放，可通过工具栏按钮、快捷键、Ctrl+鼠标滚轮或触控板手势操作
@@ -61,16 +61,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.19
+### 新增 v0.13.20
 
-- **输出面板高度优化**：`CompileRunManager::showOutputPanel()` 首次显示时通过延迟计时器（`QTimer::singleShot(0, ...)`）将 QSplitter 调整至 `2/3 编辑器 + 1/3 输出面板` 的比例，避免同步操作引发的布局递归问题。
-- **修复 `m_rightSplitter` 初始化顺序**：原代码在创建 `QSplitter` 之前将其未初始化的垃圾指针传入了 `CompileRunManager`，导致 `showOutputPanel()` 中访问 `m_rightSplitter->height()` 时崩溃。现已将 `m_rightSplitter` 的创建提前至 `CompileRunManager` 构造之前。
-- **切换文件自动关闭运行面板**：从代码文件切换到非代码文件（`.md`、`.smd`、OpenJudge 标签页等）时自动隐藏底部输出面板，若进程运行中则先停止再隐藏。通过 `currentChanged` 和 `fileLoaded` 双信号覆盖所有切换场景。
-- **标题栏运行按钮重构**：拆分为独立的绿色 ▶ 运行按钮（`m_toolbarRunAction`）和下拉菜单按钮（`m_toolbarDropdownAction`，使用主题 chevron 图标），替代原有的 `QToolButton` + `setMenu()` 模式。两个按钮通过 `addAction()` 添加到工具栏，状态与 `CompileRunManager::runToolAction()` 同步。
-- **文件菜单按钮优化**：移除原生 `menu-indicator`，改用主题自适应 SVG chevron 图标（`icon-chevron-down.svg`，7×7px）。点击信号手动调用 `QMenu::popup()` 并限制菜单左侧不超出屏幕边界。显式设置菜单 `layoutDirection` 为 `LeftToRight` 防止继承按钮 RTL 导致文字与快捷键位置颠倒。文字与图标间距设为 `-2px` 使视觉更紧凑。
-- **下拉箭头 SVG 图标重绘**：`icon-chevron-down.svg`（16×16 viewBox，精确 90° 夹角，`stroke-width="2"`，`stroke-linecap="square"`，`stroke-linejoin="miter"`）、`spin-down.svg` / `spin-up.svg`（14×12 viewBox，同参数设计）、`icon-collapse-all.svg`（修复半像素坐标 + 加粗描边至 2px）。去除原 `stroke-linecap="round"` 导致的端点圆弧模糊。
-- **浅色主题标题栏颜色优化**：`titleBar.foreground` 从 `#606060` 调整至 `#424242`，提升在浅色背景上的对比度与可读性。
-- **`showOutputPanel()` 公开化**：从 `CompileRunManager` 的 `private` 移至 `public`，供 `CodeBlockRunner` 调用，统一输出面板显示逻辑。
+- **标签页高度可配置**：将标签页栏高度从固定的 32px 改为设置面板的可配置项（外观 → 标签页高度），范围 20-40px，默认值降低至 26px。通过 `ThemeManager::setTabHeight()` 实时刷新 QSS 中的 `%%tab.height%%` 占位符，修改后立即生效。
 
 ### 修复 v0.13.18
 修复启动程序时顶栏高度没有正确加载的问题
@@ -261,7 +254,7 @@
 - **主题/外观设置**：通过 `ThemeManager::setOverride()` 与 `appearance.colors.*` → 颜色令牌映射表桥接，将 `ConfigManager` JSON 路径的配置键转换为 `ThemeManager` 的颜色令牌，调用 `editor->reloadEditorColors()` 刷新所有编辑器。
 - **快捷键处理**：`handleShortcutChanged()` 持久化快捷键覆盖、应用到 `QAction`、通知编辑器 `reloadShortcuts()`。
 - **重置默认**：`handleResetToDefaults()` 清除所有覆盖、重置字体/缩放/缩进、恢复快捷键默认值、重置输出面板。`resetComplete()` 信号通知 MainWindow 同步 `SettingsPanel` 的 UI 显示。
-- 部分 MainWindow 特有的设置（如 `file_tree_item_height`、`equal_width_tab`）通过 lambda 在 MainWindow 中直接处理，再委托到 `SettingsChangeHandler` 处理通用逻辑。
+- 部分 MainWindow 特有的设置（如 `file_tree_item_height`、`equal_width_tab`、`tab_height`）通过 lambda 在 MainWindow 中直接处理，再委托到 `SettingsChangeHandler` 处理通用逻辑。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有，其处理槽直接连接 `SettingsPanel` 的信号。

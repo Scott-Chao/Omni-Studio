@@ -206,6 +206,7 @@
   },
 
   "appearance": {
+    "tab_height": 26,
     "colors": {
       "editor": {
         "background": "#1E1E1E",
