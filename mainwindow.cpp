@@ -44,6 +44,7 @@ protected:
 #include "compilerunmanager.h"
 #include "codeblockrunner.h"
 #include "openjudgemanager.h"
+#include "settingschangehandler.h"
 #include "judgepanel.h"
 #include "judgeengine.h"
 #include "openjudgewidget.h"
@@ -352,6 +353,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_codeBlockRunner = new CodeBlockRunner(m_tabManager, m_bottomPanel,
                                              m_compileRunMgr, this);
 
+    // ----- 设置变更处理 -----
+    m_settingsHandler = new SettingsChangeHandler(m_tabManager, m_settings, this);
+
     // ----- 本地评测面板 -----
     m_judgePanel = new JudgePanel(this);
 
@@ -658,16 +662,66 @@ MainWindow::MainWindow(QWidget *parent)
     m_settingsOverlay->hide();
     m_settingsPanel = new SettingsPanel(m_settingsOverlay);
     connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
-    connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, this, &MainWindow::onDefaultZoomChanged);
-    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, &MainWindow::onEditorSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, &MainWindow::onAppearanceSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, &MainWindow::onOutputPanelSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, this, &MainWindow::onPreviewSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, this, &MainWindow::onSearchSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, this, &MainWindow::onAiSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, this, &MainWindow::onToolSettingChanged);
-    connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, &MainWindow::onResetToDefaults);
-    connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, &MainWindow::onShortcutChanged);
+    connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, m_settingsHandler, &SettingsChangeHandler::handleDefaultZoom);
+    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleEditorSetting);
+    connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, [this](const QString &key, const QVariant &value) {
+        // Handle MainWindow-specific appearance changes
+        if (key == "editor.file_tree_item_height") {
+            m_settings->setSettingOverride(key, value);
+            m_explorer->setItemHeight(value.toInt());
+            return;
+        }
+        if (key == "editor.equal_width_tab") {
+            m_settings->setSettingOverride(key, value);
+            applyEqualWidthTab(value.toBool());
+            return;
+        }
+        m_settingsHandler->handleAppearanceSetting(key, value);
+    });
+    connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, [this](const QString &key, const QVariant &value) {
+        m_settingsHandler->handleOutputPanelSetting(key, value);
+        // OutputPanel is a UI widget owned by MainWindow, apply directly
+        if (key == "output_panel.font.size") {
+            QFont font = m_bottomPanel->outputPanel()->font();
+            font.setPointSize(value.toInt());
+            m_bottomPanel->outputPanel()->setOutputFont(font);
+        } else if (key == "output_panel.max_blocks") {
+            m_bottomPanel->outputPanel()->setMaxBlocks(value.toInt());
+        }
+    });
+    connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, m_settingsHandler, &SettingsChangeHandler::handlePreviewSetting);
+    connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleSearchSetting);
+    connect(m_settingsPanel, &SettingsPanel::aiSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleAiSetting);
+    connect(m_settingsPanel, &SettingsPanel::toolSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleToolSetting);
+    connect(m_settingsPanel, &SettingsPanel::resetToDefaultsRequested, this, [this]() {
+        m_settingsHandler->handleResetToDefaults(m_shortcutActions);
+        m_settingsPanel->setDefaultZoom(ConfigManager::instance().zoomDefault());
+        m_settingsPanel->syncFromSettings(*m_settings);
+        applyEqualWidthTab(false);
+        // Reset output panel
+        auto &cfg = ConfigManager::instance();
+        OutputPanel *op = m_bottomPanel->outputPanel();
+        QFont opFont = op->font();
+        opFont.setPointSize(cfg.outputPanelFontSize());
+        op->setOutputFont(opFont);
+        op->setMaxBlocks(cfg.outputPanelMaxBlocks());
+        op->reloadShortcuts();
+        // Reset preview on current editor
+        if (auto *editor = m_tabManager->currentEditor())
+            editor->setSplitPreviewDebounceMs(cfg.previewSplitDebounceMs());
+    });
+    connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, [this](const QString &actionKey, const QString &seq) {
+        m_settingsHandler->handleShortcutChanged(actionKey, seq, m_shortcutActions);
+        // OutputPanel and Explorer shortcuts need MainWindow-owned widget references
+        if (m_bottomPanel)
+            m_bottomPanel->outputPanel()->reloadShortcuts();
+        if (m_explorer)
+            m_explorer->reloadShortcuts();
+    });
+
+    // SettingsChangeHandler signal routing
+    connect(m_settingsHandler, &SettingsChangeHandler::zoomLabelUpdateRequested, this, &MainWindow::updateZoomLabel);
+    connect(m_settingsHandler, &SettingsChangeHandler::equalWidthTabRequested, this, &MainWindow::applyEqualWidthTab);
 
     // ----- 帮助面板（悬浮遮罩 + 面板）-----
     m_helpOverlay = new OverlayWidget();
@@ -1316,351 +1370,6 @@ void MainWindow::toggleHelp()
     } else {
         positionOverlay(m_helpOverlay, m_helpPanel, this);
         m_helpOverlay->show();
-    }
-}
-
-void MainWindow::onDefaultZoomChanged(qreal zoom)
-{
-    m_settings->setEditorDefaultZoom(zoom);
-
-    // 将新的默认缩放应用到所有已打开的编辑器
-    for (int i = 0; i < m_tabManager->count(); ++i) {
-        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-            editor->setZoomFactor(zoom);
-        }
-    }
-    updateZoomLabel();
-}
-
-void MainWindow::onEditorSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-
-    if (key == "editor.indent_width") {
-        int width = value.toInt();
-        for (int i = 0; i < m_tabManager->count(); ++i) {
-            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                editor->setCodeIndentWidth(width);
-            }
-        }
-    } else if (key == "editor.markdown_indent_width") {
-        int width = value.toInt();
-        for (int i = 0; i < m_tabManager->count(); ++i) {
-            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                editor->setMarkdownIndentWidth(width);
-            }
-        }
-    } else if (key == "editor.font.family") {
-        QString family = value.toString();
-        int size = m_settings->settingOverride("editor.font.size",
-                     ConfigManager::instance().editorFontSize()).toInt();
-        for (int i = 0; i < m_tabManager->count(); ++i) {
-            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                editor->setEditorFont(family, size);
-            }
-        }
-    } else if (key == "editor.font.size") {
-        int size = value.toInt();
-        QString family = m_settings->settingOverride("editor.font.family",
-                           ConfigManager::instance().editorFontFamily()).toString();
-        for (int i = 0; i < m_tabManager->count(); ++i) {
-            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                editor->setEditorFont(family, size);
-            }
-        }
-    } else if (key == "auto_save.enabled") {
-        bool enabled = value.toBool();
-        for (int i = 0; i < m_tabManager->count(); ++i) {
-            if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-                editor->setAutoSaveEnabled(enabled);
-            }
-        }
-    }
-}
-
-void MainWindow::onAppearanceSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-
-    if (key == "editor.file_tree_item_height") {
-        m_explorer->setItemHeight(value.toInt());
-        return;
-    }
-    if (key == "editor.equal_width_tab") {
-        applyEqualWidthTab(value.toBool());
-        return;
-    }
-
-    // Bridge: apply color overrides to ThemeManager so editors render them.
-    // Settings keys (ConfigManager JSON paths) differ from ThemeManager tokens.
-    static const QMap<QString, QString> s_colorTokenMap = {
-        // Editor
-        {QStringLiteral("appearance.colors.editor.background"),        QStringLiteral("editor.background")},
-        {QStringLiteral("appearance.colors.editor.foreground"),        QStringLiteral("editor.foreground")},
-        {QStringLiteral("appearance.colors.editor.selection"),         QStringLiteral("editor.selectionBackground")},
-        {QStringLiteral("appearance.colors.current_line.highlight"),   QStringLiteral("editor.lineHighlightBackground")},
-        {QStringLiteral("appearance.colors.line_number.background"),   QStringLiteral("editorLineNumber.background")},
-        {QStringLiteral("appearance.colors.line_number.foreground"),   QStringLiteral("editorLineNumber.foreground")},
-        // Syntax highlighting
-        {QStringLiteral("appearance.colors.syntax_highlight.keywords"),         QStringLiteral("syntax.keywords")},
-        {QStringLiteral("appearance.colors.syntax_highlight.controlKeywords"),  QStringLiteral("syntax.controlKeywords")},
-        {QStringLiteral("appearance.colors.syntax_highlight.preprocessor"),     QStringLiteral("syntax.preprocessor")},
-        {QStringLiteral("appearance.colors.syntax_highlight.types"),            QStringLiteral("syntax.types")},
-        {QStringLiteral("appearance.colors.syntax_highlight.numbers"),          QStringLiteral("syntax.numbers")},
-        {QStringLiteral("appearance.colors.syntax_highlight.strings"),          QStringLiteral("syntax.strings")},
-        {QStringLiteral("appearance.colors.syntax_highlight.comments"),         QStringLiteral("syntax.comments")},
-        {QStringLiteral("appearance.colors.syntax_highlight.functions"),        QStringLiteral("syntax.functions")},
-        {QStringLiteral("appearance.colors.syntax_highlight.parameters"),       QStringLiteral("syntax.parameters")},
-        {QStringLiteral("appearance.colors.syntax_highlight.python_decorators"), QStringLiteral("syntax.pythonDecorators")},
-        {QStringLiteral("appearance.colors.syntax_highlight.python_self_cls"),  QStringLiteral("syntax.pythonSelfCls")},
-        {QStringLiteral("appearance.colors.syntax_highlight.brackets0"),        QStringLiteral("syntax.brackets0")},
-        {QStringLiteral("appearance.colors.syntax_highlight.brackets1"),        QStringLiteral("syntax.brackets1")},
-        {QStringLiteral("appearance.colors.syntax_highlight.brackets2"),        QStringLiteral("syntax.brackets2")},
-        {QStringLiteral("appearance.colors.syntax_highlight.unpairedBracket"),  QStringLiteral("syntax.unpairedBracket")},
-        // Output panel
-        {QStringLiteral("appearance.colors.output_panel.background"),  QStringLiteral("output.background")},
-        {QStringLiteral("appearance.colors.output_panel.foreground"),  QStringLiteral("output.foreground")},
-        {QStringLiteral("appearance.colors.output_panel.selection"),   QStringLiteral("output.selectionBackground")},
-        {QStringLiteral("appearance.colors.output_panel.stderr"),      QStringLiteral("output.stderr")},
-        // Search highlight
-        {QStringLiteral("appearance.colors.search.highlight_background"), QStringLiteral("search.highlightBackground")},
-        {QStringLiteral("appearance.colors.search.highlight_foreground"), QStringLiteral("search.highlightForeground")},
-        // Preview
-        {QStringLiteral("appearance.colors.preview.container_background"), QStringLiteral("preview.containerBackground")},
-        {QStringLiteral("appearance.colors.preview.webengine_background"), QStringLiteral("preview.webEngineBackground")},
-        // Judge status
-        {QStringLiteral("appearance.colors.judge_status.ac"),  QStringLiteral("judge.ac")},
-        {QStringLiteral("appearance.colors.judge_status.wa"),  QStringLiteral("judge.wa")},
-        {QStringLiteral("appearance.colors.judge_status.tle"), QStringLiteral("judge.tle")},
-        {QStringLiteral("appearance.colors.judge_status.mle"), QStringLiteral("judge.mle")},
-        {QStringLiteral("appearance.colors.judge_status.re"),  QStringLiteral("judge.re")},
-        {QStringLiteral("appearance.colors.judge_status.pe"),  QStringLiteral("judge.pe")},
-        {QStringLiteral("appearance.colors.judge_status.ole"), QStringLiteral("judge.ole")},
-        {QStringLiteral("appearance.colors.judge_status.ce"),  QStringLiteral("judge.ce")},
-    };
-
-    auto tokenIt = s_colorTokenMap.find(key);
-    if (tokenIt != s_colorTokenMap.end()) {
-        ThemeManager::instance().setOverride(tokenIt.value(), QColor(value.toString()));
-    }
-
-    for (int i = 0; i < m_tabManager->count(); ++i) {
-        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-            editor->reloadEditorColors();
-        }
-    }
-}
-
-void MainWindow::onOutputPanelSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-
-    if (key == "output_panel.font.size") {
-        QFont font = m_bottomPanel->outputPanel()->font();
-        font.setPointSize(value.toInt());
-        m_bottomPanel->outputPanel()->setOutputFont(font);
-    } else if (key == "output_panel.max_blocks") {
-        m_bottomPanel->outputPanel()->setMaxBlocks(value.toInt());
-    }
-}
-
-void MainWindow::onPreviewSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-
-    if (key == "preview.split_debounce_ms") {
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor)
-            editor->setSplitPreviewDebounceMs(value.toInt());
-    } else if (key == "preview.split_preview_ratio") {
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor)
-            editor->applySplitPreviewRatio();
-    }
-}
-
-void MainWindow::onSearchSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-    // Search settings take effect on next search operation
-}
-
-void MainWindow::onAiSettingChanged(const QString &key, const QVariant &value)
-{
-    if (key == QStringLiteral("ai.api_key")) {
-        m_settings->setAiApiKey(value.toString());
-    } else {
-        m_settings->setSettingOverride(key, value);
-    }
-}
-
-void MainWindow::onToolSettingChanged(const QString &key, const QVariant &value)
-{
-    m_settings->setSettingOverride(key, value);
-
-    if (key == "open_judge.username" || key == "open_judge.password") {
-        QString username = m_settings->settingOverride("open_judge.username", "").toString();
-        QString password = m_settings->settingOverride("open_judge.password", "").toString();
-        m_settings->setOpenJudgeCredentials(username, password);
-    } else if (key == "open_judge.auto_login") {
-        m_settings->setOpenJudgeAutoLogin(value.toBool());
-    }
-}
-
-void MainWindow::onShortcutChanged(const QString &actionKey, const QString &keySequenceText)
-{
-    // Persist via SettingsManager override
-    m_settings->setSettingOverride("shortcuts." + actionKey, keySequenceText);
-
-    // Apply to the live QAction
-    if (auto *action = m_shortcutActions.value(actionKey)) {
-        action->setShortcut(QKeySequence(keySequenceText));
-    }
-
-    // Notify editor widgets to reload their configurable shortcuts
-    if (auto *editor = m_tabManager->currentEditor()) {
-        if (editor->isCodeEdit()) {
-            if (auto *ce = editor->codeEditor())
-                ce->reloadShortcuts();
-        } else if (editor->isSmdEdit()) {
-            if (auto *se = editor->smdEditor())
-                se->reloadShortcuts();
-        }
-    }
-    if (m_bottomPanel)
-        m_bottomPanel->outputPanel()->reloadShortcuts();
-    if (m_explorer)
-        m_explorer->reloadShortcuts();
-}
-
-void MainWindow::showRightPanel(int panelIndex)
-{
-    m_dockAi->hide();
-    m_dockRightPanel->show();
-    m_dockRightPanel->raise();
-    m_rightPanel->setActivePanel(panelIndex);
-}
-
-void MainWindow::showLeftPanel(int index)
-{
-    // 如果面板已折叠，先展开并恢复宽度
-    if (m_leftStack->isHidden()) {
-        m_leftStack->show();
-        QList<int> sizes = m_splitter->sizes();
-        if (sizes.size() == 3) {
-            int available = sizes[2] - m_savedLeftPanelWidth;
-            if (available < 100) available = 100;
-            sizes[1] = m_savedLeftPanelWidth;
-            sizes[2] = available;
-            m_splitter->setSizes(sizes);
-        }
-    }
-
-    m_leftStack->setCurrentIndex(index);
-    m_activityBar->setExplorerActive(index == 0);
-    m_activityBar->setSearchActive(index == 1);
-    m_activityBar->setJudgeActive(index == 2);
-
-    // 打开非文件浏览面板时隐藏右侧面板
-    if (index > 0 && m_dockRightPanel)
-        m_dockRightPanel->hide();
-}
-
-void MainWindow::toggleLeftPanel()
-{
-    if (m_leftStack->isHidden()) {
-        showLeftPanel(m_leftStack->currentIndex());
-    } else {
-        m_savedLeftPanelWidth = m_leftStack->width();
-        m_leftStack->hide();
-        m_activityBar->setExplorerActive(false);
-        m_activityBar->setSearchActive(false);
-        m_activityBar->setJudgeActive(false);
-    }
-}
-
-void MainWindow::updateAiActionBar()
-{
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor) {
-        m_aiPanel->clearActionList();
-        return;
-    }
-
-    const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
-    m_aiPanel->setActionList(actionsForMode(mode));
-}
-
-void MainWindow::filterAiHistoryByCurrentFile()
-{
-    auto *historyWidget = m_aiPanel->historyListWidget();
-    if (!historyWidget)
-        return;
-
-    auto &mgr = AiHistoryManager::instance();
-    QList<AiConversation> convs = mgr.conversationsByFile(m_currentFilePath);
-    historyWidget->setConversations(convs);
-    historyWidget->setActiveConversationId(mgr.currentConversationId());
-}
-
-void MainWindow::onResetToDefaults()
-{
-    const auto &cfg = ConfigManager::instance();
-
-    // Clear all setting overrides
-    for (const QString &key : m_settings->allOverrideKeys())
-        m_settings->removeSettingOverride(key);
-    m_settings->setEditorDefaultZoom(cfg.zoomDefault());
-    m_settings->flushOverrides();
-
-    // Reset settings panel controls to defaults
-    m_settingsPanel->setDefaultZoom(cfg.zoomDefault());
-    m_settingsPanel->syncFromSettings(*m_settings);
-
-    // Apply default equal-width tab setting
-    applyEqualWidthTab(false);
-
-    // Apply default zoom + editor font to all editors
-    for (int i = 0; i < m_tabManager->count(); ++i) {
-        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-            editor->setZoomFactor(cfg.zoomDefault());
-            editor->setEditorFont(cfg.editorFontFamily(), cfg.editorFontSize());
-            if (editor->isCodeEdit())
-                editor->setCodeIndentWidth(cfg.editorIndentWidth());
-            editor->reloadEditorColors();
-        }
-    }
-    updateZoomLabel();
-
-    // Reset all shortcuts to defaults
-    for (auto it = m_shortcutActions.constBegin(); it != m_shortcutActions.constEnd(); ++it) {
-        QString defaultVal = cfg.shortcut(it.key(), "");
-        it.value()->setShortcut(QKeySequence(defaultVal));
-    }
-
-    // Reload configurable shortcuts on all editor and explorer widgets
-    for (int i = 0; i < m_tabManager->count(); ++i) {
-        if (auto *editor = qobject_cast<EditorWidget*>(m_tabManager->widget(i))) {
-            if (auto *ce = editor->codeEditor())
-                ce->reloadShortcuts();
-            if (auto *se = editor->smdEditor())
-                se->reloadShortcuts();
-        }
-    }
-    if (m_explorer)
-        m_explorer->reloadShortcuts();
-
-    // Reset output panel
-    OutputPanel *op = m_bottomPanel->outputPanel();
-    QFont opFont = op->font();
-    opFont.setPointSize(cfg.outputPanelFontSize());
-    op->setOutputFont(opFont);
-    op->setMaxBlocks(cfg.outputPanelMaxBlocks());
-    op->reloadShortcuts();
-
-    // Reset preview settings on current editor
-    if (auto *editor = m_tabManager->currentEditor()) {
-        editor->setSplitPreviewDebounceMs(cfg.previewSplitDebounceMs());
     }
 }
 

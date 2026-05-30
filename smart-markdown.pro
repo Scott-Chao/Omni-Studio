@@ -67,6 +67,7 @@ SOURCES += \
     rightpanelcontainer.cpp \
     scrollbarhider.cpp \
     searchpanel.cpp \
+    settingschangehandler.cpp \
     settingspanel.cpp \
     helppanel.cpp \
     indexmanager.cpp \
@@ -145,6 +146,7 @@ HEADERS += \
     rightpanelcontainer.h \
     scrollbarhider.h \
     searchpanel.h \
+    settingschangehandler.h \
     settingspanel.h \
     helppanel.h \
     indexmanager.h \

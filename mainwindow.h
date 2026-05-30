@@ -23,6 +23,7 @@ class SettingsManager;
 class CompileRunManager;
 class CodeBlockRunner;
 class OpenJudgeManager;
+class SettingsChangeHandler;
 class QDockWidget;
 class QPushButton;
 class QToolButton;
@@ -153,6 +154,9 @@ private:
     BottomPanel *m_bottomPanel;
     QSplitter *m_rightSplitter;
 
+    // 设置变更处理
+    SettingsChangeHandler *m_settingsHandler = nullptr;
+
     // MD 代码块执行与诊断（▶ 按钮）
     CodeBlockRunner *m_codeBlockRunner = nullptr;
 
@@ -226,16 +230,6 @@ private:
     void onConvertMdSmd();
     void toggleSettings();
     void toggleHelp();
-    void onDefaultZoomChanged(qreal zoom);
-    void onEditorSettingChanged(const QString &key, const QVariant &value);
-    void onAppearanceSettingChanged(const QString &key, const QVariant &value);
-    void onOutputPanelSettingChanged(const QString &key, const QVariant &value);
-    void onPreviewSettingChanged(const QString &key, const QVariant &value);
-    void onSearchSettingChanged(const QString &key, const QVariant &value);
-    void onAiSettingChanged(const QString &key, const QVariant &value);
-    void onToolSettingChanged(const QString &key, const QVariant &value);
-    void onResetToDefaults();
-    void onShortcutChanged(const QString &actionKey, const QString &keySequenceText);
     void applyEqualWidthTab(bool enabled);
     void convertMdToSmd(EditorWidget *editor, const QFileInfo &fi);
     void convertSmdToMd(EditorWidget *editor, const QFileInfo &fi);
