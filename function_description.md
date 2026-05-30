@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.21）
+## 功能说明文档（v0.13.22）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -58,22 +58,16 @@
   - C++ 程序分组：按 `main()` 边界分组，仅向 clangd 发送当前活动组代码，避免多 `main()` 冲突
   - 代码补全（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**
   - 诊断波浪线：红色错误 / 黄色警告，cell 头部标签显示错误计数，切换 cell 时自动缓存/恢复诊断
-  - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
+  - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.21
-代码文件诊断面板跟随当前文件更新
-  - `MainWindow` 新增 `updateCurrentEditorDiagnostics()` 方法，封装诊断 provider 连接和数据刷新逻辑，供 `currentChanged` 和 `onFileSelected` 共享调用。
-  - `EditorWidget::loadFile()` 在设置代码编辑器语言后调用 `clearDiagnostics()`，清除预览标签复用时残留的旧文件诊断缓存。
-  - `onFileSelected()`（单击文件树预览打开）新增 `updateCurrentEditorDiagnostics()` 调用，弥补预览标签复用时不触发 `currentChanged` 信号的缺失。
-  - 切换到非代码文件时自动清空底部面板诊断数据（`clearDiagnostics()`），避免手动打开面板时读到过时的诊断。
-
-### 新增 v0.13.20
-
-- **标签页高度可配置**：将标签页栏高度从固定的 32px 改为设置面板的可配置项（外观 → 标签页高度），范围 20-40px，默认值降低至 26px。通过 `ThemeManager::setTabHeight()` 实时刷新 QSS 中的 `%%tab.height%%` 占位符，修改后立即生效。
-
-### 修复 v0.13.18
-修复启动程序时顶栏高度没有正确加载的问题
+### 新增 v0.13.22
+诊断面板点击跳转功能
+  - **代码文件诊断跳转**：`EditorWidget::navigateEditorToLine()` 的 CodeEdit 路径改为复用 `scrollToLine()`（搜索跳转的同一代码路径），确保诊断条目点击跳转与搜索跳转行为一致。
+  - **SMD 诊断跳转**：`SmdEditor` 新增 `scrollCellToLine()` 方法，通过坐标映射将 CodeEditor 内行号映射到 `QScrollArea` 并调用 `ensureVisible()` 滚动。跨 cell 跳转通过 `QTimer::singleShot(0)` 延迟，等待 `setActiveCell()` 的 deferred scroll 先完成。
+  - **CodeEditor 新增方法**：`scrollToLine(int line)` 使用 `setTextCursor()` + `ensureCursorVisible()` 跳转到指定行（0-based）。`isLineVisible(int line)` 使用 `blockBoundingRect()` 获取实际块几何信息判断可见性。
+  - **诊断条目点击机制改进**（`DiagnosticSection`）：由 `linkActivated` 信号改为 `eventFilter()` 拦截 `MouseButtonRelease`，通过 `setProperty` 动态属性传递行号与 cell 索引，消除 RichText 链接限制。新增 hover 样式（`QLabel:hover`）。
+  - **跳转高亮改进**：大纲导航高亮使用 `editor.selectionBackground`（半透明，与真实选区一致的色彩混合，保留语法高亮），替代原来的 `search.highlightBackground` + `search.highlightForeground`（不透明覆盖）。高亮自动 1 秒后消失（`m_outlineHighlightTimer` 定时器）。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -355,7 +349,8 @@
 - `bool isCodeEdit() const` / `bool isPdfView() const` / `bool isSmdEdit() const`：查询当前编辑模式。
 - `void setFileNames(const QStringList &names)`：设置 WikiLink 自动补全的文件名列表（代码编辑模式下为无操作）。
 - `void setTagNames(const QStringList &names)`：设置 #tag 自动补全的标签列表。
-- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行并高亮搜索关键词。预览模式下自动切回编辑模式。存储高亮文本至 `m_lastSearchHighlightText`，供主题切换时重建高亮。
+- `void scrollToLine(int lineNumber, const QString &highlightText)`：跳转到指定行（1-based）并高亮搜索关键词。预览模式下自动切回编辑模式。CodeEdit 模式通过 `setTextCursor()` + `ensureCursorVisible()` 跳转。存储高亮文本至 `m_lastSearchHighlightText`，供主题切换时重建高亮。也被 `navigateEditorToLine()` 复用作为诊断跳转的底层实现。
+- `void navigateEditorToLine(int lineNumber)`：大纲面板点击和诊断条目点击的统一跳转入口（1-based 行号）。CodeEdit 模式先设置大纲高亮（`setOutlineHighlightLine`，1 秒自动消失），再调用 `scrollToLine()` 复用搜索跳转的代码路径。MarkdownEdit 模式通过 `setTextCursor()` + `ensureCursorVisible()` 跳转并高亮目标行。
 - `void clearExtraSelections()`：清除搜索高亮，同时清空存储的高亮文本。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
 - `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM。设置面板关闭时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
@@ -716,6 +711,9 @@
 - 缩进调整（`handleIndentLeft` / `handleIndentRight` / `Ctrl+[` 向左缩进 / `Ctrl+]` 向右缩进）。无选区时调整当前行缩进；有选区时调整所有选中行的缩进，自动跳过空行。
 - 当前行高亮（`highlightCurrentLine`）：以 `#2A2D2E` 背景色高亮当前行，与搜索高亮合并显示。
 - 搜索高亮（`setSearchHighlights` / `clearSearchHighlights`）：存储搜索文本至 `m_searchHighlightText`，遍历文档构建 `QTextEdit::ExtraSelection` 列表（由 `ThemeManager` 提供高亮背景/前景色），与当前行高亮合并后通过 `setExtraSelections` 统一应用。主题切换时 `reloadColors()` 使用存储的文本重建高亮列表以更新颜色。
+- **大纲导航高亮**（`setOutlineHighlightLine` / `clearOutlineHighlightLine`）：1-based 行号参数。使用 `editor.selectionBackground` 半透明背景色（与真实文本选区一致），不覆盖前景色以保留语法高亮。通过 `m_outlineHighlightTimer` 定时器（1 秒单次触发）自动消失。在 `updateExtraSelectionsWithDiagnostics()` 中与当前行高亮、诊断波浪线合并应用。
+- **行跳转**（`scrollToLine(int line)`）：0-based 行号参数。通过 `setTextCursor()` + `ensureCursorVisible()` 跳转到目标行（与搜索跳转相同的 Qt 内置滚动机制）。
+- **可见性检查**（`isLineVisible(int line)`）：通过 `QAbstractTextDocumentLayout::blockBoundingRect()` 获取实际块几何位置与视口滚动位置比较，支持 word-wrap 场景。
 - 语法高亮集成（`setLanguage`）：通过 `LanguageUtils::createHighlighter()` 安装/替换 `QSyntaxHighlighter`。
 - **括号对着色（Bracket Pair Colorization）**：在 `CppSyntaxHighlighter` 和 `PythonSyntaxHighlighter` 的 `highlightBlock()` 末尾调用 `highlightBrackets()`，对 `()`、`[]`、`{}` 括号按嵌套层级循环使用 3 种颜色（金色 `#FFD700` / 紫红 `#DA70D6` / 浅蓝 `#179FFF`，加粗），未配对的括号显示红色（含开括号和闭括号），通过搜索整个括号栈实现跨类型 bracket 匹配（rainbow brackets），并通过前行扫描检测真正无匹配的开括号。通过 `previousBlockState()` / `setCurrentBlockState()` 的 bit 编码实现跨行括号状态传递（bits 0-2: 注释/三引号状态，bits 3-7: 括号深度，bits 8+: 每 2 位一个括号类型，最多 12 层）。跳过字符串、注释、预处理器指令内部的括号（通过 `QSyntaxHighlighter::format()` 检查前景色是否匹配注释/字符串色，而非读取 `QTextLayout::formats()` 以避免 `highlightBlock()` 期间布局未更新的时序问题）。解码 `previousBlockState()` 时对初始值 `-1`（未设置状态）做归零处理，防止深度字段被误读为 31 导致幽灵括号破坏后续跨行匹配。
 - **指针/引用运算符高亮**：`CppSyntaxHighlighter` 通过两层机制对声明上下文中的 `*`（指针）和 `&`（引用/取地址）运算符进行蓝色（`#569CD6`）高亮：
@@ -1003,7 +1001,7 @@
 - 内容区使用 `QStackedWidget`：索引 0 为 `OutputPanel`，索引 1 为诊断页面。
 - 诊断页面（`m_diagnosticsPage`）：
   - `QScrollArea` 包含两个 `DiagnosticSection`（错误 / 警告），分别以红色（`#F44747`）和黄色（`#CCA700`）标注。
-  - `setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：按 severity 分组统计并重建诊断条目。每条诊断显示行号和消息，点击发射 `diagnosticsLineClicked(line)`。
+  - `setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：按 severity 分组统计并重建诊断条目。每条诊断显示行号和消息，点击发射 `diagnosticsLineClicked(line)`（1-based 行号）。
   - `clearDiagnostics()`：清空所有诊断。
   - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
   - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
@@ -1013,8 +1011,8 @@
 - `closeRequested()`：标题栏关闭按钮点击。
 - `diagnosticsLineClicked(int line)`：诊断条目点击，MainWindow 连接至 `EditorWidget::navigateEditorToLine()`。
 
-**内部类 `DiagnosticSection`**（定义于 `smddiagnosticspanel.h`）：
-- 继承 `QWidget`，带标题和边框色的分区容器。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充条目。`count()` 返回当前条目数。支持展开/折叠。
+**内部类 `DiagnosticSection`**（定义于 `diagnosticsection.h`）：
+- 继承 `QWidget`，带标题和边框色的分区容器。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充可点击条目。每条诊断显示行号和消息，通过 `eventFilter()` 拦截 `MouseButtonRelease` 事件，以 `setProperty` 动态属性传递行号和 cell 索引，emit `lineClicked(cellIndex, line)`。条目支持 hover 高亮（`editor.lineHighlightBackground`）。`count()` 返回当前条目数。支持展开/折叠。
 
 ---
 
@@ -1381,6 +1379,7 @@
 - 拥有一个 `QScrollArea`，内含 `m_cellContainer`（`QVBoxLayout`），所有 `SmdCell` 和 `SmdOutputWidget` 交错排列（每个单元格下方紧跟一个输出控件），超出视口时滚动。
 - 拥有独立的 `ProcessRunner` 实例，用于代码单元格的编译和执行。
 - 管理 `m_outputWidgets` 列表，与 `m_cells` 一一对应，负责输出的持久化与恢复。
+- `scrollCellToLine(int cellIndex, int line)`：将指定 cell 的指定行（0-based）滚动到可视区域。通过 `QPlainTextEdit::viewport()->mapTo(m_cellContainer, ...)` 将行坐标从编辑器视口映射到 scroll area 内容控件，再调用 `m_scrollArea->ensureVisible()` 滚动。供 `SmdDiagnosticsPanel::onLineClicked()` 调用。
 
 **模式管理**：
 - **编辑模式**（默认）：当前活动单元格的编辑器获得焦点，用户可直接输入内容。边框透明。
@@ -1677,8 +1676,9 @@
 
 **职责**：
 - 继承 `QFrame`，作为 SMD 编辑器的诊断信息汇总面板，以 `Ctrl+D`（编辑模式）切换显示。嵌入 `SmdEditor` 的 `m_splitter` 中，默认隐藏。
-- `DiagnosticSection` 内部类（复用于 `BottomPanel`）：继承 `QWidget`，带标题和边框色（错误 `#F44747` / 警告 `#CCA700`）。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充可点击条目。每条诊断显示行号和消息，`lineClicked(cellIndex, line)` 信号触发 `SmdEditor` 跳转。`count()` 返回当前条目数。支持展开/折叠（`setExpanded()`），头部显示 ▾/▸ + 标题 + 计数。
-- `refresh()`：从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按 severity 分组填充两个 `DiagnosticSection`。通过 `scheduleRefresh()` + 50ms 定时器防抖更新。
+- `DiagnosticSection`（定义于 `diagnosticsection.h`，复用于 `BottomPanel`）：继承 `QWidget`，带标题和边框色（错误 `#F44747` / 警告 `#CCA700`）。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充可点击条目。每条诊断显示行号和消息，通过 `eventFilter()` 拦截 `MouseButtonRelease` 发射 `lineClicked(cellIndex, line)` 信号。`count()` 返回当前条目数。支持展开/折叠（`setExpanded()`），头部显示 ▾/▸ + 标题 + 计数。
+- `onLineClicked(int cellIndex, int line)`：点击诊断条目时触发。设置 CodeEditor 的大纲高亮（`setOutlineHighlightLine`，1 秒自动消失），通过 `SmdEditor::scrollCellToLine()` 滚动到目标行。跨 cell 跳转时先调用 `setActiveCell()` 切换活动 cell，通过 `QTimer::singleShot(0)` 延迟滚动等待 layout 完成。
+- `refresh()`：从 `SmdLspManager` 获取当前所有 cell 的诊断列表，按 severity 分组填充两个 `DiagnosticSection`。通过 `scheduleRefresh()` + 500ms 定时器防抖更新。
 - 关闭按钮（✕）点击隐藏面板。
 
 **与 BottomPanel 的关系**：

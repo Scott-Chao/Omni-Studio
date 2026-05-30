@@ -2,6 +2,7 @@
 #include "thememanager.h"
 
 #include <algorithm>
+#include <QMouseEvent>
 
 DiagnosticSection::DiagnosticSection(const QString &title, const QString &borderColor,
                                      int severity, QWidget *parent)
@@ -75,6 +76,7 @@ void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic>
     QString lineFg = tm.color("editorLineNumber.foreground").name();
     QString msgFg = tm.color("editor.foreground").name();
     QString entryBg = tm.color("sideBar.background").name();
+    QString hoverBg = tm.color("editor.lineHighlightBackground").name();
 
     for (const auto &d : filtered) {
         QString entryText = QStringLiteral("<span style=\"color:%1;\">行 %2:</span> "
@@ -89,20 +91,32 @@ void DiagnosticSection::setDiagnostics(int cellIndex, const QList<SmdDiagnostic>
         entry->setCursor(Qt::PointingHandCursor);
         entry->setStyleSheet(QStringLiteral(
             "QLabel { color: %1; font-size: 11px; padding: 3px 8px 3px 12px; "
-            "border-left: 2px solid %2; background: %3; }")
-            .arg(msgFg, m_borderColor, entryBg));
+            "border-left: 2px solid %2; background: %3; }"
+            "QLabel:hover { background: %4; }")
+            .arg(msgFg, m_borderColor, entryBg, hoverBg));
         entry->setTextFormat(Qt::RichText);
 
-        int line = d.startLine;
-        int ci = cellIndex;
-        connect(entry, &QLabel::linkActivated, this, [this, ci, line](const QString &) {
-            emit lineClicked(ci, line);
-        });
+        entry->setProperty("_ci", cellIndex);
+        entry->setProperty("_line", d.startLine);
+        entry->installEventFilter(this);
 
         m_contentLayout->addWidget(entry);
     }
 
     setExpanded(m_expanded);
+}
+
+bool DiagnosticSection::eventFilter(QObject *obj, QEvent *event)
+{
+    if (event->type() == QEvent::MouseButtonRelease) {
+        QVariant ci = obj->property("_ci");
+        QVariant line = obj->property("_line");
+        if (ci.isValid() && line.isValid()) {
+            emit lineClicked(ci.toInt(), line.toInt());
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }
 
 void DiagnosticSection::clear()

@@ -14,6 +14,7 @@ class CompletionPopup;
 class HoverManager;
 class SignatureHelpManager;
 class LineNumberArea;
+class QTimer;
 
 class CodeEditor : public QPlainTextEdit
 {
@@ -48,6 +49,8 @@ public:
     void clearCurrentLineHighlight();
     void setOutlineHighlightLine(int line);
     void clearOutlineHighlightLine();
+    bool isLineVisible(int line) const;
+    void scrollToLine(int line);
     void refreshCurrentLineHighlight();
     void refreshLineNumberArea();
 
@@ -98,6 +101,7 @@ private:
     QList<QTextEdit::ExtraSelection> m_searchHighlights;
     QString m_searchHighlightText;
     int m_outlineHighlightLine = -1; // 1-based line number from outline navigation
+    QTimer *m_outlineHighlightTimer = nullptr;
     QList<SmdDiagnostic> m_diagnostics;
 
     // Configurable shortcuts

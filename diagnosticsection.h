@@ -26,6 +26,9 @@ public:
 signals:
     void lineClicked(int cellIndex, int line);
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 private:
     QLabel *m_headerLabel;
     QWidget *m_contentWidget;

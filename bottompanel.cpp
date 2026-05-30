@@ -87,11 +87,11 @@ BottomPanel::BottomPanel(QWidget *parent)
 
     connect(m_errorSection, &DiagnosticSection::lineClicked,
             this, [this](int /*cellIndex*/, int line) {
-                emit diagnosticsLineClicked(line);
+                emit diagnosticsLineClicked(line + 1);
             });
     connect(m_warningSection, &DiagnosticSection::lineClicked,
             this, [this](int /*cellIndex*/, int line) {
-                emit diagnosticsLineClicked(line);
+                emit diagnosticsLineClicked(line + 1);
             });
 
     contentLayout->addWidget(m_emptyLabel);

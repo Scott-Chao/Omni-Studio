@@ -2,6 +2,7 @@
 #include "smdeditor.h"
 #include "smdlspmanager.h"
 #include "thememanager.h"
+#include "codeeditor.h"
 
 #include <QApplication>
 
@@ -190,10 +191,22 @@ void SmdDiagnosticsPanel::refreshStyle()
 
 void SmdDiagnosticsPanel::onLineClicked(int cellIndex, int line)
 {
-    m_editor->setActiveCell(cellIndex);
-    m_editor->setActiveCellCursor(line, 0);
-    // Focus the cell's editor widget
     SmdCell *cell = m_editor->cellAt(cellIndex);
-    if (cell && cell->editorWidget())
-        cell->editorWidget()->setFocus();
+    if (!cell) return;
+    CodeEditor *ce = qobject_cast<CodeEditor*>(cell->editorWidget());
+    if (!ce) return;
+
+    // setOutlineHighlightLine takes 1-based line, diagnostics use 0-based
+    ce->setOutlineHighlightLine(line + 1);
+
+    if (cellIndex != m_editor->activeCellIndex()) {
+        m_editor->setActiveCell(cellIndex);
+        // setActiveCell defers its ensureWidgetVisible via QTimer::singleShot(0).
+        // Defer the scroll so the SmdEditor scroll area settles first.
+        QTimer::singleShot(0, this, [this, cellIndex, line]() {
+            m_editor->scrollCellToLine(cellIndex, line);
+        });
+    } else {
+        m_editor->scrollCellToLine(cellIndex, line);
+    }
 }

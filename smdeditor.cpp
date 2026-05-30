@@ -24,6 +24,7 @@
 #include <QMessageBox>
 #include <QLabel>
 #include <QRegularExpression>
+#include <QTextBlock>
 
 // ============================================================
 // LangSelectorPopup — language selection popup for cell type
@@ -749,6 +750,23 @@ void SmdEditor::setActiveCellCursor(int line, int column)
 {
     if (m_activeCellIndex < 0 || m_activeCellIndex >= m_cells.size()) return;
     m_cells[m_activeCellIndex]->setCursorPosition(line, column);
+}
+
+void SmdEditor::scrollCellToLine(int cellIndex, int line)
+{
+    SmdCell *cell = cellAt(cellIndex);
+    if (!cell) return;
+
+    auto *ed = qobject_cast<QPlainTextEdit*>(cell->editorWidget());
+    if (!ed) return;
+
+    QTextBlock block = ed->document()->findBlockByLineNumber(line);
+    if (!block.isValid()) return;
+
+    QRectF r = ed->document()->documentLayout()->blockBoundingRect(block);
+    QPoint pt(0, static_cast<int>(r.top()));
+    QPoint mapped = ed->viewport()->mapTo(m_cellContainer, pt);
+    m_scrollArea->ensureVisible(mapped.x(), mapped.y(), 0, 50);
 }
 
 QList<SmdFormat::Cell> SmdEditor::exportCells() const

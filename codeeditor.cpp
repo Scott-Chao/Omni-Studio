@@ -12,6 +12,7 @@
 #include "configmanager.h"
 #include "thememanager.h"
 #include "settingsmanager.h"
+#include "utilities.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QTextLayout>
@@ -22,6 +23,9 @@
 #include <QApplication>
 #include <QPointer>
 #include <QAbstractNativeEventFilter>
+#include <QTimer>
+#include <QScrollBar>
+#include <QAbstractTextDocumentLayout>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -149,6 +153,13 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     // Load configurable shortcuts
     reloadShortcuts();
+
+    // Outline highlight auto-dismiss timer (1 second)
+    m_outlineHighlightTimer = new QTimer(this);
+    m_outlineHighlightTimer->setSingleShot(true);
+    m_outlineHighlightTimer->setInterval(1000);
+    connect(m_outlineHighlightTimer, &QTimer::timeout,
+            this, &CodeEditor::clearOutlineHighlightLine);
 
     // Also intercept ShortcutOverride on this widget (not just viewport)
     installEventFilter(this);
@@ -538,16 +549,17 @@ void CodeEditor::updateExtraSelectionsWithDiagnostics()
         extraSelections.append(sel);
     }
 
-    // Outline navigation highlight
+    // Outline navigation highlight — use editor.selectionBackground so the
+    // tint blends with underlying syntax highlighting (same as real selection).
+    // Don't override foreground — let syntax colors show through.
     if (m_outlineHighlightLine > 0) {
         QTextBlock block = document()->findBlockByLineNumber(m_outlineHighlightLine - 1);
         if (block.isValid()) {
             QTextCursor cursor(block);
             cursor.clearSelection();
             QTextEdit::ExtraSelection sel;
-            auto &tm = ThemeManager::instance();
-            sel.format.setBackground(tm.color("search.highlightBackground"));
-            sel.format.setForeground(tm.color("search.highlightForeground"));
+            sel.format.setBackground(
+                ThemeManager::instance().color("editor.selectionBackground"));
             sel.format.setProperty(QTextFormat::FullWidthSelection, true);
             sel.cursor = cursor;
             extraSelections.append(sel);
@@ -1434,12 +1446,37 @@ void CodeEditor::setOutlineHighlightLine(int line)
 {
     m_outlineHighlightLine = line;
     highlightCurrentLine();
+    m_outlineHighlightTimer->start();
 }
 
 void CodeEditor::clearOutlineHighlightLine()
 {
     m_outlineHighlightLine = -1;
     highlightCurrentLine();
+    m_outlineHighlightTimer->stop();
+}
+
+bool CodeEditor::isLineVisible(int line) const
+{
+    QTextBlock block = document()->findBlockByLineNumber(line);
+    if (!block.isValid())
+        return false;
+
+    QRectF r = document()->documentLayout()->blockBoundingRect(block);
+    double scrollPos = verticalScrollBar()->value();
+    double viewH = viewport()->height();
+    return r.top() < scrollPos + viewH && r.bottom() > scrollPos;
+}
+
+void CodeEditor::scrollToLine(int line)
+{
+    QTextBlock block = document()->findBlockByLineNumber(line);
+    if (!block.isValid())
+        return;
+
+    QTextCursor cursor(block);
+    setTextCursor(cursor);
+    ensureCursorVisible();
 }
 
 void CodeEditor::refreshCurrentLineHighlight()

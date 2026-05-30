@@ -53,6 +53,7 @@ public:
     int activeCellCursorLine() const;
     int activeCellCursorColumn() const;
     void setActiveCellCursor(int line, int column);
+    void scrollCellToLine(int cellIndex, int line);
     QList<SmdFormat::Cell> exportCells() const;
     void reloadShortcuts();
     void toggleDiagnosticsPanel();

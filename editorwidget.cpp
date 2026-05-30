@@ -1783,33 +1783,22 @@ void EditorWidget::navigateEditorToLine(int lineNumber)
     if (m_editorMode == PdfView)
         return;
 
-    // Scroll to line and highlight the entire line in yellow (search-highlight style).
-    // Unlike scrollToLine(,highlightText), this does NOT search the full document
-    // for matching text — it precisely highlights only the target line.
-
-    QTextBlock block;
-    if (m_editorMode == CodeEdit)
-        block = m_codeEditor->document()->findBlockByLineNumber(lineNumber - 1);
-    else
-        block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
-    if (!block.isValid())
-        return;
-
-    QTextCursor cursor(block);
-    if (m_editorMode == CodeEdit) {
-        m_codeEditor->setTextCursor(cursor);
-        m_codeEditor->ensureCursorVisible();
-    } else {
-        m_textEdit->setTextCursor(cursor);
-        m_textEdit->ensureCursorVisible();
-    }
-
     if (m_editorMode == CodeEdit) {
         m_codeEditor->setOutlineHighlightLine(lineNumber);
-    } else {
-        m_outlineHighlightLine = lineNumber;
-        applyMarkdownExtraSelections();
+        // Use the same proven code path as search result jump
+        scrollToLine(lineNumber);
+        return;
     }
+
+    // MarkdownEdit: keep existing cursor-moving behavior
+    QTextBlock block = m_textEdit->document()->findBlockByLineNumber(lineNumber - 1);
+    if (!block.isValid())
+        return;
+    QTextCursor cursor(block);
+    m_textEdit->setTextCursor(cursor);
+    m_textEdit->ensureCursorVisible();
+    m_outlineHighlightLine = lineNumber;
+    applyMarkdownExtraSelections();
 }
 
 void EditorWidget::applyMarkdownExtraSelections()
