@@ -1140,6 +1140,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             this, &MainWindow::refreshTitleBarStyle);
 
+    // Reapply global QSS to trigger a full widget-tree repolish.
+    // Without this, QToolBarLayout uses Fusion's default internal margins
+    // (e.g. PM_ToolBarItemMargin) that aren't cleared by the toolbar's own
+    // stylesheet's padding:0 until a parent-triggered style recalculation —
+    // which normally only happens on theme switch via loadQss().
+    ThemeManager::instance().loadQss();
+
 }
 
 MainWindow::~MainWindow()
@@ -2025,6 +2032,7 @@ void MainWindow::refreshTitleBarStyle()
         "}"
     ).arg(tm.color("titleBar.background").name(),
           tm.color("titleBar.buttonHover").name()));
+    m_toolBar->setContentsMargins(0, 0, 0, 0);
 
     // File menu button
     m_fileMenuBtn->setStyleSheet(QStringLiteral(
