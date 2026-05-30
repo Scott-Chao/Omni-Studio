@@ -1373,6 +1373,75 @@ void MainWindow::toggleHelp()
     }
 }
 
+void MainWindow::showRightPanel(int panelIndex)
+{
+    m_dockAi->hide();
+    m_dockRightPanel->show();
+    m_dockRightPanel->raise();
+    m_rightPanel->setActivePanel(panelIndex);
+}
+
+void MainWindow::showLeftPanel(int index)
+{
+    // 如果面板已折叠，先展开并恢复宽度
+    if (m_leftStack->isHidden()) {
+        m_leftStack->show();
+        QList<int> sizes = m_splitter->sizes();
+        if (sizes.size() == 3) {
+            int available = sizes[2] - m_savedLeftPanelWidth;
+            if (available < 100) available = 100;
+            sizes[1] = m_savedLeftPanelWidth;
+            sizes[2] = available;
+            m_splitter->setSizes(sizes);
+        }
+    }
+
+    m_leftStack->setCurrentIndex(index);
+    m_activityBar->setExplorerActive(index == 0);
+    m_activityBar->setSearchActive(index == 1);
+    m_activityBar->setJudgeActive(index == 2);
+
+    if (index > 0 && m_dockRightPanel)
+        m_dockRightPanel->hide();
+}
+
+void MainWindow::toggleLeftPanel()
+{
+    if (m_leftStack->isHidden()) {
+        showLeftPanel(m_leftStack->currentIndex());
+    } else {
+        m_savedLeftPanelWidth = m_leftStack->width();
+        m_leftStack->hide();
+        m_activityBar->setExplorerActive(false);
+        m_activityBar->setSearchActive(false);
+        m_activityBar->setJudgeActive(false);
+    }
+}
+
+void MainWindow::updateAiActionBar()
+{
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (!editor) {
+        m_aiPanel->clearActionList();
+        return;
+    }
+
+    const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
+    m_aiPanel->setActionList(actionsForMode(mode));
+}
+
+void MainWindow::filterAiHistoryByCurrentFile()
+{
+    auto *historyWidget = m_aiPanel->historyListWidget();
+    if (!historyWidget)
+        return;
+
+    auto &mgr = AiHistoryManager::instance();
+    QList<AiConversation> convs = mgr.conversationsByFile(m_currentFilePath);
+    historyWidget->setConversations(convs);
+    historyWidget->setActiveConversationId(mgr.currentConversationId());
+}
+
 void MainWindow::applyEqualWidthTab(bool enabled)
 {
     if (auto *bar = qobject_cast<CustomTabBar*>(m_tabManager->tabBar()))
