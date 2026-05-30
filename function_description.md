@@ -62,7 +62,9 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 文件夹展开/收起 chevron 点击后选中高亮修复：`FileTreeView` 分支点击检测修正（分支区域 x 从 viewport 左边缘算起），并在 `mousePressEvent` 中直接选中（`doItemsLayout` 不可靠作为唯一选中时机）
+修复 python 代码语义高亮问题
+- 修复 class/instance 对象没有应用高亮的问题
+- 修复 LSP 悬停提示被外层函数覆盖的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -808,8 +810,8 @@
 
 **Token 来源**（Jedi 子进程，非 LSP）：
 - `PythonCompletionProvider` 将文件代码经 `sanitizeForPython()` 规范化（替换 `\r\n`/`\r` → `\n`、替换孤立 surrogate 为 U+FFFD）后，通过 **base64 编码**发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。
-- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，调用 `jedi.Script.get_names(all_scopes=True)` 获取所有定义名称及其类型，再通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
-- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > parameter > property > variable > module）选择。
+- `completion_helper.py` 收到 tokens 请求后先 base64 解码还原代码，**分两次调用** `jedi.Script.get_names()`：先 `definitions=True, references=False` 获取定义（类型最准确），再 `definitions=False, references=True` 获取引用（外部名称如 `json.JSONDecodeError`、`__name__` 等）。定义类型始终优先于引用类型，避免引用侧不准确类型覆盖定义侧准确类型。最后通过**按行分割** + `re.finditer` 逐行正则扫描每个名称的所有引用位置（列偏移仅按当前行计算，天然免疫跨行字符编码差异），生成语义 token 列表返回。
+- Token 类型映射：Jedi `function` → `"function"`，`class` → `"class"`，`module` → `"module"`（绿色），`param` → `"parameter"`，`instance`/`statement` → `"variable"`，`property` → `"property"`。单名多类型时按优先级（function > class > module > parameter > property > variable）选择。对仅出现在引用中且类型模糊的名称（Jedi 返回 `instance` 时映射为 `variable`），使用 `script.infer()` 在引用位置重新解析真实类型（如 `json.JSONDecodeError` 通过属性访问引用时 Jedi 可能返回 `instance`，但 `infer` 可正确返回 `class`）。旧版 Jedi 不支持分拆参数时回退至 `get_names(all_scopes=True)`。
 - Token 以 fire-and-forget 模式发送（`m_tokensPending` 标志），不占用共享的 `m_pendingRequest`/`m_timeoutTimer`，确保在 Jedi 解析耗时 >500ms 时响应不会因超时被丢弃。
 - `updateText()` 添加了**内容未变则跳过**的防护（`if (text == m_lastDiagnosticsText) return;`），防止 `rehighlight()` 触发的 `QTextDocument::contentsChanged` 信号导致无限循环请求。
 
@@ -1527,7 +1529,9 @@
   - `PythonCompletionProvider::processResponse()` 改为**基于 JSON 结构的路由**：tokens（数组含 `line`+`type`）→ diagnostics（数组含 `startLine`）→ hover（对象含 `signature`）按结构优先检测，消除并发请求 pending 状态被覆盖导致响应错配的竞态条件。
   - `SmdLspManager::sendPythonHoverLocal()`：发送单个 cell 代码（base64，`code_b64` 字段）+ cell 本地坐标，绕过虚拟文档映射。
   - `completion_helper.py` main loop 统一处理：优先 `code_b64` 字段否则回退 `code` 字段，两者均 base64 解码，确保 SMD 和独立 `.py` 文件两条路径一致。
-  - `completion_helper.py` **`handle_hover()` 优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
+  - `completion_helper.py` **`handle_hover()` 增强**：
+    - **优先级修复**：`script.infer()` 与 `script.get_signatures()` 调用顺序对调 — 先通过 `infer()` 解析光标下的实际符号（如 `print(x)` 中悬停 `x` 时正确显示 `x: int`），仅在 `infer` 无结果时回退到 `get_signatures()` 显示函数签名（如悬停在括号上时显示 `print(...)`）。修复此前因 `get_signatures` 优先导致函数调用参数列表内任意位置都显示函数签名而非参数的问题。
+    - **关键字参数感知**：新增 `_keyword_at_position()` / `_extract_kw_name_before()` / `_param_info_for_keyword()` 三个辅助函数。当光标位于 `keyword=value` 参数内（关键字名、`=` 或值）且 `infer()` 返回封闭函数时，自动从 `get_signatures()` 匹配对应参数，显示参数级信息（如 `ensure_ascii: parameter of dumps`）而非函数级信息。支持跨行关键字参数和嵌套函数调用。
 
 **主要接口**：
 - `void initialize(const QString &smdFilePath)`：基于 SMD 文件名生成虚拟文档 URI。
