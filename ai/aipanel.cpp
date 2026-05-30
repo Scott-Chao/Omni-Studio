@@ -324,7 +324,7 @@ void AiPanel::updateErrorBadge()
 
 void AiPanel::setCurrentTab(int index)
 {
-    onTabSwitch(index);
+    m_tabGroup->setCurrentIndex(index);
 }
 
 // ── Chat operations (delegated to ChatArea) ──────────────────────────
