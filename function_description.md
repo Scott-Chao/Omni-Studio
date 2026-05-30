@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.13）
+## 功能说明文档（v0.13.14）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -63,13 +63,20 @@
 ### 修复 v0.13.13
 - 修复浅色模式文本文件选中区域颜色过深的问题
 
+### 修复 v0.13.14
+- 重构：提取 `CompileRunManager` — 将编译/运行/终止（包括 IDE mode 路由、ProcessRunner 管理、输出面板显示、操作按钮状态控制）从 MainWindow 中拆分到独立类
+- 重构：提取 `CodeBlockRunner` — 将 MD 预览 ▶ 代码块执行、stderr 缓冲、CompilerErrorParser 诊断解析、诊断缓存/波浪线显示从 MainWindow 拆分到独立类
+- 重构：提取 `OpenJudgeManager` — 将 OpenJudge 标签页管理、代码提交、SubmitResultPanel 显示、失败后台回测 + ErrorJournal 记录从 MainWindow 拆分到独立类
+- 重构：提取 `SettingsChangeHandler` — 将 10 个设置变更处理方法（字体/缩进/主题颜色桥接/快捷键重绑定/重置默认等）从 MainWindow 拆分到独立类
+- 重构后 MainWindow 减少约 1200 行，职责更清晰
+
 ### 1. `MainWindow` - 主窗口控制器
 
 **文件**：`mainwindow.h` / `mainwindow.cpp`
 
 **职责**：
 - 作为应用程序的主窗口，负责整体布局与用户交互。
-- 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter` 等子组件。
+- 聚合 `FileExplorerWidget`、`TabManager`、`QSplitter`、`CompileRunManager`、`CodeBlockRunner`、`OpenJudgeManager`、`SettingsChangeHandler` 等子组件。
 - 加载与保存应用程序的全局配置（通过 `SettingsManager`），包括窗口几何、分割条状态、上次访问的目录（打开目录和另存为分别记忆）。
 - 协调文件树与标签管理器的双向联动：用户**单击**文件树中的文件时，以预览模式（临时标签页）打开，多次单击复用同一标签页；**双击**文件时永久打开（或提升已有预览标签页）；编辑预览标签页内容后自动提升为永久。切换标签页时文件树自动选中对应文件并展开父级目录。
 - 接管保存与另存为的路径记忆逻辑：在保存新建文件或另存为时，读取并更新独立的另存为目录配置；保存已有文件不改变该记忆。
@@ -143,6 +150,7 @@
 
 **协作关系**：
 - 持有 `FileExplorerWidget*`、`TabManager*`、`QSplitter*`、`SettingsManager*`。
+- v0.13.14 起将编译运行、代码块诊断、OpenJudge 提交、设置变更等职责委托给 `CompileRunManager`、`CodeBlockRunner`、`OpenJudgeManager`、`SettingsChangeHandler` 四个独立管理器类，MainWindow 仅保留布局编排和信号路由。
 - 连接文件浏览器的 `fileClicked` 信号到自己的 `onFileSelected` 槽。
 - 连接文件浏览器的 `folderChanged` 信号到 `onFolderChanged`，以在用户通过对话框切换目录时记录路径。
 - 工具栏的"保存"动作触发 `saveFile`，转为直接操作编辑器并处理记忆；"另存为"动作触发 `onSaveFileAs`。
@@ -162,6 +170,96 @@
 - 连接 `HistoryPanel::fileClicked` 到 `onHistoryFileClicked`，并在所有会获得有效文件路径的地方（`onFileSelected`, `onSaveFileAs`, `saveFile` 等）调用 `addToRecentFiles` 更新历史。
 - 右侧面板自动隐藏通过 `QApplication::focusChanged` 信号 + `QTimer::singleShot(0)` 防误触实现（取代了全局事件过滤器），编辑器获得焦点时自动隐藏右侧面板。`showLeftPanel` 不再强制关闭右侧面板，左右面板独立控制。
 - Tab 切换时通过 `m_editorScrollAreasRegistered`（`QSet<EditorWidget*>`）缓存已注册过滚动条的编辑器，`findChildren<QAbstractScrollArea*>` 每个编辑器只遍历一次，后续切换跳过 O(widget_tree_depth) 的重复遍历。
+
+---
+
+### 1.5. `CompileRunManager` — 编译/运行管理器
+
+**文件**：`compilerunmanager.h` / `compilerunmanager.cpp`
+
+**职责**：
+- 封装编译/运行/终止的完整生命周期，管理 `ProcessRunner` 实例。
+- 处理 F5（编译运行）、F6（编译）、F7（运行）和 Ctrl+Break（终止）快捷键。
+- **IDE 模式路由**：当 OpenJudge IDE 模式激活时，编译/运行操作使用 IDE 内置编辑器的缓存代码（`oj->ideCacheFilePath()`）而非当前编辑器文件。
+- **输出面板管理**：调用 `showOutputPanel()` 自动显示 `BottomPanel` 并调整右侧分割器大小。
+- **操作按钮状态**：`updateActions()` 根据当前编辑器是否为代码文件和进程是否运行中控制编译/运行/终止按钮的启用/可见性。
+- 提供 `saveEditorToTempFile()` 静态方法供 Judge/OpenJudge 等组件使用。
+- 通过信号（`compileFinished`、`runFinished`、`processStarted`、`processStopped`）通知其他组件编译运行状态。
+
+**主要接口**：
+- `void compile()` / `void run()` / `void compileAndRun()` / `void stop()`
+- `void toggleDiagnostics()`：切换底部诊断面板显示
+- `ProcessRunner *processRunner() const`：暴露 ProcessRunner 供 `CodeBlockRunner` 连接 stderr 缓冲信号
+- `bool isRunning() const` / `bool isManualStop() const`
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，作为 `QObject` 子对象。
+- 编译/运行按钮的 Action 对象由 `CompileRunManager` 创建，MainWindow 通过 `getter` 获取并放入工具栏。
+- `ProcessRunner` 生命周期完全由 `CompileRunManager` 管理。
+- `CodeBlockRunner` 通过 `processRunner()` 获取 `ProcessRunner*` 用于 MD 代码块 stderr 缓冲。
+
+---
+
+### 1.6. `CodeBlockRunner` — MD 代码块执行/诊断管理器
+
+**文件**：`codeblockrunner.h` / `codeblockrunner.cpp`
+
+**职责**：
+- 处理 Markdown 预览模式 ▶ 按钮触发的代码块执行。
+- **执行流程**：`runCodeBlock()` → 保存临时文件 → 通过 `CompileRunManager::processRunner()` 启动编译运行。
+- **stderr 缓冲**：连接 `ProcessRunner::outputReceived` 信号，在代码块执行期间仅缓冲 stderr，通过 `m_isRunningCodeBlock` 标志防止影响普通编译运行。
+- **诊断解析**：编译/运行完成后调用 `CompilerErrorParser::parseCompileErrors()` 或 `parsePythonTraceback()` 解析 stderr 为 `SmdDiagnostic` 列表。
+- **诊断缓存**：按文件路径 + block 索引维护 `m_mdDiagnostics` 缓存，tab 切换时通过 `loadDiagnosticsForCurrentTab()` 恢复。
+- 诊断数据推送到 `BottomPanel` 和 `EditorWidget::applyBlockDiagnostics()`（JS 波浪线高亮）。
+
+**主要接口**：
+- `void runCodeBlock(const QString &language, const QString &code, int blockIndex)`
+- `bool loadDiagnosticsForCurrentTab()`：返回 `true` 表示有缓存诊断已加载，`false` 表示无诊断。
+
+**协作关系**：
+- 创建时接收 `TabManager*`、`BottomPanel*` 和 `CompileRunManager*`。
+- 信号连接在构造函数中完成：连接 `CompileRunManager::compileFinished/runFinished/processStopped`。
+- 通过 `CodeBlockRunner::runCodeBlock` 直接连接 `EditorWidget::runCodeBlockRequested` 信号（由 `MainWindow::connectCurrentEditorZoomSignal()` 设置）。
+
+---
+
+### 1.7. `OpenJudgeManager` — OpenJudge 提交管理器
+
+**文件**：`openjudgemanager.h` / `openjudgemanager.cpp`
+
+**职责**：
+- **标签页管理**：`open()` 方法创建或切换到 OpenJudge 标签页，首次创建时连接所有需要的信号。
+- **代码提交**：`submit()` 方法处理 IDE 模式（从内置编辑器获取代码）和普通模式（从当前编辑器标签页获取）的完整提交流程，包括登录检查、题目选择检查、文件扩展名到语言 ID 映射。
+- **提交结果显示**：首次使用时创建 `SubmitResultPanel` 并插入右侧分割区，显示评测状态、用时和内存，CE 时展示编译错误日志。
+- **失败回测**：非 AC 非 CE 的提交失败后自动运行本地评测（通过 `JudgeEngine`），若缓存中有样例数据则每个失败用例记录到 `ErrorJournal`（含输入/预期输出/实际输出），无样例时记录无 I/O 数据的条目。
+- 跨领域信号通过 Qt 信号发射由 `MainWindow` 连接处理（`submissionFailed` → `QMessageBox`，`ideModeChanged` → `CompileRunManager` + `BottomPanel`，`diagnosticsToggleRequested` → `CompileRunManager`）。
+
+**主要接口**：
+- `void open(SettingsManager *settings)`：打开/切换到 OpenJudge 标签页
+- `void submit(const QString &rootPath)`：提交通用入口
+
+**协作关系**：
+- 依赖 `TabManager`（标签页操作）、`JudgePanel`（本地评测/样例文件夹）、`QSplitter`（SubmitResultPanel 插入）。
+- `MainWindow` 将 `JudgePanel::submitToOpenJudgeRequested` 信号转发到 `OpenJudgeManager::submit()`。
+- 错误回测结果记录到 `ErrorJournal` 单例。
+
+---
+
+### 1.8. `SettingsChangeHandler` — 设置变更处理器
+
+**文件**：`settingschangehandler.h` / `settingschangehandler.cpp`
+
+**职责**：
+- 处理所有来自 `SettingsPanel` 的设置变更信号，将设置持久化到 `SettingsManager` 并实时应用到所有已打开的编辑器。
+- **编辑器设置**：缩进宽度（代码/Markdown 分别处理）、字体（族/大小）、自动保存开关。使用 `applyToAllEditors()` 工具方法遍历所有标签页应用设置。
+- **主题/外观设置**：通过 `ThemeManager::setOverride()` 与 `appearance.colors.*` → 颜色令牌映射表桥接，将 `ConfigManager` JSON 路径的配置键转换为 `ThemeManager` 的颜色令牌，调用 `editor->reloadEditorColors()` 刷新所有编辑器。
+- **快捷键处理**：`handleShortcutChanged()` 持久化快捷键覆盖、应用到 `QAction`、通知编辑器 `reloadShortcuts()`。
+- **重置默认**：`handleResetToDefaults()` 清除所有覆盖、重置字体/缩放/缩进、恢复快捷键默认值、重置输出面板。`resetComplete()` 信号通知 MainWindow 同步 `SettingsPanel` 的 UI 显示。
+- 部分 MainWindow 特有的设置（如 `file_tree_item_height`、`equal_width_tab`）通过 lambda 在 MainWindow 中直接处理，再委托到 `SettingsChangeHandler` 处理通用逻辑。
+
+**协作关系**：
+- 由 `MainWindow` 创建并持有，其处理槽直接连接 `SettingsPanel` 的信号。
+- 通过信号 `zoomLabelUpdateRequested`、`equalWidthTabRequested` 通知 MainWindow 更新 UI。
 
 ---
 

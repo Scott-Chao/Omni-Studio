@@ -35,6 +35,10 @@ MainWindow → frameless orchestrator
  ├── IndexManager           → file index, backlinks, tags, async index build
  ├── CrashRecoveryManager   → stale recovery file cleanup
  ├── ThemeManager           → singleton, Dark/Light palettes, Windows registry auto-detect, **watchTheme() template** + **colorStyle()** helper
+ ├── CompileRunManager      → compile/run/stop lifecycle, owns ProcessRunner, action enable/disable
+ ├── CodeBlockRunner        → MD preview ▶  code block execution, stderr buffering, diagnostics
+ ├── OpenJudgeManager       → OpenJudge tab creation, code submission, result display, error analysis
+ ├── SettingsChangeHandler  → setting change application, ThemeManager color bridge, shortcut rebinding
  ├── ActivityBar            → 48px left bar: Search/AI/Settings/Export PDF/Judge buttons
  ├── FileExplorerWidget     → QTreeView + QFileSystemModel, breadcrumb bar, toolbar
  ├── TabManager             → QTabWidget, owns EditorWidget tabs
