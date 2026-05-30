@@ -2,7 +2,6 @@
 #define CODEBLOCKRUNNER_H
 
 #include <QObject>
-#include <QPointer>
 #include <QMap>
 #include <QString>
 #include <QList>
@@ -29,8 +28,8 @@ private:
     QString saveCodeBlockToTempFile(const QString &language, const QString &code);
     void parseAndShowBlockDiagnostics();
 
-    QPointer<TabManager> m_tabManager;
-    QPointer<BottomPanel> m_bottomPanel;
+    TabManager *m_tabManager = nullptr;
+    BottomPanel *m_bottomPanel = nullptr;
     CompileRunManager *m_compileRunMgr = nullptr;
 
     // Diagnostics cache

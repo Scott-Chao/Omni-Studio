@@ -2233,34 +2233,6 @@ void MainWindow::onOpenJudgeRequested()
     m_openJudgeMgr->open(m_settings);
 }
 
-{
-    QString ext;
-    if (language == QStringLiteral("python")) {
-        ext = QStringLiteral("py");
-    } else if (language == QStringLiteral("cpp")) {
-        ext = QStringLiteral("cpp");
-    } else {
-        return {};
-    }
-
-    const QString tempPath = QDir::tempPath()
-        + QStringLiteral("/") + ConfigManager::instance().compilerCodeBlockPrefix()
-        + QString::number(QCoreApplication::applicationPid())
-        + QStringLiteral("_")
-        + QString::number(m_codeBlockCounter++)
-        + QStringLiteral(".")
-        + ext;
-
-    QFile file(tempPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
-        return {};
-
-    QTextStream out(&file);
-    out << code;
-    file.close();
-    return tempPath;
-}
-
 // ---- .md ↔ .smd 转换 ----
 
 void MainWindow::onConvertMdSmd()

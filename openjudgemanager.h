@@ -2,7 +2,6 @@
 #define OPENJUDGEMANAGER_H
 
 #include <QObject>
-#include <QPointer>
 
 class TabManager;
 class JudgePanel;
@@ -32,14 +31,14 @@ signals:
 
 private:
     void onSampleSelected(const QString &folderPath);
-    void onLoginStateChanged(bool loggedIn);
+    void onLoginStateChanged(bool loggedIn, const QString &username);
     void onSubmissionResultReady(const SubmissionResult &result);
     void runLocalTestsForOJError();
     void onOJErrorLocalTestsFinished(int passed, int total);
 
-    QPointer<TabManager> m_tabManager;
-    QPointer<JudgePanel> m_judgePanel;
-    QPointer<QSplitter> m_rightSplitter;
+    TabManager *m_tabManager = nullptr;
+    JudgePanel *m_judgePanel = nullptr;
+    QSplitter *m_rightSplitter = nullptr;
 
     SubmitResultPanel *m_submitResultPanel = nullptr;
     JudgeEngine *m_ojErrorJudgeEngine = nullptr;

@@ -2,7 +2,6 @@
 #define SETTINGSCHANGEHANDLER_H
 
 #include <QObject>
-#include <QPointer>
 #include <QMap>
 
 class TabManager;
@@ -37,8 +36,8 @@ signals:
 private:
     void applyToAllEditors(const std::function<void(class EditorWidget*)> &fn);
 
-    QPointer<TabManager> m_tabManager;
-    QPointer<SettingsManager> m_settings;
+    TabManager *m_tabManager = nullptr;
+    SettingsManager *m_settings = nullptr;
 };
 
 #endif // SETTINGSCHANGEHANDLER_H
