@@ -43,6 +43,7 @@ protected:
 #include "codeeditor.h"
 #include "compilerunmanager.h"
 #include "codeblockrunner.h"
+#include "openjudgemanager.h"
 #include "judgepanel.h"
 #include "judgeengine.h"
 #include "openjudgewidget.h"
@@ -354,6 +355,10 @@ MainWindow::MainWindow(QWidget *parent)
     // ----- 本地评测面板 -----
     m_judgePanel = new JudgePanel(this);
 
+    // ----- OpenJudge 提交管理 -----
+    m_openJudgeMgr = new OpenJudgeManager(m_tabManager, m_judgePanel,
+                                           m_rightSplitter, this);
+
     m_toggleJudgeAction = new QAction(tr("显示/隐藏代码评测"), this);
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
     connect(m_toggleJudgeAction, &QAction::triggered, this, [this]() {
@@ -367,9 +372,29 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_judgePanel, &JudgePanel::runAllRequested,
             this, &MainWindow::onJudgeRunAll);
     connect(m_judgePanel, &JudgePanel::openJudgeRequested,
-            this, &MainWindow::onOpenJudgeRequested);
+            this, [this]() { onOpenJudgeRequested(); });
     connect(m_judgePanel, &JudgePanel::submitToOpenJudgeRequested,
-            this, &MainWindow::onSubmitToOpenJudge);
+            this, [this]() { m_openJudgeMgr->submit(m_explorer->rootPath()); });
+
+    // OpenJudgeManager cross-cutting signal routing
+    connect(m_openJudgeMgr, &OpenJudgeManager::submissionFailed,
+            this, [this](const QString &error) {
+        QMessageBox::warning(this, tr("提交失败"), error);
+    });
+    connect(m_openJudgeMgr, &OpenJudgeManager::ideModeChanged,
+            this, [this](bool ideMode) {
+        if (m_compileRunMgr) {
+            m_compileRunMgr->updateActions();
+            if (!ideMode && m_compileRunMgr->isRunning())
+                m_compileRunMgr->stop();
+        }
+        if (!ideMode)
+            m_bottomPanel->hide();
+    });
+    connect(m_openJudgeMgr, &OpenJudgeManager::diagnosticsToggleRequested,
+            m_compileRunMgr, &CompileRunManager::toggleDiagnostics);
+    connect(m_openJudgeMgr, &OpenJudgeManager::showJudgePanelRequested,
+            this, [this]() { showLeftPanel(2); });
 
     // 搜索包装页（标题栏 + 关闭按钮）
     {
@@ -625,12 +650,7 @@ MainWindow::MainWindow(QWidget *parent)
         updateAiActionBar();
     });
 
-    // 切换文件时自动关闭 OpenJudge 提交结果面板
-    connect(m_tabManager, &QTabWidget::currentChanged, this, [this](int) {
-        if (m_submitResultPanel && m_submitResultPanel->isVisible()) {
-            m_submitResultPanel->hide();
-        }
-    });
+    // 切换文件时自动关闭 OpenJudge 提交结果面板（由 OpenJudgeManager 管理）
 
     // ----- 设置面板（悬浮遮罩 + 面板）-----
     m_settingsOverlay = new OverlayWidget();
@@ -2501,286 +2521,7 @@ void MainWindow::onJudgeRunAll()
 
 void MainWindow::onOpenJudgeRequested()
 {
-    // Check if OpenJudge tab already exists
-    OpenJudgeWidget *existing = m_tabManager->findOpenJudgeWidget();
-    bool isNew = (existing == nullptr);
-
-    // Open or switch to OpenJudge tab
-    m_tabManager->openOpenJudge(m_settings);
-
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (!oj) return;
-
-    if (isNew) {
-        // Connect signals once
-        connect(oj, &OpenJudgeWidget::sampleSelected,
-                this, &MainWindow::onOpenJudgeSampleSelected);
-        connect(oj, &OpenJudgeWidget::loginStateChanged,
-                this, &MainWindow::onOpenJudgeLoginStateChanged);
-        connect(oj, &OpenJudgeWidget::submissionResultReady,
-                this, &MainWindow::onSubmissionResultReady);
-        connect(oj, &OpenJudgeWidget::submissionFailed,
-                this, [this](const QString &error) {
-            QMessageBox::warning(this, tr("提交失败"), error);
-        });
-        connect(oj, &OpenJudgeWidget::ideDiagnosticsToggleRequested,
-                m_compileRunMgr, &CompileRunManager::toggleDiagnostics);
-        connect(oj, &OpenJudgeWidget::ideModeChanged,
-                this, [this](bool ideMode) {
-            if (m_compileRunMgr) {
-                m_compileRunMgr->updateActions();
-                if (!ideMode && m_compileRunMgr->isRunning())
-                    m_compileRunMgr->stop();
-            }
-            if (!ideMode)
-                m_bottomPanel->hide();
-        });
-    }
-
-    // Show login dialog if not logged in (after tab is visible)
-    if (isNew || !oj->isLoggedIn()) {
-        QTimer::singleShot(200, this, [this]() {
-            OpenJudgeWidget *w = m_tabManager->findOpenJudgeWidget();
-            if (w && !w->isLoggedIn())
-                w->onReLogin();
-        });
-    }
-}
-
-void MainWindow::onOpenJudgeSampleSelected(const QString &folderPath)
-{
-    m_judgePanel->setTestFolder(folderPath);
-    showLeftPanel(2);
-}
-
-void MainWindow::onSubmitToOpenJudge()
-{
-    // Check if OpenJudge tab exists and has a problem selected
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    if (!oj || !oj->hasCurrentProblem()) {
-        bool autoLoginInitiated = oj && oj->tryAutoLogin();
-        if (!autoLoginInitiated) {
-            onOpenJudgeRequested();
-        }
-        QMessageBox::information(this, tr("提示"),
-            tr("请先在 OpenJudge 中选择一道题目"));
-        return;
-    }
-
-    // Check login status
-    if (!oj->isLoggedIn()) {
-        bool autoLoginInitiated = oj->tryAutoLogin();
-        if (!autoLoginInitiated) {
-            onOpenJudgeRequested();
-        }
-        QMessageBox::information(this, tr("提示"),
-            autoLoginInitiated ? tr("正在自动登录 OpenJudge，请稍后重试")
-                               : tr("请先登录 OpenJudge"));
-        return;
-    }
-
-    QString code;
-    QString filePath;
-    int langId;
-
-    // IDE mode: submit from embedded editor
-    if (oj->isIdeMode()) {
-        code = oj->ideCode();
-        if (code.trimmed().isEmpty()) {
-            QMessageBox::information(this, tr("提示"),
-                tr("代码内容为空"));
-            return;
-        }
-        oj->saveIdeCodeToCache();
-        filePath = oj->ideCacheFilePath();
-        langId = oj->currentLanguageId();
-    } else {
-        // Normal mode: submit from current editor tab
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (!editor || !editor->isCodeEdit()) {
-            QMessageBox::information(this, tr("提示"),
-                tr("请打开一个代码文件进行提交"));
-            return;
-        }
-
-        code = editor->toPlainText();
-        if (code.trimmed().isEmpty()) {
-            QMessageBox::information(this, tr("提示"),
-                tr("代码内容为空"));
-            return;
-        }
-
-        filePath = editor->currentFilePath();
-        if (filePath.isEmpty() || editor->isModified()) {
-            filePath = CompileRunManager::saveEditorToTempFile(editor, m_explorer->rootPath());
-            if (filePath.isEmpty()) {
-                QMessageBox::warning(this, tr("错误"),
-                    tr("无法保存代码文件"));
-                return;
-            }
-        }
-
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        QMap<QString, int> langMap = ConfigManager::instance().openJudgeSubmissionLanguageMap();
-        langId = langMap.value("." + ext, 1); // default: G++
-    }
-
-    // Save submission context for error journal (in case of failure)
-    m_lastSubmitSourceFile = filePath;
-    m_lastSubmitSourceCode = code;
-
-    // Submit through OpenJudgeWidget
-    oj->submitCurrentProblem(code, langId);
-
-    // Show a brief status message in the judge panel
-    showLeftPanel(2);
-}
-
-void MainWindow::onSubmissionResultReady(const SubmissionResult &result)
-{
-    // Hide the output panel if it's visible
-    m_bottomPanel->hide();
-
-    // Create the submit result panel on first use
-    if (!m_submitResultPanel) {
-        m_submitResultPanel = new SubmitResultPanel(this);
-        // Insert it into the right splitter, positioned where output panel is
-        int outputIdx = m_rightSplitter->indexOf(m_bottomPanel);
-        m_rightSplitter->insertWidget(outputIdx, m_submitResultPanel);
-        connect(m_submitResultPanel, &SubmitResultPanel::hideRequested, this, [this]() {
-            m_submitResultPanel->hide();
-        });
-    }
-
-    m_submitResultPanel->showResult(result);
-    m_submitResultPanel->setVisible(true);
-
-    // Record non-Accepted, non-CE OpenJudge results to error journal
-    bool isAccepted = (result.status == QStringLiteral("Accepted")
-                       || result.status == QStringLiteral("AC"));
-    bool isCE = (result.status == QStringLiteral("Compile Error"));
-
-    if (!isAccepted && !isCE && !m_lastSubmitSourceFile.isEmpty()) {
-        // Store the OpenJudge status for async recording after local tests
-        m_ojErrorStatus = result.status;
-
-        // Try running local tests against sample data to get I/O
-        runLocalTestsForOJError();
-    }
-
-    // Resize splitter to give the result panel configured ratio height
-    double ratio = ConfigManager::instance().submissionResultHeightRatio();
-    int total = m_rightSplitter->height();
-    if (total > 0) {
-        int panelH = qRound(total * ratio);
-        int editorH = total - panelH;
-        QList<int> sizes;
-        sizes.reserve(m_rightSplitter->count());
-        for (int i = 0; i < m_rightSplitter->count(); ++i) {
-            QWidget *w = m_rightSplitter->widget(i);
-            if (w == m_submitResultPanel)
-                sizes.append(panelH);
-            else if (w == m_tabManager)
-                sizes.append(editorH);
-            else
-                sizes.append(0);
-        }
-        m_rightSplitter->setSizes(sizes);
-    }
-}
-
-void MainWindow::runLocalTestsForOJError()
-{
-    // Get sample test folder from judge panel (set when user selected the problem)
-    QString testFolder = m_judgePanel->testFolder();
-    if (testFolder.isEmpty()) {
-        // No sample data available — fall back to recording without I/O
-        OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-        QString problemName = oj ? oj->currentProblemTitle() : QString();
-        QString problemUrl = oj ? oj->currentProblemUrl() : QString();
-        SubmissionResult fallback;
-        fallback.status = m_ojErrorStatus;
-        ErrorJournal::instance().recordOpenJudgeFailure(
-            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
-        return;
-    }
-
-    // Check if test folder has any test cases
-    QDir testDir(testFolder);
-    QStringList inFiles = testDir.entryList({QStringLiteral("*.in")}, QDir::Files);
-    if (inFiles.isEmpty()) {
-        // No test cases — fall back to recording without I/O
-        OpenJudgeWidget *oj2 = m_tabManager->findOpenJudgeWidget();
-        QString problemName = oj2 ? oj2->currentProblemTitle() : QString();
-        QString problemUrl = oj2 ? oj2->currentProblemUrl() : QString();
-        SubmissionResult fallback;
-        fallback.status = m_ojErrorStatus;
-        ErrorJournal::instance().recordOpenJudgeFailure(
-            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
-        return;
-    }
-
-    // Clean up any previous background engine
-    if (m_ojErrorJudgeEngine) {
-        if (m_ojErrorJudgeEngine->isRunning())
-            m_ojErrorJudgeEngine->stop();
-        m_ojErrorJudgeEngine->deleteLater();
-        m_ojErrorJudgeEngine = nullptr;
-    }
-
-    // Create background engine and run local tests
-    m_ojErrorJudgeEngine = new JudgeEngine(this);
-    m_ojErrorJudgeEngine->setSourceFile(m_lastSubmitSourceFile);
-    m_ojErrorJudgeEngine->setTestFolder(testFolder);
-
-    connect(m_ojErrorJudgeEngine, &JudgeEngine::allTestsFinished,
-            this, &MainWindow::onOJErrorLocalTestsFinished);
-
-    m_ojErrorJudgeEngine->start();
-}
-
-void MainWindow::onOJErrorLocalTestsFinished(int passed, int total)
-{
-    if (!m_ojErrorJudgeEngine)
-        return;
-
-    OpenJudgeWidget *oj = m_tabManager->findOpenJudgeWidget();
-    QString problemName = oj ? oj->currentProblemTitle() : QString();
-    QString problemUrl = oj ? oj->currentProblemUrl() : QString();
-
-    const auto &results = m_ojErrorJudgeEngine->results();
-    bool anyRecorded = false;
-
-    // Record each failed test case with actual/expected output from local run
-    for (const auto &tr : results) {
-        if (tr.statusCode != QStringLiteral("AC")) {
-            ErrorJournal::instance().recordOpenJudgeFailure(
-                tr, m_lastSubmitSourceFile, problemName, problemUrl);
-            anyRecorded = true;
-        }
-    }
-
-    // If all local tests passed but OpenJudge says it failed,
-    // record one entry noting the failure is on hidden test cases
-    if (!anyRecorded) {
-        SubmissionResult fallback;
-        fallback.status = m_ojErrorStatus;
-        ErrorJournal::instance().recordOpenJudgeFailure(
-            fallback, m_lastSubmitSourceFile, problemName, problemUrl, m_lastSubmitSourceCode);
-    }
-
-    // Clean up
-    m_ojErrorJudgeEngine->deleteLater();
-    m_ojErrorJudgeEngine = nullptr;
-}
-
-void MainWindow::onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username)
-{
-    Q_UNUSED(username);
-    // Can be used to update UI state when login state changes
-    if (loggedIn) {
-        // Could show a status bar message
-    }
+    m_openJudgeMgr->open(m_settings);
 }
 
 {

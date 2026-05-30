@@ -22,6 +22,7 @@ class EditorWidget;
 class SettingsManager;
 class CompileRunManager;
 class CodeBlockRunner;
+class OpenJudgeManager;
 class QDockWidget;
 class QPushButton;
 class QToolButton;
@@ -170,15 +171,8 @@ private:
     int m_savedLeftPanelWidth = 220;
     QAction *m_toggleExplorerAction = nullptr;
 
-    // OpenJudge 标签页（通过 TabManager 管理，不再独立窗口）
-    // 提交结果面板
-    SubmitResultPanel *m_submitResultPanel = nullptr;
-    // 最近一次 OpenJudge 提交的上下文（用于错题本记录）
-    QString m_lastSubmitSourceFile;
-    QString m_lastSubmitSourceCode;
-    // OpenJudge 提交失败后，后台运行本地评测获取 I/O 数据
-    JudgeEngine *m_ojErrorJudgeEngine = nullptr;
-    QString m_ojErrorStatus;
+    // OpenJudge 提交管理
+    OpenJudgeManager *m_openJudgeMgr = nullptr;
 
     // 索引管理器
     IndexManager *m_indexManager = nullptr;
@@ -229,13 +223,7 @@ private:
 
     void onJudgeRunAll();
     void onOpenJudgeRequested();
-    void onOpenJudgeSampleSelected(const QString &folderPath);
-    void onSubmitToOpenJudge();
     void onConvertMdSmd();
-    void onSubmissionResultReady(const SubmissionResult &result);
-    void runLocalTestsForOJError();
-    void onOJErrorLocalTestsFinished(int passed, int total);
-    void onOpenJudgeLoginStateChanged(bool loggedIn, const QString &username);
     void toggleSettings();
     void toggleHelp();
     void onDefaultZoomChanged(qreal zoom);
