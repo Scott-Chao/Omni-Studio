@@ -101,31 +101,45 @@ protected:
     {
         m_pendingBranchSelect = QPersistentModelIndex();
         const QModelIndex clicked = indexAt(event->pos());
+
         if (clicked.isValid() && model()->hasChildren(clicked)) {
             int depth = 0;
             for (QModelIndex p = clicked.parent(); p.isValid(); p = p.parent())
                 ++depth;
+            // Branch area spans from left viewport edge (x=0) to the end of
+            // this item's indentation.  visualRect returns a viewport-relative
+            // rect whose x may be >0 (internal offset), so we force x=0.
             QRect br = visualRect(clicked);
-            br.setWidth(indentation() * (depth + 1));
+            int branchWidth = indentation() * (depth + 1);
+            br.setX(0);
+            br.setWidth(branchWidth);
+
             if (br.contains(event->pos()))
                 m_pendingBranchSelect = QPersistentModelIndex(clicked);
         }
 
         QTreeView::mousePressEvent(event);
+
+        // Qt's expand/collapse path in QAbstractItemView::mousePressEvent
+        // returns early without handling selection.  Select here immediately
+        // and keep m_pendingBranchSelect valid so doItemsLayout can re-apply
+        // it if a layout cycle clears the selection.
+        if (m_pendingBranchSelect.isValid()) {
+            selectionModel()->select(m_pendingBranchSelect,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(m_pendingBranchSelect);
+        }
     }
 
     void doItemsLayout() override
     {
         QTreeView::doItemsLayout();
-        // Apply the pending selection now, after the layout update triggered
-        // by expand/collapse has fully settled.  Doing it here guarantees that
-        // no subsequent layout-changed signal will clear it.
+
+        // Re-apply selection in case the layout update cleared it.
         if (m_pendingBranchSelect.isValid()) {
-            QPersistentModelIndex idx = m_pendingBranchSelect;
-            m_pendingBranchSelect = QPersistentModelIndex();
-            selectionModel()->select(idx,
+            selectionModel()->select(m_pendingBranchSelect,
                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-            setCurrentIndex(idx);
+            setCurrentIndex(m_pendingBranchSelect);
         }
     }
 

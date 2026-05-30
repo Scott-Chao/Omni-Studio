@@ -62,7 +62,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 修复
-- 文件夹展开/收起异常修复
+- 文件夹展开/收起 chevron 点击后选中高亮修复：`FileTreeView` 分支点击检测修正（分支区域 x 从 viewport 左边缘算起），并在 `mousePressEvent` 中直接选中（`doItemsLayout` 不可靠作为唯一选中时机）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -304,8 +304,9 @@
   - setModelData：重写以校验用户输入。若用户清空文件夹名，或清空文件名使其只剩扩展名（如 `.md`），自动恢复为原始名称，防止产生仅含扩展名的无效文件。
 - 监听 `QFileSystemModel::fileRenamed` 信号，并转发 `fileRenamed` 信号，供主窗口更新标签页路径。
 - 提供 `deleteItem` 等公共方法，封装实际的文件系统操作。内联新建/重命名由内部方法处理。
-- 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。代理模型内置 `QFileIconProvider` 成员缓存和惰性兜底图标，避免 Windows 上 `setRootPath` 切换后 HICON 失效导致的空心图标问题，同时消除每次 fallback 时重复调用 `SHGetFileInfo` 的性能开销。
+- 使用自定义排序代理 `FileSortProxyModel` 确保文件夹优先于文件显示，且在新建、重命名后自动重排。代理模型内置 `QFileIconProvider` 成员缓存和惰性兜底图标，避免 Windows 上 `setRootPath` 切换后 HICON 失效导致的空心图标问题，同时消除每次 fallback 时重复调用 `SHGetFileInfo` 的性能开销。`hasChildren()` 对目录始终返回 `true`，确保空文件夹也显示展开/收起 chevron 且展开后可折叠。
 - `setUniformRowHeights(true)` 开启统一行高模式，样式表已强制 24px 行高，开启后 Qt 跳过逐行高度查询，大幅提升大目录滚动流畅度。
+- 内部使用 `FileTreeView`（匿名命名空间中的 `QTreeView` 子类），通过 `drawBranches()` 自定义绘制 ">" / "v" chevron 替代原生样式（绕过 QSS 链，避免 hover 触发布局偏移）。重写 `mousePressEvent` 和 `doItemsLayout`：Qt 的分支指示器点击流程（`QAbstractItemView::mousePressEvent` → `expandOrCollapseItemAtPos`）在展开/收起后提前返回且不执行选中逻辑，因此在 `mousePressEvent` 中检测分支区域点击并立即选中项；`doItemsLayout` 中重新应用选中以防布局更新清空选中状态。分支区域从 viewport 左边缘（x=0）计算至 `indentation * (depth + 1)` 处，覆盖实际 chevron 的点击范围。
 - 重写 `eventFilter`，监听 `Delete` 键，在非编辑状态下直接对选中项发起删除请求。
 - 右键菜单中使用 `DeleteKeyFilter` 事件过滤器，支持在菜单弹出时按 `Delete` 键触发删除。
 - 发出 `operationFailed` 信号，用于向用户展示文件操作错误。
