@@ -253,7 +253,17 @@ void AiRequestHandler::clearConversation()
     m_aiHistory.clear();
     if (m_aiPanel)
         m_aiPanel->clearChat();
-    AiHistoryManager::instance().clearCurrentConversation();
+
+    auto &mgr = AiHistoryManager::instance();
+    QString currentId = mgr.currentConversationId();
+    if (currentId.isEmpty())
+        return;  // No conversation exists, nothing to clear
+
+    AiConversation conv = mgr.conversationById(currentId);
+    if (conv.isValid() && conv.messageCount == 0)
+        return;  // Already empty, no need to create a new empty conversation
+
+    mgr.clearCurrentConversation();
 }
 
 void AiRequestHandler::newConversation()
