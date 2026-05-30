@@ -15,8 +15,6 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
-#include <QProxyStyle>
-#include <QStyleOption>
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QResizeEvent>
@@ -41,76 +39,98 @@ QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
     return QIcon(QPixmap::fromImage(img));
 }
 
-// QProxyStyle that draws ">" / "v" chevrons instead of Fusion's solid triangles
-// for tree branch expand/collapse indicators. Preserves Fusion's connecting lines.
-class TreeBranchStyle : public QProxyStyle
-{
-public:
-    using QProxyStyle::QProxyStyle;
-
-    void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
-                       QPainter *painter, const QWidget *widget) const override
-    {
-        if (element == PE_IndicatorBranch && (option->state & (State_Children | State_Open))) {
-            // Draw connecting lines via base (without the triangle)
-            QStyleOption opt = *option;
-            opt.state &= ~State_Children;
-            QProxyStyle::drawPrimitive(element, &opt, painter, widget);
-
-            // Draw custom chevron
-            painter->save();
-            painter->setRenderHint(QPainter::Antialiasing);
-            QColor color = option->palette.color(QPalette::Text);
-            color.setAlpha(160);
-            painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap));
-            painter->setBrush(Qt::NoBrush);
-            QRect r = option->rect;
-            const int cx = r.center().x();
-            const int cy = r.center().y();
-            const int s = r.width() / 4;
-            QPainterPath path;
-            if (option->state & State_Open) {
-                path.moveTo(cx - s, cy - s / 2.0);
-                path.lineTo(cx, cy + s / 2.0);
-                path.lineTo(cx + s, cy - s / 2.0);
-            } else {
-                path.moveTo(cx - s / 2.0, cy - s);
-                path.lineTo(cx + s / 2.0, cy);
-                path.lineTo(cx - s / 2.0, cy + s);
-            }
-            painter->drawPath(path);
-            painter->restore();
-            return;
-        }
-        QProxyStyle::drawPrimitive(element, option, painter, widget);
-    }
-};
-
-// QTreeView subclass that handles branch clicks on expanded items, even when
-// QFileSystemModel reports no children (empty folders). The default QTreeView
-// refuses to collapse items where isExpandable() returns false.
+// QTreeView subclass that draws custom ">" / "v" chevrons via drawBranches()
+// (bypassing the style/QSS chain to avoid hover-dependent layout shifts) and
+// selects items on branch-indicator clicks.
 class FileTreeView : public QTreeView
 {
 public:
     using QTreeView::QTreeView;
 
 protected:
+    void drawBranches(QPainter *painter, const QRect &rect,
+                      const QModelIndex &index) const override
+    {
+        // Only draw custom chevrons for directories.
+        const auto *proxy = qobject_cast<const QSortFilterProxyModel*>(model());
+        if (!proxy) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        const auto *fs = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!fs) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        QModelIndex srcIdx = proxy->mapToSource(index);
+        if (!srcIdx.isValid() || !fs->isDir(srcIdx)) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+
+        // Draw custom chevron. Use a fixed size derived from indentation rather
+        // than rect.width() — the branch rect spans the full indent chain and
+        // grows with each nesting level, which would scale the chevron too.
+        // Draw right-aligned within the indent area (standard tree behaviour).
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        QColor color = palette().color(QPalette::Text);
+        color.setAlpha(160);
+        painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap));
+        painter->setBrush(Qt::NoBrush);
+        const int s = indentation() / 5;
+        const int cx = rect.right() - s - 2;
+        const int cy = rect.center().y();
+        QPainterPath path;
+        if (isExpanded(index)) {
+            // "v"
+            path.moveTo(cx - s, cy - s / 2.0);
+            path.lineTo(cx, cy + s / 2.0);
+            path.lineTo(cx + s, cy - s / 2.0);
+        } else {
+            // ">"
+            path.moveTo(cx - s / 2.0, cy - s);
+            path.lineTo(cx + s / 2.0, cy);
+            path.lineTo(cx - s / 2.0, cy + s);
+        }
+        painter->drawPath(path);
+        painter->restore();
+    }
+
     void mousePressEvent(QMouseEvent *event) override
     {
-        const QModelIndex index = indexAt(event->pos());
-        if (index.isValid() && isExpanded(index)) {
+        m_pendingBranchSelect = QPersistentModelIndex();
+        const QModelIndex clicked = indexAt(event->pos());
+        if (clicked.isValid() && model()->hasChildren(clicked)) {
             int depth = 0;
-            for (QModelIndex p = index.parent(); p.isValid(); p = p.parent())
+            for (QModelIndex p = clicked.parent(); p.isValid(); p = p.parent())
                 ++depth;
-            QRect br = visualRect(index);
+            QRect br = visualRect(clicked);
             br.setWidth(indentation() * (depth + 1));
-            if (br.contains(event->pos())) {
-                collapse(index);
-                return;
-            }
+            if (br.contains(event->pos()))
+                m_pendingBranchSelect = QPersistentModelIndex(clicked);
         }
+
         QTreeView::mousePressEvent(event);
     }
+
+    void doItemsLayout() override
+    {
+        QTreeView::doItemsLayout();
+        // Apply the pending selection now, after the layout update triggered
+        // by expand/collapse has fully settled.  Doing it here guarantees that
+        // no subsequent layout-changed signal will clear it.
+        if (m_pendingBranchSelect.isValid()) {
+            QPersistentModelIndex idx = m_pendingBranchSelect;
+            m_pendingBranchSelect = QPersistentModelIndex();
+            selectionModel()->select(idx,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(idx);
+        }
+    }
+
+public:
+    QPersistentModelIndex m_pendingBranchSelect;
 };
 
 } // namespace
@@ -265,8 +285,6 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     , m_fileModel(new QFileSystemModel(this))
     , m_treeView(new FileTreeView(this))
 {
-    // Apply custom chevron branch indicator style
-    m_treeView->setStyle(new TreeBranchStyle(m_treeView->style()));
     // 设置布局，使树视图填满当前控件
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -377,6 +395,9 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     ThemeManager::watchTheme(this, &FileExplorerWidget::refreshStyle);
     refreshStyle();
+
+    // Prevent faint focus-rect highlight on the first item at startup.
+    m_treeView->setCurrentIndex(QModelIndex());
 }
 
 void FileExplorerWidget::reloadShortcuts()
@@ -466,6 +487,7 @@ void FileExplorerWidget::setRootPath(const QString &path)
         m_sortProxy->sort(0, Qt::AscendingOrder);
         QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
         m_treeView->setRootIndex(proxyRoot);
+        m_treeView->setCurrentIndex(QModelIndex());
         m_treeView->setUpdatesEnabled(true);
     }
     updateBreadcrumb();
@@ -852,6 +874,25 @@ QVariant FileSortProxyModel::data(const QModelIndex &index, int role) const
         }
     }
     return result;
+}
+
+bool FileSortProxyModel::hasChildren(const QModelIndex &parent) const
+{
+    // Root always has children.
+    if (!parent.isValid())
+        return true;
+
+    QFileSystemModel *fs = qobject_cast<QFileSystemModel*>(sourceModel());
+    if (!fs)
+        return QSortFilterProxyModel::hasChildren(parent);
+
+    QModelIndex srcIdx = mapToSource(parent);
+    // Directories always report true so the expand/collapse chevron is drawn
+    // even for empty folders, and collapse() works after expansion.
+    if (srcIdx.isValid() && fs->isDir(srcIdx))
+        return true;
+
+    return QSortFilterProxyModel::hasChildren(parent);
 }
 
 bool FileSortProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
