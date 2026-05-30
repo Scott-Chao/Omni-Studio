@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.15）
+## 功能说明文档（v0.13.16）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,13 +61,10 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.15
-UI 及 Python 高亮问题修复
-- **Python 语义高亮增强**：`completion_helper.py` 的 `handle_tokens()` 改成分两次调用 `get_names()`（先定义后引用），定义类型始终优先，防止引用侧不准确类型（如 `module` 被 `instance` 覆盖）导致着色错误。模块优先级从 1 提升至 4（`function > class > module > parameter > property > variable`），使 `import jedi` / `except` 块中同名变量不再覆盖模块颜色。对仅引用且类型模糊的名称（如 `json.JSONDecodeError`，Jedi 返回 `instance`），使用 `infer()` 在引用位置重新解析类型，确保类自动为绿色、实例为浅蓝色。
-- **关键字参数悬停提示**：`handle_hover()` 新增 `_keyword_at_position()` / `_extract_kw_name_before()` / `_param_info_for_keyword()`，当光标位于 `keyword=value` 内且 `infer()` 返回封闭函数时，自动匹配签名参数并显示参数级信息（如 `ensure_ascii: parameter of dumps`），替代旧有函数级信息。
-- **Python 关键字去加粗**：`pythonsyntaxhighlighter.cpp` 删除 `m_keywordFormat` / `m_controlKeywordFormat` 的 `setFontWeight(QFont::Bold)` 调用。
-- **文件树修复**：文件夹展开/收起图标样式调整、异常fix、点击后选中高亮修复。文件树图标统一为 SVG。打开文件背景色微调。
-- **右面板定制标题栏**：`MainWindow` 新增 `createDockTitleBar()` 辅助函数，为右侧面板和 AI 助手 dock 提供含 SVG 关闭按钮的自定义标题栏（`dockTitleBar` / `dockTitleCloseBtn`），替代原生关闭按钮，跟随主题 `titleBar.foreground` / `titleBar.buttonCloseHover` 色值。
+### 修复 v0.13.16
+重构后 UI 问题修复
+- 修复右上角功能图标浅色模式下颜色异常
+- 适当调整右上角图标间距
 
 ### 1. `MainWindow` - 主窗口控制器
 

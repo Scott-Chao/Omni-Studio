@@ -1135,6 +1135,11 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    // Themed toolbar icons and spacing — apply initially and on theme switch
+    refreshTitleBarStyle();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &MainWindow::refreshTitleBarStyle);
+
 }
 
 MainWindow::~MainWindow()
@@ -2011,7 +2016,7 @@ void MainWindow::refreshTitleBarStyle()
 
     // Toolbar background and text color
     m_toolBar->setStyleSheet(QStringLiteral(
-        "QToolBar { background: %1; border: none; spacing: 0; padding: 0; }"
+        "QToolBar { background: %1; border: none; spacing: 2px; padding: 0; }"
         "QToolBar QToolButton {"
         "  background: transparent; border: none; padding: 4px 8px;"
         "}"
