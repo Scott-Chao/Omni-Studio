@@ -34,6 +34,7 @@ SOURCES += \
     sidebarpanels.cpp \
     brackethighlighter.cpp \
     codeeditor.cpp \
+    codeblockrunner.cpp \
     completionpopup.cpp \
     compilerunmanager.cpp \
     cppcompletionprovider.cpp \
@@ -105,6 +106,7 @@ HEADERS += \
     sidebarpanels.h \
     backlinkindex.h \
     codeeditor.h \
+    codeblockrunner.h \
     completionpopup.h \
     completionprovider.h \
     compilererrorparser.h \

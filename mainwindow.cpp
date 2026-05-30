@@ -38,18 +38,15 @@ protected:
 #include "utilities.h"
 #include "activitybar.h"
 #include "rightpanelcontainer.h"
-#include "processrunner.h"
-#include "compilererrorparser.h"
 #include "outputpanel.h"
 #include "bottompanel.h"
 #include "codeeditor.h"
 #include "compilerunmanager.h"
+#include "codeblockrunner.h"
 #include "judgepanel.h"
 #include "judgeengine.h"
 #include "openjudgewidget.h"
 #include "submissionpanel.h"
-#include "compilerutils.h"
-#include "languageutils.h"
 #include "tagindex.h"
 #include "outlinepanel.h"
 #include "settingspanel.h"
@@ -350,32 +347,9 @@ MainWindow::MainWindow(QWidget *parent)
                                              m_settings, m_explorer,
                                              m_rightSplitter, this);
 
-    // Buffer stderr for MD code block diagnostics (ProcessRunner owned by CompileRunManager)
-    m_stderrBufferConnection = connect(m_compileRunMgr->processRunner(), &ProcessRunner::outputReceived,
-        this, [this](const QString &text, bool isStderr) {
-            if (m_isRunningCodeBlock && isStderr)
-                m_mdStderrBuffer += text;
-        });
-
-    // Forward compile/run finished to MD code block diagnostics
-    connect(m_compileRunMgr, &CompileRunManager::compileFinished, this, [this](bool) {
-        if (m_isRunningCodeBlock) {
-            m_processManuallyStopped = m_compileRunMgr->isManualStop();
-            parseAndShowBlockDiagnostics();
-        }
-    });
-    connect(m_compileRunMgr, &CompileRunManager::runFinished, this, [this](int) {
-        if (m_isRunningCodeBlock) {
-            m_processManuallyStopped = m_compileRunMgr->isManualStop();
-            parseAndShowBlockDiagnostics();
-        }
-    });
-    connect(m_compileRunMgr, &CompileRunManager::processStopped, this, [this](bool) {
-        if (m_isRunningCodeBlock) {
-            m_isRunningCodeBlock = false;
-            m_mdStderrBuffer.clear();
-        }
-    });
+    // ----- MD 代码块执行与诊断 -----
+    m_codeBlockRunner = new CodeBlockRunner(m_tabManager, m_bottomPanel,
+                                             m_compileRunMgr, this);
 
     // ----- 本地评测面板 -----
     m_judgePanel = new JudgePanel(this);
@@ -918,7 +892,10 @@ MainWindow::MainWindow(QWidget *parent)
             }
         } else if (editor && editor->currentFilePath().toLower().endsWith(QStringLiteral(".md"))) {
             // MD file: load cached code block diagnostics
-            loadMdDiagnosticsForCurrentTab();
+            disconnect(m_diagnosticsProviderConnection);
+            m_bottomPanel->setCurrentEditor(nullptr);
+            if (!m_codeBlockRunner->loadDiagnosticsForCurrentTab())
+                m_bottomPanel->hide();
         } else {
             m_bottomPanel->hide();
         }
@@ -1738,7 +1715,7 @@ void MainWindow::connectCurrentEditorZoomSignal()
         connect(editor, &EditorWidget::wikiLinkClicked, this,
                 &MainWindow::onWikiLinkClicked, Qt::UniqueConnection);
         m_codeBlockConnection = connect(editor, &EditorWidget::runCodeBlockRequested,
-                                        this, &MainWindow::onCodeBlockRequested);
+                                        m_codeBlockRunner, &CodeBlockRunner::runCodeBlock);
         connect(editor, &EditorWidget::tagClicked, this, &MainWindow::onTagClicked,
                 Qt::UniqueConnection);
     }
@@ -2806,7 +2783,6 @@ void MainWindow::onOpenJudgeLoginStateChanged(bool loggedIn, const QString &user
     }
 }
 
-QString MainWindow::saveCodeBlockToTempFile(const QString &language, const QString &code)
 {
     QString ext;
     if (language == QStringLiteral("python")) {
@@ -3012,124 +2988,6 @@ void MainWindow::convertSmdToMd(EditorWidget *editor, const QFileInfo &fi)
     // 8. Restore source modified state
     smdEditor->setModified(sourceWasModified);
     editor->setModified(sourceWasModified);
-}
-
-void MainWindow::onCodeBlockRequested(const QString &language, const QString &code, int blockIndex)
-{
-    const QString normalizedLang = LanguageUtils::normalizeCodeFenceLanguage(language);
-
-    // Track MD code block state
-    EditorWidget *editor = m_tabManager->currentEditor();
-    m_currentMdFilePath = editor ? editor->currentFilePath() : QString();
-    m_currentBlockIndexMd = blockIndex;
-    m_currentBlockLanguage = normalizedLang;
-    m_isRunningCodeBlock = true;
-    m_mdStderrBuffer.clear();
-
-    // Clear previous diagnostics for this block and preview highlights immediately
-    if (!m_currentMdFilePath.isEmpty()) {
-        m_mdDiagnostics[m_currentMdFilePath].remove(blockIndex);
-        m_lastRunBlockIndexMd[m_currentMdFilePath] = blockIndex;
-    }
-    if (editor)
-        editor->clearBlockDiagnostics();
-    m_bottomPanel->clearDiagnostics();
-
-    if (normalizedLang.isEmpty()) {
-        m_isRunningCodeBlock = false;
-        m_bottomPanel->setVisible(true);
-        m_bottomPanel->showRunTab();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->appendOutput(
-            tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
-        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
-        return;
-    }
-
-    const QString filePath = saveCodeBlockToTempFile(normalizedLang, code);
-    if (filePath.isEmpty()) {
-        m_isRunningCodeBlock = false;
-        m_bottomPanel->setVisible(true);
-        m_bottomPanel->showRunTab();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->appendOutput(
-            tr("错误: 无法创建临时文件。\n"), true);
-        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
-        return;
-    }
-
-    m_bottomPanel->setVisible(true);
-    m_bottomPanel->showRunTab();
-    m_bottomPanel->outputPanel()->clearOutput();
-
-    if (normalizedLang == QStringLiteral("python")) {
-        m_bottomPanel->outputPanel()->appendOutput(
-            QStringLiteral("--- ") + tr("运行 Python 代码块 ---\n"), false);
-        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_compileRunMgr->processRunner()->startRunPython(filePath);
-    } else if (normalizedLang == QStringLiteral("cpp")) {
-        m_bottomPanel->outputPanel()->appendOutput(
-            QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_compileRunMgr->processRunner()->startCompileAndRun(filePath);
-    }
-}
-
-void MainWindow::parseAndShowBlockDiagnostics()
-{
-    m_isRunningCodeBlock = false;
-
-    // Skip diagnostics when the process was manually stopped
-    if (m_processManuallyStopped) {
-        m_processManuallyStopped = false;
-        return;
-    }
-
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor || editor->currentFilePath() != m_currentMdFilePath)
-        return;
-
-    QList<SmdDiagnostic> diags;
-    if (m_currentBlockLanguage == QStringLiteral("cpp")) {
-        diags = CompilerErrorParser::parseCompileErrors(m_mdStderrBuffer, m_currentBlockIndexMd);
-    } else if (m_currentBlockLanguage == QStringLiteral("python")) {
-        diags = CompilerErrorParser::parsePythonTraceback(m_mdStderrBuffer, m_currentBlockIndexMd);
-    }
-
-    // Store diagnostics per file per block
-    m_mdDiagnostics[m_currentMdFilePath][m_currentBlockIndexMd] = diags;
-
-    // Update bottom panel
-    m_bottomPanel->setDiagnostics(diags);
-
-    // Update preview highlights
-    QMap<int, QList<SmdDiagnostic>> blockMap;
-    blockMap[m_currentBlockIndexMd] = diags;
-    editor->applyBlockDiagnostics(blockMap);
-}
-
-void MainWindow::loadMdDiagnosticsForCurrentTab()
-{
-    EditorWidget *editor = m_tabManager->currentEditor();
-    if (!editor) return;
-    QString filePath = editor->currentFilePath();
-
-    disconnect(m_diagnosticsProviderConnection);
-    m_bottomPanel->setCurrentEditor(nullptr);
-
-    int lastBlock = m_lastRunBlockIndexMd.value(filePath, -1);
-    if (lastBlock >= 0 && m_mdDiagnostics.contains(filePath)
-        && m_mdDiagnostics[filePath].contains(lastBlock)) {
-        QList<SmdDiagnostic> diags = m_mdDiagnostics[filePath][lastBlock];
-        m_bottomPanel->setDiagnostics(diags);
-
-        QMap<int, QList<SmdDiagnostic>> blockMap;
-        blockMap[lastBlock] = diags;
-        editor->applyBlockDiagnostics(blockMap);
-    } else {
-        m_bottomPanel->hide();
-        editor->clearBlockDiagnostics();
-    }
 }
 
 // ==================================================================
