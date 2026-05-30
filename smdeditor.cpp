@@ -495,6 +495,12 @@ void SmdEditor::reloadColors()
 
 void SmdEditor::refreshStyle()
 {
+    // Save scroll position before style changes — setStyleSheet on
+    // QScrollArea triggers a re-polish that can reset the scroll to 0.
+    // Use a double-restore (immediate + delayed) to handle both the
+    // synchronous reset and any async layout-triggered reset.
+    int savedScroll = m_scrollArea->verticalScrollBar()->value();
+
     auto &tm = ThemeManager::instance();
     QString editorBg = tm.color("sideBar.background").name();
     QString panelBorder = tm.color("panel.border").name();
@@ -509,6 +515,13 @@ void SmdEditor::refreshStyle()
 
     m_cellContainer->setStyleSheet(QStringLiteral(
         "background-color: %1;").arg(editorBg));
+
+    // Immediate restore — catches synchronous reset from setStyleSheet
+    m_scrollArea->verticalScrollBar()->setValue(savedScroll);
+    // Delayed restore — catches async reset from layout processing
+    QTimer::singleShot(10, this, [this, savedScroll]() {
+        m_scrollArea->verticalScrollBar()->setValue(savedScroll);
+    });
 }
 
 // ---- Cell Management ----
@@ -934,7 +947,7 @@ void SmdEditor::startAutoRender()
             return;
         }
         SmdCell *cell = m_autoRenderQueue[m_autoRenderIndex];
-        if (cell && !cell->isRendered()) {
+        if (cell) {
             cell->setRendered(true);
             cell->setCommandMode(true);
         }

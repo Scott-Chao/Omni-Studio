@@ -588,6 +588,22 @@ void SmdCell::setRenderedState(bool rendered)
     if (m_type != Markdown)
         return;
     m_rendered = rendered;
+
+    // Show overlay immediately so raw markdown text is never visible
+    // during the auto-render delay (200ms).  The initial geometry may
+    // be (0,0,0,0) since the layout hasn't settled yet, but resizeEvent
+    // corrects it before the first paint — see SmdCell::resizeEvent().
+    if (rendered) {
+        if (!m_renderOverlay) {
+            m_renderOverlay = new QWidget(this);
+            m_renderOverlay->setStyleSheet(QStringLiteral("background-color: %1;")
+                .arg(ThemeManager::instance().color("preview.containerBackground").name()));
+        }
+        m_renderOverlay->setGeometry(m_editorStack->geometry());
+        m_renderOverlay->setVisible(true);
+        m_renderOverlay->raise();
+    }
+
     if (m_commandMode) {
         if (rendered) {
             m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
@@ -1043,6 +1059,8 @@ void SmdCell::updateEditorHeight()
     qreal fallbackLH = fmf.lineSpacing();
     qreal totalDocH = 0;
     int visualLines = 0;
+    int blockCount = 0;
+    int blocksWithInvalidLayout = 0;
 
     for (QTextBlock block = ed->document()->begin(); block.isValid(); block = block.next()) {
         // Include trailing empty block in height when the content has a
@@ -1051,6 +1069,7 @@ void SmdCell::updateEditorHeight()
         if (!block.next().isValid() && block.text().isEmpty()
             && !ed->toPlainText().endsWith(QLatin1Char('\n')))
             continue;
+        ++blockCount;
         QTextLayout *layout = block.layout();
         int lc = 1;
         if (layout) {
@@ -1061,8 +1080,10 @@ void SmdCell::updateEditorHeight()
             qreal minHForBlock = fallbackLH * lc;
             if (h > 0)
                 totalDocH += qMax(h, minHForBlock);
-            else
+            else {
                 totalDocH += minHForBlock;
+                ++blocksWithInvalidLayout;
+            }
         } else {
             totalDocH += fallbackLH * lc;
         }
@@ -1082,6 +1103,23 @@ void SmdCell::updateEditorHeight()
     int minH = qCeil(fallbackLH) + marginH + 2;
     if (contentH < minH)
         contentH = minH;
+
+    // When every block's QTextLayout returned boundingRect().height() == 0,
+    // the document layout hasn't been performed yet (widget re-polish during
+    // a theme change can invalidate all layouts).  Applying the fallback
+    // height (lineSpacing × lineCount) can be wrong for wrapped text, and
+    // there's no resize event guaranteed to correct it later.
+    //
+    // Only skip if the editor already has a reasonable height from a prior
+    // successful measurement.  The 50000px placeholder (from applyZoom) and
+    // the ~30px default (from widget setup) are not reasonable.
+    if (blocksWithInvalidLayout > 0 && blocksWithInvalidLayout == blockCount) {
+        int curH = ed->height();
+        if (curH >= 100 && curH <= 10000) {
+            m_updatingHeight = false;
+            return;
+        }
+    }
 
     ed->setFixedHeight(contentH);
     m_editorStack->setFixedHeight(contentH);
@@ -1252,8 +1290,11 @@ bool SmdCell::eventFilter(QObject *obj, QEvent *event)
 void SmdCell::resizeEvent(QResizeEvent *event)
 {
     QFrame::resizeEvent(event);
-    // Keep overlay positioned over the editor stack (non-native, safe)
-    if (m_renderOverlay && m_renderOverlay->isVisible()) {
+    // Keep overlay positioned over the editor stack (non-native, safe).
+    // Do NOT check isVisible() — during initial layout the overlay is not
+    // yet "visible" (parent widget not fully shown), so the check would
+    // skip the update and leave the overlay at its initial wrong position.
+    if (m_renderOverlay) {
         m_renderOverlay->setGeometry(m_editorStack->geometry());
     }
     // Re-render if rendered pixmap width no longer matches available width.

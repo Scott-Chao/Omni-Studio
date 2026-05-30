@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.16）
+## 功能说明文档（v0.13.17）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,10 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.16
-重构后 UI 问题修复
-- 修复右上角功能图标浅色模式下颜色异常
-- 适当调整右上角图标间距
+### 修复 v0.13.17
+SMD 显示问题修复：防止块内出现滚动空间
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1327,7 +1325,7 @@
 - `QString content() const` / `void setContent(const QString &text)`：获取/设置单元格文本内容。
 - `void setActive(bool active)` / `void setCommandMode(bool cmd)`：控制选中和命令模式的视觉样式（`updateBorderStyle()`）及光标可见性。`setActive(false)` 时清除编辑器文本选中（`QTextCursor::clearSelection()`）并设置 `setCursorWidth(0)` 隐藏光标。`setActive(true)` 且非命令模式时恢复 `setCursorWidth(1)`。`setCommandMode(true)` 时先显式 `QTextCursor::clearSelection()` 清除选中，再通过 `Qt::NoTextInteraction` + `setCursorWidth(0)` 禁用交互和光标；对已渲染单元格还会直接操作隐藏的 `m_markdownEditor`。退出命令模式时恢复 `setCursorWidth(1)`。
 - `bool isRendered() const` / `void setRendered(bool rendered)`：Markdown 单元格渲染/取消渲染。true 时创建独立顶层 QWebEngineView 加载 HTML 模板，轮询测量高度和 Mermaid 完成状态后抓取为 QPixmap；false 时切回编辑器并清理渲染资源，根据 `m_commandMode` 决定是否聚焦编辑器（编辑模式）或保持只读无光标状态（命令模式）。
-- `void setRenderedState(bool rendered)`：仅设置渲染标志位，不触发实际渲染管线。用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
+- `void setRenderedState(bool rendered)`：设置渲染标志位 + **立即创建并显示非原生遮罩层**（`m_renderOverlay`），覆盖 `m_editorStack` 区域，使原始 Markdown 编辑器在自动渲染延时（200ms）期间不可见。遮罩初始几何可能为 `(0,0,0,0)`（布局未完成），由 `resizeEvent()` 在首次布局时修正。不触发实际渲染管线，用于文件加载时预置渲染状态，避免 `toPlainText()` 序列化结果与文件内容不一致导致误判为已修改。
 - `QWidget *editorWidget() const`：返回当前活跃的编辑器控件（Markdown 编辑器、CodeEditor 或渲染静态 RenderPixmapWidget）。
 - `void setEditorFocus()`：将焦点设置到编辑器控件并恢复 `setCursorWidth(1)`。若为渲染视图则先返回编辑模式。
 - `void applyZoom(qreal factor, int baseFontSize)`：保存缩放因子至 `m_zoomFactor` 和 `m_baseFontSize`。对于非渲染单元格，调整编辑器字体大小及行号区域；对于已渲染单元格，将 `m_lastRenderWidth` 置零并触发防抖重渲染，重渲染时在 HTML 模板中注入 `body{font-size:Npx!important}` 使渲染内容的字体随缩放同步变化。
@@ -1335,6 +1333,7 @@
 - `void updateEditorHeight()`：遍历编辑器中所有 `QTextBlock`，累加 `QTextLayout::boundingRect().height()` 得到总文档高度，加上 `contentsMargins` 和缓冲后调用 `setFixedHeight`。由 `blockCountChanged`、`contentsChanged` 和 `CodeEditor::semanticTokensApplied` 三个信号触发。语义高亮应用后需要重新计算高度，因为 `rehighlight()` 可能轻微改变 `QTextDocument::size()`，导致固定高度与文档实际大小不匹配。
   - **递归护盾**：`m_updatingHeight` 标志防止 `setFixedHeight` → layout → document 信号 → `updateEditorHeight` 的跨 cell 递归风暴。函数入口检查并设置标志，所有 return 路径复位。
   - **内容变更计数器**：`m_pendingContentChanges` 由 document 信号 lambda 递增、`updateEditorHeight` 入口原子性获取并清零。仅当计数器 > 0（真正的用户编辑）时才 `emit contentChanged()`，避免 layout 触发的重算虚假发射 LSP `cellContentChanged` → `syncVirtualDoc` 通知风暴。
+  - **无效布局护盾**：主题切换时 `SmdCell::refreshStyle()` → `updateBorderStyle()` → `setStyleSheet()` 触发 widget 树整体 re-polish，导致 `QPlainTextEdit` 的所有 `QTextLayout::boundingRect().height()` 暂时归零。若 `blocksWithInvalidLayout == blockCount`（全部 block 布局无效）且当前编辑器高度在合理范围内（100–10000px，即非初始默认值 ~30px 也非 `applyZoom()` 占位值 50000px），则跳过 `setFixedHeight()` 保留现有正确高度，避免因回退计算（`lineSpacing × lineCount`）产生错误高度且后续无 resize 事件修正（主题切换不保证触发二次 resize）。初始加载时高度为默认 ~30px 或占位 50000px，不满足跳过条件，仍正常应用回退值。
 - `void setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：存储诊断列表并调用 `updateTypeLabel()` 刷新头部标签。错误计数（severity=1）和警告计数（severity=2）显示在类型标签旁，有错误时标签背景变红 `#d43838`。
 
 **信号**：同上。
@@ -1353,7 +1352,7 @@
 
 **事件处理**：
 - 重写 `eventFilter(QObject*, QEvent*)`：拦截 `FocusIn` 事件发射 `focusEntered()` 信号（`MouseButtonPress` 不再触发，改由 `SmdEditor::eventFilter` 全局过滤器统一处理点击激活）。设置 `m_grabbing` 标志位时抑制发射（防止 `performGrab()` 期间顶层窗口隐藏导致的焦点回跳）。
-- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。`performReRender()` 在定时器超时时执行完整重渲染：`releaseRenderView()` 释放旧渲染状态（保留视图对象） → 清理遮罩层 → `ensureRenderView()` 重连信号（不创建新视图） → `startRenderPipeline(false)` 重新加载 HTML。**视图复用**避免创建/销毁 Chromium GPU 进程，入口的 `m_reRendering` 防重入守卫确保同时只有一个 cell 调用 `processEvents()`。
+- 重写 `resizeEvent(QResizeEvent*)`：检测 cell 宽度变化（`event->size().width()` 与 `m_lastRenderWidth` 差异 > 20px）时调用 `scheduleReRender()` 启动 300ms 防抖定时器。同时**无条件更新遮罩层位置**（`m_renderOverlay->setGeometry(m_editorStack->geometry())`），摒弃 `isVisible()` 检查——首次布局时父 widget 未完全 show，`isVisible()` 返回 false 会跳过更新，导致遮罩停留在初始错误位置无法覆盖编辑器。`performReRender()` 在定时器超时时执行完整重渲染：`releaseRenderView()` 释放旧渲染状态（保留视图对象） → 清理遮罩层 → `ensureRenderView()` 重连信号（不创建新视图） → `startRenderPipeline(false)` 重新加载 HTML。**视图复用**避免创建/销毁 Chromium GPU 进程，入口的 `m_reRendering` 防重入守卫确保同时只有一个 cell 调用 `processEvents()`。
 
 **协作关系**：
 - 由 `SmdEditor` 创建和管理，作为 `m_cellContainer` 的子控件。
@@ -1440,7 +1439,7 @@
 - `loadFile()`：读取文件 → `SmdFormat::parse()` 解析（含元数据） → `addCell()` 创建单元格和输出控件。恢复输出到 `m_outputWidgets[i]`，若有已渲染的 MD 单元格则加入 `m_autoRenderQueue`。
 - `saveFile()`：遍历单元格获取 `content()` 和 `isRendered()`，遍历输出控件获取 `outputText()` → `SmdFormat::serialize()` 序列化为带 JSON 元数据的格式 → 写入文件。
 - `saveAsFile()`：通过 `EditorWidget::saveAsFile()` 间接支持（对话框包含 `*.smd` 过滤器）。
-- 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`，不改变活动单元格和焦点，隐式完成渲染。
+- 自动渲染：`startAutoRender()` 以 200ms 间隔的 QTimer 依次对队列中的 MD 单元格调用 `setRendered(true)` + `setCommandMode(true)`（已移除 `!cell->isRendered()` 守卫——`setPlainText()` 中 `setRenderedState(true)` 预置了标志位会导致跳过，实际渲染管线从未执行），不改变活动单元格和焦点，隐式完成渲染。
 - 修改状态同步：文件加载时先通过 `setRenderedState(true)` 预置已渲染单元格的标志位，然后采集 `m_originalContent`，使序列化结果与文件内容一致，避免自动渲染完成后误判为已修改。
 
 **修改状态**：通过比较当前序列化内容（含 output 字段）与加载时的原始内容判断，`modificationChanged` 信号连接至 `EditorWidget::modificationChanged`。修改单元格内容或输出区内容均可触发修改标记（输出变化、`Ctrl+Shift+Z` 清除输出）。
@@ -1488,9 +1487,10 @@
 - `void checkCellRenderWidths()`：遍历所有已渲染单元格调用 `SmdCell::checkReRender()`，在 `resizeEvent` 中延迟执行，确保布局稳定后检测宽度变化。
 - `void setEditorFont(const QString &family, int size)`：存储基准字号至 `m_baseFontSize`，遍历所有单元格调用 `SmdCell::applyZoom(1.0, size)`。注意此处 zoom 因子固定为 1.0，实际的缩放因子由 `EditorWidget` 后续调用 `applyZoom()` 重新应用。
 - `void reloadColors()`：颜色更新。
+- `void refreshStyle()`：主题切换槽（通过 `ThemeManager::watchTheme` 连接）。更新 `m_splitter`、`m_scrollArea`、`m_cellContainer` 的 stylesheet。**滚动位置保护**：调用前保存 `verticalScrollBar()->value()`，stylesheet 变更后立即恢复 + 10ms 延迟二次恢复（`QTimer::singleShot(10, ...)`）。二次恢复处理异步 layout 触发的滚动条归零——`setStyleSheet()` 对 `QScrollArea` 的直接 re-polish 会将滚动值重置为 0，且可能触发异步 layout 再次归零。
 
 **事件处理**：
-- 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟调用 `checkCellRenderWidths()`，在主窗口缩放后对所有已渲染 cell 检查宽度变化并触发防抖重渲染。
+- 重写 `resizeEvent(QResizeEvent*)`：父类处理完成后，通过 `QTimer::singleShot(0)` 延迟遍历所有 cell——已渲染 cell 调用 `checkReRender()` 检测宽度变化，未渲染 cell 调用 `updateEditorHeight()` 修正布局稳定后的文档高度。在主窗口缩放等场景中确保 cell 高度与文档实际大小一致。
 - 重写 `keyPressEvent(QKeyEvent*)`：在命令模式下处理快捷键（A/B/Enter/Esc/↑/↓/Ctrl+Shift+Z/Delete）。命令模式下 `Enter`（无修饰键）进入编辑模式，`Ctrl+Enter`/`Shift+Enter` 不再在此处理（仅编辑模式有效，由 `eventFilter` 处理）。
 - 重写 `eventFilter(QObject*, QEvent*)`：
   - **滚动抑制**：任何 `MouseButtonPress` 事件（无论是否命中 SmdCell）都会设置 `m_clickSuppressScroll = true` 并启动 50ms 单次定时器清除。这确保点击 toolbar 或空白区域导致焦点恢复至 cell 时不会意外滚动。
