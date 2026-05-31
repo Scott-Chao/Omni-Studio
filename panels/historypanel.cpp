@@ -1,4 +1,4 @@
-#include <historypanel.h>
+#include "historypanel.h"
 #include "thememanager.h"
 #include <QFileInfo>
 #include <QVBoxLayout>

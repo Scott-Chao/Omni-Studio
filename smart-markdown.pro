@@ -27,11 +27,9 @@ SOURCES += \
     ai/aihistorylistwidget.cpp \
     ai/aihistorymanager.cpp \
     ai/airequesthandler.cpp \
-    activitybar.cpp \
     configmanager.cpp \
     crashrecoverymanager.cpp \
     backlinkindex.cpp \
-    sidebarpanels.cpp \
     brackethighlighter.cpp \
     codeeditor.cpp \
     codeblockrunner.cpp \
@@ -51,33 +49,35 @@ SOURCES += \
     lsp/signaturehelpmanager.cpp \
     lsp/smdlspmanager.cpp \
     wikilinktextedit.cpp \
-    fileexplorerwidget.cpp \
-    historypanel.cpp \
     judgeengine.cpp \
-    judgepanel.cpp \
     keyrecorder.cpp \
     logindialog.cpp \
     openjudgemanager.cpp \
-    openjudgewidget.cpp \
-    outlinepanel.cpp \
-    bottompanel.cpp \
+    panels/activitybar.cpp \
+    panels/bottompanel.cpp \
+    panels/fileexplorerwidget.cpp \
+    panels/helppanel.cpp \
+    panels/historypanel.cpp \
+    panels/judgepanel.cpp \
+    panels/openjudgewidget.cpp \
+    panels/outlinepanel.cpp \
+    panels/outputpanel.cpp \
+    panels/rightpanelcontainer.cpp \
+    panels/searchpanel.cpp \
+    panels/settingspanel.cpp \
+    panels/sidebarpanels.cpp \
+    panels/submissionpanel.cpp \
+    panels/smddiagnosticspanel.cpp \
+    panels/smdoutputwidget.cpp \
     tabbuttongroup.cpp \
     windowdraghelper.cpp \
-    outputpanel.cpp \
     processrunner.cpp \
     lsp/pythonsyntaxhighlighter.cpp \
-    rightpanelcontainer.cpp \
     scrollbarhider.cpp \
-    searchpanel.cpp \
     settingschangehandler.cpp \
-    settingspanel.cpp \
-    helppanel.cpp \
     indexmanager.cpp \
     smdcell.cpp \
-    smddiagnosticspanel.cpp \
     smdeditor.cpp \
-    smdoutputwidget.cpp \
-    submissionpanel.cpp \
     tagindex.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -100,12 +100,10 @@ HEADERS += \
     ai/aihistorymanager.h \
     ai/airequesthandler.h \
     ai/prompttemplates.h \
-    activitybar.h \
     configmanager.h \
     crashrecoverymanager.h \
     utilities.h \
     lsp/keywords.h \
-    sidebarpanels.h \
     backlinkindex.h \
     codeeditor.h \
     codeblockrunner.h \
@@ -129,35 +127,37 @@ HEADERS += \
     lsp/signaturehelpmanager.h \
     lsp/smdlspmanager.h \
     wikilinktextedit.h \
-    fileexplorerwidget.h \
-    historypanel.h \
     judgeengine.h \
-    judgepanel.h \
     keyrecorder.h \
     logindialog.h \
     openjudgemanager.h \
-    openjudgewidget.h \
-    outlinepanel.h \
-    bottompanel.h \
+    panels/activitybar.h \
+    panels/bottompanel.h \
+    panels/fileexplorerwidget.h \
+    panels/helppanel.h \
+    panels/historypanel.h \
+    panels/judgepanel.h \
+    panels/openjudgewidget.h \
+    panels/outlinepanel.h \
+    panels/outputpanel.h \
+    panels/rightpanelcontainer.h \
+    panels/searchpanel.h \
+    panels/settingspanel.h \
+    panels/sidebarpanels.h \
+    panels/submissionpanel.h \
+    panels/smddiagnosticspanel.h \
+    panels/smdoutputwidget.h \
     tabbuttongroup.h \
     windowdraghelper.h \
     smddiagnostic.h \
-    outputpanel.h \
     processrunner.h \
     lsp/pythonsyntaxhighlighter.h \
-    rightpanelcontainer.h \
     scrollbarhider.h \
-    searchpanel.h \
     settingschangehandler.h \
-    settingspanel.h \
-    helppanel.h \
     indexmanager.h \
     smdcell.h \
-    smddiagnosticspanel.h \
     smdeditor.h \
     smdformat.h \
-    smdoutputwidget.h \
-    submissionpanel.h \
     tagindex.h \
     mainwindow.h \
     settingsmanager.h \

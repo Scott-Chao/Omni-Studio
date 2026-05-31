@@ -1,14 +1,14 @@
 #include "compilerunmanager.h"
 #include "processrunner.h"
-#include "bottompanel.h"
-#include "outputpanel.h"
+#include "panels/bottompanel.h"
+#include "panels/outputpanel.h"
 #include "tabmanager.h"
 #include "editorwidget.h"
 #include "codeeditor.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
-#include "fileexplorerwidget.h"
-#include "openjudgewidget.h"
+#include "panels/fileexplorerwidget.h"
+#include "panels/openjudgewidget.h"
 #include "lsp/completionprovider.h"
 
 #include <QAction>
