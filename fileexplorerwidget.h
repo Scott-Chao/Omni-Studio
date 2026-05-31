@@ -97,6 +97,8 @@ private:
     // Configurable shortcuts
     QKeySequence m_deleteShortcut;
 
+    QString m_pendingNewFile;
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;

@@ -402,6 +402,23 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     m_treeView->setItemDelegate(new NoGhostDelegate(this, m_treeView)); // 设置委托
 
+    // 新建文件的内联编辑完成后自动永久打开
+    connect(m_treeView->itemDelegate(), &QAbstractItemDelegate::closeEditor,
+            this, [this](QWidget *, QAbstractItemDelegate::EndEditHint hint) {
+        if (m_pendingNewFile.isEmpty())
+            return;
+        m_pendingNewFile.clear();
+        if (hint != QAbstractItemDelegate::RevertModelCache) {
+            QModelIndex proxyIdx = m_treeView->currentIndex();
+            if (proxyIdx.isValid()) {
+                QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIdx);
+                QString path = m_fileModel->filePath(srcIdx);
+                if (!QFileInfo(path).isDir())
+                    emit fileDoubleClicked(path);
+            }
+        }
+    });
+
     // 连接模型的重命名信号
     connect(m_fileModel, &QFileSystemModel::fileRenamed, this, &FileExplorerWidget::onFileRenamed);
 
@@ -904,6 +921,7 @@ void FileExplorerWidget::createNewFileInline(const QString &parentDir)
     QModelIndex proxyIdx = m_sortProxy->mapFromSource(sourceIdx);
     m_treeView->setCurrentIndex(proxyIdx);
     m_treeView->scrollTo(proxyIdx);
+    m_pendingNewFile = dir.filePath(fileName);
     m_treeView->edit(proxyIdx);
 }
 
