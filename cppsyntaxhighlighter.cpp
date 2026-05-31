@@ -221,15 +221,17 @@ void CppSyntaxHighlighter::highlightBlock(const QString &text)
 
     // Combined single-line & multi-line comment handling — string-aware
     // Clear only comment state bits, preserve bracket state from previous block
-    setCurrentBlockState(previousBlockState() & ~7);
+    int prevState = previousBlockState();
+    if (prevState < 0) prevState = 0;
+    setCurrentBlockState(prevState & ~7);
 
     int searchFrom = 0;
-    if ((previousBlockState() & 7) == 1) {
+    if ((prevState & 7) == 1) {
         int endIdx = text.indexOf(QStringLiteral("*/"));
         if (endIdx == -1) {
             setFormat(0, text.length(), m_multiLineCommentFormat);
             // Preserve bracket state, set comment state = 1
-            setCurrentBlockState((previousBlockState() & ~7) | 1);
+            setCurrentBlockState((prevState & ~7) | 1);
             return;
         }
         setFormat(0, endIdx + 2, m_multiLineCommentFormat);

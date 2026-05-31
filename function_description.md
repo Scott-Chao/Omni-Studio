@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.22）
+## 功能说明文档（v0.13.23）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,13 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.13.22
-诊断面板点击跳转功能
-  - **代码文件诊断跳转**：`EditorWidget::navigateEditorToLine()` 的 CodeEdit 路径改为复用 `scrollToLine()`（搜索跳转的同一代码路径），确保诊断条目点击跳转与搜索跳转行为一致。
-  - **SMD 诊断跳转**：`SmdEditor` 新增 `scrollCellToLine()` 方法，通过坐标映射将 CodeEditor 内行号映射到 `QScrollArea` 并调用 `ensureVisible()` 滚动。跨 cell 跳转通过 `QTimer::singleShot(0)` 延迟，等待 `setActiveCell()` 的 deferred scroll 先完成。
-  - **CodeEditor 新增方法**：`scrollToLine(int line)` 使用 `setTextCursor()` + `ensureCursorVisible()` 跳转到指定行（0-based）。`isLineVisible(int line)` 使用 `blockBoundingRect()` 获取实际块几何信息判断可见性。
-  - **诊断条目点击机制改进**（`DiagnosticSection`）：由 `linkActivated` 信号改为 `eventFilter()` 拦截 `MouseButtonRelease`，通过 `setProperty` 动态属性传递行号与 cell 索引，消除 RichText 链接限制。新增 hover 样式（`QLabel:hover`）。
-  - **跳转高亮改进**：大纲导航高亮使用 `editor.selectionBackground`（半透明，与真实选区一致的色彩混合，保留语法高亮），替代原来的 `search.highlightBackground` + `search.highlightForeground`（不透明覆盖）。高亮自动 1 秒后消失（`m_outlineHighlightTimer` 定时器）。
+### 新增 v0.13.23
+- 修复 Python 文件开头三引号字符串解析错误
 
 ### 1. `MainWindow` - 主窗口控制器
 

@@ -192,10 +192,11 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
 
     // Multi-line triple-quoted string handling
     // Clear only triple-string state bits, preserve bracket state from previous block
-    setCurrentBlockState(previousBlockState() & ~7);
+    int prevState = previousBlockState();
+    if (prevState < 0) prevState = 0;
+    setCurrentBlockState(prevState & ~7);
 
     int searchFrom = 0;
-    int prevState = previousBlockState();
     int prevTripleState = prevState & 7;
 
     if (prevTripleState == 1 || prevTripleState == 2) {
