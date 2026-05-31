@@ -32,12 +32,15 @@ public:
 signals:
     void resultClicked(const QString &filePath, int lineNumber,
                        const QString &searchText);
+    void resultDoubleClicked(const QString &filePath, int lineNumber,
+                             const QString &searchText);
     void searchTextChanged();
 
 private slots:
     void onSearchTextChanged();
     void performSearch();
     void onResultItemClicked(QListWidgetItem *item);
+    void onResultItemDoubleClicked(QListWidgetItem *item);
 
 private:
     static void collectTextFiles(const QString &rootPath,

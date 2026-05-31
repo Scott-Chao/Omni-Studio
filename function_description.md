@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.27）
+## 功能说明文档（v0.13.28）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -14,7 +14,7 @@
 - 文件树支持拖拽移动，并自动进行路径同步。
 - 双向链接：支持 `[[文件名]]` 语法。在预览模式下自动识别为超链接，点击可跳转至对应文件；若文件不存在，支持一键自动创建。文件重命名时，自动更新所有引用文件中的双向链接文本。
 - 反向链接面板：自动扫描并展示当前文件的引用来源，点击可跳转至来源文件
-- 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，点击可跳转至文件并高亮匹配关键词
+- 全文搜索面板：支持在当前目录所有文本文件中检索关键词，搜索结果展示文件名、行号与上下文片段，单击预览打开文件，双击永久打开，编辑预览内容自动转为永久标签
 - WikiLink 自动补全：输入 `[[` 时自动弹出文件名列表，方向键选择，Tab 补全并自动闭合 `]]`
 - #tag 自动补全：输入 `#` 时自动弹出已有标签列表，Tab 补全标签名
 - 代码编辑器模式：打开 C/C++、Python 等代码文件时，自动切换为代码编辑模式，提供语法高亮、行号显示、自动缩进、括号补全、智能退格、Ctrl+/ 行注释切换、Ctrl+[ / Ctrl+] 缩进调整等功能。语言支持可通过 `LanguageUtils` 注册表扩展。独立 `.cpp`/`.py` 文件支持 **LSP 代码补全**（Ctrl+I / 自动触发）、**悬停类型提示**、**函数签名帮助**和 **诊断波浪线**（错误/警告）。`.py` 文件通过 Jedi helper 进程的 `diagnostics` action 获取语法诊断，`.cpp` 文件通过 clangd 的 `textDocument/publishDiagnostics` 获取诊断。诊断信息通过 `Ctrl+D` 切换底部 `BottomPanel` 的诊断标签页查看。
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.27
-- 修复 `Ctrl+N` 无法使用的问题
+### 修复 v0.13.28
+- 搜索面板单击结果改为临时打开，双击永久打开，编辑临时标签自动变为永久
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -97,7 +97,7 @@
 - 管理反向链接面板（`QDockWidget` + `BacklinksPanel` + `BacklinkIndex`），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+B`）。
   通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。`showLeftPanel` 不再强制关闭右侧面板。
 - 管理搜索面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
-  搜索结果显示文件名、行号和上下文片段；点击结果时打开文件并高亮匹配关键词。
+  搜索结果显示文件名、行号和上下文片段；单击结果时以预览标签页打开文件并高亮匹配关键词，双击结果永久打开，编辑预览内容自动转为永久标签。
 - 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时通过 `updateCurrentEditorDiagnostics()` 统一管理诊断 provider 连接：切换到代码文件时清空旧 provider 连接、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动清空诊断数据并隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
 - 管理评测面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
@@ -127,7 +127,8 @@
 - `void updatePreviewActionState()`：根据当前编辑器是否有效以及其文件是否为 `.md` 后缀，动态设置全屏预览按钮的可见性、启用状态和勾选状态。当前非 `.md` 文件且处于预览模式时，自动切回编辑模式。
 - `void updateSplitPreviewActionState()`：与 `updatePreviewActionState()` 对称，管理分屏预览按钮的可见性、启用状态和勾选状态。确保两个预览按钮互斥（开启一个自动关闭另一个）。
 - `void onHistoryFileClicked(const QString &filePath)`：处理历史面板中文件的点击，打开文件，并自动调整文件树根目录（若文件不在当前根目录下则切换至其所在文件夹）。若目标文件已不存在，弹出警告后自动从历史记录中移除该条目。
-- `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的点击，打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
+- `void onSearchResultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的单击，以预览标签页打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词（编辑预览内容自动转为永久标签）。
+- `void onSearchResultDoubleClicked(const QString &filePath, int lineNumber, const QString &searchText)`：处理搜索结果的双击，永久打开文件并调用 `EditorWidget::scrollToLine` 跳转到匹配行并高亮所有匹配关键词。
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndexAsync(std::function<void()> onComplete)`：轻量异步文件索引构建，仅执行 `QDirIterator` 目录遍历（Phase 1），不重建 backlink/tag 索引。使用**独立的** `m_fileIdxCancelled`/`m_fileIdxScanId` 取消令牌和扫描代际保护，不影响全量索引构建。完成后更新 `m_fileIndex` 和补全列表，若提供回调则在主线程执行（用于处理依赖更新后索引的操作，如 `updateWikiLinksAfterRename`）。用于重命名/删除/另存为后的即时更新。
 - `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建、反向链接扫描和标签索引构建（Phase 1/2/3）。支持取消令牌和扫描代际保护。完成后交付主线程并刷新补全列表、反链面板和标签面板。
@@ -639,12 +640,13 @@
 - `void focusSearchInput()`：聚焦搜索框并全选内容。
 
 **信号**：
-- `void resultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：用户点击某个搜索结果时发出。
+- `void resultClicked(const QString &filePath, int lineNumber, const QString &searchText)`：用户单击某个搜索结果时发出（临时/预览打开）。
+- `void resultDoubleClicked(const QString &filePath, int lineNumber, const QString &searchText)`：用户双击某个搜索结果时发出（永久打开）。
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件放置在左侧停靠区域。
 - `MainWindow` 在 `loadSettings` 和 `onFolderChanged` 时调用 `setRootPath` 同步搜索根目录。
-- 搜索结果点击连接到 `MainWindow::onSearchResultClicked` 槽，打开文件并调用 `EditorWidget::scrollToLine` 完成跳转和高亮。
+- 搜索结果单击连接到 `MainWindow::onSearchResultClicked` 槽，以预览标签打开文件并跳转和高亮；双击连接到 `MainWindow::onSearchResultDoubleClicked` 槽，永久打开文件并跳转和高亮。
 
 ---
 
@@ -2098,7 +2100,7 @@ enum class MessageRole { User, Assistant, System };
 - **标签拖拽限制**：拖动标签重排时，被拖动的标签整体始终保持在标签栏区域内，不会出现标签部分或全部移出栏外的情况。
 - **历史记录面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+H`）。列表项设置为不可选中（`NoSelection`），点击可触发打开文件操作（若文件不存在则自动弹出警告并清理该条目）。鼠标悬停会有完整路径提示。同时提供清空功能。文件删除或移动后自动同步更新历史记录。运行期间仅维护内存数据，程序关闭时统一持久化以减少磁盘 I/O。点击编辑器、文件树等其他区域时，面板自动收起，减少手动操作。
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
-- **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。点击结果跳转至文件并金色高亮所有匹配关键词。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
+- **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。单击结果以预览标签页打开文件并金色高亮所有匹配关键词，双击永久打开，编辑预览内容自动转为永久标签。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **大纲面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+O`）。打开 `.md` 文件时自动解析并展示所有标题（`#` ~ `######`），按层级缩进显示。缩进量基于文件中最小标题层级（`minLevel`），顶级标题始终无缩进。文字颜色通过 `levelColor()` 函数将 `sideBar.foreground` 与 `sideBar.background` 按比例混合（h1=100%前景、h2=83%、h3=67%、h4=53%、h5=42%、h6=33%），浅色/深色主题自适应。点击标题跳转到编辑器对应行并高亮目标行（FullWidthSelection + 当前主题的搜索高亮配色）。长标题通过自定义 `ElideDelegate` 自动省略：禁用水平滚动条，delegate 在 `paint()` 中将文本右边缘夹紧到视口宽度，以 `QFontMetrics::elidedText(Qt::ElideRight)` 渲染省略号。关闭大纲面板或点击面板外部时自动清除高亮；切换主题时高亮颜色通过 `reloadEditorColors()` 实时更新，文字颜色通过 `ThemeManager::themeChanged` → `refreshStyle()` 重建所有条目以重算混合色。跳过围栏代码块。切换标签页和保存文件时自动刷新。非 Markdown 文件时面板清空。
 - **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。

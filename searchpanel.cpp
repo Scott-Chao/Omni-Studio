@@ -45,6 +45,8 @@ SearchPanel::SearchPanel(QWidget *parent)
             this, &SearchPanel::performSearch);
     connect(m_resultList, &QListWidget::itemClicked,
             this, &SearchPanel::onResultItemClicked);
+    connect(m_resultList, &QListWidget::itemDoubleClicked,
+            this, &SearchPanel::onResultItemDoubleClicked);
 
     ThemeManager::watchTheme(this, &SearchPanel::refreshStyle);
     refreshStyle();
@@ -331,6 +333,15 @@ void SearchPanel::onResultItemClicked(QListWidgetItem *item)
     int lineNumber = item->data(Qt::UserRole + 1).toInt();
     if (!filePath.isEmpty()) {
         emit resultClicked(filePath, lineNumber, m_searchText);
+    }
+}
+
+void SearchPanel::onResultItemDoubleClicked(QListWidgetItem *item)
+{
+    QString filePath = item->data(Qt::UserRole).toString();
+    int lineNumber = item->data(Qt::UserRole + 1).toInt();
+    if (!filePath.isEmpty()) {
+        emit resultDoubleClicked(filePath, lineNumber, m_searchText);
     }
 }
 

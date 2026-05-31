@@ -345,6 +345,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_searchPanel = new SearchPanel(this);
     connect(m_searchPanel, &SearchPanel::resultClicked,
             this, &MainWindow::onSearchResultClicked);
+    connect(m_searchPanel, &SearchPanel::resultDoubleClicked,
+            this, &MainWindow::onSearchResultDoubleClicked);
     connect(m_searchPanel, &SearchPanel::searchTextChanged,
             this, &MainWindow::onSearchTextChangedByUser);
 
@@ -1890,6 +1892,34 @@ void MainWindow::onSearchResultClicked(const QString &filePath,
         QMessageBox::warning(this, tr("文件不存在"),
                              tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
         return;
+    }
+
+    EditorWidget *editor = m_tabManager->openPreview(filePath);
+    if (!editor) return;
+
+    editor->scrollToLine(lineNumber, searchText);
+}
+
+void MainWindow::onSearchResultDoubleClicked(const QString &filePath,
+                                              int lineNumber,
+                                              const QString &searchText)
+{
+    if (!QFile::exists(filePath)) {
+        QMessageBox::warning(this, tr("文件不存在"),
+                             tr("无法打开文件，文件可能已被移动或删除：\n%1").arg(filePath));
+        return;
+    }
+
+    // 如果目标文件就是当前预览标签页的文件，直接提升为永久
+    EditorWidget *preview = m_tabManager->previewEditor();
+    if (preview) {
+        QString previewPath = QDir::cleanPath(preview->currentFilePath());
+        QString targetPath  = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+        if (previewPath.compare(targetPath, Qt::CaseInsensitive) == 0) {
+            m_tabManager->promotePreviewToPermanent();
+            preview->scrollToLine(lineNumber, searchText);
+            return;
+        }
     }
 
     EditorWidget *editor = m_tabManager->openFile(filePath);

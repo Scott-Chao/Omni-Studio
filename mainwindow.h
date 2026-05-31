@@ -85,7 +85,9 @@ private slots:
     void onRequestDelete(const QString &path, bool isDir); // 删除文件/文件夹
     void onHistoryFileClicked(const QString &filePath); // 打开历史记录
     void onSearchResultClicked(const QString &filePath, int lineNumber,
-                               const QString &searchText); // 打开搜索结果
+                               const QString &searchText); // 打开搜索结果（单击预览）
+    void onSearchResultDoubleClicked(const QString &filePath, int lineNumber,
+                                     const QString &searchText); // 打开搜索结果（双击永久）
     void onSearchTextChangedByUser(); // 搜索文本变化时清除编辑器高亮
     void onWikiLinkClicked(const QString &fileName); // 点击双向链接
     void startAsyncIndexBuild(); // 异步版本，避免大目录卡死 UI
