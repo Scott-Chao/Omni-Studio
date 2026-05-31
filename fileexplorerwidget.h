@@ -87,6 +87,8 @@ private:
     // 文件树工具栏
     QWidget *m_toolbar;
     QLabel *m_folderLabel;
+    QPushButton *m_newFileBtn;
+    QPushButton *m_newFolderBtn;
     QPushButton *m_refreshBtn;
     QPushButton *m_collapseAllBtn;
     QString m_folderFullName;

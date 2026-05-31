@@ -50,6 +50,8 @@
     <file alias="help">icons/icon-help.svg</file>
     <file alias="refresh">icons/icon-refresh.svg</file>
     <file alias="collapse-all">icons/icon-collapse-all.svg</file>
+    <file alias="file-plus">icons/icon-file-plus.svg</file>
+    <file alias="folder-plus">icons/icon-folder-plus.svg</file>
     <file alias="chevron-down">icons/icon-chevron-down.svg</file>
     <file alias="close">icons/icon-close.svg</file>
   </qresource>

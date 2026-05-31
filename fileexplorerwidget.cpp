@@ -323,14 +323,23 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     toolbarLayout->addStretch();
 
-    m_refreshBtn = new QPushButton(this);
-    m_refreshBtn->setIcon(QIcon(QStringLiteral(":/icons/refresh")));
-    m_refreshBtn->setIconSize(QSize(14, 14));
-    m_refreshBtn->setFixedSize(26, 26);
-    m_refreshBtn->setFlat(true);
-    m_refreshBtn->setCursor(Qt::PointingHandCursor);
-    m_refreshBtn->setToolTip(tr("刷新文件树"));
-    m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_newFileBtn = new QPushButton(this);
+    m_newFileBtn->setIcon(QIcon(QStringLiteral(":/icons/file-plus")));
+    m_newFileBtn->setIconSize(QSize(14, 14));
+    m_newFileBtn->setFixedSize(26, 26);
+    m_newFileBtn->setFlat(true);
+    m_newFileBtn->setCursor(Qt::PointingHandCursor);
+    m_newFileBtn->setToolTip(tr("新建文件"));
+    m_newFileBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    m_newFolderBtn = new QPushButton(this);
+    m_newFolderBtn->setIcon(QIcon(QStringLiteral(":/icons/folder-plus")));
+    m_newFolderBtn->setIconSize(QSize(14, 14));
+    m_newFolderBtn->setFixedSize(26, 26);
+    m_newFolderBtn->setFlat(true);
+    m_newFolderBtn->setCursor(Qt::PointingHandCursor);
+    m_newFolderBtn->setToolTip(tr("新建文件夹"));
+    m_newFolderBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     m_collapseAllBtn = new QPushButton(this);
     m_collapseAllBtn->setIcon(QIcon(QStringLiteral(":/icons/collapse-all")));
@@ -340,8 +349,19 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
     m_collapseAllBtn->setCursor(Qt::PointingHandCursor);
     m_collapseAllBtn->setToolTip(tr("收起所有文件夹"));
     m_collapseAllBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    toolbarLayout->addWidget(m_collapseAllBtn);
 
+    m_refreshBtn = new QPushButton(this);
+    m_refreshBtn->setIcon(QIcon(QStringLiteral(":/icons/refresh")));
+    m_refreshBtn->setIconSize(QSize(14, 14));
+    m_refreshBtn->setFixedSize(26, 26);
+    m_refreshBtn->setFlat(true);
+    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+    m_refreshBtn->setToolTip(tr("刷新文件树"));
+    m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    toolbarLayout->addWidget(m_newFileBtn);
+    toolbarLayout->addWidget(m_newFolderBtn);
+    toolbarLayout->addWidget(m_collapseAllBtn);
     toolbarLayout->addWidget(m_refreshBtn);
 
     layout->addWidget(m_toolbar);
@@ -402,6 +422,30 @@ FileExplorerWidget::FileExplorerWidget(QWidget *parent)
 
     m_dropTargetIndex = QModelIndex();
 
+    connect(m_newFileBtn, &QPushButton::clicked, this, [this]() {
+        QModelIndex idx = m_treeView->currentIndex();
+        QString parentDir;
+        if (idx.isValid()) {
+            QModelIndex srcIdx = m_sortProxy->mapToSource(idx);
+            QString path = m_fileModel->filePath(srcIdx);
+            parentDir = QFileInfo(path).isDir() ? path : QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFileInline(parentDir);
+    });
+    connect(m_newFolderBtn, &QPushButton::clicked, this, [this]() {
+        QModelIndex idx = m_treeView->currentIndex();
+        QString parentDir;
+        if (idx.isValid()) {
+            QModelIndex srcIdx = m_sortProxy->mapToSource(idx);
+            QString path = m_fileModel->filePath(srcIdx);
+            parentDir = QFileInfo(path).isDir() ? path : QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFolderInline(parentDir);
+    });
     connect(m_refreshBtn, &QPushButton::clicked, this, &FileExplorerWidget::refreshTree);
     connect(m_collapseAllBtn, &QPushButton::clicked, this, &FileExplorerWidget::collapseAll);
 
@@ -542,10 +586,14 @@ void FileExplorerWidget::refreshStyle()
         "QPushButton:hover { background: %1; }"
     ).arg(btnHover);
 
+    m_newFileBtn->setStyleSheet(btnStyle);
+    m_newFolderBtn->setStyleSheet(btnStyle);
     m_refreshBtn->setStyleSheet(btnStyle);
     m_collapseAllBtn->setStyleSheet(btnStyle);
 
     QColor iconColor = tm.color("sideBar.foreground");
+    m_newFileBtn->setIcon(coloredSvgIcon(":/icons/file-plus", iconColor, 14));
+    m_newFolderBtn->setIcon(coloredSvgIcon(":/icons/folder-plus", iconColor, 14));
     m_refreshBtn->setIcon(coloredSvgIcon(":/icons/refresh", iconColor, 14));
     m_collapseAllBtn->setIcon(coloredSvgIcon(":/icons/collapse-all", iconColor, 14));
 
@@ -1051,7 +1099,8 @@ void FileExplorerWidget::updateFolderLabel()
         return;
     }
 
-    int btnWidth = m_refreshBtn->width() + m_collapseAllBtn->width();
+    int btnWidth = m_newFileBtn->width() + m_newFolderBtn->width()
+                 + m_refreshBtn->width() + m_collapseAllBtn->width();
     QHBoxLayout *lay = qobject_cast<QHBoxLayout*>(m_toolbar->layout());
     int margins = lay ? lay->contentsMargins().left() + lay->contentsMargins().right() : 0;
     int spacing = lay ? lay->spacing() : 0;
