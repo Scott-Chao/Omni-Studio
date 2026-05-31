@@ -34,7 +34,7 @@ SOURCES += \
     codeeditor.cpp \
     codeblockrunner.cpp \
     compilerunmanager.cpp \
-    cppsyntaxhighlighter.cpp \
+    lsp/cppsyntaxhighlighter.cpp \
     crawler.cpp \
     diagnosticsection.cpp \
     editorwidget.cpp \
@@ -72,7 +72,7 @@ SOURCES += \
     tabbuttongroup.cpp \
     windowdraghelper.cpp \
     processrunner.cpp \
-    pythonsyntaxhighlighter.cpp \
+    lsp/pythonsyntaxhighlighter.cpp \
     scrollbarhider.cpp \
     settingschangehandler.cpp \
     indexmanager.cpp \
@@ -103,7 +103,7 @@ HEADERS += \
     configmanager.h \
     crashrecoverymanager.h \
     utilities.h \
-    keywords.h \
+    lsp/keywords.h \
     backlinkindex.h \
     codeeditor.h \
     codeblockrunner.h \
@@ -111,7 +111,7 @@ HEADERS += \
     compilerunmanager.h \
     compilerutils.h \
     brackethighlighter.h \
-    cppsyntaxhighlighter.h \
+    lsp/cppsyntaxhighlighter.h \
     crawler.h \
     diagnosticsection.h \
     editorwidget.h \
@@ -151,7 +151,7 @@ HEADERS += \
     windowdraghelper.h \
     smd/smddiagnostic.h \
     processrunner.h \
-    pythonsyntaxhighlighter.h \
+    lsp/pythonsyntaxhighlighter.h \
     scrollbarhider.h \
     settingschangehandler.h \
     indexmanager.h \
