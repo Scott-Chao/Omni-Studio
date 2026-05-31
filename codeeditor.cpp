@@ -839,11 +839,38 @@ void CodeEditor::handleAutoIndent()
 
 bool CodeEditor::handleBracketCompletion(QKeyEvent *event)
 {
+    QString opening = event->text();
+    QChar openChar = opening.at(0);
+
+    // Triple-quote completion: third press at line end / empty line → """|"""
+    // Must be checked before isCursorInStringOrComment() because cursor
+    // sits right after the initial "" pair when triggering the third press.
+    if ((openChar == QLatin1Char('"') || openChar == QLatin1Char('\''))
+        && !textCursor().hasSelection()) {
+        QTextCursor cursor = textCursor();
+        int pos = cursor.position();
+        if (pos >= 2
+            && document()->characterAt(pos - 1) == openChar
+            && document()->characterAt(pos - 2) == openChar
+            && (pos < 3 || document()->characterAt(pos - 3) != openChar))
+        {
+            QTextBlock block = cursor.block();
+            int posInBlock = cursor.positionInBlock();
+            bool atLineEnd = (posInBlock == block.text().length());
+            if (atLineEnd) {
+                cursor.beginEditBlock();
+                cursor.insertText(QString(4, openChar));
+                cursor.movePosition(QTextCursor::PreviousCharacter, QTextCursor::MoveAnchor, 3);
+                cursor.endEditBlock();
+                setTextCursor(cursor);
+                return true;
+            }
+        }
+    }
+
     if (isCursorInStringOrComment())
         return false;
 
-    QString opening = event->text();
-    QChar openChar = opening.at(0);
     QChar closeChar;
     if (openChar == QLatin1Char('{'))      closeChar = QLatin1Char('}');
     else if (openChar == QLatin1Char('(')) closeChar = QLatin1Char(')');
