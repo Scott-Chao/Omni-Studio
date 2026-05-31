@@ -1390,7 +1390,20 @@ void MainWindow::onExportPdf()
 // ----- 转发给FileExplorerWidget的槽函数 -----
 void MainWindow::onOpenFolder()
 {
-    m_explorer->selectFolder(m_settings->lastFolderPath(QDir::homePath())); // 将记忆目录传给 selectFolder，对话框将从这里开始浏览
+    QString startDir = m_settings->lastFolderPath(QDir::homePath());
+    QString dirPath = QFileDialog::getExistingDirectory(this, tr("选择文件夹"),
+                                                        startDir,
+                                                        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (dirPath.isEmpty())
+        return;
+
+    // 先处理标签页清理（可能弹出保存确认对话框）
+    if (!m_tabManager->closeTabsNotInDirectory(dirPath))
+        return; // 用户取消，不切换目录
+
+    // 所有标签处理完毕，切换目录
+    m_explorer->setRootPath(dirPath);
+    onFolderChanged(dirPath);
 }
 
 void MainWindow::onFolderChanged(const QString &newPath)

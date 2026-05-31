@@ -1,4 +1,4 @@
-## 功能说明文档（v0.13.28）
+## 功能说明文档（v0.13.29）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.28
-- 搜索面板单击结果改为临时打开，双击永久打开，编辑临时标签自动变为永久
+### 修复 v0.13.29
+- 切换目录时自动关闭临时预览标签页及不在新目录中的永久标签页，未保存文件弹出保存确认（保存/不保存/取消），取消则中止切换
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -114,8 +114,8 @@
 - `void onSaveFileAs()`：从配置读取另存为记忆路径，调用编辑器的 `saveAsFile()` 并在成功后更新配置。
 - `void onExportPdf()`：弹出保存对话框，将当前 Markdown 文档通过新建隐藏 WebEngine 视图渲染后导出为 PDF，完成后在状态栏显示结果。
 - `void onConvertMdSmd()`：处理 `Ctrl+T` 快捷键，根据当前文件扩展名（`.md` 或 `.smd`）分派到 `convertMdToSmd()` 或 `convertSmdToMd()`。
-- `void onOpenFolder()`：从配置读取上次打开的目录，调用文件浏览器的 `selectFolder()`。
-- `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。
+- `void onOpenFolder()`：弹出目录选择对话框，用户选择后先通过 `TabManager::closeTabsNotInDirectory()` 自动关闭临时预览标签页及不在所选目录中的永久标签页（未保存文件弹出保存确认），全部完成后才切换文件树根目录。
+- `void onFolderChanged(const QString &newPath)`：响应文件浏览器目录变更，立即持久化打开目录记忆。不再由 `onOpenFolder` 直接调用，而是由 `onOpenFolder` 在标签清理完毕后手动触发。
 - `void loadSettings()` / `void saveSettings()`：配置读写。`loadSettings()` 中若无保存分割状态，默认设置左侧文件树与右侧编辑区拉伸比例为 1:4。
 - `void onZoomIn()` / `void onZoomOut()` / `void onZoomReset()`：将缩放操作转发给 `TabManager` 当前激活的 `EditorWidget`。`onZoomReset()` 重置至 `SettingsManager::editorDefaultZoom()` 配置的默认缩放值（默认为 1.0），而非固定 100%。
 - `void updateZoomLabel()`：更新状态栏中的缩放百分比标签。
@@ -290,6 +290,7 @@
 - `void saveCurrentFile()`：保存当前编辑器的内容（无路径时自动调用另存为）。
 - `bool closeTab(int index)`：关闭指定索引的标签页，返回 `true` 表示已关闭（或用户选择不保存），`false` 表示用户取消了操作。关闭预览标签页时自动清理 `m_previewEditor` 指针。
 - `bool closeAllTabs()`：依次关闭所有标签页，若任何一次 `closeTab` 返回 `false` 则立即停止并返回 `false`。
+- `bool closeTabsNotInDirectory(const QString &newDirPath)`：切换目录时清理标签页。两遍扫描：第一遍收集所有标签信息并处理未保存文件的保存确认（保存/不保存/取消），取消则中止返回 `false`；第二遍从后往前关闭标记的标签页（预览标签页自动清理 `m_previewEditor`，非 EditorWidget 标签直接移除）。若用户将未保存文件保存到新目录中则保留该标签页。
 - `EditorWidget* findEditorByPath(const QString &filePath) const`：根据文件路径查找已打开的编辑器实例（大小写不敏感）。
 - `bool closeTabByPath(const QString &filePath, bool askSave)`：关闭指定路径的标签页，`askSave` 为 `true` 时弹出保存提示，为 `false` 时强制丢弃修改。
 - `QStringList allOpenedFilePaths() const`：返回所有已打开的文件路径列表（未保存的新建文件除外），路径统一为正斜杠格式。
@@ -422,7 +423,7 @@
 **信号**：
 - `void fileClicked(const QString &filePath)`：当用户单击文件树中的有效文件（非目录）时发出，以预览模式打开。
 - `void fileDoubleClicked(const QString &filePath)`：当用户双击文件树中的有效文件时发出，永久打开（或提升预览标签页）。
-- `void folderChanged(const QString &newPath)`：当用户通过 `selectFolder` 对话框选择了新目录后发出，用于主窗口记忆路径。
+- `void folderChanged(const QString &newPath)`：当文件树根目录变更后发出，用于主窗口记忆路径、重建索引和搜索同步。
 - `void fileRenamed(const QString &oldPath, const QString &newPath)`：重命名成功时发出，用于更新标签管理器中的路径。路径使用 `QDir::absoluteFilePath` 规范化（统一 `/` 分隔符），确保与 `BacklinkIndex` 存储的路径格式一致。
 - `void operationFailed(const QString &errorMsg)`：文件操作失败时发出，由主窗口显示错误消息。
 - `void itemDeleted(const QString &path)`：在成功删除文件/文件夹后发出。

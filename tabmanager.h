@@ -98,6 +98,8 @@ public:
     bool isPreviewEditor(EditorWidget* editor) const;
     EditorWidget* previewEditor() const;
 
+    bool closeTabsNotInDirectory(const QString &newDirPath);
+
 signals:
     void tabCountChanged(int count); // 当标签数量变化时发出
     void previewTabPromoted(EditorWidget *editor); // 预览标签页提升为永久时发出
@@ -108,6 +110,7 @@ private slots:
     void onEditorFileSaved(EditorWidget *editor, const QString &newPath);
 
 private:
+    int showSaveConfirmDialog(EditorWidget *editor);
     void connectEditorSignals(EditorWidget *editor);
     void updateTabTitle(EditorWidget *editor);
     EditorWidget* m_previewEditor = nullptr; // 当前预览编辑器，nullptr 表示无预览标签页

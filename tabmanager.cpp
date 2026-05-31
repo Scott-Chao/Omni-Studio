@@ -156,6 +156,63 @@ void TabManager::closeCurrentTab()
         closeTab(index);
 }
 
+int TabManager::showSaveConfirmDialog(EditorWidget *editor)
+{
+    QString fileName = editor->currentFilePath().isEmpty()
+        ? QStringLiteral("未命名")
+        : QFileInfo(editor->currentFilePath()).fileName();
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(QStringLiteral("未保存的更改"));
+    msgBox.setIcon(QMessageBox::Question);
+    msgBox.setText(QStringLiteral("%1 已被修改。").arg(fileName));
+    msgBox.setInformativeText(QStringLiteral("是否保存更改？"));
+
+    msgBox.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    msgBox.button(QMessageBox::Save)->setText(QStringLiteral("保存(&S)"));
+    msgBox.button(QMessageBox::Discard)->setText(QStringLiteral("不保存(&D)"));
+    msgBox.button(QMessageBox::Cancel)->setText(QStringLiteral("取消(&C)"));
+    msgBox.setDefaultButton(QMessageBox::Save);
+
+    auto &tm = ThemeManager::instance();
+    msgBox.setStyleSheet(QStringLiteral(
+        "QMessageBox {"
+        "   min-width: 400px;"
+        "   min-height: 200px;"
+        "}"
+        "QPushButton {"
+        "   min-width: 80px;"
+        "   padding: 6px 16px;"
+        "   background: %1;"
+        "   color: %2;"
+        "   border: 1px solid %3;"
+        "   border-radius: 3px;"
+        "}"
+        "QPushButton:hover {"
+        "   background: %4;"
+        "}"
+        "QPushButton:default {"
+        "   background: %5;"
+        "   color: %2;"
+        "   border: 1px solid %5;"
+        "}"
+        "QPushButton:default:hover {"
+        "   background: %6;"
+        "}"
+        ).arg(tm.color(QStringLiteral("button.background")).name(),
+              tm.color(QStringLiteral("button.foreground")).name(),
+              tm.color(QStringLiteral("input.border")).name(),
+              tm.color(QStringLiteral("button.hoverBackground")).name(),
+              QColor(tm.color(QStringLiteral("badge.background")).red(),
+                     tm.color(QStringLiteral("badge.background")).green(),
+                     tm.color(QStringLiteral("badge.background")).blue(), 45).name(QColor::HexArgb),
+              QColor(tm.color(QStringLiteral("badge.background")).red(),
+                     tm.color(QStringLiteral("badge.background")).green(),
+                     tm.color(QStringLiteral("badge.background")).blue(), 80).name(QColor::HexArgb)));
+
+    return msgBox.exec();
+}
+
 bool TabManager::closeTab(int index)
 {
     EditorWidget *editor = qobject_cast<EditorWidget*>(widget(index));
@@ -169,62 +226,7 @@ bool TabManager::closeTab(int index)
     }
 
     if (editor->isModified()) {
-        QString fileName = editor->currentFilePath().isEmpty()
-        ? "未命名"
-        : QFileInfo(editor->currentFilePath()).fileName();
-
-        QMessageBox msgBox(this);
-        msgBox.setWindowTitle("未保存的更改");
-        msgBox.setIcon(QMessageBox::Question);
-        msgBox.setText(QString("%1 已被修改。").arg(fileName));
-        msgBox.setInformativeText("是否保存更改？");
-
-        // 添加标准按钮
-        msgBox.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-        // 修改按钮文字（支持快捷键）
-        msgBox.button(QMessageBox::Save)->setText("保存(&S)");
-        msgBox.button(QMessageBox::Discard)->setText("不保存(&D)");
-        msgBox.button(QMessageBox::Cancel)->setText("取消(&C)");
-        msgBox.setDefaultButton(QMessageBox::Save);
-
-        // 对话框样式更改
-        auto &tm = ThemeManager::instance();
-        msgBox.setStyleSheet(QStringLiteral(
-            "QMessageBox {"
-            "   min-width: 400px;"
-            "   min-height: 200px;"
-            "}"
-            "QPushButton {"
-            "   min-width: 80px;"
-            "   padding: 6px 16px;"
-            "   background: %1;"
-            "   color: %2;"
-            "   border: 1px solid %3;"
-            "   border-radius: 3px;"
-            "}"
-            "QPushButton:hover {"
-            "   background: %4;"
-            "}"
-            "QPushButton:default {"
-            "   background: %5;"
-            "   color: %2;"
-            "   border: 1px solid %5;"
-            "}"
-            "QPushButton:default:hover {"
-            "   background: %6;"
-            "}"
-            ).arg(tm.color("button.background").name(),
-                  tm.color("button.foreground").name(),
-                  tm.color("input.border").name(),
-                  tm.color("button.hoverBackground").name(),
-                  QColor(tm.color("badge.background").red(),
-                         tm.color("badge.background").green(),
-                         tm.color("badge.background").blue(), 45).name(QColor::HexArgb),
-                  QColor(tm.color("badge.background").red(),
-                         tm.color("badge.background").green(),
-                         tm.color("badge.background").blue(), 80).name(QColor::HexArgb)));
-
-        int ret = msgBox.exec();   // 返回 QMessageBox::StandardButton 枚举值
+        int ret = showSaveConfirmDialog(editor);
 
         if (ret == QMessageBox::Save) {
             if (editor->currentFilePath().isEmpty())
@@ -259,6 +261,95 @@ bool TabManager::closeAllTabs()
             return false; // 用户取消了某个标签的关闭，中断流程
         }
     }
+    return true;
+}
+
+bool TabManager::closeTabsNotInDirectory(const QString &newDirPath)
+{
+    struct TabInfo {
+        EditorWidget *editor = nullptr;
+        bool shouldClose = false;
+        bool isPreview = false;
+    };
+
+    const QString normalizedDir = QDir::cleanPath(newDirPath);
+
+    // ---- 第一遍：收集信息 + 处理保存确认 ----
+    QList<TabInfo> tabsInfo;
+    tabsInfo.reserve(count());
+    for (int i = 0; i < count(); ++i) {
+        TabInfo info;
+        info.editor = qobject_cast<EditorWidget*>(widget(i));
+        if (!info.editor) {
+            // 非 EditorWidget 标签（如 OpenJudge）→ 应当关闭
+            info.shouldClose = true;
+            tabsInfo.append(info);
+            continue;
+        }
+
+        info.isPreview = isPreviewEditor(info.editor);
+        QString filePath = info.editor->currentFilePath();
+        bool inDir = !filePath.isEmpty()
+            && QDir::cleanPath(filePath).startsWith(normalizedDir, Qt::CaseInsensitive);
+        info.shouldClose = info.isPreview || !inDir;
+
+        tabsInfo.append(info);
+    }
+
+    // 第一遍：处理保存确认
+    for (int i = 0; i < tabsInfo.size(); ++i) {
+        if (!tabsInfo[i].shouldClose)
+            continue;
+        EditorWidget *editor = tabsInfo[i].editor;
+        if (!editor || !editor->isModified())
+            continue;
+
+        int ret = showSaveConfirmDialog(editor);
+
+        if (ret == QMessageBox::Save) {
+            if (editor->currentFilePath().isEmpty())
+                editor->saveAsFile();
+            else
+                editor->saveFile();
+
+            if (editor->isModified())
+                return false; // 用户取消了另存为
+
+            // 保存后重新判断：文件是否保存到了新目录中
+            QString savedPath = editor->currentFilePath();
+            if (!savedPath.isEmpty()
+                && QDir::cleanPath(savedPath).startsWith(normalizedDir, Qt::CaseInsensitive)) {
+                // 文件保存到了新目录 → 保留标签页，提升为永久
+                if (tabsInfo[i].isPreview && editor == m_previewEditor)
+                    m_previewEditor = nullptr;
+                tabsInfo[i].shouldClose = false;
+            }
+        } else if (ret == QMessageBox::Cancel) {
+            return false; // 用户取消整个操作
+        }
+        // Discard: 保持 shouldClose = true
+    }
+
+    // ---- 第二遍：从后往前关闭标记的标签页 ----
+    for (int i = count() - 1; i >= 0; --i) {
+        TabInfo &info = tabsInfo[i];
+        if (!info.shouldClose)
+            continue;
+
+        if (info.editor) {
+            if (info.isPreview && info.editor == m_previewEditor)
+                m_previewEditor = nullptr;
+            removeTab(i);
+            info.editor->deleteLater();
+        } else {
+            // 非 EditorWidget 标签
+            QWidget *w = widget(i);
+            removeTab(i);
+            if (w) w->deleteLater();
+        }
+    }
+
+    emit tabCountChanged(count());
     return true;
 }
 
