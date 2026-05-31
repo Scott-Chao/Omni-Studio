@@ -544,6 +544,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         QAction *newAct = m_fileMenu->addAction(tr("新建文件"));
         newAct->setShortcut(QKeySequence::New);
+        addAction(newAct);
         connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
         m_shortcutActions["new_file"] = newAct;
 
