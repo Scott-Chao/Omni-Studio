@@ -486,7 +486,21 @@ void ChatBubble::updateContent()
 void ChatBubble::updateBrowserHeight()
 {
     QTextDocument *doc = m_browser->document();
-    doc->setTextWidth(m_browser->viewport()->width());
+
+    // During initial construction (or when the widget hasn't been laid
+    // out yet), m_browser->viewport()->width() is the default widget
+    // size — typically 0 or 100 — which would make the text wrap into
+    // an extremely tall document.  The maximumWidth we set in the
+    // constructor (* 7/10 of parent) is a much better estimate of the
+    // final layout width, so use it as the text width when the viewport
+    // hasn't been assigned its real size yet.
+    int w = m_browser->viewport()->width();
+    if (w < m_browser->maximumWidth())
+        w = m_browser->maximumWidth();
+    if (w <= 0)
+        w = 200;    // safe fallback — matches minimum in constructor
+
+    doc->setTextWidth(w);
 
     int docHeight = qCeil(doc->size().height());
     // Only update if height actually changed to avoid infinite resize loops.
@@ -500,9 +514,6 @@ void ChatBubble::resizeEvent(QResizeEvent *event)
     // Recalculate browser height when bubble gets its final layout width.
     // The constructor's updateContent() might run before the widget has its
     // actual width, leading to a stale fixed height and blank space at bottom.
-    // NOTE: Uses the same max-height cap as updateContent() via
-    // updateBrowserHeight(), so resizeEvent and the streaming timer never
-    // fight each other with conflicting heights (which would cause flicker).
     updateBrowserHeight();
 }
 
