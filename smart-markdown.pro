@@ -29,7 +29,7 @@ SOURCES += \
     ai/airequesthandler.cpp \
     configmanager.cpp \
     crashrecoverymanager.cpp \
-    backlinkindex.cpp \
+    index/backlinkindex.cpp \
     brackethighlighter.cpp \
     codeeditor.cpp \
     codeblockrunner.cpp \
@@ -75,10 +75,10 @@ SOURCES += \
     lsp/pythonsyntaxhighlighter.cpp \
     scrollbarhider.cpp \
     settingschangehandler.cpp \
-    indexmanager.cpp \
+    index/indexmanager.cpp \
     smd/smdcell.cpp \
     smd/smdeditor.cpp \
-    tagindex.cpp \
+    index/tagindex.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
@@ -104,7 +104,7 @@ HEADERS += \
     crashrecoverymanager.h \
     utilities.h \
     lsp/keywords.h \
-    backlinkindex.h \
+    index/backlinkindex.h \
     codeeditor.h \
     codeblockrunner.h \
     compilererrorparser.h \
@@ -154,11 +154,11 @@ HEADERS += \
     lsp/pythonsyntaxhighlighter.h \
     scrollbarhider.h \
     settingschangehandler.h \
-    indexmanager.h \
+    index/indexmanager.h \
     smd/smdcell.h \
     smd/smdeditor.h \
     smd/smdformat.h \
-    tagindex.h \
+    index/tagindex.h \
     mainwindow.h \
     settingsmanager.h \
     tabmanager.h

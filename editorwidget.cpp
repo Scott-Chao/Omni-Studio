@@ -2,7 +2,7 @@
 #include "wikilinktextedit.h"
 #include "codeeditor.h"
 #include "smd/smdeditor.h"
-#include "tagindex.h"
+#include "index/tagindex.h"
 #include "languageutils.h"
 #include "lsp/keywords.h"
 #include <memory>
