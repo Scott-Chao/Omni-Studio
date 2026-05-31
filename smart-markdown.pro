@@ -35,7 +35,7 @@ SOURCES += \
     codeblockrunner.cpp \
     compilerunmanager.cpp \
     lsp/cppsyntaxhighlighter.cpp \
-    crawler.cpp \
+    judge/crawler.cpp \
     diagnosticsection.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
@@ -49,10 +49,10 @@ SOURCES += \
     lsp/signaturehelpmanager.cpp \
     lsp/smdlspmanager.cpp \
     wikilinktextedit.cpp \
-    judgeengine.cpp \
+    judge/judgeengine.cpp \
     keyrecorder.cpp \
-    logindialog.cpp \
-    openjudgemanager.cpp \
+    judge/logindialog.cpp \
+    judge/openjudgemanager.cpp \
     panels/activitybar.cpp \
     panels/bottompanel.cpp \
     panels/fileexplorerwidget.cpp \
@@ -112,7 +112,7 @@ HEADERS += \
     compilerutils.h \
     brackethighlighter.h \
     lsp/cppsyntaxhighlighter.h \
-    crawler.h \
+    judge/crawler.h \
     diagnosticsection.h \
     editorwidget.h \
     flowlayout.h \
@@ -127,10 +127,10 @@ HEADERS += \
     lsp/signaturehelpmanager.h \
     lsp/smdlspmanager.h \
     wikilinktextedit.h \
-    judgeengine.h \
+    judge/judgeengine.h \
     keyrecorder.h \
-    logindialog.h \
-    openjudgemanager.h \
+    judge/logindialog.h \
+    judge/openjudgemanager.h \
     panels/activitybar.h \
     panels/bottompanel.h \
     panels/fileexplorerwidget.h \

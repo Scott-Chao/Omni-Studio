@@ -5,7 +5,7 @@
 #include "aicontextmanager.h"
 #include "configmanager.h"
 #include "settingsmanager.h"
-#include "crawler.h"
+#include "judge/crawler.h"
 
 #include <QCoreApplication>
 #include <QDir>

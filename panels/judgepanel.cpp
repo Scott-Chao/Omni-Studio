@@ -1,6 +1,6 @@
 #include "judgepanel.h"
 #include "thememanager.h"
-#include "judgeengine.h"
+#include "judge/judgeengine.h"
 #include "configmanager.h"
 #include "ai/errorjournal.h"
 

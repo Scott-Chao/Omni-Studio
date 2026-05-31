@@ -2,7 +2,7 @@
 #define OPENJUDGEWIDGET_H
 
 #include <QWidget>
-#include "crawler.h"
+#include "judge/crawler.h"
 
 class CodeEditor;
 class QComboBox;

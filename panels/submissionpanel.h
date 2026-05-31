@@ -6,7 +6,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 
-#include "crawler.h"
+#include "judge/crawler.h"
 
 class SubmitResultPanel : public QWidget
 {

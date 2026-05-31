@@ -1,6 +1,6 @@
 #include "openjudgewidget.h"
 #include "codeeditor.h"
-#include "logindialog.h"
+#include "judge/logindialog.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
 #include "thememanager.h"

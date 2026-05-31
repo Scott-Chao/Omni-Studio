@@ -7,7 +7,7 @@
 #include <QStringList>
 #include <QVector>
 
-#include "judgeengine.h"
+#include "judge/judgeengine.h"
 
 class AiProvider;
 struct SubmissionResult;

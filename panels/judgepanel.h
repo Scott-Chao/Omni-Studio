@@ -9,7 +9,7 @@
 #include <QLabel>
 #include <QVector>
 
-#include "judgeengine.h"
+#include "judge/judgeengine.h"
 
 class JudgePanel : public QWidget
 {
