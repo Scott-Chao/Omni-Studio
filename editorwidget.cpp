@@ -1178,6 +1178,12 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
     QStringList filters;
     filters << tr("Markdown文件 (*.md)")
             << tr("Smart Markdown文件 (*.smd)")
+            << tr("C++ 源文件 (*.cpp)")
+            << tr("C++ 头文件 (*.h)")
+            << tr("Python 文件 (*.py)")
+            << tr("HTML 文件 (*.html)")
+            << tr("JSON 文件 (*.json)")
+            << tr("YAML 文件 (*.yaml)")
             << tr("文本文件 (*.txt)")
             << tr("所有文件 (*)");
     if (m_editorMode == SmdEdit)
@@ -1205,6 +1211,18 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
             newPath += ".smd";
         else if (selectedFilter.contains("*.txt"))
             newPath += ".txt";
+        else if (selectedFilter.contains("*.cpp"))
+            newPath += ".cpp";
+        else if (selectedFilter.contains("*.h"))
+            newPath += ".h";
+        else if (selectedFilter.contains("*.py"))
+            newPath += ".py";
+        else if (selectedFilter.contains("*.html"))
+            newPath += ".html";
+        else if (selectedFilter.contains("*.json"))
+            newPath += ".json";
+        else if (selectedFilter.contains("*.yaml"))
+            newPath += ".yaml";
         else if (!selectedFilter.contains("(*)"))
             newPath += ".md";
     }
