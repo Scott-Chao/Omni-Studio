@@ -35,18 +35,21 @@ SOURCES += \
     brackethighlighter.cpp \
     codeeditor.cpp \
     codeblockrunner.cpp \
-    completionpopup.cpp \
     compilerunmanager.cpp \
-    cppcompletionprovider.cpp \
-    cppsyntaxhighlighter.cpp \
+    lsp/cppsyntaxhighlighter.cpp \
     crawler.cpp \
     diagnosticsection.cpp \
     editorwidget.cpp \
     flowlayout.cpp \
-    hovermanager.cpp \
-    keywordcompletionprovider.cpp \
     languageutils.cpp \
-    lspclient.cpp \
+    lsp/completionpopup.cpp \
+    lsp/cppcompletionprovider.cpp \
+    lsp/hovermanager.cpp \
+    lsp/keywordcompletionprovider.cpp \
+    lsp/lspclient.cpp \
+    lsp/pythoncompletionprovider.cpp \
+    lsp/signaturehelpmanager.cpp \
+    lsp/smdlspmanager.cpp \
     wikilinktextedit.cpp \
     fileexplorerwidget.cpp \
     historypanel.cpp \
@@ -62,8 +65,7 @@ SOURCES += \
     windowdraghelper.cpp \
     outputpanel.cpp \
     processrunner.cpp \
-    pythonsyntaxhighlighter.cpp \
-    pythoncompletionprovider.cpp \
+    lsp/pythonsyntaxhighlighter.cpp \
     rightpanelcontainer.cpp \
     scrollbarhider.cpp \
     searchpanel.cpp \
@@ -74,14 +76,12 @@ SOURCES += \
     smdcell.cpp \
     smddiagnosticspanel.cpp \
     smdeditor.cpp \
-    smdlspmanager.cpp \
     smdoutputwidget.cpp \
     submissionpanel.cpp \
     tagindex.cpp \
     main.cpp \
     mainwindow.cpp \
     settingsmanager.cpp \
-    signaturehelpmanager.cpp \
     tabmanager.cpp
 
 HEADERS += \
@@ -104,27 +104,30 @@ HEADERS += \
     configmanager.h \
     crashrecoverymanager.h \
     utilities.h \
-    keywords.h \
+    lsp/keywords.h \
     sidebarpanels.h \
     backlinkindex.h \
     codeeditor.h \
     codeblockrunner.h \
-    completionpopup.h \
-    completionprovider.h \
     compilererrorparser.h \
     compilerunmanager.h \
     compilerutils.h \
     brackethighlighter.h \
-    cppcompletionprovider.h \
-    cppsyntaxhighlighter.h \
+    lsp/cppsyntaxhighlighter.h \
     crawler.h \
     diagnosticsection.h \
     editorwidget.h \
     flowlayout.h \
-    hovermanager.h \
-    keywordcompletionprovider.h \
     languageutils.h \
-    lspclient.h \
+    lsp/completionpopup.h \
+    lsp/completionprovider.h \
+    lsp/cppcompletionprovider.h \
+    lsp/hovermanager.h \
+    lsp/keywordcompletionprovider.h \
+    lsp/lspclient.h \
+    lsp/pythoncompletionprovider.h \
+    lsp/signaturehelpmanager.h \
+    lsp/smdlspmanager.h \
     wikilinktextedit.h \
     fileexplorerwidget.h \
     historypanel.h \
@@ -141,8 +144,7 @@ HEADERS += \
     smddiagnostic.h \
     outputpanel.h \
     processrunner.h \
-    pythonsyntaxhighlighter.h \
-    pythoncompletionprovider.h \
+    lsp/pythonsyntaxhighlighter.h \
     rightpanelcontainer.h \
     scrollbarhider.h \
     searchpanel.h \
@@ -153,14 +155,12 @@ HEADERS += \
     smdcell.h \
     smddiagnosticspanel.h \
     smdeditor.h \
-    smdlspmanager.h \
     smdformat.h \
     smdoutputwidget.h \
     submissionpanel.h \
     tagindex.h \
     mainwindow.h \
     settingsmanager.h \
-    signaturehelpmanager.h \
     tabmanager.h
 
 FORMS += \

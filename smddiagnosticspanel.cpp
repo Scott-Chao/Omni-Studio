@@ -1,6 +1,6 @@
 #include "smddiagnosticspanel.h"
 #include "smdeditor.h"
-#include "smdlspmanager.h"
+#include "lsp/smdlspmanager.h"
 #include "thememanager.h"
 #include "codeeditor.h"
 

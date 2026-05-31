@@ -3,7 +3,7 @@
 #include "smdformat.h"
 #include "smdoutputwidget.h"
 #include "processrunner.h"
-#include "smdlspmanager.h"
+#include "lsp/smdlspmanager.h"
 #include "smddiagnosticspanel.h"
 #include "codeeditor.h"
 #include "compilerutils.h"

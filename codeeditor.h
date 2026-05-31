@@ -5,7 +5,7 @@
 #include <QTextEdit>
 #include <QList>
 
-#include "completionprovider.h"
+#include "lsp/completionprovider.h"
 #include "smddiagnostic.h"
 
 class QSyntaxHighlighter;

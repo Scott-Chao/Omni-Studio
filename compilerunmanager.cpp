@@ -9,7 +9,7 @@
 #include "configmanager.h"
 #include "fileexplorerwidget.h"
 #include "openjudgewidget.h"
-#include "completionprovider.h"
+#include "lsp/completionprovider.h"
 
 #include <QAction>
 #include <QMenu>

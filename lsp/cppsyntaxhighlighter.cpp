@@ -1,6 +1,6 @@
 #include "cppsyntaxhighlighter.h"
-#include "configmanager.h"
-#include "thememanager.h"
+#include "../configmanager.h"
+#include "../thememanager.h"
 #include "keywords.h"
 
 CppSyntaxHighlighter::CppSyntaxHighlighter(QTextDocument *parent)

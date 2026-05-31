@@ -1044,8 +1044,10 @@ void SmdLspManager::startPythonProcess()
     QString scriptPath;
     QStringList candidates = {
         appDir + QStringLiteral("/completion_helper.py"),
+        appDir + QStringLiteral("/lsp/completion_helper.py"),
         appDir + QStringLiteral("/../completion_helper.py"),
         QStringLiteral("completion_helper.py"),
+        QStringLiteral("lsp/completion_helper.py"),
     };
     for (const QString &c : candidates) {
         if (QFileInfo::exists(c)) {

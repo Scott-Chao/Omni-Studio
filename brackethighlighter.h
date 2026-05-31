@@ -6,7 +6,7 @@
 #include <QMap>
 #include <QList>
 
-#include "completionprovider.h"
+#include "lsp/completionprovider.h"
 
 class BracketHighlighter : public QSyntaxHighlighter
 {

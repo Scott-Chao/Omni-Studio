@@ -4,7 +4,7 @@
 #include "smdeditor.h"
 #include "tagindex.h"
 #include "languageutils.h"
-#include "keywords.h"
+#include "lsp/keywords.h"
 #include <memory>
 #include "utilities.h"
 #include "configmanager.h"
