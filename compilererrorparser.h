@@ -4,7 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QRegularExpression>
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 namespace CompilerErrorParser {
 

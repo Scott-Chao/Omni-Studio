@@ -7,7 +7,7 @@
 #include <QIcon>
 #include <QTimer>
 
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 struct SemanticToken {
     int line = 0;       // 0-based line number

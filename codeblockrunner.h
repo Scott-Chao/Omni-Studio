@@ -5,7 +5,7 @@
 #include <QMap>
 #include <QString>
 #include <QList>
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 class TabManager;
 class BottomPanel;

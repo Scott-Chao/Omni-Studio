@@ -2,7 +2,7 @@
 #include "tabmanager.h"
 #include "editorwidget.h"
 #include "codeeditor.h"
-#include "smdeditor.h"
+#include "smd/smdeditor.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
 #include "thememanager.h"

@@ -34,7 +34,7 @@ SOURCES += \
     codeeditor.cpp \
     codeblockrunner.cpp \
     compilerunmanager.cpp \
-    lsp/cppsyntaxhighlighter.cpp \
+    cppsyntaxhighlighter.cpp \
     crawler.cpp \
     diagnosticsection.cpp \
     editorwidget.cpp \
@@ -72,12 +72,12 @@ SOURCES += \
     tabbuttongroup.cpp \
     windowdraghelper.cpp \
     processrunner.cpp \
-    lsp/pythonsyntaxhighlighter.cpp \
+    pythonsyntaxhighlighter.cpp \
     scrollbarhider.cpp \
     settingschangehandler.cpp \
     indexmanager.cpp \
-    smdcell.cpp \
-    smdeditor.cpp \
+    smd/smdcell.cpp \
+    smd/smdeditor.cpp \
     tagindex.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -103,7 +103,7 @@ HEADERS += \
     configmanager.h \
     crashrecoverymanager.h \
     utilities.h \
-    lsp/keywords.h \
+    keywords.h \
     backlinkindex.h \
     codeeditor.h \
     codeblockrunner.h \
@@ -111,7 +111,7 @@ HEADERS += \
     compilerunmanager.h \
     compilerutils.h \
     brackethighlighter.h \
-    lsp/cppsyntaxhighlighter.h \
+    cppsyntaxhighlighter.h \
     crawler.h \
     diagnosticsection.h \
     editorwidget.h \
@@ -149,15 +149,15 @@ HEADERS += \
     panels/smdoutputwidget.h \
     tabbuttongroup.h \
     windowdraghelper.h \
-    smddiagnostic.h \
+    smd/smddiagnostic.h \
     processrunner.h \
-    lsp/pythonsyntaxhighlighter.h \
+    pythonsyntaxhighlighter.h \
     scrollbarhider.h \
     settingschangehandler.h \
     indexmanager.h \
-    smdcell.h \
-    smdeditor.h \
-    smdformat.h \
+    smd/smdcell.h \
+    smd/smdeditor.h \
+    smd/smdformat.h \
     tagindex.h \
     mainwindow.h \
     settingsmanager.h \

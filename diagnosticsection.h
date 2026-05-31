@@ -6,7 +6,7 @@
 #include <QLabel>
 #include <QList>
 
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 class DiagnosticSection : public QWidget
 {

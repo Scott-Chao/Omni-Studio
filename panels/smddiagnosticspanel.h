@@ -11,7 +11,7 @@
 #include <QTimer>
 #include <QList>
 
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 #include "diagnosticsection.h"
 
 class SmdEditor;

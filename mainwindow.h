@@ -4,7 +4,7 @@
 #include <QMainWindow>
 #include <QList>
 #include <QMap>
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 #include "ai/aihistorymanager.h"
 #include <QTabWidget>
 #include <QSplitter>

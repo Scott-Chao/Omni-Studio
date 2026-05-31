@@ -1,7 +1,7 @@
 ﻿#include "codeeditor.h"
 #include "lsp/cppsyntaxhighlighter.h"
 #include "lsp/pythonsyntaxhighlighter.h"
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 #include "languageutils.h"
 #include "configmanager.h"
 #include "thememanager.h"

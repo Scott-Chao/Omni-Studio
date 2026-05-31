@@ -62,8 +62,8 @@ protected:
 #include "ai/airequesthandler.h"
 #include "indexmanager.h"
 #include "crashrecoverymanager.h"
-#include "smdformat.h"
-#include "smdeditor.h"
+#include "smd/smdformat.h"
+#include "smd/smdeditor.h"
 #include "codeeditor.h"
 #include <QPdfView>
 #include "scrollbarhider.h"

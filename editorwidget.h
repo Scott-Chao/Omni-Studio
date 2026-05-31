@@ -14,7 +14,7 @@
 #include <QMap>
 #include <QList>
 #include <functional>
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 class WikiLinkTextEdit;
 class CodeEditor;

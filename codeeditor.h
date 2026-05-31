@@ -6,7 +6,7 @@
 #include <QList>
 
 #include "lsp/completionprovider.h"
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 
 class QSyntaxHighlighter;
 class CompletionProvider;

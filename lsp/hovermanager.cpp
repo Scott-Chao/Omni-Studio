@@ -1,6 +1,6 @@
 #include "hovermanager.h"
 #include "codeeditor.h"
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 #include "thememanager.h"
 
 #include <QApplication>

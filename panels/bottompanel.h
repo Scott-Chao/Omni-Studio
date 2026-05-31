@@ -5,7 +5,7 @@
 #include <QStackedWidget>
 #include <QList>
 
-#include "smddiagnostic.h"
+#include "smd/smddiagnostic.h"
 #include "tabbuttongroup.h"
 
 class QPushButton;

@@ -1,7 +1,7 @@
 ﻿#include "editorwidget.h"
 #include "wikilinktextedit.h"
 #include "codeeditor.h"
-#include "smdeditor.h"
+#include "smd/smdeditor.h"
 #include "tagindex.h"
 #include "languageutils.h"
 #include "lsp/keywords.h"
