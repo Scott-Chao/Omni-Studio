@@ -122,6 +122,7 @@ set(HEADERS
     editor/editorwidget.h
     widgets/flowlayout.h
     core/languageutils.h
+    core/macoswindow.h
     editor/completionpopup.h
     lsp/completionprovider.h
     lsp/cppcompletionprovider.h
@@ -200,4 +201,8 @@ if(WIN32)
             COMMENT "Deploying Qt runtime DLLs..."
         )
     endif()
+elseif(APPLE)
+    set_target_properties(SmartMarkdown PROPERTIES MACOSX_BUNDLE TRUE)
+    target_sources(SmartMarkdown PRIVATE core/macoswindow.mm)
+    target_link_libraries(SmartMarkdown PRIVATE "-framework AppKit")
 endif()

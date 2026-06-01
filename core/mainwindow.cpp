@@ -83,6 +83,7 @@ protected:
 #include <windows.h>
 #include <windowsx.h>
 #endif
+#include "macoswindow.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -211,8 +212,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 设置窗口标题与无边框
     setWindowTitle(tr("Smart Markdown"));
+#ifdef Q_OS_MACOS
+    // macOS: keep native title bar (with traffic light buttons) but hide it
+    // via setTitlebarAppearsTransparent in showEvent
+    setWindowFlags(Qt::Window | Qt::WindowMinimizeButtonHint |
+                   Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint);
+#else
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint);
+#endif
 
     // 强制创建原生窗口句柄，添加 WS_THICKFRAME 以启用边缘缩放和 Aero Snap
     // 并向 DWM 请求圆角（Windows 11 系统级窗口圆角）
@@ -1497,6 +1505,18 @@ void MainWindow::moveEvent(QMoveEvent *event)
     }
 }
 
+void MainWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+#ifdef Q_OS_MACOS
+    // Defer macOS title bar setup to ensure native NSWindow exists
+    QTimer::singleShot(0, this, [this]() {
+        if (windowHandle())
+            MacOSWindow::enableFullSizeContentView(windowHandle());
+    });
+#endif
+}
+
 void MainWindow::toggleSettings()
 {
     if (m_settingsOverlay->isVisible()) {
@@ -2252,6 +2272,8 @@ void MainWindow::setupCustomTitleBar()
     // Spacer is already created and added before the call
     m_toolbarSpacer->installEventFilter(this);
 
+#ifndef Q_OS_MACOS
+    // macOS: native traffic light buttons handle window controls
     m_minimizeBtn = new TitleBarButton(TitleBarButton::Minimize, this);
     connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
     tb->addWidget(m_minimizeBtn);
@@ -2265,6 +2287,10 @@ void MainWindow::setupCustomTitleBar()
     m_closeBtn = new TitleBarButton(TitleBarButton::Close, this);
     connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
     tb->addWidget(m_closeBtn);
+#else
+    // Reserve left margin for native traffic light buttons
+    m_toolbarSpacer->setMinimumWidth(70);
+#endif
 }
 
 // ============================================================
@@ -2373,7 +2399,7 @@ void MainWindow::changeEvent(QEvent *event)
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
     // 工具栏拖拽：点击空白区域或 spacer 移动窗口
-    if (m_minimizeBtn && m_maximizeBtn && m_closeBtn) {
+    {
         QToolBar *tb = qobject_cast<QToolBar*>(watched);
         bool isToolbarOrSpacer = (tb != nullptr) || (watched == m_toolbarSpacer);
         if (isToolbarOrSpacer && event->type() == QEvent::MouseButtonPress) {

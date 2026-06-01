@@ -19,6 +19,8 @@
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <signal.h>
+#elif defined(Q_OS_MACOS)
+#include <libproc.h>
 #endif
 
 JudgeEngine::JudgeEngine(QObject *parent)
@@ -492,9 +494,16 @@ void JudgeEngine::captureMemory()
                 m_peakMemoryKb = memKb;
         }
     }
-#else
-    // macOS: task_info from <mach/task_info.h> (to be implemented)
-    Q_UNUSED(pid);
+#elif defined(Q_OS_MACOS)
+    // macOS: use proc_pidinfo to read resident memory (no root required)
+    struct proc_taskinfo pti;
+    const int size = proc_pidinfo(static_cast<int>(pid), PROC_PIDTASKINFO,
+                                  0, &pti, PROC_PIDTASKINFO_SIZE);
+    if (size > 0) {
+        quint64 memKb = static_cast<quint64>(pti.pti_resident_size / 1024);
+        if (memKb > m_peakMemoryKb)
+            m_peakMemoryKb = memKb;
+    }
 #endif
 }
 

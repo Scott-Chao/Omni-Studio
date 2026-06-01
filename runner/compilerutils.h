@@ -64,6 +64,31 @@ inline QList<CompilerInfo> findCompilers()
         info.available = !info.compilerPath.isEmpty();
         compilers.append(info);
     }
+#elif defined(Q_OS_MACOS)
+    // Detect clang++ (Apple) — primary compiler on macOS
+    {
+        CompilerInfo info;
+        info.id = QStringLiteral("clang");
+        info.displayName = QStringLiteral("Clang++ (Apple)");
+        info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("clang++"));
+        if (info.compilerPath.isEmpty()) {
+            // Fallback: Xcode command line tools
+            if (QFile::exists(QStringLiteral("/usr/bin/clang++")))
+                info.compilerPath = QStringLiteral("/usr/bin/clang++");
+        }
+        info.available = !info.compilerPath.isEmpty();
+        compilers.append(info);
+    }
+
+    // Detect g++ (macOS, e.g. via Homebrew)
+    {
+        CompilerInfo info;
+        info.id = QStringLiteral("gcc");
+        info.displayName = QStringLiteral("g++ (GNU)");
+        info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("g++"));
+        info.available = !info.compilerPath.isEmpty();
+        compilers.append(info);
+    }
 #endif
 
     return compilers;
