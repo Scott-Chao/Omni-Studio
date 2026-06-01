@@ -7,7 +7,7 @@
 #include "config/settingsmanager.h"
 #include "config/configmanager.h"
 #include "editorwidget.h"
-#include "compilerunmanager.h"
+#include "runner/compilerunmanager.h"
 #include "ai/errorjournal.h"
 
 #include <QMessageBox>

@@ -2,11 +2,11 @@
 #include "smdcell.h"
 #include "smdformat.h"
 #include "panels/smdoutputwidget.h"
-#include "processrunner.h"
+#include "runner/processrunner.h"
 #include "lsp/smdlspmanager.h"
 #include "panels/smddiagnosticspanel.h"
 #include "codeeditor.h"
-#include "compilerutils.h"
+#include "runner/compilerutils.h"
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "languageutils.h"
@@ -1318,12 +1318,14 @@ void SmdEditor::startPythonExecProcess()
 {
     if (m_pyExecProcess) return;
 
-    // Look for python_executor.py next to the app, one dir up, or in CWD
+    // Look for python_executor.py next to the app, one dir up, in scripts/, or in CWD
     QString appDir = QCoreApplication::applicationDirPath();
     QStringList candidates = {
         appDir + QStringLiteral("/python_executor.py"),
         appDir + QStringLiteral("/../python_executor.py"),
+        appDir + QStringLiteral("/../scripts/python_executor.py"),
         QStringLiteral("python_executor.py"),
+        QStringLiteral("scripts/python_executor.py"),
     };
     for (const QString &c : candidates) {
         if (QFileInfo::exists(c)) {

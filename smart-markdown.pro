@@ -32,8 +32,8 @@ SOURCES += \
     index/backlinkindex.cpp \
     brackethighlighter.cpp \
     codeeditor.cpp \
-    codeblockrunner.cpp \
-    compilerunmanager.cpp \
+    runner/codeblockrunner.cpp \
+    runner/compilerunmanager.cpp \
     lsp/cppsyntaxhighlighter.cpp \
     judge/crawler.cpp \
     diagnosticsection.cpp \
@@ -71,7 +71,7 @@ SOURCES += \
     panels/smdoutputwidget.cpp \
     tabbuttongroup.cpp \
     windowdraghelper.cpp \
-    processrunner.cpp \
+    runner/processrunner.cpp \
     lsp/pythonsyntaxhighlighter.cpp \
     scrollbarhider.cpp \
     config/settingschangehandler.cpp \
@@ -106,10 +106,10 @@ HEADERS += \
     lsp/keywords.h \
     index/backlinkindex.h \
     codeeditor.h \
-    codeblockrunner.h \
-    compilererrorparser.h \
-    compilerunmanager.h \
-    compilerutils.h \
+    runner/codeblockrunner.h \
+    runner/compilererrorparser.h \
+    runner/compilerunmanager.h \
+    runner/compilerutils.h \
     brackethighlighter.h \
     lsp/cppsyntaxhighlighter.h \
     judge/crawler.h \
@@ -150,7 +150,7 @@ HEADERS += \
     tabbuttongroup.h \
     windowdraghelper.h \
     smd/smddiagnostic.h \
-    processrunner.h \
+    runner/processrunner.h \
     lsp/pythonsyntaxhighlighter.h \
     scrollbarhider.h \
     config/settingschangehandler.h \
