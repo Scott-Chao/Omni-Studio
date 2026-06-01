@@ -195,6 +195,7 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
     }
 
     // 9. Persist user message to AiHistoryManager
+    QString userContent = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
     {
         auto &mgr = AiHistoryManager::instance();
         if (mgr.currentConversationId().isEmpty()) {
@@ -212,7 +213,7 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
 
         AiMessage histMsg;
         histMsg.role = MessageRole::User;
-        histMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
+        histMsg.content = userContent;
         histMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
         mgr.appendMessage(mgr.currentConversationId(), histMsg);
     }
@@ -221,10 +222,7 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
     m_aiPanel->addAssistantMessage(QString());
 
     // 11. Append current user message to canonical full history (unpruned)
-    Message userMsg;
-    userMsg.role = MessageRole::User;
-    userMsg.content = (action == AiAction::FreeChat) ? freeQuery : prompt.userPrompt;
-    m_aiHistory.append(userMsg);
+    m_aiHistory.append({MessageRole::User, userContent});
 
     // 12. Build token-aware context window for the API call
     QList<Message> messages = pruneContextWindow(m_aiHistory, model, maxTokens, prompt.systemPrompt);
@@ -293,30 +291,21 @@ void AiRequestHandler::onAiFinished()
         m_aiPanel->flushPendingUpdates();
 
     // Persist assistant response to AiHistoryManager
+    QString assistantContent = m_aiPanel ? m_aiPanel->lastAssistantContent() : QString();
     {
         auto &mgr = AiHistoryManager::instance();
-        if (!mgr.currentConversationId().isEmpty()) {
-            QString content = m_aiPanel ? m_aiPanel->lastAssistantContent() : QString();
-            if (!content.isEmpty()) {
-                AiMessage assistantMsg;
-                assistantMsg.role = MessageRole::Assistant;
-                assistantMsg.content = content;
-                assistantMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
-                mgr.appendMessage(mgr.currentConversationId(), assistantMsg);
-            }
+        if (!mgr.currentConversationId().isEmpty() && !assistantContent.isEmpty()) {
+            AiMessage assistantMsg;
+            assistantMsg.role = MessageRole::Assistant;
+            assistantMsg.content = assistantContent;
+            assistantMsg.timestampMs = QDateTime::currentMSecsSinceEpoch();
+            mgr.appendMessage(mgr.currentConversationId(), assistantMsg);
         }
     }
 
     // Save assistant response to in-memory history for subsequent turns
-    if (!m_aiHistory.isEmpty()) {
-        QString content = m_aiPanel ? m_aiPanel->lastAssistantContent() : QString();
-        if (!content.isEmpty()) {
-            Message assistantMsg;
-            assistantMsg.role = MessageRole::Assistant;
-            assistantMsg.content = content;
-            m_aiHistory.append(assistantMsg);
-        }
-    }
+    if (!m_aiHistory.isEmpty() && !assistantContent.isEmpty())
+        m_aiHistory.append({MessageRole::Assistant, assistantContent});
 
     m_aiStreaming = false;
     emit streamingStateChanged(false);
@@ -367,11 +356,8 @@ void AiRequestHandler::loadAiConversation(const QString &convId)
         else
             m_aiPanel->addUserMessage(aiMsg.content);
 
-        // Rebuild m_aiHistory for API context
-        Message msg;
-        msg.role = aiMsg.role;
-        msg.content = aiMsg.content;
-        m_aiHistory.append(msg);
+        // Rebuild m_aiHistory for API context (AiMessage → Message via implicit conversion)
+        m_aiHistory.append(aiMsg);
     }
 
     // Switch back to chat tab

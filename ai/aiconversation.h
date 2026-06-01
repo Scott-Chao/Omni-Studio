@@ -44,6 +44,15 @@ struct AiMessage {
     QString content;
     qint64 timestampMs = 0;
 
+    // Implicit conversion to Message for API calls, eliminating
+    // manual field-by-field conversion in callers.
+    operator Message() const {
+        Message msg;
+        msg.role = role;
+        msg.content = content;
+        return msg;
+    }
+
     QJsonObject toJson() const {
         QString roleStr;
         switch (role) {
