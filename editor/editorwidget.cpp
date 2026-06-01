@@ -1654,33 +1654,55 @@ void EditorWidget::setFilePath(const QString &newPath) {
     QString normalized = QFileInfo(newPath).absoluteFilePath();
     if (m_filePath == normalized) return;
     QString oldPath = m_filePath;
-    m_filePath = normalized;
-    m_originalContent = normalizeTrailingNewlines(toPlainText());
 
-    // Re-evaluate language on path change (handles save-as extension changes)
+    // Capture content from the current (old-mode) editor before switching
+    EditorMode oldMode = m_editorMode;
+    QString oldContent = toPlainText();
+
+    m_filePath = normalized;
+    m_originalContent = normalizeTrailingNewlines(oldContent);
+
+    // Determine new mode based on file extension
     QString ext = QFileInfo(newPath).suffix().toLower();
-    if (ext == QStringLiteral("smd")) {
-        m_editorMode = SmdEdit;
-                m_smdEditor->setFilePath(normalized);
-        m_stackedWidget->setCurrentWidget(m_smdEditor);
-        applyZoom();
-    } else {
-        QString lang = LanguageUtils::languageForExtension(ext);
-        if (!lang.isEmpty()) {
-            m_editorMode = CodeEdit;
-                        m_codeEditor->setDocumentUri(QStringLiteral("file:///") + normalized);
-            m_codeEditor->setLanguage(lang);
+    EditorMode newMode;
+    if (ext == QStringLiteral("smd"))
+        newMode = SmdEdit;
+    else
+        newMode = LanguageUtils::languageForExtension(ext).isEmpty()
+                      ? MarkdownEdit : CodeEdit;
+
+    bool modeChanged = (oldMode != newMode);
+    m_editorMode = newMode;
+
+    // Transfer content to the correct editor widget.  Suppress modification
+    // signals so setPlainText doesn't flash an unsaved indicator.
+    m_loading = true;
+    {
+        if (newMode == SmdEdit) {
+            m_smdEditor->setFilePath(normalized);
+            if (modeChanged) m_smdEditor->setPlainText(oldContent);
+            m_stackedWidget->setCurrentWidget(m_smdEditor);
+        } else if (newMode == CodeEdit) {
+            m_codeEditor->setDocumentUri(QStringLiteral("file:///") + normalized);
+            m_codeEditor->setLanguage(LanguageUtils::languageForExtension(ext));
+            if (modeChanged) m_codeEditor->setPlainText(oldContent);
             m_stackedWidget->setCurrentWidget(m_codeEditor);
-            applyZoom();
         } else {
-            m_editorMode = MarkdownEdit;
-                        if (m_stackedWidget->currentIndex() != 0)
+            if (modeChanged) m_textEdit->setPlainText(oldContent);
+            if (m_stackedWidget->currentIndex() != 0)
                 m_stackedWidget->setCurrentWidget(m_textEdit);
         }
+        applyZoom();
     }
+    m_loading = false;
+    setModified(false);
 
     emit filePathChanged(oldPath, normalized);
-    emit modificationChanged(isModified());
+
+    // Notify downstream components (compile/run actions, export-PDF
+    // visibility, right-panel refresh) when the editor mode changed.
+    if (modeChanged)
+        emit fileLoaded(normalized);
 }
 
 void EditorWidget::setFileNames(const QStringList &names)

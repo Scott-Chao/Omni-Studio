@@ -1,4 +1,4 @@
-## 功能说明文档（v0.14.4）
+## 功能说明文档（v0.14.5）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.14.4
-- 函数签名帮助弹窗样式调整
+### 修复 v0.14.5
+- 修复文件树内联重命名更改后缀（如 .md → .cpp）后编辑器内容为空的问题：`EditorWidget::setFilePath` 现在会在编辑器模式切换时将旧编辑器的文本内容转移到新编辑器
+- 修复重命名后编译运行按钮和导出 PDF 按钮状态不更新的问题：`EditorWidget::setFilePath` 在模式发生变化时会发射 `fileLoaded` 信号，触发 `CompileRunManager::updateActions()` 及导出 PDF 可见性更新
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -132,7 +133,7 @@
 - `void onWikiLinkClicked(const QString &fileName)`：处理来自编辑器的 WikiLink 点击信号，执行搜索或创建流程。 
 - `void buildFileIndexAsync(std::function<void()> onComplete)`：轻量异步文件索引构建，仅执行 `QDirIterator` 目录遍历（Phase 1），不重建 backlink/tag 索引。使用**独立的** `m_fileIdxCancelled`/`m_fileIdxScanId` 取消令牌和扫描代际保护，不影响全量索引构建。完成后更新 `m_fileIndex` 和补全列表，若提供回调则在主线程执行（用于处理依赖更新后索引的操作，如 `updateWikiLinksAfterRename`）。用于重命名/删除/另存为后的即时更新。
 - `void startAsyncIndexBuild()`：异步版本的索引构建，使用 `QThread::create()` 在后台线程依次执行文件索引构建、反向链接扫描和标签索引构建（Phase 1/2/3）。支持取消令牌和扫描代际保护。完成后交付主线程并刷新补全列表、反链面板和标签面板。
-- `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。在 `currentChanged`（标签页切换）和 `EditorWidget::fileLoaded`（当前编辑器加载文件）信号中自动调用，覆盖预览标签复用等不触发 `currentChanged` 的场景。`onFileSelected` 中也显式调用作为兜底保障。
+- `void refreshBacklinks()`：查询当前文件的反链列表并更新面板显示与标题。在 `currentChanged`（标签页切换）和 `EditorWidget::fileLoaded`（当前编辑器加载文件/重命名导致编辑器模式变更）信号中自动调用，覆盖预览标签复用等不触发 `currentChanged` 的场景。`onFileSelected` 中也显式调用作为兜底保障。
 - `void refreshTags()` / `void onTagClicked(const QString &tag)`：刷新标签面板显示所有标签；响应标签点击时在面板显示关联文件列表并确保面板可见（`show` + `raise`）。
 - `void refreshOutline()`：提取当前 Markdown 编辑器的所有标题（`extractHeadingsFromContent`，行级正则 + 跳过代码块），更新大纲面板显示。非 `.md` 文件时清空面板。
 - `QString findWikiTarget(const QString &fileName)`：封装多级搜索策略，依次尝试已知文本扩展名进行路径匹配，并通过索引实现智能路径解析与就近匹配算法。
@@ -359,7 +360,7 @@
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。
 - `void setZoomFactor(qreal factor)`：设置绝对缩放倍数，并触发 `applyZoom()` 与 `zoomFactorChanged` 信号。
-- `void setFilePath(const QString &newPath)`：更新当前编辑器的文件路径（不改变文档内容），用于外部重命名后同步。
+- `void setFilePath(const QString &newPath)`：更新当前编辑器的文件路径，用于外部重命名后同步。当后缀名变化导致编辑器模式切换（如 .md → .cpp）时，自动将旧编辑器的文本内容转移到新编辑器，并发射 `fileLoaded` 信号以触发编译运行按钮状态、导出 PDF 可见性等下游更新。模式不变时仅更新路径，不发射 `fileLoaded`。
 - `void setSplitPreviewDebounceMs(int ms)`：动态更新分屏预览的防抖延迟间隔，用于设置面板实时调整。
 - `void applySplitPreviewRatio()`：从 `SettingsManager` 读取最新的分屏比例值并立即调整 `QSplitter` 分隔条位置。
 - `void exportToPdf(const QString &filePath, const QPageLayout &layout)`：将当前 Markdown 内容通过临时隐藏 QWebEngineView 渲染后导出为 PDF。
