@@ -18,33 +18,61 @@
 // ============================================================
 
 SignatureHelpPopup::SignatureHelpPopup(QWidget *parent)
-    : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint)
+    : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint)
 {
     setAttribute(Qt::WA_ShowWithoutActivating, true);
-    setAttribute(Qt::WA_TranslucentBackground, false);
+    setObjectName(QStringLiteral("signatureHelpPopup"));
+    setBackgroundRole(QPalette::ToolTipBase);
+    setForegroundRole(QPalette::ToolTipText);
+    setAutoFillBackground(true);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 6, 8, 6);
     layout->setSpacing(2);
 
-    // Header: overload navigation
+    // Header: overload navigation (sticky, always visible)
     m_headerLabel = new QLabel(this);
     m_headerLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     layout->addWidget(m_headerLabel);
 
+    // Scroll area for signature + documentation (capped height with scrollbar)
+    m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setWidgetResizable(false);
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_scrollArea->setBackgroundRole(QPalette::ToolTipBase);
+    m_scrollArea->setAutoFillBackground(true);
+    m_scrollArea->viewport()->setBackgroundRole(QPalette::ToolTipBase);
+    m_scrollArea->viewport()->setAutoFillBackground(true);
+    layout->addWidget(m_scrollArea);
+
+    m_scrollContent = new QWidget();
+    auto *scrollLayout = new QVBoxLayout(m_scrollContent);
+    scrollLayout->setContentsMargins(0, 0, 0, 0);
+    scrollLayout->setSpacing(2);
+
     // Signature: rich text with active parameter highlighted
-    m_sigLabel = new QLabel(this);
+    m_sigLabel = new QLabel();
     m_sigLabel->setWordWrap(true);
     m_sigLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     m_sigLabel->setCursor(Qt::ArrowCursor);
-    layout->addWidget(m_sigLabel);
+    m_sigLabel->setBackgroundRole(QPalette::ToolTipBase);
+    m_sigLabel->setForegroundRole(QPalette::ToolTipText);
+    m_sigLabel->setAutoFillBackground(true);
+    scrollLayout->addWidget(m_sigLabel);
 
     // Documentation
-    m_docLabel = new QLabel(this);
+    m_docLabel = new QLabel();
     m_docLabel->setWordWrap(true);
     m_docLabel->setTextInteractionFlags(Qt::NoTextInteraction);
     m_docLabel->setCursor(Qt::ArrowCursor);
-    layout->addWidget(m_docLabel);
+    m_docLabel->setBackgroundRole(QPalette::ToolTipBase);
+    m_docLabel->setForegroundRole(QPalette::ToolTipText);
+    m_docLabel->setAutoFillBackground(true);
+    scrollLayout->addWidget(m_docLabel);
+
+    m_scrollArea->setWidget(m_scrollContent);
 
     setCursor(Qt::ArrowCursor);
 
@@ -55,20 +83,51 @@ SignatureHelpPopup::SignatureHelpPopup(QWidget *parent)
 void SignatureHelpPopup::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
+    QColor bg = tm.color("menu.background");
+    QColor fg = tm.color("menu.foreground");
 
+    if (!bg.isValid()) bg = QColor("#202122");
+    if (!fg.isValid()) fg = QColor("#bfbfbf");
+
+    // Compute a border color that's clearly visible against the background.
+    // The theme's menu.separatorColor is often too subtle (especially in
+    // light mode), so enforce a minimum lightness contrast of 60 steps.
+    QColor border = tm.color("menu.separatorColor");
+    if (!border.isValid() || qAbs(bg.lightness() - border.lightness()) < 60)
+        border = bg.lightness() > 128 ? bg.darker(350) : bg.lighter(350);
+
+    // Stylesheet for the outer frame + scrollbar (matches HoverManager pattern)
     setStyleSheet(QStringLiteral(
-        "SignatureHelpPopup { background: %1; border: 1px solid %2; }"
-    ).arg(tm.color("editor.background").name(),
-          tm.color("panel.border").name()));
+        "#signatureHelpPopup { background-color: %1; border: 1px solid %2; border-radius: 5px; }"
+        "QScrollBar:vertical { width: 8px; }"
+    ).arg(bg.name(), border.name()));
 
+    // Propagate palette to child widgets. When the parent QFrame has a
+    // stylesheet, child widgets stop inheriting QApplication::palette()
+    // automatically — we must push the new palette ourselves.
+    QPalette pal;
+    pal.setColor(QPalette::ToolTipBase, bg);
+    pal.setColor(QPalette::ToolTipText, fg);
+    pal.setColor(QPalette::Window, bg);
+    pal.setColor(QPalette::WindowText, fg);
+    pal.setColor(QPalette::Base, bg);
+    pal.setColor(QPalette::Text, fg);
+    m_scrollArea->setPalette(pal);
+    m_scrollArea->viewport()->setPalette(pal);
+    m_sigLabel->setPalette(pal);
+    m_docLabel->setPalette(pal);
+
+    // Foreground colors for header, sig, and doc labels (distinct roles)
     m_headerLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 11px; }"
     ).arg(tm.color("editorLineNumber.foreground").name()));
 
+    // Sig label: use editor.foreground for code-like appearance
     m_sigLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 12px; }"
     ).arg(tm.color("editor.foreground").name()));
 
+    // Doc label: muted color for secondary text
     m_docLabel->setStyleSheet(QStringLiteral(
         "QLabel { color: %1; font-size: 11px; }"
     ).arg(tm.color("tab.inactiveForeground").name()));
@@ -154,10 +213,27 @@ void SignatureHelpPopup::updateContent()
         m_docLabel->hide();
     }
 
-    // Size
-    int w = qMin(600, qMax(300, m_sigLabel->sizeHint().width() + 40));
-    adjustSize();
-    resize(w, height());
+    // Size — cap height with scrollbar for long content
+    CodeEditor *editor = qobject_cast<CodeEditor *>(parentWidget());
+    int maxWidth = 600;
+    if (editor)
+        maxWidth = qMin(editor->viewport()->width() * 2 / 3, 600);
+    int contentWidth = maxWidth - 16; // margins 8+8
+
+    m_sigLabel->setFixedWidth(contentWidth);
+    m_docLabel->setFixedWidth(contentWidth);
+    m_scrollContent->setFixedWidth(contentWidth);
+
+    m_scrollContent->adjustSize();
+
+    int scrollContentH = m_scrollContent->height();
+    int scrollH = qMin(scrollContentH, kMaxPopupHeight);
+    m_scrollArea->setFixedSize(contentWidth, scrollH);
+
+    int headerH = m_headerLabel->isHidden() ? 0 : m_headerLabel->sizeHint().height();
+    int spacing = 2;
+    int totalH = 12 + headerH + (headerH > 0 ? spacing : 0) + scrollH;
+    setFixedSize(maxWidth, totalH);
 }
 
 void SignatureHelpPopup::updatePosition()

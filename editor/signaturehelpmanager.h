@@ -7,17 +7,20 @@
 #include <QList>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QScrollArea>
+#include <QFrame>
 
 #include "../lsp/completionprovider.h"
 
 class CodeEditor;
 class CompletionProvider;
+class QScrollArea;
 
 // ============================================================
 // SignatureHelpPopup — floating widget showing signature info
 // ============================================================
 
-class SignatureHelpPopup : public QWidget
+class SignatureHelpPopup : public QFrame
 {
     Q_OBJECT
 
@@ -34,8 +37,11 @@ private:
     QLabel *m_headerLabel;  // overload counter + nav hint
     QLabel *m_sigLabel;     // signature with active parameter highlighted
     QLabel *m_docLabel;     // documentation
+    QScrollArea *m_scrollArea;
+    QWidget *m_scrollContent;
     QList<SignatureInfo> m_signatures;
     int m_activeIndex = 0;
+    static constexpr int kMaxPopupHeight = 300;
 
     void updateContent();
     void updatePosition();
