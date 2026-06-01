@@ -7,7 +7,7 @@
 #include <QSet>
 #include <QCoreApplication>
 #include <QTimer>
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>

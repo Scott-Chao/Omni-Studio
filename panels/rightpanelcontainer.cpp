@@ -3,7 +3,7 @@
 #include "historypanel.h"
 #include "outlinepanel.h"
 #include "sidebarpanels.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

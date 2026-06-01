@@ -7,7 +7,7 @@
 #include "processrunner.h"
 #include "compilererrorparser.h"
 #include "languageutils.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 #include <QFile>
 #include <QDir>

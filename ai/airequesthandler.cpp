@@ -5,8 +5,8 @@
 #include "aihistorymanager.h"
 #include "tabmanager.h"
 #include "editorwidget.h"
-#include "settingsmanager.h"
-#include "configmanager.h"
+#include "config/settingsmanager.h"
+#include "config/configmanager.h"
 
 #include <QDateTime>
 #include <QDebug>

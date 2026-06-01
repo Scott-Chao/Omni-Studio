@@ -1,8 +1,8 @@
 #include "searchpanel.h"
 #include "thememanager.h"
 #include "utilities.h"
-#include "configmanager.h"
-#include "settingsmanager.h"
+#include "config/configmanager.h"
+#include "config/settingsmanager.h"
 
 #include <QVBoxLayout>
 #include <QDir>

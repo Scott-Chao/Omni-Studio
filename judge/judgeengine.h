@@ -8,7 +8,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QElapsedTimer>
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 class JudgeEngine : public QObject
 {

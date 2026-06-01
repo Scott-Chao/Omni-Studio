@@ -1,5 +1,5 @@
 #include "brackethighlighter.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include <QTextBlock>
 
 void BracketHighlighter::setSemanticTokens(const QList<SemanticToken> &tokens)

@@ -1,5 +1,5 @@
 #include "mainwindow.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
 
 #include <QApplication>

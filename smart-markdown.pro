@@ -27,7 +27,7 @@ SOURCES += \
     ai/aihistorylistwidget.cpp \
     ai/aihistorymanager.cpp \
     ai/airequesthandler.cpp \
-    configmanager.cpp \
+    config/configmanager.cpp \
     crashrecoverymanager.cpp \
     index/backlinkindex.cpp \
     brackethighlighter.cpp \
@@ -74,14 +74,14 @@ SOURCES += \
     processrunner.cpp \
     lsp/pythonsyntaxhighlighter.cpp \
     scrollbarhider.cpp \
-    settingschangehandler.cpp \
+    config/settingschangehandler.cpp \
     index/indexmanager.cpp \
     smd/smdcell.cpp \
     smd/smdeditor.cpp \
     index/tagindex.cpp \
     main.cpp \
     mainwindow.cpp \
-    settingsmanager.cpp \
+    config/settingsmanager.cpp \
     tabmanager.cpp
 
 HEADERS += \
@@ -100,7 +100,7 @@ HEADERS += \
     ai/aihistorymanager.h \
     ai/airequesthandler.h \
     ai/prompttemplates.h \
-    configmanager.h \
+    config/configmanager.h \
     crashrecoverymanager.h \
     utilities.h \
     lsp/keywords.h \
@@ -153,14 +153,14 @@ HEADERS += \
     processrunner.h \
     lsp/pythonsyntaxhighlighter.h \
     scrollbarhider.h \
-    settingschangehandler.h \
+    config/settingschangehandler.h \
     index/indexmanager.h \
     smd/smdcell.h \
     smd/smdeditor.h \
     smd/smdformat.h \
     index/tagindex.h \
     mainwindow.h \
-    settingsmanager.h \
+    config/settingsmanager.h \
     tabmanager.h
 
 FORMS += \

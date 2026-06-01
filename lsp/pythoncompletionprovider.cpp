@@ -1,5 +1,5 @@
 #include "pythoncompletionprovider.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "utilities.h"
 #include <QCoreApplication>
 #include <QDir>

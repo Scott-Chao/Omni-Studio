@@ -1,6 +1,6 @@
 #include "judgeengine.h"
 #include "compilerutils.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "utilities.h"
 
 #include <QFile>

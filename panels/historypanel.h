@@ -2,7 +2,7 @@
 #include <QListWidget>
 #include <QSettings>
 #include <QPushButton>
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 
 class HistoryPanel : public QWidget {
     Q_OBJECT

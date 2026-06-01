@@ -1,5 +1,5 @@
 #include "crashrecoverymanager.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 #include <QDir>
 #include <QFile>

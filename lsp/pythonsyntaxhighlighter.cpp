@@ -1,6 +1,6 @@
 #include "pythonsyntaxhighlighter.h"
 #include "keywords.h"
-#include "../configmanager.h"
+#include "../config/configmanager.h"
 #include "../thememanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)

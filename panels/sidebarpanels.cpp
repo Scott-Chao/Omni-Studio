@@ -1,5 +1,5 @@
 #include "sidebarpanels.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
 #include <QVBoxLayout>
 #include <QFileInfo>

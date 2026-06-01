@@ -1,6 +1,6 @@
 #include "tabmanager.h"
 #include "panels/openjudgewidget.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 #include "thememanager.h"
 #include <QFileInfo>
 #include <QMessageBox>

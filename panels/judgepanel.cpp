@@ -1,7 +1,7 @@
 #include "judgepanel.h"
 #include "thememanager.h"
 #include "judge/judgeengine.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "ai/errorjournal.h"
 
 #include <QVBoxLayout>

@@ -1,5 +1,5 @@
 #include "outlinepanel.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
 #include <QVBoxLayout>
 #include <QColor>

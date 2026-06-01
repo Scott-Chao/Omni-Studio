@@ -7,7 +7,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QProcessEnvironment>
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 struct CompilerInfo {
     QString id;

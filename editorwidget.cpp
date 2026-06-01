@@ -7,9 +7,9 @@
 #include "lsp/keywords.h"
 #include <memory>
 #include "utilities.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 #include <QFile>
 #include <QTextStream>
 #include <QUuid>

@@ -1,5 +1,5 @@
 #include "smdlspmanager.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "lspclient.h"
 #include "utilities.h"
 

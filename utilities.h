@@ -10,7 +10,7 @@
 #include <QProcess>
 #include <QDateTime>
 #include <QStandardPaths>
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 // ── String utilities ────────────────────────────────────────────────────────
 

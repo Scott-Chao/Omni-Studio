@@ -1,6 +1,6 @@
 #include "fileexplorerwidget.h"
 #include "thememanager.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 #include <QFileDialog>
 #include <QDir>
 #include <QHeaderView>

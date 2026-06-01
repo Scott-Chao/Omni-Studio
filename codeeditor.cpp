@@ -3,9 +3,9 @@
 #include "lsp/pythonsyntaxhighlighter.h"
 #include "smd/smddiagnostic.h"
 #include "languageutils.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 #include "utilities.h"
 #include "lsp/cppcompletionprovider.h"
 #include "lsp/pythoncompletionprovider.h"
@@ -14,9 +14,9 @@
 #include "lsp/hovermanager.h"
 #include "lsp/signaturehelpmanager.h"
 #include "languageutils.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 #include "thememanager.h"
-#include "settingsmanager.h"
+#include "config/settingsmanager.h"
 #include "utilities.h"
 #include <QPainter>
 #include <QTextBlock>

@@ -1,5 +1,5 @@
 #include "logindialog.h"
-#include "configmanager.h"
+#include "config/configmanager.h"
 
 #include <QLabel>
 #include <QLineEdit>

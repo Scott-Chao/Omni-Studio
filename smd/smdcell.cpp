@@ -3,8 +3,8 @@
 #include "lsp/cppcompletionprovider.h"
 #include "lsp/pythoncompletionprovider.h"
 #include "languageutils.h"
-#include "configmanager.h"
-#include "settingsmanager.h"
+#include "config/configmanager.h"
+#include "config/settingsmanager.h"
 #include "thememanager.h"
 #include <QTimer>
 #include <QTextBlock>
