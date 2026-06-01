@@ -66,7 +66,7 @@ protected:
 #include "smd/smdeditor.h"
 #include "editor/codeeditor.h"
 #include <QPdfView>
-#include "editor/scrollbarhider.h"
+#include "widgets/scrollbarhider.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
@@ -2203,7 +2203,7 @@ void MainWindow::refreshTitleBarStyle()
 // ============================================================
 // 自定义标题栏 — 自绘 TitleBarButton
 // ============================================================
-#include "titlebarbutton.h"
+#include "widgets/titlebarbutton.h"
 
 void MainWindow::setupCustomTitleBar()
 {

@@ -5,7 +5,7 @@
 #include <QTimer>
 #include <QPoint>
 
-#include "completionprovider.h"
+#include "../lsp/completionprovider.h"
 
 class CodeEditor;
 class CompletionProvider;

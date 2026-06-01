@@ -2,7 +2,7 @@
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "core/thememanager.h"
-#include "core/windowdraghelper.h"
+#include "windowdraghelper.h"
 
 #include <QLabel>
 #include <QListWidget>
@@ -35,7 +35,7 @@
 #include <QScreen>
 #include <QGuiApplication>
 #include <functional>
-#include "core/keyrecorder.h"
+#include "config/keyrecorder.h"
 
 // ============================================================
 // FontDropdown — QComboBox subclass that bypasses Qt's broken

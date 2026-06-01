@@ -1,5 +1,5 @@
 #include "actionbar.h"
-#include "core/flowlayout.h"
+#include "widgets/flowlayout.h"
 #include "core/thememanager.h"
 
 #include <QPushButton>

@@ -6,7 +6,7 @@
 #include <QList>
 
 #include "smd/smddiagnostic.h"
-#include "editor/tabbuttongroup.h"
+#include "widgets/tabbuttongroup.h"
 
 class QPushButton;
 class OutputPanel;

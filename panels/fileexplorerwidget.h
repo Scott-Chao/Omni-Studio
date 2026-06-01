@@ -9,7 +9,7 @@
 #include <QSortFilterProxyModel>
 #include <QPushButton>
 #include <QLabel>
-#include "core/flowlayout.h"
+#include "widgets/flowlayout.h"
 
 class FileSortProxyModel : public QSortFilterProxyModel
 {

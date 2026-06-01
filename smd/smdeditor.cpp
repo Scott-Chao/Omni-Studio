@@ -9,7 +9,7 @@
 #include "runner/compilerutils.h"
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
-#include "languageutils.h"
+#include "core/languageutils.h"
 #include "core/thememanager.h"
 #include "core/utilities.h"
 
@@ -1318,14 +1318,16 @@ void SmdEditor::startPythonExecProcess()
 {
     if (m_pyExecProcess) return;
 
-    // Look for python_executor.py next to the app, one dir up, in scripts/, or in CWD
+    // Look for python_executor.py next to the app, one dir up, in scripts/, runner/, or in CWD
     QString appDir = QCoreApplication::applicationDirPath();
     QStringList candidates = {
         appDir + QStringLiteral("/python_executor.py"),
         appDir + QStringLiteral("/../python_executor.py"),
         appDir + QStringLiteral("/../scripts/python_executor.py"),
+        appDir + QStringLiteral("/../runner/python_executor.py"),
         QStringLiteral("python_executor.py"),
         QStringLiteral("scripts/python_executor.py"),
+        QStringLiteral("runner/python_executor.py"),
     };
     for (const QString &c : candidates) {
         if (QFileInfo::exists(c)) {

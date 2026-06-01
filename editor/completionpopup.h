@@ -6,7 +6,7 @@
 #include <QLabel>
 #include <QStyledItemDelegate>
 
-#include "completionprovider.h"
+#include "../lsp/completionprovider.h"
 
 class CompletionItemDelegate : public QStyledItemDelegate
 {

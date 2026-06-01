@@ -15,7 +15,7 @@ win32: LIBS += -luser32 -ldwmapi
 
 SOURCES += \
     core/thememanager.cpp \
-    core/titlebarbutton.cpp \
+    widgets/titlebarbutton.cpp \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
@@ -30,27 +30,27 @@ SOURCES += \
     config/configmanager.cpp \
     core/crashrecoverymanager.cpp \
     index/backlinkindex.cpp \
-    lsp/brackethighlighter.cpp \
+    editor/brackethighlighter.cpp \
     editor/codeeditor.cpp \
     runner/codeblockrunner.cpp \
     runner/compilerunmanager.cpp \
-    lsp/cppsyntaxhighlighter.cpp \
+    editor/cppsyntaxhighlighter.cpp \
     judge/crawler.cpp \
     editor/diagnosticsection.cpp \
     editor/editorwidget.cpp \
-    core/flowlayout.cpp \
-    languageutils.cpp \
-    lsp/completionpopup.cpp \
+    widgets/flowlayout.cpp \
+    core/languageutils.cpp \
+    editor/completionpopup.cpp \
     lsp/cppcompletionprovider.cpp \
-    lsp/hovermanager.cpp \
-    lsp/keywordcompletionprovider.cpp \
+    editor/hovermanager.cpp \
+    editor/keywordcompletionprovider.cpp \
     lsp/lspclient.cpp \
     lsp/pythoncompletionprovider.cpp \
-    lsp/signaturehelpmanager.cpp \
+    editor/signaturehelpmanager.cpp \
     lsp/smdlspmanager.cpp \
     editor/wikilinktextedit.cpp \
     judge/judgeengine.cpp \
-    core/keyrecorder.cpp \
+    config/keyrecorder.cpp \
     judge/logindialog.cpp \
     judge/openjudgemanager.cpp \
     panels/activitybar.cpp \
@@ -69,11 +69,11 @@ SOURCES += \
     panels/submissionpanel.cpp \
     panels/smddiagnosticspanel.cpp \
     panels/smdoutputwidget.cpp \
-    editor/tabbuttongroup.cpp \
-    core/windowdraghelper.cpp \
+    widgets/tabbuttongroup.cpp \
+    panels/windowdraghelper.cpp \
     runner/processrunner.cpp \
-    lsp/pythonsyntaxhighlighter.cpp \
-    editor/scrollbarhider.cpp \
+    editor/pythonsyntaxhighlighter.cpp \
+    widgets/scrollbarhider.cpp \
     config/settingschangehandler.cpp \
     index/indexmanager.cpp \
     smd/smdcell.cpp \
@@ -86,7 +86,7 @@ SOURCES += \
 
 HEADERS += \
     core/thememanager.h \
-    core/titlebarbutton.h \
+    widgets/titlebarbutton.h \
     ai/actionbar.h \
     ai/aicontextmanager.h \
     ai/aipanel.h \
@@ -110,25 +110,25 @@ HEADERS += \
     runner/compilererrorparser.h \
     runner/compilerunmanager.h \
     runner/compilerutils.h \
-    lsp/brackethighlighter.h \
-    lsp/cppsyntaxhighlighter.h \
+    editor/brackethighlighter.h \
+    editor/cppsyntaxhighlighter.h \
     judge/crawler.h \
     editor/diagnosticsection.h \
     editor/editorwidget.h \
-    core/flowlayout.h \
-    languageutils.h \
-    lsp/completionpopup.h \
+    widgets/flowlayout.h \
+    core/languageutils.h \
+    editor/completionpopup.h \
     lsp/completionprovider.h \
     lsp/cppcompletionprovider.h \
-    lsp/hovermanager.h \
-    lsp/keywordcompletionprovider.h \
+    editor/hovermanager.h \
+    editor/keywordcompletionprovider.h \
     lsp/lspclient.h \
     lsp/pythoncompletionprovider.h \
-    lsp/signaturehelpmanager.h \
+    editor/signaturehelpmanager.h \
     lsp/smdlspmanager.h \
     editor/wikilinktextedit.h \
     judge/judgeengine.h \
-    core/keyrecorder.h \
+    config/keyrecorder.h \
     judge/logindialog.h \
     judge/openjudgemanager.h \
     panels/activitybar.h \
@@ -147,12 +147,12 @@ HEADERS += \
     panels/submissionpanel.h \
     panels/smddiagnosticspanel.h \
     panels/smdoutputwidget.h \
-    editor/tabbuttongroup.h \
-    core/windowdraghelper.h \
+    widgets/tabbuttongroup.h \
+    panels/windowdraghelper.h \
     smd/smddiagnostic.h \
     runner/processrunner.h \
-    lsp/pythonsyntaxhighlighter.h \
-    editor/scrollbarhider.h \
+    editor/pythonsyntaxhighlighter.h \
+    widgets/scrollbarhider.h \
     config/settingschangehandler.h \
     index/indexmanager.h \
     smd/smdcell.h \

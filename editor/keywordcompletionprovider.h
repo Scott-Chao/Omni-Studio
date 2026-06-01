@@ -1,7 +1,7 @@
 #ifndef KEYWORDCOMPLETIONPROVIDER_H
 #define KEYWORDCOMPLETIONPROVIDER_H
 
-#include "completionprovider.h"
+#include "../lsp/completionprovider.h"
 
 class KeywordCompletionProvider : public CompletionProvider
 {

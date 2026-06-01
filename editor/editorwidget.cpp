@@ -3,7 +3,7 @@
 #include "codeeditor.h"
 #include "smd/smdeditor.h"
 #include "index/tagindex.h"
-#include "languageutils.h"
+#include "core/languageutils.h"
 #include "lsp/keywords.h"
 #include <memory>
 #include "core/utilities.h"

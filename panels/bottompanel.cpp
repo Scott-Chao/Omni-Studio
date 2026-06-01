@@ -4,7 +4,7 @@
 #include "editor/codeeditor.h"
 #include "core/utilities.h"
 #include "core/thememanager.h"
-#include "editor/tabbuttongroup.h"
+#include "widgets/tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

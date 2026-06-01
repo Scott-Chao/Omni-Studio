@@ -2,7 +2,7 @@
 #include "editor/codeeditor.h"
 #include "lsp/cppcompletionprovider.h"
 #include "lsp/pythoncompletionprovider.h"
-#include "languageutils.h"
+#include "core/languageutils.h"
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "core/thememanager.h"

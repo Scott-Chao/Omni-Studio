@@ -8,7 +8,7 @@
 #include <QTimer>
 #include <QKeyEvent>
 
-#include "completionprovider.h"
+#include "../lsp/completionprovider.h"
 
 class CodeEditor;
 class CompletionProvider;

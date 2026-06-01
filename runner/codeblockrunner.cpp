@@ -6,7 +6,7 @@
 #include "compilerunmanager.h"
 #include "processrunner.h"
 #include "compilererrorparser.h"
-#include "languageutils.h"
+#include "core/languageutils.h"
 #include "config/configmanager.h"
 
 #include <QFile>

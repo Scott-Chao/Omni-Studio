@@ -2,7 +2,7 @@
 #include "editor/editorwidget.h"
 #include "smd/smdeditor.h"
 #include "smd/smdcell.h"
-#include "languageutils.h"
+#include "core/languageutils.h"
 
 #include <QFileInfo>
 

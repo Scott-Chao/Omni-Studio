@@ -1,5 +1,5 @@
 #include "keywordcompletionprovider.h"
-#include "keywords.h"
+#include "../lsp/keywords.h"
 #include <QDebug>
 #include <QRegularExpression>
 

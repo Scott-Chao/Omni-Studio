@@ -1,6 +1,6 @@
-﻿#include "languageutils.h"
-#include "lsp/cppsyntaxhighlighter.h"
-#include "lsp/pythonsyntaxhighlighter.h"
+﻿#include "core/languageutils.h"
+#include "editor/cppsyntaxhighlighter.h"
+#include "editor/pythonsyntaxhighlighter.h"
 
 namespace LanguageUtils {
 
