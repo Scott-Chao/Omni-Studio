@@ -39,14 +39,12 @@ void LspClient::start(const QString &serverPath, const QStringList &args)
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &LspClient::onProcessFinished);
 
-    qDebug() << "LspClient: starting" << serverPath << args;
     m_process->start(serverPath, args);
     // startup is now async — serverStarted / serverError signals indicate result
 }
 
 void LspClient::onProcessStarted()
 {
-    qDebug() << "LspClient: process started";
     emit serverStarted();
 }
 
@@ -123,7 +121,6 @@ void LspClient::onProcessError(QProcess::ProcessError error)
 
 void LspClient::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
-    qDebug() << "LspClient: process finished, exitCode" << exitCode << "status" << status;
     emit serverStopped(exitCode, status);
 }
 

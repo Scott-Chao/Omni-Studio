@@ -9,7 +9,6 @@
 #include "configmanager.h"
 
 #include <QDateTime>
-#include <QDebug>
 
 // ── Token estimation ────────────────────────────────────────────────
 

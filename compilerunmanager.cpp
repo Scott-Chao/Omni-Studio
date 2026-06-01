@@ -18,13 +18,10 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QTimer>
-#include <QDebug>
 #include <QFile>
 #include <QDateTime>
 #include <QPointer>
 #include <QCoreApplication>
-#include <QTimer>
-#include <QDebug>
 
 CompileRunManager::CompileRunManager(TabManager *tabManager, BottomPanel *bottomPanel,
                                      SettingsManager *settings, FileExplorerWidget *explorer,
@@ -375,48 +372,24 @@ void CompileRunManager::toggleDiagnostics()
     }
 }
 
-static void debugLog(const QString &msg)
-{
-    QFile f(QCoreApplication::applicationDirPath() + "/debug.log");
-    if (f.open(QIODevice::Append | QIODevice::Text)) {
-        f.write((QDateTime::currentDateTime().toString("hh:mm:ss.zzz") + " " + msg + "\n").toUtf8());
-        f.close();
-    }
-}
-
 void CompileRunManager::showOutputPanel()
 {
-    debugLog("showOutputPanel: enter");
-
     if (!m_bottomPanel || !m_rightSplitter) {
-        debugLog("showOutputPanel: null check failed, return");
         return;
     }
 
-    debugLog(QString("showOutputPanel: splitter height=%1, sizes=[%2,%3]")
-        .arg(m_rightSplitter->height())
-        .arg(m_rightSplitter->sizes().value(0))
-        .arg(m_rightSplitter->sizes().value(1)));
-
     m_bottomPanel->setVisible(true);
     m_bottomPanel->showRunTab();
-
-    debugLog("showOutputPanel: panel shown, scheduling size adjustment");
 
     QPointer<QSplitter> splitter = m_rightSplitter;
     QTimer::singleShot(0, this, [splitter]() {
         if (!splitter) return;
         const int totalHeight = splitter->height();
-        debugLog(QString("showOutputPanel timer: splitter height=%1").arg(totalHeight));
         if (totalHeight > 0) {
             const int panelHeight = totalHeight / 3;
             splitter->setSizes({totalHeight - panelHeight, panelHeight});
-            debugLog(QString("showOutputPanel timer: setSizes [%1, %2]")
-                .arg(totalHeight - panelHeight).arg(panelHeight));
         }
     });
-
-    debugLog("showOutputPanel: exit");
 }
 
 void CompileRunManager::updateActions()

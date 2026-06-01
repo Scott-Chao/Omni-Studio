@@ -142,9 +142,6 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         for (const QJsonValue &v : tokenModifiers)
             m_tokenModifierLegend.append(v.toString());
 
-        qDebug() << "CppCompletionProvider: clangd initialized successfully";
-        debugLog("CppCompletionProvider: clangd initialized");
-
         m_client->sendNotification(QStringLiteral("initialized"), QJsonObject());
         m_initialized = true;
 
@@ -159,7 +156,6 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         m_completionRequestId = -1;
 
         QList<CompletionItem> items = parseCompletionResponse(result);
-        qDebug() << "CppCompletionProvider: completion returned" << items.size() << "items";
         emit completionReady(items);
 
     } else if (id == m_hoverRequestId) {
@@ -190,8 +186,6 @@ void CppCompletionProvider::onResponseReceived(int id, QJsonObject result)
         if (activeIndex >= 0 && activeIndex < signatures.size())
             signatures[activeIndex].activeParameter = activeParam;
 
-        qDebug() << "CppCompletionProvider: signatureHelp returned" << signatures.size() << "signatures";
-
         emit signatureHelpReady(signatures, activeIndex);
 
     } else if (id == m_semanticTokensRequestId) {
@@ -211,7 +205,6 @@ void CppCompletionProvider::onNotificationReceived(QString method, QJsonObject p
     if (method == QStringLiteral("textDocument/publishDiagnostics")) {
         QJsonArray diags = params.value(QStringLiteral("diagnostics")).toArray();
         QList<SmdDiagnostic> parsed = parseDiagnostics(diags);
-        debugLog(QString("CppCompletionProvider: publishDiagnostics, %1 diagnostics").arg(parsed.size()));
         emit diagnosticsUpdated(parsed);
     }
 }
@@ -269,7 +262,6 @@ void CppCompletionProvider::onServerStopped(int exitCode, QProcess::ExitStatus s
     m_documentOpen = false;
 
     if (status == QProcess::CrashExit) {
-        qDebug() << "CppCompletionProvider: clangd crashed, restarting in 1s...";
         QTimer::singleShot(1000, this, &CppCompletionProvider::restartServer);
     } else {
         // Normal exit — server is gone, clean up
@@ -297,8 +289,6 @@ void CppCompletionProvider::openDocument(const QString &uri, const QString &lang
     m_documentLanguageId = languageId;
     m_documentVersion = 1;
     m_pendingText = text;
-    debugLog(QString("CppCompletionProvider::openDocument uri=%1 lang=%2 len=%3 initialized=%4")
-        .arg(uri, languageId).arg(text.length()).arg(m_initialized));
 
     if (!m_initialized) {
         // Server not ready yet — save text and flag so onServerReady can pick it up

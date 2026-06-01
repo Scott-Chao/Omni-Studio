@@ -14,7 +14,6 @@
 #include <QTextDocument>
 #include <QToolTip>
 #include <QVBoxLayout>
-#include <QDebug>
 
 HoverManager::HoverManager(CodeEditor *editor, CompletionProvider *provider, QObject *parent)
     : QObject(parent)

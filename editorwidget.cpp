@@ -35,7 +35,6 @@
 #include <QJsonObject>
 #include <QColor>
 #include <QDateTime>
-#include <QDebug>
 #include <QFile>
 #include <QTextStream>
 #include <QCoreApplication>
@@ -188,7 +187,6 @@ EditorWidget::EditorWidget(QWidget *parent)
     connect(m_codeEditor, &QPlainTextEdit::textChanged, this, &EditorWidget::onTextChanged);
     connect(m_codeEditor, &CodeEditor::diagnosticsToggleRequested,
             this, [this]() {
-        debugLog("EditorWidget: forwarding diagnosticsToggleRequested");
         emit diagnosticsToggleRequested();
     });
     // 当编辑区修改状态变化时发出信号
@@ -1109,7 +1107,6 @@ bool EditorWidget::loadFile(const QString &filePath)
     if (!lang.isEmpty()) {
         m_editorMode = CodeEdit;
         m_codeEditor->setDocumentUri(QStringLiteral("file:///") + filePath);
-        debugLog(QString("EditorWidget: CodeEdit mode, uri=file:///%1").arg(filePath));
         m_codeEditor->setLanguage(lang);
         m_codeEditor->clearDiagnostics();
         m_stackedWidget->setCurrentWidget(m_codeEditor);

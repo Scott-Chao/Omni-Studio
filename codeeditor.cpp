@@ -12,7 +12,6 @@
 #include "configmanager.h"
 #include "thememanager.h"
 #include "settingsmanager.h"
-#include "utilities.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QTextLayout>
@@ -633,10 +632,6 @@ bool CodeEditor::isPositionOverText(const QPoint &viewportPos) const
 
 void CodeEditor::keyPressEvent(QKeyEvent *event)
 {
-    // Debug: trace Ctrl+D
-    if (event->key() == Qt::Key_D && (event->modifiers() & Qt::ControlModifier)) {
-    }
-
     // ---- Completion popup key routing ----
     if (m_completionPopup && m_completionPopup->isActive()) {
         // Accept modifiers + alphanumeric: just let through (don't close popup)

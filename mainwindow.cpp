@@ -68,7 +68,6 @@ protected:
 #include <QPdfView>
 #include "scrollbarhider.h"
 #include <QDateTime>
-#include <QDebug>
 #include <QFile>
 #include <QPainter>
 #include <QTextStream>
@@ -1031,8 +1030,6 @@ MainWindow::MainWindow(QWidget *parent)
 
                 // Auto-close output panel for non-code files
                 if (!current->isCodeEdit()) {
-                    debugLog(QString("fileLoaded: non-code file=%1, hiding panel")
-                        .arg(current->currentFilePath()));
                     disconnect(m_diagnosticsProviderConnection);
                     m_bottomPanel->setCurrentEditor(nullptr);
                     if (m_compileRunMgr && m_compileRunMgr->isRunning())
@@ -1062,14 +1059,9 @@ MainWindow::MainWindow(QWidget *parent)
         m_activityBar->setExportPdfVisible(isMd);
 
         // 代码编辑器诊断连接（交由统一函数处理，与 onFileSelected 共享逻辑）
-        debugLog(QString("tabSwitch: editor=%1 isCode=%2 file=%3")
-            .arg((quintptr)editor)
-            .arg(editor ? (int)editor->isCodeEdit() : -1)
-            .arg(editor ? editor->currentFilePath() : "null"));
         updateCurrentEditorDiagnostics();
         if (editor && !editor->isCodeEdit()) {
             // Non-code file: auto-close the run panel
-            debugLog("tabSwitch: non-code branch - hiding panel");
             if (m_compileRunMgr && m_compileRunMgr->isRunning())
                 m_compileRunMgr->stop();
             QPointer<BottomPanel> bp = m_bottomPanel;

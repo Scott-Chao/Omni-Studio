@@ -105,7 +105,6 @@ void PythonCompletionProvider::startProcess()
     m_process->setProcessChannelMode(QProcess::MergedChannels);
 
     connect(m_process, &QProcess::started, this, [this]() {
-        qDebug() << "PythonCompletionProvider: helper process started, pid" << m_process->processId();
         emit serverReady();
     });
     connect(m_process, &QProcess::readyReadStandardOutput,
@@ -115,7 +114,6 @@ void PythonCompletionProvider::startProcess()
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &PythonCompletionProvider::onProcessFinished);
 
-    qDebug() << "PythonCompletionProvider: starting" << python << scriptPath;
     m_process->start(python, {scriptPath});
     // startup is async — started / errorOccurred signals handle result
 }
@@ -387,7 +385,6 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
         // This might be a transient error — but if it's about jedi, mark permanently
         if (error.contains(QStringLiteral("jedi"), Qt::CaseInsensitive)) {
             m_jediAvailable = false;
-            qDebug() << "PythonCompletionProvider: jedi unavailable, disabling provider";
             if (m_process) {
                 m_process->kill();
             }
@@ -504,7 +501,6 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
             ci.doc = obj.value(QStringLiteral("doc")).toString();
             items.append(ci);
         }
-        qDebug() << "PythonCompletionProvider: completion returned" << items.size() << "items";
         emit completionReady(items);
         break;
     }
@@ -523,7 +519,6 @@ void PythonCompletionProvider::processResponse(const QByteArray &line)
                 si.parameters.append(pv.toString());
             signatures.append(si);
         }
-        qDebug() << "PythonCompletionProvider: signatureHelp returned" << signatures.size() << "signatures";
         emit signatureHelpReady(signatures, activeIndex);
         break;
     }
@@ -574,15 +569,12 @@ void PythonCompletionProvider::onProcessFinished(int exitCode, QProcess::ExitSta
 {
     if (!m_process)
         return;
-    qDebug() << "PythonCompletionProvider: process finished, exitCode" << exitCode
-             << "status" << status;
 
     m_tokensPending = false;
     emitEmptyResults();
 
     // Restart on crash (but not if jedi was unavailable — that's permanent)
     if (status == QProcess::CrashExit && m_jediAvailable) {
-        qDebug() << "PythonCompletionProvider: helper crashed, restarting in 1s...";
         QTimer::singleShot(1000, this, &PythonCompletionProvider::restartProcess);
     } else {
         m_process->deleteLater();

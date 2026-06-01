@@ -50,7 +50,6 @@ bool ConfigManager::load(const QString &path)
 
     QFile file(filePath);
     if (!file.exists()) {
-        qDebug() << "[ConfigManager] config.json not found at" << filePath << "- using built-in defaults";
         m_root = buildDefaultConfig();
         m_loaded = false;
         return false;
@@ -85,7 +84,6 @@ bool ConfigManager::load(const QString &path)
     m_root = doc.object();
     m_filePath = filePath;
     m_loaded = true;
-    qDebug() << "[ConfigManager] Loaded config from" << filePath;
     return true;
 }
 

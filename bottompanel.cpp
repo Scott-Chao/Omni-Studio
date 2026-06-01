@@ -2,7 +2,6 @@
 #include "outputpanel.h"
 #include "diagnosticsection.h"
 #include "codeeditor.h"
-#include "utilities.h"
 #include "thememanager.h"
 #include "tabbuttongroup.h"
 
@@ -142,13 +141,6 @@ QString BottomPanel::tabButtonStyle(int /*index*/, bool active)
 
 void BottomPanel::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
 {
-    int errCount = 0, warnCount = 0;
-    for (const auto &d : diagnostics) {
-        if (d.severity == 1) errCount++;
-        else if (d.severity == 2) warnCount++;
-    }
-    debugLog(QString("BottomPanel::setDiagnostics: %1 total, %2 errors, %3 warnings")
-        .arg(diagnostics.size()).arg(errCount).arg(warnCount));
     m_diagnostics = diagnostics;
     rebuildDiagnostics();
 }

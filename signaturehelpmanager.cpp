@@ -9,7 +9,6 @@
 #include <QScreen>
 #include <QGuiApplication>
 #include <QMouseEvent>
-#include <QDebug>
 #include <QFont>
 #include <QApplication>
 
