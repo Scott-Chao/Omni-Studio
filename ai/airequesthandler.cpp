@@ -3,10 +3,10 @@
 #include "aicontextmanager.h"
 #include "aiproviders.h"
 #include "aihistorymanager.h"
-#include "tabmanager.h"
-#include "editorwidget.h"
-#include "settingsmanager.h"
-#include "configmanager.h"
+#include "editor/tabmanager.h"
+#include "editor/editorwidget.h"
+#include "config/settingsmanager.h"
+#include "config/configmanager.h"
 
 #include <QDateTime>
 

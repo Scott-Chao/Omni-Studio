@@ -1,0 +1,1140 @@
+#include "fileexplorerwidget.h"
+#include "core/thememanager.h"
+#include "config/settingsmanager.h"
+#include <QFileDialog>
+#include <QDir>
+#include <QHeaderView>
+#include <QVBoxLayout>
+#include <QMenu>
+#include <QInputDialog>
+#include <QStyledItemDelegate>
+#include <QTimer>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QApplication>
+#include <QLineEdit>
+#include <QPainter>
+#include <QPainterPath>
+#include <QLabel>
+#include <QHBoxLayout>
+#include <QResizeEvent>
+#include <QFileIconProvider>
+#include <QIcon>
+#include <QPixmap>
+#include <QImage>
+
+namespace {
+
+QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
+    QPainter p(&img);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(img.rect(), color);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+// QTreeView subclass that draws custom ">" / "v" chevrons via drawBranches()
+// (bypassing the style/QSS chain to avoid hover-dependent layout shifts) and
+// selects items on branch-indicator clicks.
+class FileTreeView : public QTreeView
+{
+public:
+    using QTreeView::QTreeView;
+
+protected:
+    void drawBranches(QPainter *painter, const QRect &rect,
+                      const QModelIndex &index) const override
+    {
+        // Only draw custom chevrons for directories.
+        const auto *proxy = qobject_cast<const QSortFilterProxyModel*>(model());
+        if (!proxy) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        const auto *fs = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!fs) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+        QModelIndex srcIdx = proxy->mapToSource(index);
+        if (!srcIdx.isValid() || !fs->isDir(srcIdx)) {
+            QTreeView::drawBranches(painter, rect, index);
+            return;
+        }
+
+        // Draw custom chevron. Use a fixed size derived from indentation rather
+        // than rect.width() — the branch rect spans the full indent chain and
+        // grows with each nesting level, which would scale the chevron too.
+        // Draw right-aligned within the indent area (standard tree behaviour).
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        QColor color = palette().color(QPalette::Text);
+        color.setAlpha(160);
+        painter->setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap));
+        painter->setBrush(Qt::NoBrush);
+        const int s = indentation() / 5;
+        const int cx = rect.right() - s - 2;
+        const int cy = rect.center().y();
+        QPainterPath path;
+        if (isExpanded(index)) {
+            // "v"
+            path.moveTo(cx - s, cy - s / 2.0);
+            path.lineTo(cx, cy + s / 2.0);
+            path.lineTo(cx + s, cy - s / 2.0);
+        } else {
+            // ">"
+            path.moveTo(cx - s / 2.0, cy - s);
+            path.lineTo(cx + s / 2.0, cy);
+            path.lineTo(cx - s / 2.0, cy + s);
+        }
+        painter->drawPath(path);
+        painter->restore();
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        m_pendingBranchSelect = QPersistentModelIndex();
+        const QModelIndex clicked = indexAt(event->pos());
+
+        if (clicked.isValid() && model()->hasChildren(clicked)) {
+            int depth = 0;
+            for (QModelIndex p = clicked.parent(); p.isValid(); p = p.parent())
+                ++depth;
+            // Branch area spans from left viewport edge (x=0) to the end of
+            // this item's indentation.  visualRect returns a viewport-relative
+            // rect whose x may be >0 (internal offset), so we force x=0.
+            QRect br = visualRect(clicked);
+            int branchWidth = indentation() * (depth + 1);
+            br.setX(0);
+            br.setWidth(branchWidth);
+
+            if (br.contains(event->pos()))
+                m_pendingBranchSelect = QPersistentModelIndex(clicked);
+        }
+
+        QTreeView::mousePressEvent(event);
+
+        // Qt's expand/collapse path in QAbstractItemView::mousePressEvent
+        // returns early without handling selection.  Select here immediately
+        // and keep m_pendingBranchSelect valid so doItemsLayout can re-apply
+        // it if a layout cycle clears the selection.
+        if (m_pendingBranchSelect.isValid()) {
+            selectionModel()->select(m_pendingBranchSelect,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(m_pendingBranchSelect);
+        }
+    }
+
+    void doItemsLayout() override
+    {
+        QTreeView::doItemsLayout();
+
+        // Re-apply selection in case the layout update cleared it.
+        if (m_pendingBranchSelect.isValid()) {
+            selectionModel()->select(m_pendingBranchSelect,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            setCurrentIndex(m_pendingBranchSelect);
+        }
+    }
+
+public:
+    QPersistentModelIndex m_pendingBranchSelect;
+};
+
+} // namespace
+
+class NoGhostDelegate : public QStyledItemDelegate
+{
+public:
+    NoGhostDelegate(FileExplorerWidget *explorer, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), m_explorer(explorer) {}
+
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    // 让编辑框只覆盖文本区域，不覆盖图标区域
+    void updateEditorGeometry(QWidget *editor, const QStyleOptionViewItem &option,
+                              const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        // 获取文本区域的矩形（相对于视图 viewport）
+        QRect textRect = opt.widget->style()->subElementRect(QStyle::SE_ItemViewItemText, &opt, opt.widget);
+        // 将编辑框移动到文本区域（注意坐标转换）
+        editor->setGeometry(textRect);
+    }
+
+    // 创建编辑器时确保背景不透明，样式干净
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override
+    {
+        QLineEdit *editor = qobject_cast<QLineEdit*>(
+            QStyledItemDelegate::createEditor(parent, option, index));
+        if (editor) {
+            editor->setAutoFillBackground(true);
+            editor->setContentsMargins(0, 0, 0, 0);
+            editor->setFrame(false);
+            // 根据系统主题设置合适的背景色（避免透明）
+            editor->setStyleSheet("background: palette(base);");
+        }
+        return editor;
+    }
+
+    // 编辑时仍然绘制背景和图标，但不绘制文本
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+
+        // 额外绘制：如果是当前拖拽目标文件夹，底部画条
+        if (m_explorer && m_explorer->isDropTargetFolder(index)) {
+            QRect r = option.rect;
+            int barHeight = 3;
+            QRect bar(r.left() + 2, r.bottom() - barHeight, r.width() - 4, barHeight);
+            painter->fillRect(bar, QColor("#2196F3"));  // 蓝色
+        }
+    }
+
+    void setModelData(QWidget *editor, QAbstractItemModel *model,
+                      const QModelIndex &proxyIndex) const override
+    {
+        QLineEdit *lineEdit = qobject_cast<QLineEdit*>(editor);
+        if (!lineEdit) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+
+        QString newText = lineEdit->text().trimmed();
+
+        const QSortFilterProxyModel *proxy = qobject_cast<const QSortFilterProxyModel*>(proxyIndex.model());
+        if (!proxy) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+        const QFileSystemModel *fsModel = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!fsModel) {
+            QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+            return;
+        }
+
+        QModelIndex sourceIndex = proxy->mapToSource(proxyIndex);
+        QFileInfo info = fsModel->fileInfo(sourceIndex);
+
+        if (info.isDir()) {
+            if (newText.isEmpty())
+                newText = info.fileName();
+        } else {
+            if (newText.isEmpty() || newText.startsWith('.'))
+                newText = info.fileName();
+        }
+
+        lineEdit->setText(newText);
+        QStyledItemDelegate::setModelData(editor, model, proxyIndex);
+    }
+
+    void setEditorData(QWidget *editor, const QModelIndex &proxyIndex) const override
+    {
+        QLineEdit *lineEdit = qobject_cast<QLineEdit*>(editor);
+        if (!lineEdit)
+            return;
+
+        // 获取代理模型和源模型
+        const QSortFilterProxyModel *proxy = qobject_cast<const QSortFilterProxyModel*>(proxyIndex.model());
+        if (!proxy) return;
+        const QFileSystemModel *model = qobject_cast<const QFileSystemModel*>(proxy->sourceModel());
+        if (!model) return;
+
+        QModelIndex sourceIndex = proxy->mapToSource(proxyIndex);
+        QFileInfo info = model->fileInfo(sourceIndex);
+        QString fullName = info.fileName();
+
+        lineEdit->setText(fullName);
+        if (info.isDir()) {
+            lineEdit->selectAll();
+        } else {
+            int selLen = fullName.length();
+            QString suffix = info.suffix();
+            if (!suffix.isEmpty() && fullName.endsWith("." + suffix))
+                selLen = fullName.length() - suffix.length() - 1;
+            if (selLen <= 0) selLen = fullName.length();
+            // 延迟设置选区，覆盖视图可能的全选
+            QTimer::singleShot(0, lineEdit, [lineEdit, selLen]() {
+                lineEdit->setSelection(0, selLen);
+            });
+        }
+    }
+private:
+    FileExplorerWidget *m_explorer;
+};
+
+class DeleteKeyFilter : public QObject {
+public:
+    bool deletePressed = false;
+    QKeySequence targetSeq;
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (event->type() == QEvent::KeyPress) {
+            QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+            Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+            if (!targetSeq.isEmpty() && QKeySequence(mods | keyEvent->key()) == targetSeq) {
+                deletePressed = true;
+                if (auto *menu = qobject_cast<QMenu*>(obj)) {
+                    menu->close();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+FileExplorerWidget::FileExplorerWidget(QWidget *parent)
+    : QWidget(parent)
+    , m_fileModel(new QFileSystemModel(this))
+    , m_treeView(new FileTreeView(this))
+{
+    // 设置布局，使树视图填满当前控件
+    QVBoxLayout *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    // 面包屑路径栏
+    m_breadcrumb = new QWidget(this);
+    m_breadcrumbLayout = new FlowLayout(m_breadcrumb, -1, 1, 1);
+    m_breadcrumbLayout->setContentsMargins(4, 2, 4, 2);
+    layout->addWidget(m_breadcrumb);
+
+    // 文件树工具栏
+    m_toolbar = new QWidget(this);
+    m_toolbar->setObjectName("fileTreeToolbar");
+    QHBoxLayout *toolbarLayout = new QHBoxLayout(m_toolbar);
+    toolbarLayout->setContentsMargins(8, 1, 4, 1);
+    toolbarLayout->setSpacing(4);
+
+    m_folderLabel = new QLabel(this);
+    m_folderLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    toolbarLayout->addWidget(m_folderLabel, 1);
+
+    toolbarLayout->addStretch();
+
+    m_newFileBtn = new QPushButton(this);
+    m_newFileBtn->setIcon(QIcon(QStringLiteral(":/icons/file-plus")));
+    m_newFileBtn->setIconSize(QSize(14, 14));
+    m_newFileBtn->setFixedSize(26, 26);
+    m_newFileBtn->setFlat(true);
+    m_newFileBtn->setCursor(Qt::PointingHandCursor);
+    m_newFileBtn->setToolTip(tr("新建文件"));
+    m_newFileBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    m_newFolderBtn = new QPushButton(this);
+    m_newFolderBtn->setIcon(QIcon(QStringLiteral(":/icons/folder-plus")));
+    m_newFolderBtn->setIconSize(QSize(14, 14));
+    m_newFolderBtn->setFixedSize(26, 26);
+    m_newFolderBtn->setFlat(true);
+    m_newFolderBtn->setCursor(Qt::PointingHandCursor);
+    m_newFolderBtn->setToolTip(tr("新建文件夹"));
+    m_newFolderBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    m_collapseAllBtn = new QPushButton(this);
+    m_collapseAllBtn->setIcon(QIcon(QStringLiteral(":/icons/collapse-all")));
+    m_collapseAllBtn->setIconSize(QSize(14, 14));
+    m_collapseAllBtn->setFixedSize(26, 26);
+    m_collapseAllBtn->setFlat(true);
+    m_collapseAllBtn->setCursor(Qt::PointingHandCursor);
+    m_collapseAllBtn->setToolTip(tr("收起所有文件夹"));
+    m_collapseAllBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    m_refreshBtn = new QPushButton(this);
+    m_refreshBtn->setIcon(QIcon(QStringLiteral(":/icons/refresh")));
+    m_refreshBtn->setIconSize(QSize(14, 14));
+    m_refreshBtn->setFixedSize(26, 26);
+    m_refreshBtn->setFlat(true);
+    m_refreshBtn->setCursor(Qt::PointingHandCursor);
+    m_refreshBtn->setToolTip(tr("刷新文件树"));
+    m_refreshBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    toolbarLayout->addWidget(m_newFileBtn);
+    toolbarLayout->addWidget(m_newFolderBtn);
+    toolbarLayout->addWidget(m_collapseAllBtn);
+    toolbarLayout->addWidget(m_refreshBtn);
+
+    layout->addWidget(m_toolbar);
+
+    layout->addWidget(m_treeView);
+    setLayout(layout);
+
+    m_fileModel->setReadOnly(false);
+
+    // 创建排序代理
+    m_sortProxy = new FileSortProxyModel(this);
+    m_sortProxy->setSourceModel(m_fileModel);
+    m_sortProxy->setSortRole(Qt::DisplayRole);
+    m_sortProxy->setDynamicSortFilter(true);
+    m_sortProxy->sort(0, Qt::AscendingOrder);
+
+    // 视图绑定代理模型
+    m_treeView->setModel(m_sortProxy);
+
+    // 配置树视图外观（主题颜色在 refreshStyle 中设置）
+    m_treeView->header()->hide(); // 隐藏表头
+    m_treeView->setIndentation(20); // 调整缩进
+    m_treeView->setUniformRowHeights(true); // 所有行高度一致（样式表已固定24px），避免逐行查询高度
+    m_treeView->setRootIsDecorated(true); // 显示展开/折叠箭头
+    m_treeView->hideColumn(1); // 隐藏大小列
+    m_treeView->hideColumn(2); // 隐藏类型列
+    m_treeView->hideColumn(3); // 隐藏修改日期列
+
+    // 允许拖动
+    m_treeView->setDragEnabled(true);
+    m_treeView->setAcceptDrops(true);
+    m_treeView->setDropIndicatorShown(true);
+    m_treeView->setDragDropMode(QAbstractItemView::DragDrop);
+    m_treeView->setDefaultDropAction(Qt::MoveAction);
+
+    // 设置编辑触发器：F2 键 或 单击选中后再次单击（类似资源管理器）
+    m_treeView->setEditTriggers(QAbstractItemView::EditKeyPressed | QAbstractItemView::SelectedClicked);
+
+    m_treeView->setItemDelegate(new NoGhostDelegate(this, m_treeView)); // 设置委托
+
+    // 新建文件的内联编辑完成后自动永久打开
+    connect(m_treeView->itemDelegate(), &QAbstractItemDelegate::closeEditor,
+            this, [this](QWidget *, QAbstractItemDelegate::EndEditHint hint) {
+        if (m_pendingNewFile.isEmpty())
+            return;
+        m_pendingNewFile.clear();
+        if (hint != QAbstractItemDelegate::RevertModelCache) {
+            QModelIndex proxyIdx = m_treeView->currentIndex();
+            if (proxyIdx.isValid()) {
+                QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIdx);
+                QString path = m_fileModel->filePath(srcIdx);
+                if (!QFileInfo(path).isDir())
+                    emit fileDoubleClicked(path);
+            }
+        }
+    });
+
+    // 连接模型的重命名信号
+    connect(m_fileModel, &QFileSystemModel::fileRenamed, this, &FileExplorerWidget::onFileRenamed);
+
+    // 目录异步加载完成后强制刷新视图，确保图标正确渲染
+    connect(m_fileModel, &QFileSystemModel::directoryLoaded, this, [this]() {
+        m_treeView->viewport()->update();
+    });
+
+    // 连接点击信号
+    connect(m_treeView, &QTreeView::clicked, this, &FileExplorerWidget::onTreeViewClicked);
+    connect(m_treeView, &QTreeView::doubleClicked, this, &FileExplorerWidget::onTreeViewDoubleClicked);
+    m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_treeView, &QTreeView::customContextMenuRequested,
+            this, &FileExplorerWidget::onCustomContextMenu);
+
+    m_treeView->installEventFilter(this);
+    m_treeView->viewport()->installEventFilter(this);
+
+    m_dropTargetIndex = QModelIndex();
+
+    connect(m_newFileBtn, &QPushButton::clicked, this, [this]() {
+        QModelIndex idx = m_treeView->currentIndex();
+        QString parentDir;
+        if (idx.isValid()) {
+            QModelIndex srcIdx = m_sortProxy->mapToSource(idx);
+            QString path = m_fileModel->filePath(srcIdx);
+            parentDir = QFileInfo(path).isDir() ? path : QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFileInline(parentDir);
+    });
+    connect(m_newFolderBtn, &QPushButton::clicked, this, [this]() {
+        QModelIndex idx = m_treeView->currentIndex();
+        QString parentDir;
+        if (idx.isValid()) {
+            QModelIndex srcIdx = m_sortProxy->mapToSource(idx);
+            QString path = m_fileModel->filePath(srcIdx);
+            parentDir = QFileInfo(path).isDir() ? path : QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFolderInline(parentDir);
+    });
+    connect(m_refreshBtn, &QPushButton::clicked, this, &FileExplorerWidget::refreshTree);
+    connect(m_collapseAllBtn, &QPushButton::clicked, this, &FileExplorerWidget::collapseAll);
+
+    reloadShortcuts();
+
+    ThemeManager::watchTheme(this, &FileExplorerWidget::refreshStyle);
+    refreshStyle();
+
+    // Prevent faint focus-rect highlight on the first item at startup.
+    m_treeView->setCurrentIndex(QModelIndex());
+}
+
+void FileExplorerWidget::reloadShortcuts()
+{
+    auto &sm = SettingsManager::instance();
+    m_deleteShortcut = QKeySequence(sm.value("shortcuts.delete_file", "Delete").toString());
+}
+
+FileExplorerWidget::~FileExplorerWidget()
+{
+}
+
+bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_treeView || obj == m_treeView->viewport()) {
+        // 接管拖拽事件，阻止 QFileSystemModel 的默认移动
+        if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
+            QDragMoveEvent *de = static_cast<QDragMoveEvent*>(event);
+            if (de->source() == m_treeView) {
+                m_dragSourceIndexes = m_treeView->selectionModel()->selectedRows();
+                // 更新悬停文件夹索引
+                QModelIndex proxyIdx = m_treeView->indexAt(de->position().toPoint());
+                if (proxyIdx.isValid()) {
+                    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIdx);
+                    if (m_fileModel->isDir(srcIdx))
+                        m_dropTargetIndex = proxyIdx;
+                    else
+                        m_dropTargetIndex = QModelIndex();
+                } else {
+                    m_dropTargetIndex = QModelIndex();
+                }
+                m_treeView->viewport()->update();   // 触发重绘
+                de->acceptProposedAction();
+            } else {
+                de->ignore();
+            }
+            return true;
+        }
+
+        if (event->type() == QEvent::Drop) {
+            handleDropEvent(static_cast<QDropEvent*>(event));
+            return true;
+        }
+
+        if (event->type() == QEvent::DragLeave || event->type() == QEvent::Drop) {
+            m_dropTargetIndex = QModelIndex();
+            m_treeView->viewport()->update();
+            // Drop 的具体调用仍由 handleDropEvent 完成（DragLeave 不调用）
+        }
+
+        if (obj == m_treeView && event->type() == QEvent::KeyPress) {
+            QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+            Qt::KeyboardModifiers mods = keyEvent->modifiers()
+                & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+            bool deleteMatch = !m_deleteShortcut.isEmpty()
+                && QKeySequence(mods | keyEvent->key()) == m_deleteShortcut;
+            if (deleteMatch) {
+                // 如果焦点在编辑器（如重命名时），不拦截，让 Delete 作为文本删除
+                QWidget *fw = QApplication::focusWidget();
+                if (fw && (fw->parent() == m_treeView->viewport() || fw->parent() == m_treeView)) {
+                    if (qobject_cast<QLineEdit*>(fw))
+                        return false;   // 交给内联编辑器处理
+                }
+
+                // 获取当前选中项
+                QModelIndex proxyIndex = m_treeView->currentIndex();
+                if (!proxyIndex.isValid())
+                    return false;
+
+                QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+                QString path = m_fileModel->filePath(sourceIndex);
+                emit requestDelete(path, QFileInfo(path).isDir());
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void FileExplorerWidget::setRootPath(const QString &path)
+{
+    if (!path.isEmpty()) {
+        m_fileModel->setRootPath(path);
+        QModelIndex sourceRoot = m_fileModel->index(path);
+        m_treeView->setUpdatesEnabled(false);
+        m_sortProxy->invalidate();
+        m_sortProxy->sort(0, Qt::AscendingOrder);
+        QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
+        m_treeView->setRootIndex(proxyRoot);
+        m_treeView->setCurrentIndex(QModelIndex());
+        m_treeView->setUpdatesEnabled(true);
+    }
+    updateBreadcrumb();
+    updateFolderLabel();
+}
+
+QString FileExplorerWidget::rootPath() const
+{
+    // 返回根目录
+    return m_fileModel->rootPath();
+}
+
+void FileExplorerWidget::refreshStyle()
+{
+    auto &tm = ThemeManager::instance();
+
+    setStyleSheet(QString("FileExplorerWidget { background-color: %1; }")
+        .arg(tm.color("sideBar.background").name()));
+
+    m_breadcrumb->setStyleSheet(QStringLiteral(
+        "background-color: %1; border-bottom: 1px solid %2;"
+    ).arg(tm.color("editorLineNumber.background").name(),
+          tm.color("sideBar.border").name()));
+
+    // Toolbar
+    m_toolbar->setStyleSheet(QStringLiteral(
+        "background-color: %1; border-bottom: 1px solid %2;"
+    ).arg(tm.color("editorLineNumber.background").name(),
+          tm.color("sideBar.border").name()));
+
+    m_folderLabel->setStyleSheet(QStringLiteral(
+        "color: %1; background: transparent; border: none; font-size: 12px;"
+    ).arg(tm.color("sideBar.foreground").name()));
+
+    QString btnHover = tm.color("list.hoverBackground").name();
+    QString btnStyle = QStringLiteral(
+        "QPushButton { background: transparent; border: none; border-radius: 3px; }"
+        "QPushButton:hover { background: %1; }"
+    ).arg(btnHover);
+
+    m_newFileBtn->setStyleSheet(btnStyle);
+    m_newFolderBtn->setStyleSheet(btnStyle);
+    m_refreshBtn->setStyleSheet(btnStyle);
+    m_collapseAllBtn->setStyleSheet(btnStyle);
+
+    QColor iconColor = tm.color("sideBar.foreground");
+    m_newFileBtn->setIcon(coloredSvgIcon(":/icons/file-plus", iconColor, 14));
+    m_newFolderBtn->setIcon(coloredSvgIcon(":/icons/folder-plus", iconColor, 14));
+    m_refreshBtn->setIcon(coloredSvgIcon(":/icons/refresh", iconColor, 14));
+    m_collapseAllBtn->setIcon(coloredSvgIcon(":/icons/collapse-all", iconColor, 14));
+
+    updateBreadcrumb();
+}
+
+void FileExplorerWidget::updateBreadcrumb()
+{
+    // 清除旧的面包屑按钮
+    QLayoutItem *child;
+    while ((child = m_breadcrumbLayout->takeAt(0)) != nullptr) {
+        if (child->widget())
+            child->widget()->deleteLater();
+        delete child;
+    }
+
+    QString path = rootPath();
+    if (path.isEmpty())
+        return;
+
+    // 从叶到根收集路径段
+    QStringList segments;
+    QDir dir(path);
+    while (!dir.isRoot()) {
+        QString name = dir.dirName();
+        if (!name.isEmpty())
+            segments.prepend(name);
+        dir.cdUp();
+    }
+    // 添加根段（如 "F:\" 或 "/"）
+    QString rootDisplay = QDir::toNativeSeparators(dir.absolutePath());
+    segments.prepend(rootDisplay);
+
+    if (segments.isEmpty())
+        return;
+
+    // 构建累积路径（使用 QDir 格式的正斜杠）
+    QString accumulated;
+    int count = segments.size();
+    for (int i = 0; i < count; ++i) {
+        if (i > 0) {
+            QLabel *sep = new QLabel(QStringLiteral(">"));
+            sep->setStyleSheet(QStringLiteral("color: %1; background: transparent; border: none;")
+                .arg(ThemeManager::instance().color("editorLineNumber.foreground").name()));
+            sep->setFixedWidth(16);
+            sep->setAlignment(Qt::AlignCenter);
+            m_breadcrumbLayout->addWidget(sep);
+        }
+
+        // 构建到此段为止的绝对路径
+        if (i == 0) {
+            accumulated = dir.absolutePath(); // 根路径的规范形式
+        } else {
+            accumulated = QDir::cleanPath(accumulated + QDir::separator() + segments[i]);
+        }
+
+        bool isLast = (i == count - 1);
+
+        QPushButton *btn = new QPushButton(segments[i]);
+        btn->setFlat(true);
+        btn->setCursor(isLast ? Qt::ArrowCursor : Qt::PointingHandCursor);
+        {
+            auto &tm = ThemeManager::instance();
+            QString fg = isLast ? tm.color("sideBar.foreground").name()
+                                : tm.color("tab.inactiveForeground").name();
+            btn->setStyleSheet(QStringLiteral(
+                "QPushButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  color: %1;"
+                "  padding: 2px 6px;"
+                "  border-radius: 3px;"
+                "  font-size: 12px;"
+                "}"
+                "QPushButton:hover {"
+                "  background: %2;"
+                "}"
+            ).arg(fg, tm.color("list.hoverBackground").name()));
+        }
+
+        if (!isLast) {
+            QString targetPath = QDir::cleanPath(accumulated);
+            connect(btn, &QPushButton::clicked, this, [this, targetPath]() {
+                setRootPath(targetPath);
+                emit folderChanged(targetPath);
+            });
+        }
+
+        m_breadcrumbLayout->addWidget(btn);
+    }
+}
+
+void FileExplorerWidget::selectFolder(const QString &defaultDir)
+{
+    // 选择文件夹，支持传入指定文件夹，否则默认为主文件夹
+    QString startDir = defaultDir.isEmpty() ? QDir::homePath() : defaultDir;
+    QString dirPath = QFileDialog::getExistingDirectory(this, "选择文件夹",
+                                                        startDir,
+                                                        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (!dirPath.isEmpty()) {
+        setRootPath(dirPath);
+        emit folderChanged(dirPath);
+    }
+}
+
+void FileExplorerWidget::selectFile(const QString &filePath)
+{
+    if (filePath.isEmpty())
+        return;
+
+    QModelIndex sourceIndex = m_fileModel->index(filePath);
+    if (!sourceIndex.isValid())
+        return;
+
+    QModelIndex proxyIndex = m_sortProxy->mapFromSource(sourceIndex);
+    if (!proxyIndex.isValid())
+        return;
+
+    // 展开所有父级目录，确保目标文件可见
+    QModelIndex parent = proxyIndex.parent();
+    QModelIndex rootIdx = m_treeView->rootIndex();
+    while (parent.isValid() && parent != rootIdx) {
+        m_treeView->setExpanded(parent, true);
+        parent = parent.parent();
+    }
+
+    m_treeView->setCurrentIndex(proxyIndex);
+    m_treeView->scrollTo(proxyIndex, QAbstractItemView::EnsureVisible);
+}
+
+void FileExplorerWidget::onTreeViewClicked(const QModelIndex &proxyIndex)
+{
+    // 单击树视图 — 以预览模式打开文件
+    QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+    QString filePath = m_fileModel->filePath(sourceIndex);
+    QFileInfo fileInfo(filePath);
+    if (!fileInfo.isDir()) {
+        emit fileClicked(filePath);
+    }
+}
+
+void FileExplorerWidget::onTreeViewDoubleClicked(const QModelIndex &proxyIndex)
+{
+    // 双击树视图 — 永久打开文件
+    QModelIndex sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+    QString filePath = m_fileModel->filePath(sourceIndex);
+    QFileInfo fileInfo(filePath);
+    if (!fileInfo.isDir()) {
+        emit fileDoubleClicked(filePath);
+    }
+}
+
+void FileExplorerWidget::onCustomContextMenu(const QPoint &point) {
+    QModelIndex proxyIndex = m_treeView->indexAt(point);
+    QModelIndex sourceIndex;
+    QString path;
+    bool isDir = false;
+
+    if (proxyIndex.isValid()) {
+        sourceIndex = m_sortProxy->mapToSource(proxyIndex);
+        path = m_fileModel->filePath(sourceIndex);
+        QFileInfo info(path);
+        isDir = info.isDir();
+    } else {
+        // 点击空白区域，使用当前根目录作为上下文
+        path = rootPath();
+        isDir = true;
+    }
+
+    QMenu menu(this);
+    QAction *newFileAction = menu.addAction(tr("新建文件"));
+    QAction *newFolderAction = menu.addAction(tr("新建文件夹"));
+
+    QAction *renameAction = nullptr;
+    QAction *deleteAction = nullptr;
+
+    if (proxyIndex.isValid()) {
+        menu.addSeparator();
+        renameAction = menu.addAction(tr("重命名"));
+        deleteAction = menu.addAction(tr("删除"));
+        deleteAction->setShortcut(m_deleteShortcut);
+    }
+
+    DeleteKeyFilter filter;
+    filter.targetSeq = m_deleteShortcut;
+    menu.installEventFilter(&filter);
+
+    QAction *selected = menu.exec(m_treeView->viewport()->mapToGlobal(point));
+
+    // 移除过滤器（可选，但无害）
+    menu.removeEventFilter(&filter);
+
+    // 优先处理通过 Delete 键触发的删除
+    if (filter.deletePressed) {
+        // 仅当菜单中包含删除选项时才有效（即 proxyIndex 有效）
+        if (proxyIndex.isValid()) {
+            emit requestDelete(path, isDir);
+        }
+        return;
+    }
+
+    if (!selected) return;
+
+    if (selected == newFileAction) {
+        QString parentDir;
+        if (proxyIndex.isValid()) {
+            if (isDir)
+                parentDir = path;
+            else
+                parentDir = QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFileInline(parentDir);
+    } else if (selected == newFolderAction) {
+        QString parentDir;
+        if (proxyIndex.isValid()) {
+            if (isDir)
+                parentDir = path;
+            else
+                parentDir = QFileInfo(path).absolutePath();
+        } else {
+            parentDir = rootPath();
+        }
+        createNewFolderInline(parentDir);
+    } else if (selected == renameAction) {
+        m_treeView->edit(proxyIndex);
+    } else if (selected == deleteAction) {
+        emit requestDelete(path, isDir);
+    }
+}
+
+void FileExplorerWidget::deleteItem(const QString &path, bool isDir)
+{
+    bool success;
+    if (isDir) {
+        QDir dir(path);
+        success = dir.removeRecursively();
+    } else {
+        QFile file(path);
+        success = file.remove();
+    }
+    if (!success) {
+        emit operationFailed(tr("删除失败，请检查权限或文件是否被其他程序占用。"));
+    } else {
+        emit itemDeleted(path);
+    }
+}
+
+void FileExplorerWidget::onFileRenamed(const QString &path, const QString &oldName, const QString &newName)
+{
+    // 使用 QDir::absoluteFilePath 规范化路径（确保与 BacklinkIndex 存储的路径格式一致）
+    QString oldFullPath = QDir(path).absoluteFilePath(oldName);
+    QString newFullPath = QDir(path).absoluteFilePath(newName);
+    emit fileRenamed(oldFullPath, newFullPath);
+
+    m_sortProxy->invalidate();
+    m_sortProxy->sort(0, Qt::AscendingOrder);
+}
+
+static QString uniqueDefaultName(const QDir &dir, const QString &baseName, const QString &extension = QString())
+{
+    QString candidate = baseName + extension;
+    if (!dir.exists(candidate))
+        return candidate;
+
+    int i = 1;
+    while (true) {
+        candidate = baseName + "(" + QString::number(i) + ")" + extension;
+        if (!dir.exists(candidate))
+            return candidate;
+        ++i;
+    }
+}
+
+void FileExplorerWidget::createNewFolderInline(const QString &parentDir)
+{
+    QDir dir(parentDir);
+    QString folderName = uniqueDefaultName(dir, tr("新建文件夹"));
+    if (!dir.mkdir(folderName)) {
+        emit operationFailed(tr("无法创建文件夹: %1").arg(dir.filePath(folderName)));
+        return;
+    }
+
+    // 源模型索引
+    QModelIndex sourceIdx = m_fileModel->index(dir.filePath(folderName));
+    m_sortProxy->sort(0, Qt::AscendingOrder); // 排序
+    // 映射到代理模型的索引（排序后自动有效）
+    QModelIndex proxyIdx = m_sortProxy->mapFromSource(sourceIdx);
+    m_treeView->setCurrentIndex(proxyIdx);
+    m_treeView->scrollTo(proxyIdx);
+    m_treeView->edit(proxyIdx);
+}
+
+void FileExplorerWidget::createNewFileInline(const QString &parentDir)
+{
+    QDir dir(parentDir);
+    QString fileName = uniqueDefaultName(dir, tr("新建文件"), QStringLiteral(".md"));
+    QFile file(dir.filePath(fileName));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        emit operationFailed(tr("无法创建文件: %1").arg(file.fileName()));
+        return;
+    }
+    file.close();
+
+    QModelIndex sourceIdx = m_fileModel->index(dir.filePath(fileName));
+    m_sortProxy->sort(0, Qt::AscendingOrder);
+    QModelIndex proxyIdx = m_sortProxy->mapFromSource(sourceIdx);
+    m_treeView->setCurrentIndex(proxyIdx);
+    m_treeView->scrollTo(proxyIdx);
+    m_pendingNewFile = dir.filePath(fileName);
+    m_treeView->edit(proxyIdx);
+}
+
+QVariant FileSortProxyModel::data(const QModelIndex &index, int role) const
+{
+    QVariant result = QSortFilterProxyModel::data(index, role);
+    if (role == Qt::DecorationRole && index.isValid()) {
+        QIcon icon = result.value<QIcon>();
+        // 单次 pixmap() 检查替代 availableSizes() 遍历——空心图标（Windows
+        // setRootPath 后 HICON 失效）返回 null pixmap。
+        bool hasValidPixmap = !icon.isNull()
+                              && !icon.pixmap(QSize(16, 16)).isNull();
+        if (!hasValidPixmap) {
+            QFileSystemModel *fsModel = qobject_cast<QFileSystemModel*>(sourceModel());
+            if (fsModel) {
+                QModelIndex sourceIndex = mapToSource(index);
+                if (sourceIndex.isValid()) {
+                    QFileInfo info = fsModel->fileInfo(sourceIndex);
+                    if (info.isDir()) {
+                        if (m_folderIcon.isNull())
+                            m_folderIcon = m_iconProvider.icon(QFileIconProvider::Folder);
+                        return m_folderIcon;
+                    } else {
+                        if (m_fileIcon.isNull())
+                            m_fileIcon = m_iconProvider.icon(QFileIconProvider::File);
+                        return m_fileIcon;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+bool FileSortProxyModel::hasChildren(const QModelIndex &parent) const
+{
+    // Root always has children.
+    if (!parent.isValid())
+        return true;
+
+    QFileSystemModel *fs = qobject_cast<QFileSystemModel*>(sourceModel());
+    if (!fs)
+        return QSortFilterProxyModel::hasChildren(parent);
+
+    QModelIndex srcIdx = mapToSource(parent);
+    // Directories always report true so the expand/collapse chevron is drawn
+    // even for empty folders, and collapse() works after expansion.
+    if (srcIdx.isValid() && fs->isDir(srcIdx))
+        return true;
+
+    return QSortFilterProxyModel::hasChildren(parent);
+}
+
+bool FileSortProxyModel::lessThan(const QModelIndex &source_left, const QModelIndex &source_right) const
+{
+    QFileSystemModel *fsModel = qobject_cast<QFileSystemModel*>(sourceModel());
+    if (!fsModel)
+        return QSortFilterProxyModel::lessThan(source_left, source_right);
+
+    QFileInfo leftInfo = fsModel->fileInfo(source_left);
+    QFileInfo rightInfo = fsModel->fileInfo(source_right);
+    bool leftDir = leftInfo.isDir();
+    bool rightDir = rightInfo.isDir();
+
+    if (leftDir == rightDir)
+        return QString::localeAwareCompare(leftInfo.fileName(), rightInfo.fileName()) < 0;
+    return leftDir; // 目录在前
+}
+
+void FileExplorerWidget::handleDropEvent(QDropEvent *event)
+{
+    m_dropTargetIndex = QModelIndex();
+    m_treeView->viewport()->update();
+
+    // 用本地副本接管拖拽数据，并清空成员
+    QModelIndexList draggedIndexes = m_dragSourceIndexes;
+    m_dragSourceIndexes.clear();
+
+    if (draggedIndexes.isEmpty() || event->proposedAction() != Qt::MoveAction) {
+        event->ignore();
+        return;
+    }
+
+    QModelIndex targetProxyIndex = m_treeView->indexAt(event->position().toPoint());
+    if (!targetProxyIndex.isValid()) {
+        event->ignore();
+        return;
+    }
+
+    QModelIndex sourceProxyIndex = draggedIndexes.first();   // 用本地副本
+
+    // 映射到源模型
+    QModelIndex targetSourceIndex = m_sortProxy->mapToSource(targetProxyIndex);
+    QModelIndex sourceSourceIndex = m_sortProxy->mapToSource(sourceProxyIndex);
+
+    QString oldPath = QDir::cleanPath(m_fileModel->filePath(sourceSourceIndex));
+    QFileInfo targetInfo(m_fileModel->filePath(targetSourceIndex));
+
+    // 确定目标文件夹（如果目标不是目录，则取其父目录）
+    QString targetDir;
+    if (targetInfo.isDir()) {
+        targetDir = targetInfo.absoluteFilePath();
+    } else {
+        targetDir = targetInfo.absolutePath();
+    }
+    targetDir = QDir::cleanPath(targetDir);
+
+    // 确保目标目录在当前根目录内
+    QString root = QDir::cleanPath(m_fileModel->rootPath());
+    if (!targetDir.startsWith(root, Qt::CaseInsensitive) || oldPath.isEmpty()) {
+        event->ignore();
+        return;
+    }
+
+    // 构建新路径
+    QString newPath = targetDir + "/" + QFileInfo(oldPath).fileName();
+    newPath = QDir::cleanPath(newPath);
+    if (oldPath == newPath) {
+        event->ignore();
+        return;
+    }
+
+    // 检查新路径是否已存在（避免覆盖）
+    if (QFile::exists(newPath)) {
+        event->ignore();
+        return;
+    }
+
+    // 执行文件系统移动
+    QFile file(oldPath);
+    if (!file.rename(newPath)) {
+        event->ignore();
+        return;
+    }
+
+    // 刷新模型以显示新结构
+    m_fileModel->revert();
+
+    // 发出重命名/移动信号，主窗口会同步更新标签页、历史记录等
+    emit fileRenamed(oldPath, newPath);
+
+    event->acceptProposedAction();
+}
+
+bool FileExplorerWidget::isDropTargetFolder(const QModelIndex &proxyIndex) const
+{
+    if (!proxyIndex.isValid() || !m_dropTargetIndex.isValid())
+        return false;
+    // 必须同一个索引且源模型对应的是目录
+    if (proxyIndex != m_dropTargetIndex)
+        return false;
+    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIndex);
+    return m_fileModel->isDir(srcIdx);
+}
+
+void FileExplorerWidget::refreshTree()
+{
+    QString path = rootPath();
+    if (!path.isEmpty()) {
+        m_fileModel->setRootPath(path);
+        QModelIndex sourceRoot = m_fileModel->index(path);
+        m_sortProxy->invalidate();
+        m_sortProxy->sort(0, Qt::AscendingOrder);
+        QModelIndex proxyRoot = m_sortProxy->mapFromSource(sourceRoot);
+        m_treeView->setRootIndex(proxyRoot);
+    }
+}
+
+void FileExplorerWidget::collapseAll()
+{
+    m_treeView->collapseAll();
+}
+
+void FileExplorerWidget::setItemHeight(int height)
+{
+    m_treeView->setStyleSheet(
+        QStringLiteral("QTreeView::item { height: %1px; }").arg(height));
+}
+
+void FileExplorerWidget::updateFolderLabel()
+{
+    QString path = rootPath();
+    if (path.isEmpty()) {
+        m_folderFullName.clear();
+        m_folderLabel->setText(QString());
+        return;
+    }
+    QDir dir(path);
+    m_folderFullName = dir.isRoot() ? QDir::toNativeSeparators(dir.absolutePath()) : dir.dirName();
+
+    if (m_toolbar->width() <= 0) {
+        m_folderLabel->setText(m_folderFullName);
+        return;
+    }
+
+    int btnWidth = m_newFileBtn->width() + m_newFolderBtn->width()
+                 + m_refreshBtn->width() + m_collapseAllBtn->width();
+    QHBoxLayout *lay = qobject_cast<QHBoxLayout*>(m_toolbar->layout());
+    int margins = lay ? lay->contentsMargins().left() + lay->contentsMargins().right() : 0;
+    int spacing = lay ? lay->spacing() : 0;
+    int availableWidth = m_toolbar->width() - btnWidth - margins - spacing * 2;
+
+    if (availableWidth < 40) {
+        m_folderLabel->setText(QString());
+        return;
+    }
+
+    QFontMetrics fm(m_folderLabel->font());
+    m_folderLabel->setText(fm.elidedText(m_folderFullName, Qt::ElideMiddle, availableWidth));
+}
+
+void FileExplorerWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateFolderLabel();
+}

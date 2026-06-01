@@ -1,8 +1,8 @@
 #include "aicontextmanager.h"
-#include "editorwidget.h"
-#include "smdeditor.h"
-#include "smdcell.h"
-#include "languageutils.h"
+#include "editor/editorwidget.h"
+#include "smd/smdeditor.h"
+#include "smd/smdcell.h"
+#include "core/languageutils.h"
 
 #include <QFileInfo>
 

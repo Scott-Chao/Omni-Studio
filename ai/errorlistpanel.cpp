@@ -13,7 +13,7 @@
 #include <QTextBrowser>
 #include <QRegularExpression>
 #include <QSet>
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Helpers

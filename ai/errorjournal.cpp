@@ -1,11 +1,11 @@
 #include "errorjournal.h"
-#include "utilities.h"
+#include "core/utilities.h"
 #include "aiproviders.h"
 #include "prompttemplates.h"
 #include "aicontextmanager.h"
-#include "configmanager.h"
-#include "settingsmanager.h"
-#include "crawler.h"
+#include "config/configmanager.h"
+#include "config/settingsmanager.h"
+#include "judge/crawler.h"
 
 #include <QCoreApplication>
 #include <QDir>

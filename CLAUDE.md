@@ -29,29 +29,29 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full component map, data flows, and c
 ### Component Map (high-level)
 
 ```
-main.cpp → QApplication + MainWindow bootstrap
-MainWindow → frameless orchestrator
- ├── AiRequestHandler       → AI request lifecycle (provider, streaming, history pruning)
- ├── IndexManager           → file index, backlinks, tags, async index build
- ├── CrashRecoveryManager   → stale recovery file cleanup
- ├── ThemeManager           → singleton, Dark/Light palettes, Windows registry auto-detect, **watchTheme() template** + **colorStyle()** helper
- ├── CompileRunManager      → compile/run/stop lifecycle, owns ProcessRunner, action enable/disable
- ├── CodeBlockRunner        → MD preview ▶  code block execution, stderr buffering, diagnostics
- ├── OpenJudgeManager       → OpenJudge tab creation, code submission, result display, error analysis
- ├── SettingsChangeHandler  → setting change application, ThemeManager color bridge, shortcut rebinding
- ├── ActivityBar            → 48px left bar: Search/AI/Settings/Export PDF/Judge buttons
- ├── FileExplorerWidget     → QTreeView + QFileSystemModel, breadcrumb bar, toolbar
- ├── TabManager             → QTabWidget, owns EditorWidget tabs
- │   └── EditorWidget       → 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
- │       ├── SmdEditor      → Jupyter-like cell-based editor (SmdCell + LSP + diagnostics)
- │       └── CodeEditor     → syntax highlighting + CompletionProvider + LSP diagnostics
- ├── RightPanelContainer    → unified right dock: History / Outline / Tags / Backlinks
- ├── AiPanel                → AI assistant (ActionBar, ChatArea, InputBar, HistoryList)
- ├── SearchPanel            → full-text search (left dock)
- ├── JudgePanel + JudgeEngine → local OJ-style judge (left dock)
- ├── BottomPanel            → Output + Diagnostics tabs
- ├── SettingsPanel          → floating settings overlay
- └── HelpPanel              → floating help overlay, F1 toggle
+main.cpp                  → QApplication + MainWindow bootstrap
+core/mainwindow.*        → frameless orchestrator
+ ├── ai/airequesthandler.*    → AI request lifecycle (provider, streaming, history pruning)
+ ├── index/indexmanager.*     → file index, backlinks, tags, async index build
+ ├── core/crashrecoverymanager.* → stale recovery file cleanup
+ ├── core/thememanager.*      → singleton, Dark/Light palettes, Windows registry auto-detect, **watchTheme() template** + **colorStyle()** helper
+ ├── runner/compilerunmanager.* → compile/run/stop lifecycle, owns ProcessRunner, action enable/disable
+ ├── runner/codeblockrunner.* → MD preview ▶  code block execution, stderr buffering, diagnostics
+ ├── judge/openjudgemanager.* → OpenJudge tab creation, code submission, result display, error analysis
+ ├── config/settingschangehandler.* → setting change application, ThemeManager color bridge, shortcut rebinding
+ ├── panels/activitybar.*     → 48px left bar: Search/AI/Settings/Export PDF/Judge buttons
+ ├── panels/fileexplorerwidget.* → QTreeView + QFileSystemModel, breadcrumb bar, toolbar
+ ├── editor/tabmanager.*      → QTabWidget, owns EditorWidget tabs
+ │   └── editor/editorwidget.* → 6 modes: MarkdownEdit/Preview/CodeEdit/SplitPreview/PdfView/SmdEdit
+ │       ├── smd/smdeditor.*  → Jupyter-like cell-based editor (SmdCell + LSP + diagnostics)
+ │       └── editor/codeeditor.* → syntax highlighting + CompletionProvider + LSP diagnostics
+ ├── panels/rightpanelcontainer.* → unified right dock: History / Outline / Tags / Backlinks
+ ├── ai/aipanel.*              → AI assistant (ActionBar, ChatArea, InputBar, HistoryList)
+ ├── panels/searchpanel.*      → full-text search (left dock)
+ ├── panels/judgepanel.* + judge/judgeengine.* → local OJ-style judge (left dock)
+ ├── panels/bottompanel.*      → Output + Diagnostics tabs
+ ├── panels/settingspanel.*    → floating settings overlay
+ └── panels/helppanel.*        → floating help overlay, F1 toggle
 ```
 
 ### Key Conventions (not obvious from source)

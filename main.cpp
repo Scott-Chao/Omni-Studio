@@ -1,6 +1,6 @@
-#include "mainwindow.h"
-#include "configmanager.h"
-#include "thememanager.h"
+#include "core/mainwindow.h"
+#include "config/configmanager.h"
+#include "core/thememanager.h"
 
 #include <QApplication>
 #include <QStyleFactory>

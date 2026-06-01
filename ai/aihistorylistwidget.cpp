@@ -1,5 +1,5 @@
 #include "aihistorylistwidget.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

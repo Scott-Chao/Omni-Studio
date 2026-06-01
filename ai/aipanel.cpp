@@ -4,8 +4,8 @@
 #include "errorlistpanel.h"
 #include "errorjournal.h"
 #include "aihistorylistwidget.h"
-#include "thememanager.h"
-#include "tabbuttongroup.h"
+#include "core/thememanager.h"
+#include "widgets/tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

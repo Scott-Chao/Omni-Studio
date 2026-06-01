@@ -1,5 +1,5 @@
 #include "chatbubble.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QLabel>
 #include <QTextBrowser>
