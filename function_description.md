@@ -62,7 +62,8 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 代码简化与重复清理
-- CompileRunManager 构造函数引入配置聚合对象
+- `CompileRunManager` compile/run/compileAndRun 前导代码重复
+- 修复 `Ctrl+C` 无法终止程序运行的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 

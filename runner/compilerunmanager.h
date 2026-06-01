@@ -62,6 +62,17 @@ private:
     void connectProcessRunner();
     bool processCodeFile(const QString &filePath, const QString &ext);
 
+    // Resolve file path for compile/run: handles both IDE and normal modes,
+    // returns whether a valid path was resolved. Extracted from the duplicated
+    // preamble of compile() / run() / compileAndRun().
+    struct ResolvedFile {
+        QString filePath;
+        QString ext;
+        bool isIde = false;
+        bool isValid() const { return !filePath.isEmpty(); }
+    };
+    ResolvedFile resolveIdeFilePath();
+
     // Dependencies (raw pointers — lifetime managed by Qt parent hierarchy)
     TabManager *m_tabManager = nullptr;
     BottomPanel *m_bottomPanel = nullptr;

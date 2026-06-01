@@ -8,7 +8,6 @@
 #include "config/configmanager.h"
 #include "panels/fileexplorerwidget.h"
 #include "panels/openjudgewidget.h"
-#include "lsp/completionprovider.h"
 
 #include <QAction>
 #include <QMenu>
@@ -79,6 +78,7 @@ void CompileRunManager::connectProcessRunner()
 
     connect(outputPanel, &OutputPanel::sendInput, m_processRunner, &ProcessRunner::writeInput);
     connect(outputPanel, &OutputPanel::sendRawInput, m_processRunner, &ProcessRunner::writeRaw);
+    connect(outputPanel, &OutputPanel::stopRequested, this, &CompileRunManager::stop);
     connect(m_processRunner, &ProcessRunner::outputReceived, outputPanel, &OutputPanel::appendOutput);
 
     connect(m_processRunner, &ProcessRunner::compileFinished, this, [this](bool success) {
@@ -158,10 +158,10 @@ bool CompileRunManager::processCodeFile(const QString &filePath, const QString &
     return true;
 }
 
-void CompileRunManager::compile()
+CompileRunManager::ResolvedFile CompileRunManager::resolveIdeFilePath()
 {
     if (!m_tabManager || !m_bottomPanel)
-        return;
+        return {};
 
     // IDE mode
     auto *oj = m_tabManager->findOpenJudgeWidget();
@@ -169,94 +169,64 @@ void CompileRunManager::compile()
         oj->saveIdeCodeToCache();
         QString filePath = oj->ideCacheFilePath();
         if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (!processCodeFile(filePath, ext))
-            return;
-        showOutputPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_processRunner->startCompile(filePath);
-        return;
+            return {};
+        return {filePath, QFileInfo(filePath).suffix().toLower(), true};
     }
 
-    // Normal mode
+    // Normal mode — resolve file path from current editor
     auto *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit())
-        return;
+    if (!editor)
+        return {};
 
     QString filePath = editor->currentFilePath();
     if (filePath.isEmpty() || editor->isModified()) {
         QString root = m_explorer ? m_explorer->rootPath() : QString();
         filePath = saveEditorToTempFile(editor, root);
         if (filePath.isEmpty())
-            return;
+            return {};
     }
 
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    if (!processCodeFile(filePath, ext))
+    return {filePath, QFileInfo(filePath).suffix().toLower(), false};
+}
+
+void CompileRunManager::compile()
+{
+    auto rf = resolveIdeFilePath();
+    if (!rf.isValid())
         return;
+
+    // Normal mode requires a code editor
+    if (!rf.isIde) {
+        auto *editor = m_tabManager->currentEditor();
+        if (!editor || !editor->isCodeEdit())
+            return;
+        if (!processCodeFile(rf.filePath, rf.ext))
+            return;
+    }
 
     showOutputPanel();
     m_bottomPanel->outputPanel()->clearOutput();
     m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-    m_processRunner->startCompile(filePath);
+    m_processRunner->startCompile(rf.filePath);
 }
 
 void CompileRunManager::run()
 {
-    if (!m_tabManager || !m_bottomPanel)
+    auto rf = resolveIdeFilePath();
+    if (!rf.isValid())
         return;
 
-    // IDE mode
-    auto *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        oj->saveIdeCodeToCache();
-        QString filePath = oj->ideCacheFilePath();
-        if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-        if (m_processRunner->lastExecutable().isEmpty()) {
-            compileAndRun();
-            return;
-        }
+    bool isPython = (rf.ext == QStringLiteral("py") || rf.ext == QStringLiteral("pyw"));
+
+    if (isPython) {
         showOutputPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_processRunner->startRun(m_processRunner->lastExecutable());
+        m_processRunner->startRunPython(rf.filePath);
         return;
     }
 
-    // Normal mode
-    auto *editor = m_tabManager->currentEditor();
-    if (!editor)
-        return;
-
-    QString filePath = editor->currentFilePath();
-    if (!filePath.isEmpty()) {
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            if (filePath.isEmpty() || editor->isModified()) {
-                QString root = m_explorer ? m_explorer->rootPath() : QString();
-                filePath = saveEditorToTempFile(editor, root);
-                if (filePath.isEmpty())
-                    return;
-            }
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-    }
-
+    // Non-python: need a compiled executable to run
     if (m_processRunner->lastExecutable().isEmpty()) {
         compileAndRun();
         return;
@@ -270,59 +240,30 @@ void CompileRunManager::run()
 
 void CompileRunManager::compileAndRun()
 {
-    if (!m_tabManager || !m_bottomPanel) {
+    auto rf = resolveIdeFilePath();
+    if (!rf.isValid())
         return;
-    }
 
-    // IDE mode
-    auto *oj = m_tabManager->findOpenJudgeWidget();
-    if (oj && oj->isIdeMode()) {
-        oj->saveIdeCodeToCache();
-        QString filePath = oj->ideCacheFilePath();
-        if (filePath.isEmpty())
-            return;
-        QString ext = QFileInfo(filePath).suffix().toLower();
-        if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
-            showOutputPanel();
-            m_bottomPanel->outputPanel()->clearOutput();
-            m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-            m_processRunner->startRunPython(filePath);
-            return;
-        }
-        showOutputPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-        m_processRunner->startCompileAndRun(filePath);
-        return;
-    }
-
-    // Normal mode
-    auto *editor = m_tabManager->currentEditor();
-    if (!editor || !editor->isCodeEdit()) {
-        return;
-    }
-
-    QString filePath = editor->currentFilePath();
-    if (filePath.isEmpty() || editor->isModified()) {
-        QString root = m_explorer ? m_explorer->rootPath() : QString();
-        filePath = saveEditorToTempFile(editor, root);
-        if (filePath.isEmpty())
+    // Normal mode requires a code editor
+    if (!rf.isIde) {
+        auto *editor = m_tabManager->currentEditor();
+        if (!editor || !editor->isCodeEdit())
             return;
     }
 
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    if (ext == QStringLiteral("py") || ext == QStringLiteral("pyw")) {
+    bool isPython = (rf.ext == QStringLiteral("py") || rf.ext == QStringLiteral("pyw"));
+    if (isPython) {
         showOutputPanel();
         m_bottomPanel->outputPanel()->clearOutput();
         m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
-        m_processRunner->startRunPython(filePath);
+        m_processRunner->startRunPython(rf.filePath);
         return;
     }
 
     showOutputPanel();
     m_bottomPanel->outputPanel()->clearOutput();
     m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
-    m_processRunner->startCompileAndRun(filePath);
+    m_processRunner->startCompileAndRun(rf.filePath);
 }
 
 void CompileRunManager::stop()
