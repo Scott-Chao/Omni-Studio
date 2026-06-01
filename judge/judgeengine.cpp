@@ -14,6 +14,11 @@
 #include <windows.h>
 #include <psapi.h>
 #pragma comment(lib, "psapi.lib")
+#elif defined(Q_OS_LINUX)
+#include <sys/syscall.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <signal.h>
 #endif
 
 JudgeEngine::JudgeEngine(QObject *parent)
@@ -450,23 +455,41 @@ void JudgeEngine::captureMemory()
     }
     CloseHandle(hProcess);
 #elif defined(Q_OS_LINUX)
+    // Try /proc/<pid>/status (works if process is alive)
     QFile statusFile(QStringLiteral("/proc/%1/status").arg(pid));
-    if (!statusFile.open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
+    if (statusFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // Note: /proc files report st_size = 0, so QFile::atEnd() returns true
+        // immediately. Use readAll() to bypass the size check.
+        const QString content = QString::fromUtf8(statusFile.readAll());
+        const QStringList lines = content.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (line.startsWith(QStringLiteral("VmRSS:"))) {
+                // Line format: "VmRSS:     12345 kB"
+                QString valueStr = line.mid(7).trimmed();
+                int spaceIdx = valueStr.indexOf(QLatin1Char(' '));
+                if (spaceIdx > 0)
+                    valueStr = valueStr.left(spaceIdx);
+                bool ok = false;
+                quint64 memKb = valueStr.toULongLong(&ok);
+                if (ok && memKb > m_peakMemoryKb)
+                    m_peakMemoryKb = memKb;
+                break;
+            }
+        }
+    }
 
-    while (!statusFile.atEnd()) {
-        QString line = QString::fromUtf8(statusFile.readLine());
-        if (line.startsWith(QStringLiteral("VmRSS:"))) {
-            // Line format: "VmRSS:     12345 kB"
-            QString valueStr = line.mid(7).trimmed();
-            int spaceIdx = valueStr.indexOf(QLatin1Char(' '));
-            if (spaceIdx > 0)
-                valueStr = valueStr.left(spaceIdx);
-            bool ok = false;
-            quint64 memKb = valueStr.toULongLong(&ok);
-            if (ok && memKb > m_peakMemoryKb)
+    // If /proc didn't capture memory (process exited before we could read),
+    // use waitid with WNOWAIT to get the child's peak RSS without reaping it.
+    // This leaves the zombie for Qt's SIGCHLD handler to reap normally.
+    if (m_peakMemoryKb == 0) {
+        siginfo_t info = {};
+        struct rusage usage = {};
+        if (syscall(SYS_waitid, P_PID, static_cast<long>(pid), &info,
+                     WEXITED | WNOHANG | WNOWAIT, &usage) == 0
+            && info.si_pid == static_cast<pid_t>(pid)) {
+            quint64 memKb = static_cast<quint64>(usage.ru_maxrss);
+            if (memKb > m_peakMemoryKb)
                 m_peakMemoryKb = memKb;
-            break;
         }
     }
 #else

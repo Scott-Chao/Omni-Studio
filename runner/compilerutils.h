@@ -22,7 +22,8 @@ inline QList<CompilerInfo> findCompilers()
 {
     QList<CompilerInfo> compilers;
 
-    // Detect g++ (MinGW / standalone)
+#ifdef Q_OS_WIN
+    // Detect g++ (MinGW)
     {
         CompilerInfo info;
         info.id = QStringLiteral("gcc");
@@ -43,6 +44,27 @@ inline QList<CompilerInfo> findCompilers()
                          && !env.value(QStringLiteral("VSCMD_VER")).isEmpty();
         compilers.append(info);
     }
+#elif defined(Q_OS_LINUX)
+    // Detect g++ (Linux)
+    {
+        CompilerInfo info;
+        info.id = QStringLiteral("gcc");
+        info.displayName = QStringLiteral("g++");
+        info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("g++"));
+        info.available = !info.compilerPath.isEmpty();
+        compilers.append(info);
+    }
+
+    // Detect clang++ (Linux fallback)
+    {
+        CompilerInfo info;
+        info.id = QStringLiteral("clang");
+        info.displayName = QStringLiteral("Clang++");
+        info.compilerPath = QStandardPaths::findExecutable(QStringLiteral("clang++"));
+        info.available = !info.compilerPath.isEmpty();
+        compilers.append(info);
+    }
+#endif
 
     return compilers;
 }
@@ -75,7 +97,7 @@ inline QStringList getCompileArgs(const QString &compilerId,
 {
     const auto &cfg = ConfigManager::instance();
     QStringList args;
-    if (compilerId == QStringLiteral("gcc")) {
+    if (compilerId == QStringLiteral("gcc") || compilerId == QStringLiteral("clang")) {
         args << cfg.compilerGxxFlags()
              << sourceFile
              << QStringLiteral("-o") << outputFile;
@@ -93,7 +115,7 @@ inline QStringList getCompileOnlyArgs(const QString &compilerId,
 {
     const auto &cfg = ConfigManager::instance();
     QStringList args;
-    if (compilerId == QStringLiteral("gcc")) {
+    if (compilerId == QStringLiteral("gcc") || compilerId == QStringLiteral("clang")) {
         args << QStringLiteral("-c")
              << cfg.compilerGxxFlags()
              << sourceFile
