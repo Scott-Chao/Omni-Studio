@@ -74,7 +74,6 @@ private:
     QList<CompletionItem> parseCompletionResponse(const QJsonObject &result);
     HoverInfo parseHoverResponse(const QJsonObject &result);
     SignatureInfo parseSignatureHelpItem(const QJsonObject &sig);
-    static QString completionKindToString(int kind);
     QList<SmdDiagnostic> parseDiagnostics(const QJsonArray &diags);
     QList<SemanticToken> parseSemanticTokens(const QJsonObject &result);
 };

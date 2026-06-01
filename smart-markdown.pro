@@ -123,6 +123,7 @@ HEADERS += \
     editor/hovermanager.h \
     editor/keywordcompletionprovider.h \
     lsp/lspclient.h \
+    lsp/lsputils.h \
     lsp/pythoncompletionprovider.h \
     editor/signaturehelpmanager.h \
     lsp/smdlspmanager.h \

@@ -62,7 +62,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 代码简化与重复清理
-- 消除 AiMessage vs Message 结构体字段重复
+- 消除 `CppCompletionProvider` 与 `SmdLspManager` LSP 解析逻辑重复
 
 ### 1. `MainWindow` - 主窗口控制器
 

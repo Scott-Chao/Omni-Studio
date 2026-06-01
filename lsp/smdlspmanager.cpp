@@ -1,6 +1,7 @@
 #include "smdlspmanager.h"
 #include "config/configmanager.h"
 #include "lspclient.h"
+#include "lsputils.h"
 #include "core/utilities.h"
 
 #include <QCoreApplication>
@@ -24,34 +25,22 @@ public:
 
     void requestCompletion(const QString &text, int cursorPos) override
     {
-        int line = 0, col = 0;
-        int len = qMin(cursorPos, text.length());
-        for (int i = 0; i < len; ++i) {
-            if (text.at(i) == QLatin1Char('\n')) { ++line; col = 0; }
-            else { ++col; }
-        }
+        int line, col;
+        LspUtils::cursorToLineCol(text, cursorPos, line, col);
         m_mgr->requestCompletion(m_cellIndex, line, col);
     }
 
     void requestHover(const QString &text, int cursorPos) override
     {
-        int line = 0, col = 0;
-        int len = qMin(cursorPos, text.length());
-        for (int i = 0; i < len; ++i) {
-            if (text.at(i) == QLatin1Char('\n')) { ++line; col = 0; }
-            else { ++col; }
-        }
+        int line, col;
+        LspUtils::cursorToLineCol(text, cursorPos, line, col);
         m_mgr->requestHover(m_cellIndex, line, col);
     }
 
     void requestSignatureHelp(const QString &text, int cursorPos) override
     {
-        int line = 0, col = 0;
-        int len = qMin(cursorPos, text.length());
-        for (int i = 0; i < len; ++i) {
-            if (text.at(i) == QLatin1Char('\n')) { ++line; col = 0; }
-            else { ++col; }
-        }
+        int line, col;
+        LspUtils::cursorToLineCol(text, cursorPos, line, col);
         m_mgr->requestSignatureHelp(m_cellIndex, line, col);
     }
 
@@ -419,53 +408,8 @@ void SmdLspManager::requestCppSemanticTokens()
 
 QList<SemanticToken> SmdLspManager::parseSemanticTokens(const QJsonObject &result)
 {
-    QList<SemanticToken> tokens;
-
-    QJsonArray data = result.value(QStringLiteral("data")).toArray();
-    if (data.isEmpty())
-        return tokens;
-
-    const int typeCount = m_cppServer.tokenTypeLegend.size();
-    const int modifierCount = m_cppServer.tokenModifierLegend.size();
-
-    tokens.reserve(data.size() / 5);
-
-    int line = 0;
-    int startChar = 0;
-
-    for (int i = 0; i + 4 < data.size(); i += 5) {
-        int deltaLine = data[i].toInt();
-        int deltaStart = data[i + 1].toInt();
-        int length = data[i + 2].toInt();
-        int tokenType = data[i + 3].toInt();
-        int tokenModifiers = data[i + 4].toInt();
-
-        if (deltaLine > 0) {
-            line += deltaLine;
-            startChar = deltaStart;
-        } else {
-            startChar += deltaStart;
-        }
-
-        SemanticToken token;
-        token.line = line;
-        token.startChar = startChar;
-        token.length = length;
-        token.type = (tokenType >= 0 && tokenType < typeCount)
-            ? m_cppServer.tokenTypeLegend.at(tokenType) : QString();
-
-        if (tokenModifiers > 0 && modifierCount > 0) {
-            for (int bit = 0; bit < modifierCount; ++bit) {
-                if (tokenModifiers & (1 << bit))
-                    token.modifiers.append(
-                        m_cppServer.tokenModifierLegend.at(bit));
-            }
-        }
-
-        tokens.append(token);
-    }
-
-    return tokens;
+    return LspUtils::parseSemanticTokens(
+        result, m_cppServer.tokenTypeLegend, m_cppServer.tokenModifierLegend);
 }
 
 void SmdLspManager::cellLocalToVirtual(int cellIndex, int localLine, int localCol,
@@ -540,21 +484,8 @@ void SmdLspManager::sendInitialize(const QString &langId)
     LanguageServer *srv = serverForLang(langId);
     if (!srv || !srv->client) return;
 
-    QJsonObject params;
-    params[QStringLiteral("processId")] = QJsonValue::Null;
-    params[QStringLiteral("rootUri")] = QJsonValue::Null;
-
-    QJsonObject textDocument;
-    QJsonObject semanticTokens;
-    semanticTokens[QStringLiteral("dynamicRegistration")] = true;
-    textDocument[QStringLiteral("semanticTokens")] = semanticTokens;
-
-    QJsonObject capabilities;
-    capabilities[QStringLiteral("textDocument")] = textDocument;
-    params[QStringLiteral("capabilities")] = capabilities;
-
-    int id = srv->client->sendRequest(QStringLiteral("initialize"), params);
-    Q_UNUSED(id);
+    QJsonObject params = LspUtils::buildInitializeParams();
+    srv->client->sendRequest(QStringLiteral("initialize"), params);
 }
 
 void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
@@ -616,29 +547,8 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
         else if (itemsVal.isArray())
             arr = itemsVal.toArray();
 
-        for (const QJsonValue &val : arr) {
-            QJsonObject item = val.toObject();
-            CompletionItem ci;
-            QString insertText;
-            QJsonValue te = item.value(QStringLiteral("textEdit"));
-            if (te.isObject())
-                insertText = te.toObject().value(QStringLiteral("newText")).toString();
-            if (insertText.isEmpty())
-                insertText = item.value(QStringLiteral("insertText")).toString();
-            if (insertText.isEmpty())
-                insertText = item.value(QStringLiteral("label")).toString();
-            ci.name = insertText.trimmed();
-            ci.detail = item.value(QStringLiteral("detail")).toString();
-            int kind = item.value(QStringLiteral("kind")).toInt(0);
-            ci.type = StringUtils::completionKindToString(kind);
-            ci.signature = ci.name;
-            QJsonValue docVal = item.value(QStringLiteral("documentation"));
-            if (docVal.isString())
-                ci.doc = docVal.toString();
-            else if (docVal.isObject())
-                ci.doc = docVal.toObject().value(QStringLiteral("value")).toString();
-            items.append(ci);
-        }
+        for (const QJsonValue &val : arr)
+            items.append(LspUtils::parseCompletionItem(val.toObject()));
         emit completionReadyForCell(cellIndex, items);
 
     } else if (id == m_cppServer.hoverRequestId) {
@@ -646,34 +556,8 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
         int cellIndex = m_cppServer.requestingCellIndex;
         m_cppServer.pendingType = LanguageServer::None;
 
-        HoverInfo info;
-        QJsonValue contentsVal = result.value(QStringLiteral("contents"));
-        if (!contentsVal.isUndefined() && !contentsVal.isNull()) {
-            if (contentsVal.isObject()) {
-                QJsonObject c = contentsVal.toObject();
-                if (c.contains(QStringLiteral("language")))
-                    info.signature = c.value(QStringLiteral("value")).toString();
-                else
-                    info.doc = c.value(QStringLiteral("value")).toString();
-            } else if (contentsVal.isString()) {
-                info.doc = contentsVal.toString();
-            } else if (contentsVal.isArray()) {
-                QJsonArray arr = contentsVal.toArray();
-                QStringList parts;
-                for (const QJsonValue &v : arr) {
-                    if (v.isObject()) {
-                        QJsonObject o = v.toObject();
-                        if (o.contains(QStringLiteral("language")))
-                            info.signature = o.value(QStringLiteral("value")).toString();
-                        else
-                            parts.append(o.value(QStringLiteral("value")).toString());
-                    } else if (v.isString()) {
-                        parts.append(v.toString());
-                    }
-                }
-                info.doc = parts.join(QStringLiteral("\n"));
-            }
-        }
+        HoverInfo info = LspUtils::parseHoverContents(
+            result.value(QStringLiteral("contents")));
         emit hoverReadyForCell(cellIndex, info);
 
     } else if (id == m_cppServer.signatureHelpRequestId) {
@@ -684,31 +568,8 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
         QList<SignatureInfo> signatures;
         QJsonValue sigsVal = result.value(QStringLiteral("signatures"));
         if (sigsVal.isArray()) {
-            for (const QJsonValue &sv : sigsVal.toArray()) {
-                QJsonObject sig = sv.toObject();
-                SignatureInfo si;
-                si.label = sig.value(QStringLiteral("label")).toString();
-                si.doc = sig.value(QStringLiteral("documentation")).toString();
-                QJsonValue paramsVal = sig.value(QStringLiteral("parameters"));
-                if (paramsVal.isArray()) {
-                    for (const QJsonValue &pv : paramsVal.toArray()) {
-                        QJsonObject po = pv.toObject();
-                        QJsonValue lv = po.value(QStringLiteral("label"));
-                        if (lv.isString())
-                            si.parameters.append(lv.toString());
-                        else if (lv.isArray()) {
-                            QJsonArray offsets = lv.toArray();
-                            if (offsets.size() >= 2) {
-                                int s = offsets.at(0).toInt();
-                                int e = offsets.at(1).toInt();
-                                if (s >= 0 && e <= si.label.length() && s < e)
-                                    si.parameters.append(si.label.mid(s, e - s));
-                            }
-                        }
-                    }
-                }
-                signatures.append(si);
-            }
+            for (const QJsonValue &sv : sigsVal.toArray())
+                signatures.append(LspUtils::parseSignatureInfo(sv.toObject()));
         }
         int activeSig = result.value(QStringLiteral("activeSignature")).toInt(0);
         int activeParam = result.value(QStringLiteral("activeParameter")).toInt(0);

@@ -1,6 +1,7 @@
 #include "cppcompletionprovider.h"
 #include "config/configmanager.h"
 #include "lspclient.h"
+#include "lsputils.h"
 #include "core/utilities.h"
 #include <QFileInfo>
 #include <QJsonObject>
@@ -103,19 +104,7 @@ void CppCompletionProvider::startServer()
 
 void CppCompletionProvider::sendInitialize()
 {
-    QJsonObject params;
-    params[QStringLiteral("processId")] = QJsonValue::Null;
-    params[QStringLiteral("rootUri")] = QJsonValue::Null;
-
-    QJsonObject textDocument;
-    QJsonObject semanticTokens;
-    semanticTokens[QStringLiteral("dynamicRegistration")] = true;
-    textDocument[QStringLiteral("semanticTokens")] = semanticTokens;
-
-    QJsonObject capabilities;
-    capabilities[QStringLiteral("textDocument")] = textDocument;
-    params[QStringLiteral("capabilities")] = capabilities;
-
+    QJsonObject params = LspUtils::buildInitializeParams();
     m_initRequestId = m_client->sendRequest(QStringLiteral("initialize"), params);
 }
 
@@ -362,17 +351,8 @@ void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos
         return;
 
     // Convert absolute cursorPos to LSP line (0-based) and character (0-based)
-    int line = 0;
-    int col = 0;
-    int len = qMin(cursorPos, text.length());
-    for (int i = 0; i < len; ++i) {
-        if (text.at(i) == QLatin1Char('\n')) {
-            ++line;
-            col = 0;
-        } else {
-            ++col;
-        }
-    }
+    int line, col;
+    LspUtils::cursorToLineCol(text, cursorPos, line, col);
 
     QJsonObject position;
     position[QStringLiteral("line")] = line;
@@ -396,11 +376,6 @@ void CppCompletionProvider::requestCompletion(const QString &text, int cursorPos
     m_requestTimer.start(500);
 }
 
-QString CppCompletionProvider::completionKindToString(int kind)
-{
-    return StringUtils::completionKindToString(kind);
-}
-
 QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJsonObject &result)
 {
     QList<CompletionItem> items;
@@ -411,43 +386,8 @@ QList<CompletionItem> CppCompletionProvider::parseCompletionResponse(const QJson
         itemArray = result.value(QStringLiteral("items")).toArray();
     }
 
-    for (const QJsonValue &val : itemArray) {
-        QJsonObject item = val.toObject();
-
-        CompletionItem ci;
-
-        // Prefer insertText over label for the actual insertion text.
-        // textEdit can be { newText, textEdit } or { range, newText }.
-        QString insertText;
-        QJsonValue textEditVal = item.value(QStringLiteral("textEdit"));
-        if (textEditVal.isObject()) {
-            insertText = textEditVal.toObject().value(QStringLiteral("newText")).toString();
-        }
-        if (insertText.isEmpty())
-            insertText = item.value(QStringLiteral("insertText")).toString();
-        if (insertText.isEmpty())
-            insertText = item.value(QStringLiteral("label")).toString();
-
-        ci.name = insertText.trimmed();
-        ci.detail = item.value(QStringLiteral("detail")).toString();
-
-        // Map LSP CompletionItemKind to our type string
-        int kind = item.value(QStringLiteral("kind")).toInt(0);
-        ci.type = completionKindToString(kind);
-
-        // Build a basic signature: for functions, label is already the signature
-        ci.signature = ci.name;
-
-        // Extract documentation if present
-        QJsonValue docVal = item.value(QStringLiteral("documentation"));
-        if (docVal.isString()) {
-            ci.doc = docVal.toString();
-        } else if (docVal.isObject()) {
-            ci.doc = docVal.toObject().value(QStringLiteral("value")).toString();
-        }
-
-        items.append(ci);
-    }
+    for (const QJsonValue &val : itemArray)
+        items.append(LspUtils::parseCompletionItem(val.toObject()));
 
     return items;
 }
@@ -458,17 +398,8 @@ void CppCompletionProvider::requestHover(const QString &text, int cursorPos)
         return;
 
     // Convert cursorPos to LSP line (0-based) and character (0-based)
-    int line = 0;
-    int col = 0;
-    int len = qMin(cursorPos, text.length());
-    for (int i = 0; i < len; ++i) {
-        if (text.at(i) == QLatin1Char('\n')) {
-            ++line;
-            col = 0;
-        } else {
-            ++col;
-        }
-    }
+    int line, col;
+    LspUtils::cursorToLineCol(text, cursorPos, line, col);
 
     QJsonObject position;
     position[QStringLiteral("line")] = line;
@@ -489,88 +420,12 @@ void CppCompletionProvider::requestHover(const QString &text, int cursorPos)
 
 HoverInfo CppCompletionProvider::parseHoverResponse(const QJsonObject &result)
 {
-    HoverInfo info;
-
-    QJsonValue contentsVal = result.value(QStringLiteral("contents"));
-    if (contentsVal.isUndefined() || contentsVal.isNull())
-        return info;
-
-    // Array: typically [MarkedString, MarkedString | string, ...]
-    if (contentsVal.isArray()) {
-        QJsonArray arr = contentsVal.toArray();
-        QStringList docParts;
-        for (const QJsonValue &v : arr) {
-            if (v.isObject()) {
-                QJsonObject obj = v.toObject();
-                // MarkedString: { language, value }
-                if (obj.contains(QStringLiteral("language"))) {
-                    info.signature = obj.value(QStringLiteral("value")).toString();
-                } else {
-                    // MarkupContent: { kind, value }
-                    docParts.append(obj.value(QStringLiteral("value")).toString());
-                }
-            } else if (v.isString()) {
-                docParts.append(v.toString());
-            }
-        }
-        info.doc = docParts.join(QStringLiteral("\n"));
-        return info;
-    }
-
-    // String: plain text
-    if (contentsVal.isString()) {
-        info.doc = contentsVal.toString();
-        return info;
-    }
-
-    // Object: MarkupContent { kind, value } or MarkedString { language, value }
-    QJsonObject contents = contentsVal.toObject();
-    if (contents.contains(QStringLiteral("language"))) {
-        // MarkedString
-        info.signature = contents.value(QStringLiteral("value")).toString();
-    } else {
-        // MarkupContent
-        info.doc = contents.value(QStringLiteral("value")).toString();
-    }
-
-    return info;
+    return LspUtils::parseHoverContents(result.value(QStringLiteral("contents")));
 }
 
 SignatureInfo CppCompletionProvider::parseSignatureHelpItem(const QJsonObject &sig)
 {
-    SignatureInfo info;
-
-    info.label = sig.value(QStringLiteral("label")).toString();
-    info.doc = sig.value(QStringLiteral("documentation")).toString();
-
-    // activeParameter is read from the top-level SignatureHelp result,
-    // not from each SignatureInformation. We set it in onResponseReceived.
-
-    // Parse parameters list
-    QJsonValue paramsVal = sig.value(QStringLiteral("parameters"));
-    if (paramsVal.isArray()) {
-        QJsonArray params = paramsVal.toArray();
-        for (const QJsonValue &pv : params) {
-            QJsonObject pObj = pv.toObject();
-            QJsonValue labelVal = pObj.value(QStringLiteral("label"));
-            if (labelVal.isString()) {
-                info.parameters.append(labelVal.toString());
-            } else if (labelVal.isArray()) {
-                // LSP allows [start, end] offset pair into the signature label
-                QJsonArray offsets = labelVal.toArray();
-                if (offsets.size() >= 2) {
-                    int start = offsets.at(0).toInt();
-                    int end = offsets.at(1).toInt();
-                    if (start >= 0 && end <= info.label.length() && start < end) {
-                        info.parameters.append(
-                            info.label.mid(start, end - start));
-                    }
-                }
-            }
-        }
-    }
-
-    return info;
+    return LspUtils::parseSignatureInfo(sig);
 }
 
 void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursorPos)
@@ -579,17 +434,8 @@ void CppCompletionProvider::requestSignatureHelp(const QString &text, int cursor
         return;
 
     // Convert cursorPos to LSP line (0-based) and character (0-based)
-    int line = 0;
-    int col = 0;
-    int len = qMin(cursorPos, text.length());
-    for (int i = 0; i < len; ++i) {
-        if (text.at(i) == QLatin1Char('\n')) {
-            ++line;
-            col = 0;
-        } else {
-            ++col;
-        }
-    }
+    int line, col;
+    LspUtils::cursorToLineCol(text, cursorPos, line, col);
 
     QJsonObject position;
     position[QStringLiteral("line")] = line;
@@ -635,53 +481,7 @@ void CppCompletionProvider::requestSemanticTokens()
 
 QList<SemanticToken> CppCompletionProvider::parseSemanticTokens(const QJsonObject &result)
 {
-    QList<SemanticToken> tokens;
-
-    QJsonArray data = result.value(QStringLiteral("data")).toArray();
-    if (data.isEmpty())
-        return tokens;
-
-    const int tokenTypesCount = m_tokenTypeLegend.size();
-    const int tokenModifiersCount = m_tokenModifierLegend.size();
-
-    tokens.reserve(data.size() / 5);
-
-    int line = 0;
-    int startChar = 0;
-
-    for (int i = 0; i + 4 < data.size(); i += 5) {
-        int deltaLine = data[i].toInt();
-        int deltaStart = data[i + 1].toInt();
-        int length = data[i + 2].toInt();
-        int tokenType = data[i + 3].toInt();
-        int tokenModifiers = data[i + 4].toInt();
-
-        if (deltaLine > 0) {
-            line += deltaLine;
-            startChar = deltaStart;
-        } else {
-            startChar += deltaStart;
-        }
-
-        SemanticToken token;
-        token.line = line;
-        token.startChar = startChar;
-        token.length = length;
-        token.type = (tokenType >= 0 && tokenType < tokenTypesCount)
-            ? m_tokenTypeLegend.at(tokenType) : QString();
-
-        // Decode modifiers bitmask
-        if (tokenModifiers > 0 && tokenModifiersCount > 0) {
-            for (int bit = 0; bit < tokenModifiersCount; ++bit) {
-                if (tokenModifiers & (1 << bit))
-                    token.modifiers.append(m_tokenModifierLegend.at(bit));
-            }
-        }
-
-        tokens.append(token);
-    }
-
-    return tokens;
+    return LspUtils::parseSemanticTokens(result, m_tokenTypeLegend, m_tokenModifierLegend);
 }
 
 // ---- Request timeout ----
