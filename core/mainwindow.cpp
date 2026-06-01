@@ -370,9 +370,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
 
     // ----- 编译运行管理器（ProcessRunner + 编译/运行/终止）-----
-    m_compileRunMgr = new CompileRunManager(m_tabManager, m_bottomPanel,
-                                             m_settings, m_explorer,
-                                             m_rightSplitter, this);
+    m_compileRunMgr = new CompileRunManager(
+        {m_tabManager, m_bottomPanel, m_explorer, m_rightSplitter}, this);
 
     // ----- MD 代码块执行与诊断 -----
     m_codeBlockRunner = new CodeBlockRunner(m_tabManager, m_bottomPanel,

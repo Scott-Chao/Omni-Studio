@@ -5,7 +5,6 @@
 #include "editor/tabmanager.h"
 #include "editor/editorwidget.h"
 #include "editor/codeeditor.h"
-#include "config/settingsmanager.h"
 #include "config/configmanager.h"
 #include "panels/fileexplorerwidget.h"
 #include "panels/openjudgewidget.h"
@@ -23,15 +22,12 @@
 #include <QPointer>
 #include <QCoreApplication>
 
-CompileRunManager::CompileRunManager(TabManager *tabManager, BottomPanel *bottomPanel,
-                                     SettingsManager *settings, FileExplorerWidget *explorer,
-                                     QSplitter *rightSplitter, QObject *parent)
+CompileRunManager::CompileRunManager(const CompileRunDependencies &deps, QObject *parent)
     : QObject(parent)
-    , m_tabManager(tabManager)
-    , m_bottomPanel(bottomPanel)
-    , m_settings(settings)
-    , m_explorer(explorer)
-    , m_rightSplitter(rightSplitter)
+    , m_tabManager(deps.tabManager)
+    , m_bottomPanel(deps.bottomPanel)
+    , m_explorer(deps.explorer)
+    , m_rightSplitter(deps.rightSplitter)
 {
     m_processRunner = new ProcessRunner(this);
     connectProcessRunner();

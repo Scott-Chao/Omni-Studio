@@ -7,19 +7,24 @@
 class ProcessRunner;
 class BottomPanel;
 class TabManager;
-class SettingsManager;
 class FileExplorerWidget;
 class EditorWidget;
 class QSplitter;
 class QMenu;
 
+// Aggregate dependency object — reduces constructor parameter count
+struct CompileRunDependencies {
+    TabManager *tabManager = nullptr;
+    BottomPanel *bottomPanel = nullptr;
+    FileExplorerWidget *explorer = nullptr;
+    QSplitter *rightSplitter = nullptr;
+};
+
 class CompileRunManager : public QObject
 {
     Q_OBJECT
 public:
-    CompileRunManager(TabManager *tabManager, BottomPanel *bottomPanel,
-                      SettingsManager *settings, FileExplorerWidget *explorer,
-                      QSplitter *rightSplitter, QObject *parent = nullptr);
+    CompileRunManager(const CompileRunDependencies &deps, QObject *parent = nullptr);
     ~CompileRunManager() override;
 
     // Actions for toolbar/menu setup
@@ -60,7 +65,6 @@ private:
     // Dependencies (raw pointers — lifetime managed by Qt parent hierarchy)
     TabManager *m_tabManager = nullptr;
     BottomPanel *m_bottomPanel = nullptr;
-    SettingsManager *m_settings = nullptr;
     FileExplorerWidget *m_explorer = nullptr;
     QSplitter *m_rightSplitter = nullptr;
 
