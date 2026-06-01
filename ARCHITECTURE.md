@@ -4,66 +4,66 @@
 
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
-MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event(); right panel auto-hide via QApplication::focusChanged (no global event filter)
-  ├── AiRequestHandler    → AI request lifecycle (provider management, streaming, history, token estimation / context pruning)
-  ├── IndexManager        → File index, backlinks, tags, async index build, wiki-link resolution, completion data
-  ├── CrashRecoveryManager→ Stale recovery file cleanup, recovery directory management
-  ├── ThemeManager        → Singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect, system theme 5-min refresh. Provides **watchTheme<Receiver>(slot)** template and **colorStyle(property, colorKey)** helper.
-  ├── CompileRunManager   → Compile/run/stop lifecycle, owns ProcessRunner, handles IDE mode routing, manages output panel visibility and action enable/disable
-  ├── CodeBlockRunner     → MD preview ▶ button execution, saves temp files, buffers stderr, parses diagnostics via CompilerErrorParser, caches per-file/block diagnostics, loads cached diagnostics on tab switch
-  ├── OpenJudgeManager    → OpenJudge tab creation (delegates to TabManager), code submission (IDE mode + normal), submission result display via SubmitResultPanel, error analysis via background JudgeEngine + ErrorJournal
-  ├── SettingsChangeHandler→ Setting change application across all editors (font/indent/zoom), ThemeManager color bridge for appearance overrides, shortcut rebinding, reset-to-defaults logic
-  ├── ActivityBar         → 48px fixed left bar, 5 SVG icon buttons (Search/AI/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
-  ├── CaptionBtn (anon ns)→ QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
-  ├── FileExplorerWidget  → QTreeView + QFileSystemModel, file tree (in splitter, left of editor)
+core/mainwindow.*         → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event(); right panel auto-hide via QApplication::focusChanged (no global event filter)
+  ├── ai/airequesthandler.*    → AI request lifecycle (provider management, streaming, history, token estimation / context pruning)
+  ├── index/indexmanager.*     → File index, backlinks, tags, async index build, wiki-link resolution, completion data
+  ├── core/crashrecoverymanager.* → Stale recovery file cleanup, recovery directory management
+  ├── core/thememanager.*      → Singleton, VS Code 2026 Dark/Light palettes, Windows registry auto-detect, system theme 5-min refresh. Provides **watchTheme<Receiver>(slot)** template and **colorStyle(property, colorKey)** helper.
+  ├── runner/compilerunmanager.* → Compile/run/stop lifecycle, owns ProcessRunner, handles IDE mode routing, manages output panel visibility and action enable/disable
+  ├── runner/codeblockrunner.* → MD preview ▶ button execution, saves temp files, buffers stderr, parses diagnostics via CompilerErrorParser, caches per-file/block diagnostics, loads cached diagnostics on tab switch
+  ├── judge/openjudgemanager.* → OpenJudge tab creation (delegates to TabManager), code submission (IDE mode + normal), submission result display via SubmitResultPanel, error analysis via background JudgeEngine + ErrorJournal
+  ├── config/settingschangehandler.* → Setting change application across all editors (font/indent/zoom), ThemeManager color bridge for appearance overrides, shortcut rebinding, reset-to-defaults logic
+  ├── panels/activitybar.*     → 48px fixed left bar, 5 SVG icon buttons (Search/AI/Settings/Export PDF/Judge), active state with left border highlight (#0078D4)
+  ├── widgets/titlebarbutton.* → QPushButton subclass, system-native title bar icons (SP_TitleBarMin/Max/Normal/CloseButton), QPainter hover bg
+  ├── panels/fileexplorerwidget.* → QTreeView + QFileSystemModel, file tree (in splitter, left of editor)
   │   ├── Breadcrumb bar  → FlowLayout path segments, click-to-navigate
   │   └── Toolbar         → Folder label (auto-elided) + collapse-all + refresh buttons
-  ├── TabManager          → QTabWidget, owns EditorWidget tabs (center, right splitter top)
-  │   └── EditorWidget    → QStackedWidget[WikiLinkTextEdit | QWebEngineView(lazy) | CodeEditor | QSplitter(edit+preview,lazy) | QPdfView | SmdEditor], six-mode editor, preview WebEngine released on close
-  │       ├── WikiLinkTextEdit → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
-  │       ├── CodeEditor  → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent
-  │       ├── SmdEditor   → QScrollArea-based cell editor for `.smd` files, Jupyter-like command/edit dual mode
-  │       │   ├── SmdCell → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack
-  │       │   ├── SmdOutputWidget → per-cell output display (stdout/stderr), 1000-line cap, auto-height
-  │       │   ├── SmdDiagnosticsPanel → error/warning summary panel, toggled via Ctrl+D in edit mode
-  │       │   └── SmdLspManager   → shared LSP backend for SMD code cells, virtual-document stitching per group. Diagnostics flow: SmdLspManager/CppCompletionProvider/PythonCompletionProvider → diagnosticsUpdated(QList<SmdDiagnostic>) → CodeEditor (squiggly) + BottomPanel/SmdDiagnosticsPanel (list)
-  │       └── SmdFormat   → header-only namespace, parse/serialize `---smd:<type>` delimiter format
-  ├── CompilerErrorParser → header-only namespace, parse g++/MSVC/Python stderr → QList<SmdDiagnostic> (MD block diagnostics)
-  ├── RightPanelContainer → Unified right QDockWidget with tab bar (History/Outline/Tags/Backlinks) + QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E.
-  ├── AiPanel             → AI assistant panel (right QDockWidget, tabbed with RightPanelContainer). Toggled via ActivityBar AI button or Ctrl+Shift+A.
-  │   ├── ActionBar       → dynamic QHBoxLayout of action buttons, context-sensitive: Markdown actions (改进写作/总结笔记/提取标签/出题自测/翻译) or Code actions (解释代码/寻找Bug/添加注释/优化建议) based on AiContextManager::currentEditorMode()
-  │   ├── ChatArea        → QScrollArea with vertical layout of ChatBubble items, auto-scrolls to bottom, supports streaming append
-  │   │   └── ChatBubble  → QWidget with role label + QTextBrowser. User bubbles right-aligned blue, Assistant left-aligned gray. Lightweight Markdown→HTML converter for bold/italic/code/link/headings/lists/code blocks. 80ms debounce timer coalesces SSE chunks.
-  │   ├── InputBar        → QHBoxLayout: QLineEdit (text input) + QPushButton (发送). ReturnPressed / button click emit sendMessage.
-  │   └── AiHistoryListWidget → searchable history QListWidget with date grouping (今天/昨天/更早), green dot for active conversation, right-click context menu (rename/delete/export Markdown)
-  ├── AiConversation      → data structs (AiConversation, AiMessage) with JSON serialization/deserialization, standalone header
-  ├── AiHistoryManager    → Singleton (QObject). Persistent conversation history storage at `{exeDir}/ai_history/`. index.json + per-conversation `conv_{uuid}.json` files. CRUD operations, per-file filtering, Markdown export.
-  ├── ErrorJournal        → Singleton (QObject). ErrorRecord struct + JSON persistence to error_journal/records.json. recordFailure() called from JudgePanel::onTestFinished for non-AC results (WA/RE/TLE/MLE). requestAnalysis() builds ErrorAnalysis prompt and streams AI response back into ErrorRecord::aiAnalysis. Signals: analysisReady(recordId), recordsChanged().
-  ├── ErrorListPanel      → QWidget with status filter (ComboBox: 全部/WA/RE/TLE/MLE), keyword search (LineEdit), scrollable error list (QListWidget), expand-to-detail view (QStackedWidget switching list↔detail). Detail shows problem info, I/O comparison, AI analysis Markdown rendering, action buttons (re-analyze/delete/review). Delete/delete-all/clear-all operations through ErrorJournal.
-  ├── AiContextManager    → Static utility class. collectContext(EditorWidget*) returns ContextBundle{mode, filePath, fileContent, selectedText, language, cursorLine/Column, plus error analysis fields}. currentEditorMode() returns AiEditorMode::Markdown|Code|Unknown. Handles SMD cells, PDF view, code files.
-  ├── PromptTemplates     → Header-only (prompttemplates.h). buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. AiAction enum covers 10 actions + FreeChat (added ErrorAnalysis). actionsForMode(mode) maps editor mode to available action list. Metadata in actionInfos() provides display labels/tooltips.
-  ├── AiProviders          → `ai/aiproviders.h/cpp`: AiProvider (abstract), AnthropicProvider, OpenAiProvider, AiProviderFactory, Message struct, MessageRole enum. All AI provider classes in one unit.
-  ├── SearchPanel         → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
-  ├── JudgePanel          → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
-  │   └── JudgeEngine     → QObject managing compile→test QProcess pipeline, OJ-style results (AC/WA/RE/TLE/MLE)
-  ├── BacklinkIndex       → QMap-based reverse index: target file → source files for `[[wikilinks]]`
-  ├── TagIndex            → QMap-based bidirectional index: tag ↔ files for `#tag` syntax
-  ├── ConfigManager       → Singleton, reads config.json for static configuration
-  ├── SettingsManager     → QSettings wrapper, config.ini for runtime session state
-  ├── LanguageUtils       → Extensible language registry: extension→highlighter factory map
-  ├── ProcessRunner       → QObject managing compile→run QProcess pipeline
-  ├── BottomPanel         → unified bottom panel (right splitter bottom) with two tabs: OutputPanel (terminal stdout/stderr) + DiagnosticsTab (error/warning list by DiagnosticSection). Manages provider connection lifecycle on tab switch.
-  │   ├── OutputPanel     → dark-terminal output widget with stop/clear buttons
-  │   └── DiagnosticSection → reusable QWidget (header with ▾/▸ toggle + count badge), shared by BottomPanel and SmdDiagnosticsPanel
-  ├── SmdDiagnostic        → standalone struct header (`smddiagnostic.h`): cellIndex, startLine/Col, endLine/Col, message, severity (1=Error, 2=Warning). Shared by all diagnostic producers/consumers.
-  ├── OpenJudgeWidget     → QWidget (non-EditorWidget tab in TabManager), browse OpenJudge homework→problems→detail, submit code
-  │   └── Crawler         → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn
-  ├── SubmitResultPanel   → QWidget, dark-themed submission result display
-  ├── LoginDialog         → QDialog, username/password + auto-login checkbox
-  ├── KeyRecorder         → Click-to-record widget with Normal/Recording/Cleared states, conflict detection via ShortcutOverride event
-  ├── SettingsPanel       → Floating overlay with dimming background, drag/resize, 7 category pages (including Shortcuts with KeyRecorder)
-  ├── HelpPanel           → Floating overlay help panel, 14-category sidebar + QTextBrowser, scroll-sync, drag-move only, F1 toggle
-  └── FlowLayout          → Custom QLayout subclass, auto-wrapping flow layout
+  ├── editor/tabmanager.*      → QTabWidget, owns EditorWidget tabs (center, right splitter top)
+  │   └── editor/editorwidget.* → QStackedWidget[WikiLinkTextEdit | QWebEngineView(lazy) | CodeEditor | QSplitter(edit+preview,lazy) | QPdfView | SmdEditor], six-mode editor, preview WebEngine released on close
+  │       ├── editor/wikilinktextedit.* → QTextEdit subclass with QCompleter for [[wikilink]] autocomplete
+  │       ├── editor/codeeditor.* → QPlainTextEdit subclass with line numbers, syntax highlighting, auto-indent, LSP diagnostics (squiggly underlines), CompletionProvider integration
+  │       ├── smd/smdeditor.*   → QScrollArea-based cell editor for `.smd` files, Jupyter-like command/edit dual mode
+  │       │   ├── smd/smdcell.* → QFrame subclass, one cell (Markdown/C++/Python) with editor/view stack
+  │       │   ├── panels/smdoutputwidget.* → per-cell output display (stdout/stderr), 1000-line cap, auto-height
+  │       │   ├── panels/smddiagnosticspanel.* → error/warning summary panel, toggled via Ctrl+D in edit mode
+  │       │   └── lsp/smdlspmanager.* → shared LSP backend for SMD code cells, virtual-document stitching per group. Diagnostics flow: SmdLspManager/CppCompletionProvider/PythonCompletionProvider → diagnosticsUpdated(QList<SmdDiagnostic>) → CodeEditor (squiggly) + BottomPanel/SmdDiagnosticsPanel (list)
+  │       └── smd/smdformat.h   → header-only namespace, parse/serialize `---smd:<type>` delimiter format
+  ├── runner/compilererrorparser.h → header-only namespace, parse g++/MSVC/Python stderr → QList<SmdDiagnostic> (MD block diagnostics)
+  ├── panels/rightpanelcontainer.* → Unified right QDockWidget with tab bar (History/Outline/Tags/Backlinks) + QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E.
+  ├── ai/aipanel.*              → AI assistant panel (right QDockWidget, tabbed with RightPanelContainer). Toggled via ActivityBar AI button or Ctrl+Shift+A.
+  │   ├── ai/actionbar.*        → dynamic QHBoxLayout of action buttons, context-sensitive: Markdown actions (改进写作/总结笔记/提取标签/出题自测/翻译) or Code actions (解释代码/寻找Bug/添加注释/优化建议) based on AiContextManager::currentEditorMode()
+  │   ├── ai/chatarea.*         → QScrollArea with vertical layout of ChatBubble items, auto-scrolls to bottom, supports streaming append
+  │   │   └── ai/chatbubble.*   → QWidget with role label + QTextBrowser. User bubbles right-aligned blue, Assistant left-aligned gray. Lightweight Markdown→HTML converter for bold/italic/code/link/headings/lists/code blocks. 80ms debounce timer coalesces SSE chunks.
+  │   ├── InputBar              → QHBoxLayout: QLineEdit (text input) + QPushButton (发送). ReturnPressed / button click emit sendMessage.
+  │   └── ai/aihistorylistwidget.* → searchable history QListWidget with date grouping (今天/昨天/更早), green dot for active conversation, right-click context menu (rename/delete/export Markdown)
+  ├── ai/aiconversation.h       → data structs (AiConversation, AiMessage) with JSON serialization/deserialization, standalone header
+  ├── ai/aihistorymanager.*     → Singleton (QObject). Persistent conversation history storage at `{exeDir}/ai_history/`. index.json + per-conversation `conv_{uuid}.json` files. CRUD operations, per-file filtering, Markdown export.
+  ├── ai/errorjournal.*         → Singleton (QObject). ErrorRecord struct + JSON persistence to error_journal/records.json. recordFailure() called from JudgePanel::onTestFinished for non-AC results (WA/RE/TLE/MLE). requestAnalysis() builds ErrorAnalysis prompt and streams AI response back into ErrorRecord::aiAnalysis. Signals: analysisReady(recordId), recordsChanged().
+  ├── ai/errorlistpanel.*       → QWidget with status filter (ComboBox: 全部/WA/RE/TLE/MLE), keyword search (LineEdit), scrollable error list (QListWidget), expand-to-detail view (QStackedWidget switching list↔detail). Detail shows problem info, I/O comparison, AI analysis Markdown rendering, action buttons (re-analyze/delete/review). Delete/delete-all/clear-all operations through ErrorJournal.
+  ├── ai/aicontextmanager.*     → Static utility class. collectContext(EditorWidget*) returns ContextBundle{mode, filePath, fileContent, selectedText, language, cursorLine/Column, plus error analysis fields}. currentEditorMode() returns AiEditorMode::Markdown|Code|Unknown. Handles SMD cells, PDF view, code files.
+  ├── ai/prompttemplates.h      → Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. AiAction enum covers 10 actions + FreeChat (added ErrorAnalysis). actionsForMode(mode) maps editor mode to available action list. Metadata in actionInfos() provides display labels/tooltips.
+  ├── ai/aiproviders.*           → `ai/aiproviders.h/cpp`: AiProvider (abstract), AnthropicProvider, OpenAiProvider, AiProviderFactory, Message struct, MessageRole enum. All AI provider classes in one unit.
+  ├── panels/searchpanel.*      → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
+  ├── panels/judgepanel.*       → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
+  │   └── judge/judgeengine.*   → QObject managing compile→test QProcess pipeline, OJ-style results (AC/WA/RE/TLE/MLE)
+  ├── index/backlinkindex.*     → QMap-based reverse index: target file → source files for `[[wikilinks]]`
+  ├── index/tagindex.*          → QMap-based bidirectional index: tag ↔ files for `#tag` syntax
+  ├── config/configmanager.*    → Singleton, reads config.json for static configuration
+  ├── config/settingsmanager.*  → QSettings wrapper, config.ini for runtime session state
+  ├── core/languageutils.*      → Extensible language registry: extension→highlighter factory map
+  ├── runner/processrunner.*    → QObject managing compile→run QProcess pipeline
+  ├── panels/bottompanel.*      → unified bottom panel (right splitter bottom) with two tabs: OutputPanel (terminal stdout/stderr) + DiagnosticsTab (error/warning list by DiagnosticSection). Manages provider connection lifecycle on tab switch.
+  │   ├── panels/outputpanel.*  → dark-terminal output widget with stop/clear buttons
+  │   └── editor/diagnosticsection.* → reusable QWidget (header with ▾/▸ toggle + count badge), shared by BottomPanel and SmdDiagnosticsPanel
+  ├── smd/smddiagnostic.h       → standalone struct header (`smddiagnostic.h`): cellIndex, startLine/Col, endLine/Col, message, severity (1=Error, 2=Warning). Shared by all diagnostic producers/consumers.
+  ├── panels/openjudgewidget.*  → QWidget (non-EditorWidget tab in TabManager), browse OpenJudge homework→problems→detail, submit code
+  │   └── judge/crawler.*       → QNetworkAccessManager + QNetworkCookieJar, HTTP crawler for cxsjsx.openjudge.cn
+  ├── panels/submissionpanel.*  → QWidget, dark-themed submission result display
+  ├── judge/logindialog.*       → QDialog, username/password + auto-login checkbox
+  ├── config/keyrecorder.*      → Click-to-record widget with Normal/Recording/Cleared states, conflict detection via ShortcutOverride event
+  ├── panels/settingspanel.*    → Floating overlay with dimming background, drag/resize, 7 category pages (including Shortcuts with KeyRecorder)
+  ├── panels/helppanel.*        → Floating overlay help panel, 14-category sidebar + QTextBrowser, scroll-sync, drag-move only, F1 toggle
+  └── widgets/flowlayout.*      → Custom QLayout subclass, auto-wrapping flow layout
 ```
 
 ## Key Data Flow
@@ -92,126 +92,129 @@ MainWindow (mainwindow.*) → orchestrator: owns all widgets, routes signals/slo
 ## Component Details
 
 ### EditorWidget
-Six-mode QStackedWidget. Page 0 `WikiLinkTextEdit`, page 1 full preview WebEngine (lazy), page 2 `CodeEditor`, page 3 QSplitter(edit+preview, lazy), page 4 QPdfView, page 5 `SmdEditor`. Modes are mutually exclusive: enabling split preview transfers `m_textEdit` between page 0 and page 3's splitter. PdfView and SmdEdit skip preview/wikilink operations. Preview pipeline shares marked.js + KaTeX + Mermaid across full and split modes. Code blocks are pre-highlighted in C++ (regex-based, matching highlighter colors), base64-encoded into custom fenced blocks. Zoom 0.5–3.0, step 0.1. 300ms debounce clears modified flag on text revert.
+Six-mode `QStackedWidget` (page 0: WikiLinkTextEdit, page 1: full preview WebEngine (lazy), page 2: CodeEditor, page 3: QSplitter(edit+preview, lazy), page 4: QPdfView, page 5: SmdEditor). Modes are mutually exclusive: enabling split preview transfers `m_textEdit` between page 0 and page 3's splitter. PdfView and SmdEdit skip preview/wikilink operations. Preview pipeline shares marked.js + KaTeX + Mermaid across full and split modes. Code blocks are pre-highlighted in C++ (regex-based, matching highlighter colors), base64-encoded into custom fenced blocks. Zoom 0.5–3.0, step 0.1. 300ms debounce clears modified flag on text revert.
 
 **Lazy WebEngine**: `m_previewView`/`m_previewContainer`/`m_splitSplitter` are not created in the constructor — `ensurePreviewView()` creates them on first preview demand; `destroyPreviewView()` / `destroySplitPreviewWidgets()` release the Chromium process and widgets when exiting preview mode (via `deleteLater()` after `removeWidget`). `m_previewReady` and `m_splitPreviewReady` flags track initialization state. All pointer accesses are null-guarded, including `loadFinished` callbacks and `refreshPreviewTheme()`. `setCurrentWidget()` replaces hardcoded `setCurrentIndex()` for robustness.
 
 ### PDF export
 Temporary hidden QWebEngineView loads light-themed preview, waits for Mermaid async rendering via JS Promise polling, then calls `printToPdf()`.
 
-### SmdEditor (`smdeditor.h/cpp`)
+### SmdEditor (`smd/smdeditor.h/cpp`)
 QScrollArea of SmdCell widgets in QVBoxLayout. Dual mode: edit (default, blue active border) and command (Esc, purple active border). Owns separate ProcessRunner for cell execution. C++ cells auto-group by `main()` boundaries — only cells in the same group are compiled together for each execution. Python cells use a persistent process (`python_executor.py`) that maintains a shared namespace across the same `.smd` file, enabling cross-cell variable reuse. `Ctrl+D` toggles `SmdDiagnosticsPanel` (public `toggleDiagnosticsPanel()`) for aggregated error/warning display. Temp files: `smd_cell_<PID>_<counter>.ext`. Modification tracking compares serialized content with original. Forwards `modificationChanged`/`fileLoaded`/`fileSaved` to EditorWidget. **eventFilter**: installed on QApplication (global, for FocusIn/MousePress cell activation), self, and top-level window. Keyboard shortcut entry has a widget-hierarchy guard — only processes shortcuts for widgets within this SmdEditor, preventing global filter from stealing shortcuts from CodeEditor.
 
-### SmdCell (`smdcell.h/cpp`)
+### SmdCell (`smd/smdcell.h/cpp`)
 QFrame: header badge (MD blue/C++ green/Python yellow) + QStackedWidget(editor↔render) + hidden output area. Markdown uses QPlainTextEdit, code uses CodeEditor with highlighter. Auto-height via blockCount (min 1 line, max ~40, no internal scrollbar). Active cell borders: 2px blue (`#0078d4`) in edit mode, 2px purple (`#C586C0`) in command mode; inactive command-mode gray (`#3c3c3c`); edit mode transparent.
 
-### SmdOutputWidget (`smdoutputwidget.h/cpp`)
+### SmdOutputWidget (`panels/smdoutputwidget.h/cpp`)
 Per-cell output display for SMD code cell execution. Dark terminal style (#1E1E1E bg), monospace font. 1000-line hard cap; auto-height limited to ~15 visible lines with internal scrollbar beyond that. stdout white, stderr red. Each SmdOutputWidget corresponds one-to-one with a SmdCell, managed by SmdEditor.
 
-### SmdDiagnosticsPanel (`smddiagnosticspanel.h/cpp`)
+### SmdDiagnosticsPanel (`panels/smddiagnosticspanel.h/cpp`)
 QFrame-based diagnostics summary panel, toggled via Ctrl+D in edit mode. Embedded in SmdEditor's splitter, default hidden. Contains two `DiagnosticSection` widgets (Error red #F44747 / Warning yellow #CCA700) listing all LSP diagnostics from SmdLspManager. Each entry shows cell index and line number; click jumps to the corresponding cell and line. Supports debounced refresh (scheduleRefresh + 50ms timer). Shares `DiagnosticSection` component with `BottomPanel`'s diagnostics tab.
 
-### SmdLspManager (`smdlspmanager.h/cpp`)
+### SmdLspManager (`lsp/smdlspmanager.h/cpp`)
 Shared LSP backend for SMD code cells. Manages per-language LSP client adapters (clangd for C++, Jedi for Python) with virtual-document stitching — groups related cells into a single virtual translation unit for clangd, or presents individual cells to Python LSP. Tracks cell order and content changes, translates `contentChanged` signals into `textDocument/didChange` notifications. Aggregates diagnostics (red/yellow squiggles) from all cells and forwards to SmdCell::setDiagnostics() and CodeEditor::setDiagnostics(). Created and destroyed on each file load; coordinates with SmdEditor for C++ program group detection.
 
-### SmdFormat (`smdformat.h`)
+### SmdFormat (`smd/smdformat.h`)
 Header-only. `---smd:<type>` delimiters. Parse splits on regex, trims leading/trailing blank lines. Serialize writes delimiter + content.
 
-### FileExplorerWidget
+### FileExplorerWidget (`panels/fileexplorerwidget.h/cpp`)
 QFileSystemModel + custom QSortFilterProxyModel (folders-first). NoGhostDelegate prevents text ghosting during inline rename (empty name auto-restores). Drag-drop moves within root only. Breadcrumb bar using FlowLayout.
 
-### TabManager
+### TabManager (`editor/tabmanager.h/cpp`)
 CustomTabBar constrains drag bounds. Custom save prompt on close. batch updatePathsAfterMove for file tree drag operations.
 
-### HistoryPanel
+### HistoryPanel (`panels/historypanel.h/cpp`)
 Max 50 entries, auto-dedup by path. Persisted at shutdown only (SettingsManager). Auto-removes deleted entries on next access. Hosted inside RightPanelContainer (right dock, tab 0).
 
-### SearchPanel
+### SearchPanel (`panels/searchpanel.h/cpp`)
 Full-text via QDirIterator + scanning. 20 matches/file, 500 total. Gold (#FFD700) highlights on result click. Left dock (tabbed with JudgePanel). Persistent sidebar (no auto-hide).
 
-### RightPanelContainer (`rightpanelcontainer.h/cpp`)
+### RightPanelContainer (`panels/rightpanelcontainer.h/cpp`)
 Unified right QDockWidget. Top 32px tab bar with 4 icon+text tabs (History/Outline/Tags/Backlinks), bottom QStackedWidget. Toggled via toolbar [面板] button or Ctrl+Shift+E. Click-outside auto-hides via MainWindow::eventFilter. Sub-panels: HistoryPanel (tab 0), OutlinePanel (tab 1), TagPanel (tab 2), BacklinksPanel (tab 3).
 
-### OutlinePanel (`outlinepanel.h/cpp`)
+### OutlinePanel (`panels/outlinepanel.h/cpp`)
 Title outline panel hosted in RightPanelContainer (tab 1). Parses current document headings (`#` to `######`, skipping fenced code blocks) and displays them in an indented tree with hierarchical brightness (h1 brightest, h6 dimmest, h1/h2 bold). Clicking a heading jumps to the corresponding line in the editor. Auto-refreshes on tab switch and file save; clears for non-Markdown files.
 
-### BacklinkIndex
+### BacklinkIndex (`index/backlinkindex.h/cpp`)
 Reverse index (target→sources) + forward index (source→targets) for `[[wikilinks]]`. Async full build via static `buildFromPath()`. Target resolution: exact path → global index by baseName → shortest-path tiebreaker. Unlike `IndexManager::findWikiTarget` (which disambiguates via current editor context), `resolveTarget` is purely deterministic with no editor bias. Incremental ops synchronous. Owned by `IndexManager`.
 
-### BacklinksPanel (`sidebarpanels.h/cpp`)
+### BacklinksPanel (`panels/sidebarpanels.h/cpp`)
 Display-only QListWidget (NoSelection). Hosted inside RightPanelContainer (right dock, tab 3). Shows placeholder when empty. Min width 200px.
 
-### TagIndex
+### TagIndex (`index/tagindex.h/cpp`)
 Non-QObject bidirectional index. Unicode-aware regex `(*UCP)#(?!\s)([\w-]+)`. Scans only `.md`/`.markdown`. Async Phase 3 of startup scan. Owned by `IndexManager`.
 
-### TagPanel (`sidebarpanels.h/cpp`)
+### TagPanel (`panels/sidebarpanels.h/cpp`)
 Dual-mode: tag list ↔ files per tag. Back button to return. Hosted inside RightPanelContainer (right dock, tab 2).
 
-### ConfigManager
+### ConfigManager (`config/configmanager.h/cpp`)
 Singleton, reads config.json. Dot-path resolution (e.g. `"editor.zoom.min"`). Built-in defaults for missing file. All static configuration.
 
-### SettingsManager
+### SettingsManager (`config/settingsmanager.h/cpp`)
 Writes config.ini next to executable. Runtime state: geometry, recent files, OJ credentials (base64-obfuscated), user overrides. Singleton with override→ConfigManager→default chain.
 
-### TextFileUtils (`utilities.h`)
+### TextFileUtils (`core/utilities.h`)
 Header-only. 40+ text extension list + scan name filters.
 **I/O helpers** (added v0.13.10): `readTextFile(path)`, `writeTextFile(path, content)`, `readJsonFile(path)`, `writeJsonFile(path, doc)`, `isSafeRootPath(path)` — eliminate 20+ QFile/QTextStream/QJsonDocument boilerplate blocks across the project.
 
-### WikiLinkTextEdit (`wikilinktextedit.h/cpp`)
+### WikiLinkTextEdit (`editor/wikilinktextedit.h/cpp`)
 QTextEdit with QCompleter. `[[` triggers filename popup (case-insensitive prefix). `#` triggers tag autocomplete. Tab accepts, first item auto-selected.
 
-### CodeEditor (`codeeditor.h/cpp`)
+### CodeEditor (`editor/codeeditor.h/cpp`)
 QPlainTextEdit with line numbers, auto-indent, bracket completion, search highlights, code completion. Dark theme Consolas 12pt. setLanguage() installs highlighter via LanguageUtils and creates a CompletionProvider (CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider fallback). setDocumentUri() sets file identity for LSP diagnostics. Owns CompletionPopup, HoverManager, SignatureHelpManager. EscNativeFilter (Windows native event filter) catches VK_ESCAPE to close tool windows when Qt routing fails. **Diagnostics**: connects `provider->diagnosticsUpdated` → `setDiagnostics()` to cache `m_diagnostics` and draw squiggly underlines. `diagnostics()` getter exposes cache for BottomPanel restoration on tab switch. **Ctrl+D shortcut**: `m_toggleDiagnostics` QKeySequence; eventFilter handles ShortcutOverride (accept) + KeyPress (emit `diagnosticsToggleRequested()`); keyPressEvent has backup matchShortcut check.
 
-### CompletionProvider (`completionprovider.h`)
-Abstract QObject interface. Defines CompletionItem/HoverInfo/SignatureInfo structs. Pure virtual: requestCompletion, requestHover, requestSignatureHelp. Virtual no-op openDocument/updateText (overridden by LSP providers for text sync). Signals: completionReady, hoverReady, signatureHelpReady, **diagnosticsUpdated(QList<SmdDiagnostic>)**. Includes `smddiagnostic.h` for the shared `SmdDiagnostic` struct.
+### CompletionProvider (`lsp/completionprovider.h`)
+Abstract QObject interface. Defines CompletionItem/HoverInfo/SignatureInfo structs. Pure virtual: requestCompletion, requestHover, requestSignatureHelp. Virtual no-op openDocument/updateText (overridden by LSP providers for text sync). Signals: completionReady, hoverReady, signatureHelpReady, **diagnosticsUpdated(QList<SmdDiagnostic>)**. Includes `smd/smddiagnostic.h` for the shared `SmdDiagnostic` struct.
 
-### LspClient (`lspclient.h/cpp`)
+### LspClient (`lsp/lspclient.h/cpp`)
 QProcess wrapper for LSP JSON-RPC 2.0 over stdin/stdout with Content-Length framing. start() launches server process. sendRequest/sendNotification with auto-incrementing message IDs. Signals: responseReceived(id, result), notificationReceived(method, params), serverError, serverStopped. Internal parseFrames() buffers and splits incoming frames from raw byte stream.
 
-### CppCompletionProvider (`cppcompletionprovider.h/cpp`)
+### CppCompletionProvider (`lsp/cppcompletionprovider.h/cpp`)
 CompletionProvider for C/C++ via clangd LSP. Starts clangd with --fallback-style=Google (no compile_commands.json required). Sends initialize → initialized → didOpen → didChange → [completion|hover|signatureHelp]. Tracks pending requests with 500ms timeout QTimer. Parses LSP CompletionList/Hover/SignatureHelp responses into provider structs. Auto-restarts on crash. **Diagnostics**: `onNotificationReceived()` intercepts `textDocument/publishDiagnostics`, `parseDiagnostics()` converts LSP JSON ranges → `QList<SmdDiagnostic>` (cellIndex=0 for flat files), emits `diagnosticsUpdated`.
 
-### PythonCompletionProvider (`pythoncompletionprovider.h/cpp`)
+### PythonCompletionProvider (`lsp/pythoncompletionprovider.h/cpp`)
 CompletionProvider for Python via Jedi helper process. Launches `python completion_helper.py` as QProcess, communicates via stdin/stdout JSON (actions: "complete"/"hover"/"signature"/"diagnostics"). Sends full code per request (no incremental sync needed). 500ms timeout fallback. Detects Jedi import failure and signals serverFailed for fallback chain. **Diagnostics**: `openDocument()` triggers immediate `sendDiagnosticsRequest()`; `updateText()` starts 500ms debounce timer → `onDiagnosticsDebounce()` → `sendDiagnosticsRequest()`. Sends base64-encoded code as single cell (`cellIndex=0`, action="diagnostics"). `processResponse()` parses diagnostic list from helper and emits `diagnosticsUpdated`. Unlike C++ clangd (push), Python diagnostics are pull-based.
 
-### KeywordCompletionProvider (`keywordcompletionprovider.h/cpp`)
+### KeywordCompletionProvider (`editor/keywordcompletionprovider.h/cpp`)
 Fallback CompletionProvider used when clangd/Jedi are unavailable. Filters language keywords (C++/Python) and document words from current editor text by prefix match. Hover and signature help return empty results (no-op).
 
-### CompletionPopup (`completionpopup.h/cpp`)
+### CompletionPopup (`editor/completionpopup.h/cpp`)
 Floating QWidget (Qt::ToolTip, borderless) overlay for completion item selection. Dark theme (#252526 bg, #094771 selection). Custom CompletionItemDelegate draws icon + name + type tag per row. Bottom hint bar shows keyboard shortcuts. Signals itemSelected on Enter/Tab. Uses QListWidget internally. iconForType maps type strings to QIcon (function → f() icon, class → C:, variable → V:, etc.).
 
-### HoverManager (`hovermanager.h/cpp`)
+### HoverManager (`editor/hovermanager.h/cpp`)
 QObject event filter installed on CodeEditor viewport. 400ms QTimer debounce on mouse hover; Ctrl modifier bypasses delay. Calls requestHover on the active CompletionProvider. Shows result in a QToolTip popup with signature (bold header) + doc + definition location. Auto-hides on mouse move or key press.
 
-### SignatureHelpManager (`signaturehelpmanager.h/cpp)
+### SignatureHelpManager (`editor/signaturehelpmanager.h/cpp`)
 Monitors CodeEditor::cursorPositionChanged. Detects unmatched `(` by scanning backwards with parenthesis counter. 200ms debounce before request. SignatureHelpPopup (inner QWidget subclass) displays: overload navigation (◀ 1/2 ▶), signature with active parameter highlighted in yellow, and doc text. Closes on `)`, Esc, or mouse click outside. Up/Down arrow navigates overloads.
 
-### LanguageUtils (`languageutils.h/cpp`)
+### LanguageUtils (`core/languageutils.h/cpp`)
 Singleton language registry. Currently cpp (extensions: cpp/hpp/cxx/cc/c/h/hxx/hh) → CppSyntaxHighlighter and python (py/pyw/pyx) → PythonSyntaxHighlighter. Adding a language = 1 map entry + 1 highlighter file + .pro entries.
 
-### CppSyntaxHighlighter
+### CppSyntaxHighlighter (`editor/cppsyntaxhighlighter.h/cpp`)
 QSyntaxHighlighter. Dark theme: keywords #569CD6, preprocessor #C586C0, types #4EC9B0, strings #CE9178, numbers #B5CEA8, comments #6A9955. Multi-line comment block-state tracking.
 
-### PythonSyntaxHighlighter
+### PythonSyntaxHighlighter (`editor/pythonsyntaxhighlighter.h/cpp`)
 QSyntaxHighlighter. Dark theme colors. Supports f-strings and raw strings. Triple-quote (`"""`/`'''`) block-state tracking.
 
-### CompilerUtils (`compilerutils.h`)
+### BracketHighlighter (`editor/brackethighlighter.h/cpp`)
+QSyntaxHighlighter for bracket matching. Highlights matching `{}()[]` pairs and provides companion `BracketCompletionFilter` for auto-pair skipping inside string/comment contexts.
+
+### CompilerUtils (`runner/compilerutils.h`)
 Header-only. Detects g++ (QStandardPaths), MSVC cl.exe (VSCMD_VER env), python (QStandardPaths). Compile args: g++ `-std=c++17 -Wall -Wextra`, cl `/std:c++17 /W4 /EHsc`.
 
-### ProcessRunner (`processrunner.h/cpp`)
+### ProcessRunner (`runner/processrunner.h/cpp`)
 Two-phase compile→run via sequential QProcess. Methods: startCompile, startRun, startCompileAndRun (auto-transitions), startRunPython. writeInput(text) appends `\n`; writeRaw doesn't. isAcceptingInput() false during compile. Output raw (no .trimmed()). Signals: compileFinished, runFinished, processStarted, processStopped.
 
-### OutputPanel (`outputpanel.h/cpp`)
+### OutputPanel (`panels/outputpanel.h/cpp`)
 Bottom QPlainTextEdit (Consolas 10pt, #1E1E1E bg). stdout white, stderr red. stdin terminal mode via eventFilter when process running. Compilation blocks all input. On stop: focus returns to editor. Now a child tab of `BottomPanel`; close button moved to BottomPanel header bar.
 
-### BottomPanel (`bottompanel.h/cpp`)
-Unified bottom panel (QSplitter bottom) replacing standalone OutputPanel. 28px header bar with tab buttons (输出/诊断) + close button. QStackedWidget: index 0 = OutputPanel, index 1 = diagnostics page (QScrollArea with two `DiagnosticSection` widgets for errors/warnings). Stores `QList<SmdDiagnostic> m_diagnostics` and `CodeEditor *m_currentEditor`. `rebuildDiagnostics()` auto-hides sections with zero count, shows "无诊断信息" placeholder when all empty. `setCurrentEditor()` tracks which editor diagnostics belong to. Uses `DiagnosticSection` from `smddiagnosticspanel.h` (shared with `SmdDiagnosticsPanel`).
+### BottomPanel (`panels/bottompanel.h/cpp`)
+Unified bottom panel (QSplitter bottom) replacing standalone OutputPanel. 28px header bar with tab buttons (输出/诊断) + close button. QStackedWidget: index 0 = OutputPanel, index 1 = diagnostics page (QScrollArea with two `DiagnosticSection` widgets for errors/warnings). Stores `QList<SmdDiagnostic> m_diagnostics` and `CodeEditor *m_currentEditor`. `rebuildDiagnostics()` auto-hides sections with zero count, shows "无诊断信息" placeholder when all empty. `setCurrentEditor()` tracks which editor diagnostics belong to. Uses `DiagnosticSection` from `editor/diagnosticsection.h` (shared with `SmdDiagnosticsPanel`).
 
-### JudgeEngine (`judgeengine.h/cpp`)
+### JudgeEngine (`judge/judgeengine.h/cpp`)
 Discovers `.in`/`.out` pairs. Compile → warmup (empty stdin, discarded output — populates OS cache for stable first test result) → per-test execution. 1000ms timeout (TLE). 64MB memory limit with triple-capture monitoring. m_testHandled prevents dual-fire between timeout and process finish. Output: trimmed line-by-line comparison. TestResult struct includes `inputData` (read from `.in` file) for ErrorJournal recording.
 
-### JudgePanel (`judgepanel.h/cpp`)
+### JudgePanel (`panels/judgepanel.h/cpp`)
 Folder selector + OpenJudge buttons + 5-column result table + detail view. Owns JudgeEngine. Emits runAllRequested, openJudgeRequested, submitToOpenJudgeRequested. In `onTestFinished()`, non-AC results call `ErrorJournal::instance().recordFailure()`.
 
 ### ErrorJournal (`ai/errorjournal.h/cpp`)
@@ -220,13 +223,13 @@ Singleton managing persistent error records from Judge failures. `ErrorRecord` s
 ### ErrorListPanel (`ai/errorlistpanel.h/cpp`)
 QWidget with two views: list (filtered error records) and detail (expanded record info). Filter bar: status ComboBox (全部/WA/RE/TLE/MLE) + keyword search LineEdit. List items show status icon (AC green/RE red/TLE yellow/MLE purple), problem name, source file, timestamp, tags. Detail view: problem header (status/time/memory), file info, I/O comparison (input/expected/actual in monospace), AI analysis section (QTextBrowser with Markdown rendering), action buttons (重新分析/删除/已阅/返回列表). Delete-all, delete-one, mark-reviewed all go through ErrorJournal. Signals: errorClicked, deleteRecordRequested, deleteAllRequested.
 
-### OpenJudgeWidget (`openjudgewidget.h/cpp`)
+### OpenJudgeWidget (`panels/openjudgewidget.h/cpp`)
 QWidget embedded as a non-EditorWidget tab in TabManager. Three states: homework list → problem list → problem detail. Sample extraction via \<pre\> pairing. Auto-login via SettingsManager (base64-obfuscated). TabManager::openOpenJudge() creates/switches to the singleton tab; findOpenJudgeWidget() locates it. closeTab() removes directly without save prompts (qobject_cast<EditorWidget*> returns nullptr). When active, MainWindow disables save/save-as actions.
 
-### Crawler (`crawler.h/cpp`)
+### Crawler (`judge/crawler.h/cpp`)
 HTTP crawler for cxsjsx.openjudge.cn. QNetworkAccessManager + cookie jar. Login via JSON API. Submit posts raw source (percent-encoded, avoids `+`→space corruption), polls 30s for result. Debug log to `crawler_debug.log`.
 
-### SubmitResultPanel (`submissionpanel.h/cpp`)
+### SubmitResultPanel (`panels/submissionpanel.h/cpp`)
 Dark-themed result display. Color-coded status (AC green, WA/RE red, etc.) + time/memory + collapsible CE error log.
 
 ### AiPanel (`ai/aipanel.h/cpp`)
@@ -252,51 +255,54 @@ All AI provider classes in one unit. **AiProvider**: abstract QObject base class
 ### PromptTemplates (`ai/prompttemplates.h`)
 Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. 10 predefined AiActions: ImproveWriting, SummarizeNote, ExtractTags, SelfTest, Translate (Markdown); ExplainCode, FindBugs, AddComments, OptimizeCode (Code); ErrorAnalysis (Judge — no button, triggered by ErrorJournal); FreeChat (general). Each has tailored Chinese system prompt and user prompt template. ErrorAnalysis uses ctx.errorStatusCode/elapsedMs/inputData/expectedOutput/actualOutput/errorDetail fields for the prompt. actionsForMode(mode) returns appropriate action list per editor context. ActionInfo struct and actionInfos() supply display labels and tooltips for UI buttons.
 
-### SettingsPanel AI Service page (`settingspanel.cpp`)
+### SettingsPanel AI Service page (`panels/settingspanel.cpp`)
 Category "AI 服务" (index 6) in settings panel sidebar. Controls: API type ComboBox (Anthropic/OpenAI), endpoint LineEdit, API Key LineEdit (password echo), model LineEdit, max_tokens SpinBox (256-16384), system prompt TextEdit. Signals aiSettingChanged(key, value). API Key stored via SettingsManager::setAiApiKey() (base64 obfuscation, same as OJ password).
 
-### LoginDialog (`logindialog.h/cpp`)
+### LoginDialog (`judge/logindialog.h/cpp`)
 QDialog: username, password, auto-login checkbox, Login/Skip buttons.
 
-### SettingsPanel (`settingspanel.h/cpp`)
+### SettingsPanel (`panels/settingspanel.h/cpp`)
 Floating overlay with dimming background. Category sidebar (now 7 pages including Shortcuts) + reset button. Shortcuts page uses interactive KeyRecorder widgets with conflict detection and runtime QAction rebinding. Drag-move, 8-direction edge resize (min 400x300). Toggle via Ctrl+, or toolbar. Persists to config.ini [settings_overrides].
 
-### FlowLayout (`flowlayout.h/cpp`)
+### FlowLayout (`widgets/flowlayout.h/cpp`)
 Custom QLayout implementing auto-wrapping. heightForWidth() for constrained containers. Used by breadcrumb bar.
 
-### TabButtonGroup (`tabbuttongroup.h/cpp`)
+### TabButtonGroup (`widgets/tabbuttongroup.h/cpp`)
 QObject subclass encapsulating QPushButton → QStackedWidget tab switching. `addTab(button, index)` wires clicked → switch; optional `StyleProvider` callback for per-tab active/inactive stylesheets. Replaces duplicated tab-switching logic in BottomPanel and AiPanel.
 
-### WindowDragHelper (`windowdraghelper.h/cpp`)
+### WindowDragHelper (`panels/windowdraghelper.h/cpp`)
 Lightweight non-QObject value-type helper encapsulating mouse-press/move/release drag-to-move boilerplate. `handlePress(widget, event, titleBarHeight)`/`handleMove(widget, event)`/`handleRelease(event)`. Used by HelpPanel and SettingsPanel for consistent frameless dragging.
 
-### StringUtils (`utilities.h`)
+### StringUtils (`core/utilities.h`)
 Header-only namespace. `sanitizeForPython(s)` normalizes line endings and lone surrogates; `completionKindToString(kind)` maps LSP CompletionItemKind codes (1-25) to human-readable strings. Shared by CppCompletionProvider, PythonCompletionProvider, and SmdLspManager.
 
 ### MessageRole (`ai/aiproviders.h`)
-Standalone header: `enum class MessageRole { User, Assistant, System }`. Replaces separate role enums in `aiprovider.h` and `chatbubble.h` for unified AI message role typing.
+Standalone header: `enum class MessageRole { User, Assistant, System }`. Replaces separate role enums in `ai/aiproviders.h` and `ai/chatbubble.h` for unified AI message role typing.
 
-### HelpPanel (`helppanel.h/cpp`)
+### ScrollbarHider (`widgets/scrollbarhider.h/cpp`)
+Utility that installs event filters on QAbstractScrollArea to hide scrollbars when not needed. Registered once per editor widget on tab switch via `QSet` cache to avoid duplicate installation.
+
+### HelpPanel (`panels/helppanel.h/cpp`)
 Floating overlay help panel, same pattern as SettingsPanel but simpler. Semi-transparent overlay (`rgba(0,0,0,128)`) covers the full window, panel centered on top. Title bar with "帮助" label + close button, drag-move only (no resize). Left: QListWidget (170px) with 14 category items storing section IDs in Qt::UserRole. Right: QTextBrowser loading HTML from `:/help/content` resource. Scroll sync: `showEvent` triggers `computeSectionPositions()` using `QTextDocument::find()` + `blockBoundingRect().y()` for pixel-accurate Y positions; `onScrollChanged` compares scrollbar pixel value against positions and auto-highlights matching category. `m_updatingCategory` guard prevents feedback loop. Toggled via toolbar [帮助] button or F1 shortcut, handled by MainWindow::toggleHelp().
 
-### ThemeManager (`thememanager.h/cpp`)
+### ThemeManager (`core/thememanager.h/cpp`)
 Singleton (QObject) managing VS Code 2026 Dark/Light themes. Built-in `QMap<QString, QColor>` palettes for all UI components (editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar). Theme enum: `Dark=0, Light=1, System=2`. `setTheme()` resolves System via `detectSystemTheme()` (Windows registry → time-based fallback). 5-minute `QTimer` auto-refresh when in System mode. `themeChanged(Theme)` signal emitted on actual change; `applyCurrentTheme()` re-emits for full reload. Semantic color access via `color(key)`/`hex(key)`.
 
 **QSS scope optimization**: `setStyleSheetTarget(QWidget*)` allows limiting `loadQss()` output to a specific widget tree (MainWindow) instead of `qApp->setStyleSheet()`. This avoids Qt re-styling every widget in the application when the theme changes. When target is null, falls back to `qApp->setStyleSheet()` for backward compatibility.
 
-### CaptionBtn (anonymous namespace in mainwindow.cpp)
+### CaptionBtn (anonymous namespace in `core/mainwindow.cpp`)
 Custom `QPushButton` subclass for system-native title bar icons (minimize/maximize/restore/close). Uses `QApplication::style()->standardIcon(SP_TitleBarMinButton etc.)` for icons. `QPainter::fillRect` self-paints hover background for immediate visual response (no Qt style lag). Used in `setupCustomTitleBar()` for the frameless window's right-side window control buttons.
 
-### CompilerErrorParser (`compilererrorparser.h`)
+### CompilerErrorParser (`runner/compilererrorparser.h`)
 Header-only utility namespace. Parses compiler stderr output into `QList<SmdDiagnostic>` for MD preview code block diagnostics. Two functions: `parseCompileErrors()` handles g++ (`file:line:col: error/warning: message`) and MSVC (`file(line,col): error Cxxxx: message`) formats; `parsePythonTraceback()` extracts last `File "...", line N` position and final exception message. Called by `MainWindow::parseAndShowBlockDiagnostics()` after MD code block run completes.
 
-### FileExplorerWidget Toolbar (`fileexplorerwidget.cpp`)
+### FileExplorerWidget Toolbar (`panels/fileexplorerwidget.cpp`)
 Breadcrumb bar has a new toolbar below it: `QHBoxLayout` with auto-elided folder name label + collapse-all button (calls `collapseAll()` on QTreeView) + refresh button (re-sets `QFileSystemModel` root path). `updateFolderLabel()` uses `QFontMetrics::elidedText` to prevent overflow. `resizeEvent` triggers live elision update.
 
-### Preview Tab System (`tabmanager.h/cpp`)
+### Preview Tab System (`editor/tabmanager.h/cpp`)
 Single-click in file tree → `openPreview(filePath)`: if file already in a permanent tab, switch to it; if in current preview tab, just switch; if preview tab has different content, replace via `loadFile`; else create new preview tab. Preview tabs rendered in italic by `CustomTabBar::paintEvent` (sets italic font on QPainter before `drawControl`). `promotePreviewToPermanent()` clears preview status and re-renders tab title in normal font. Auto-promotion: `connectEditorSignals` attaches `modificationChanged` → `promotePreviewToPermanent()` when preview editor content is modified. `openFile()` also auto-promotes if the file is currently in the preview tab.
 
-### MD Code Block Diagnostics (`codeblockrunner.h/cpp`, `editorwidget.cpp`, `preview-template.html`)
+### MD Code Block Diagnostics (`runner/codeblockrunner.h/cpp`, `editor/editorwidget.cpp`, `preview-template.html`)
 When ▶ Run is clicked in markdown preview: `EditorWidget::runCodeBlockRequested(lang, code, blockIndex)` → `CodeBlockRunner::runCodeBlock()` saves temp file, buffers stderr through ProcessRunner. On compile/run finished (via `CompileRunManager::compileFinished/runFinished` signals): `parseAndShowBlockDiagnostics()` uses `CompilerErrorParser` to parse stderr, stores in per-file/block diagnostics cache, pushes to `BottomPanel::setDiagnostics()` and `EditorWidget::applyBlockDiagnostics()`. The latter serializes to JSON and calls JS `window.applyBlockDiagnostics()` which wraps `<code>` lines in `<span class="code-line">` and applies wavy underlines. Manual stop skips diagnostics. On tab switch, `CodeBlockRunner::loadDiagnosticsForCurrentTab()` restores cached diagnostics. Preview refresh filter: `extractCodeBlockContents()` snapshots code, only re-applies diagnostics for unchanged blocks.
 
 ## Naming Convention
