@@ -67,6 +67,7 @@ void PythonCompletionProvider::startProcess()
         appDir + QStringLiteral("/completion_helper.py"),
         appDir + QStringLiteral("/lsp/completion_helper.py"),
         appDir + QStringLiteral("/../completion_helper.py"),
+        appDir + QStringLiteral("/../lsp/completion_helper.py"),
         QStringLiteral("completion_helper.py"),
         QStringLiteral("lsp/completion_helper.py"),
     };
@@ -321,10 +322,13 @@ void PythonCompletionProvider::requestSemanticTokens()
     QByteArray payload = QJsonDocument(req).toJson(QJsonDocument::Compact) + "\n";
     m_process->write(payload);
 
-    // Tokens are fire-and-forget — the response may arrive after other
-    // requests have been processed.  We flag that tokens are in-flight
-    // and detect them by response structure rather than by m_pendingRequest.
+    // Tokens may arrive after other responses (diagnostics/completion).
+    // Use both m_tokensPending (structure-based detection) and m_pendingRequest
+    // (timeout-based fallback) so dropped/lost responses don't leave the flag
+    // stuck and prevent all future semantic highlighting.
     m_tokensPending = true;
+    m_pendingRequest = PendingRequest::SemanticTokens;
+    m_requestTimer.start(3000);
 }
 
 void PythonCompletionProvider::requestCompletion(const QString &text, int cursorPos)
@@ -541,7 +545,7 @@ void PythonCompletionProvider::onTimeout()
 {
     if (!m_process)
         return;
-    qWarning() << "PythonCompletionProvider: request timed out after 500ms";
+    qWarning() << "PythonCompletionProvider: request timed out" << "(pending:" << static_cast<int>(m_pendingRequest) << ")";
 
     if (m_pendingRequest == PendingRequest::SemanticTokens)
         m_tokensPending = false;

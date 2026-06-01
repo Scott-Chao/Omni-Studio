@@ -907,6 +907,7 @@ void SmdLspManager::startPythonProcess()
         appDir + QStringLiteral("/completion_helper.py"),
         appDir + QStringLiteral("/lsp/completion_helper.py"),
         appDir + QStringLiteral("/../completion_helper.py"),
+        appDir + QStringLiteral("/../lsp/completion_helper.py"),
         QStringLiteral("completion_helper.py"),
         QStringLiteral("lsp/completion_helper.py"),
     };
