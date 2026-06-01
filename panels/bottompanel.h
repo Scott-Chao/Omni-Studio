@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QStackedWidget>
 #include <QList>
+#include <QLabel>
 
 #include "smd/smddiagnostic.h"
 #include "widgets/tabbuttongroup.h"

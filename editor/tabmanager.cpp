@@ -726,7 +726,9 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
             QStyleOptionTab opt;
             initStyleOption(&opt, draggedIdx);
             opt.rect = QRect(0, 0, m_dragTabWidth, tabR.height());
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
             opt.position = QStyleOptionTab::Moving;
+#endif
             pp.setFont(draggedIsPreview ? italicFont : normalFont);
             if (m_equalWidth || draggedIsPreview) {
                 QString overlayText = opt.text;

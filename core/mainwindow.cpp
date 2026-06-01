@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#ifdef Q_OS_WIN
 #include <dwmapi.h>
+#endif
 #include <QPainter>
 
 namespace {
@@ -2301,7 +2303,15 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
             if (onR)            { *result = HTRIGHT;        return true; }
         }
     }
+#elif defined(Q_OS_LINUX)
+    // X11: edge resize via Qt-level event() override (windowHandle()->startSystemResize).
+    // Wayland: Qt startSystemMove/startSystemResize only (protocol restriction).
+    // Native xcb edge detection can be added as an optimization when CMake + xcb is available.
+    Q_UNUSED(eventType);
+    Q_UNUSED(message);
+    Q_UNUSED(result);
 #else
+    // macOS: same Qt-level fallback.
     Q_UNUSED(result);
 #endif
     return QMainWindow::nativeEvent(eventType, message, result);

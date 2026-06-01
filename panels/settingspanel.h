@@ -13,6 +13,7 @@ class QLabel;
 class QListWidget;
 class QPushButton;
 class QScrollArea;
+class QToolButton;
 class QSlider;
 class QSpinBox;
 class QDoubleSpinBox;

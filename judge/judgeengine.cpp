@@ -10,9 +10,11 @@
 #include <QCoreApplication>
 #include <QEventLoop>
 
+#ifdef Q_OS_WIN
 #include <windows.h>
 #include <psapi.h>
 #pragma comment(lib, "psapi.lib")
+#endif
 
 JudgeEngine::JudgeEngine(QObject *parent)
     : QObject(parent)
@@ -431,11 +433,12 @@ void JudgeEngine::captureMemory()
     if (!m_testProcess)
         return;
 
-    const DWORD pid = static_cast<DWORD>(m_testProcess->processId());
-    if (pid == 0)
+    const qint64 pid = m_testProcess->processId();
+    if (pid <= 0)
         return;
 
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+#ifdef Q_OS_WIN
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
     if (!hProcess)
         return;
 
@@ -446,6 +449,30 @@ void JudgeEngine::captureMemory()
             m_peakMemoryKb = memKb;
     }
     CloseHandle(hProcess);
+#elif defined(Q_OS_LINUX)
+    QFile statusFile(QStringLiteral("/proc/%1/status").arg(pid));
+    if (!statusFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    while (!statusFile.atEnd()) {
+        QString line = QString::fromUtf8(statusFile.readLine());
+        if (line.startsWith(QStringLiteral("VmRSS:"))) {
+            // Line format: "VmRSS:     12345 kB"
+            QString valueStr = line.mid(7).trimmed();
+            int spaceIdx = valueStr.indexOf(QLatin1Char(' '));
+            if (spaceIdx > 0)
+                valueStr = valueStr.left(spaceIdx);
+            bool ok = false;
+            quint64 memKb = valueStr.toULongLong(&ok);
+            if (ok && memKb > m_peakMemoryKb)
+                m_peakMemoryKb = memKb;
+            break;
+        }
+    }
+#else
+    // macOS: task_info from <mach/task_info.h> (to be implemented)
+    Q_UNUSED(pid);
+#endif
 }
 
 // ---- Utilities ----
