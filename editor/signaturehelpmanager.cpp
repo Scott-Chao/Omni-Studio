@@ -1,6 +1,7 @@
 #include "signaturehelpmanager.h"
 #include "editor/codeeditor.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -181,11 +182,7 @@ void SignatureHelpPopup::updatePosition()
     }
 
     // Keep within screen bounds
-    geo = geometry();
-    if (geo.right() > sg.right()) move(sg.right() - geo.width(), geo.y());
-    if (geo.left() < sg.left())   move(sg.left(), geo.y());
-    if (geo.top() < sg.top())     move(geo.x(), sg.top());
-    if (geo.bottom() > sg.bottom()) move(geo.x(), sg.bottom() - geo.height());
+    ScreenUtils::clampToScreen(this);
 }
 
 void SignatureHelpPopup::mouseReleaseEvent(QMouseEvent *event)

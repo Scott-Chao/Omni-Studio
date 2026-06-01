@@ -1,9 +1,8 @@
 #include "completionpopup.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 #include <QVBoxLayout>
 #include <QPainter>
-#include <QScreen>
-#include <QGuiApplication>
 #include <QKeyEvent>
 
 // ============================================================
@@ -151,15 +150,7 @@ void CompletionPopup::showItems(const QList<CompletionItem> &items)
     resize(w, listHeight + m_hintLabel->height());
 
     // Ensure within screen bounds
-    QScreen *screen = QGuiApplication::primaryScreen();
-    if (screen) {
-        QRect sg = screen->availableGeometry();
-        QRect geo = geometry();
-        if (geo.right() > sg.right()) move(sg.right() - geo.width(), geo.y());
-        if (geo.left() < sg.left())   move(sg.left(), geo.y());
-        if (geo.bottom() > sg.bottom()) move(geo.x(), sg.bottom() - geo.height());
-        if (geo.top() < sg.top())     move(geo.x(), sg.top());
-    }
+    ScreenUtils::clampToScreen(this);
 
     show();
     raise();

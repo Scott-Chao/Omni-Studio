@@ -14,6 +14,9 @@
 #include <QPainter>
 #include <QColor>
 #include <QRegularExpression>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QWidget>
 #include "config/configmanager.h"
 
 // ── String utilities ────────────────────────────────────────────────────────
@@ -404,6 +407,30 @@ inline QString markdownToHtml(const QString &md, const QColor &textColor = QColo
 }
 
 } // namespace MarkdownUtils
+
+// ── Screen utilities ─────────────────────────────────────────────────────────
+
+namespace ScreenUtils {
+
+// Clamp widget geometry to the screen's available geometry.
+// Extracted from CompletionPopup and SignatureHelpPopup which had
+// identical implementations.
+inline void clampToScreen(QWidget *widget)
+{
+    QScreen *screen = widget->screen();
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    QRect sg = screen->availableGeometry();
+    QRect geo = widget->geometry();
+    if (geo.right() > sg.right()) widget->move(sg.right() - geo.width(), geo.y());
+    if (geo.left() < sg.left())   widget->move(sg.left(), geo.y());
+    if (geo.bottom() > sg.bottom()) widget->move(geo.x(), sg.bottom() - geo.height());
+    if (geo.top() < sg.top())     widget->move(geo.x(), sg.top());
+}
+
+} // namespace ScreenUtils
 
 // ── Debug logging ───────────────────────────────────────────────────────────
 
