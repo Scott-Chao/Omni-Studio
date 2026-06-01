@@ -1,8 +1,8 @@
 #include "indexmanager.h"
 #include "backlinkindex.h"
 #include "tagindex.h"
-#include "tabmanager.h"
-#include "editorwidget.h"
+#include "editor/tabmanager.h"
+#include "editor/editorwidget.h"
 #include "utilities.h"
 
 #include <QThread>

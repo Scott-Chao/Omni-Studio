@@ -1,5 +1,5 @@
 #include "smdcell.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include "lsp/cppcompletionprovider.h"
 #include "lsp/pythoncompletionprovider.h"
 #include "languageutils.h"

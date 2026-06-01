@@ -1,5 +1,5 @@
 #include "aicontextmanager.h"
-#include "editorwidget.h"
+#include "editor/editorwidget.h"
 #include "smd/smdeditor.h"
 #include "smd/smdcell.h"
 #include "languageutils.h"

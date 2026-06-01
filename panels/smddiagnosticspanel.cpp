@@ -2,7 +2,7 @@
 #include "smd/smdeditor.h"
 #include "lsp/smdlspmanager.h"
 #include "thememanager.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 
 #include <QApplication>
 

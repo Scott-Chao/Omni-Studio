@@ -1,5 +1,5 @@
 #include "signaturehelpmanager.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include "thememanager.h"
 
 #include <QVBoxLayout>

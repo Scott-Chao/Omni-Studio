@@ -5,7 +5,7 @@
 #include "errorjournal.h"
 #include "aihistorylistwidget.h"
 #include "thememanager.h"
-#include "tabbuttongroup.h"
+#include "editor/tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

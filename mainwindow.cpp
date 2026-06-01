@@ -26,11 +26,11 @@ protected:
 
 } // namespace
 #include "panels/fileexplorerwidget.h"
-#include "editorwidget.h"
+#include "editor/editorwidget.h"
 #include "config/settingsmanager.h"
 #include "config/configmanager.h"
 #include "thememanager.h"
-#include "tabmanager.h"
+#include "editor/tabmanager.h"
 #include "panels/historypanel.h"
 #include "index/backlinkindex.h"
 #include "panels/sidebarpanels.h"
@@ -40,7 +40,7 @@ protected:
 #include "panels/rightpanelcontainer.h"
 #include "panels/outputpanel.h"
 #include "panels/bottompanel.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include "runner/compilerunmanager.h"
 #include "runner/codeblockrunner.h"
 #include "judge/openjudgemanager.h"
@@ -64,9 +64,9 @@ protected:
 #include "crashrecoverymanager.h"
 #include "smd/smdformat.h"
 #include "smd/smdeditor.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include <QPdfView>
-#include "scrollbarhider.h"
+#include "editor/scrollbarhider.h"
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>

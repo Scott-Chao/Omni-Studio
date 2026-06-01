@@ -1,10 +1,10 @@
 #include "bottompanel.h"
 #include "outputpanel.h"
-#include "diagnosticsection.h"
-#include "codeeditor.h"
+#include "editor/diagnosticsection.h"
+#include "editor/codeeditor.h"
 #include "utilities.h"
 #include "thememanager.h"
-#include "tabbuttongroup.h"
+#include "editor/tabbuttongroup.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

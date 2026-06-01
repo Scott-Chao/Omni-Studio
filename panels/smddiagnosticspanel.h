@@ -12,7 +12,7 @@
 #include <QList>
 
 #include "smd/smddiagnostic.h"
-#include "diagnosticsection.h"
+#include "editor/diagnosticsection.h"
 
 class SmdEditor;
 

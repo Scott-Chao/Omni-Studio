@@ -1,5 +1,5 @@
 #include "hovermanager.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include "smd/smddiagnostic.h"
 #include "thememanager.h"
 

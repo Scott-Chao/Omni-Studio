@@ -1,6 +1,6 @@
 #include "codeblockrunner.h"
-#include "tabmanager.h"
-#include "editorwidget.h"
+#include "editor/tabmanager.h"
+#include "editor/editorwidget.h"
 #include "panels/bottompanel.h"
 #include "panels/outputpanel.h"
 #include "compilerunmanager.h"

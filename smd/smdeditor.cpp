@@ -5,7 +5,7 @@
 #include "runner/processrunner.h"
 #include "lsp/smdlspmanager.h"
 #include "panels/smddiagnosticspanel.h"
-#include "codeeditor.h"
+#include "editor/codeeditor.h"
 #include "runner/compilerutils.h"
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"

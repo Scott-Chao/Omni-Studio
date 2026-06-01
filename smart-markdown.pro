@@ -30,14 +30,14 @@ SOURCES += \
     config/configmanager.cpp \
     crashrecoverymanager.cpp \
     index/backlinkindex.cpp \
-    brackethighlighter.cpp \
-    codeeditor.cpp \
+    lsp/brackethighlighter.cpp \
+    editor/codeeditor.cpp \
     runner/codeblockrunner.cpp \
     runner/compilerunmanager.cpp \
     lsp/cppsyntaxhighlighter.cpp \
     judge/crawler.cpp \
-    diagnosticsection.cpp \
-    editorwidget.cpp \
+    editor/diagnosticsection.cpp \
+    editor/editorwidget.cpp \
     flowlayout.cpp \
     languageutils.cpp \
     lsp/completionpopup.cpp \
@@ -48,7 +48,7 @@ SOURCES += \
     lsp/pythoncompletionprovider.cpp \
     lsp/signaturehelpmanager.cpp \
     lsp/smdlspmanager.cpp \
-    wikilinktextedit.cpp \
+    editor/wikilinktextedit.cpp \
     judge/judgeengine.cpp \
     keyrecorder.cpp \
     judge/logindialog.cpp \
@@ -69,11 +69,11 @@ SOURCES += \
     panels/submissionpanel.cpp \
     panels/smddiagnosticspanel.cpp \
     panels/smdoutputwidget.cpp \
-    tabbuttongroup.cpp \
+    editor/tabbuttongroup.cpp \
     windowdraghelper.cpp \
     runner/processrunner.cpp \
     lsp/pythonsyntaxhighlighter.cpp \
-    scrollbarhider.cpp \
+    editor/scrollbarhider.cpp \
     config/settingschangehandler.cpp \
     index/indexmanager.cpp \
     smd/smdcell.cpp \
@@ -82,7 +82,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     config/settingsmanager.cpp \
-    tabmanager.cpp
+    editor/tabmanager.cpp
 
 HEADERS += \
     thememanager.h \
@@ -105,16 +105,16 @@ HEADERS += \
     utilities.h \
     lsp/keywords.h \
     index/backlinkindex.h \
-    codeeditor.h \
+    editor/codeeditor.h \
     runner/codeblockrunner.h \
     runner/compilererrorparser.h \
     runner/compilerunmanager.h \
     runner/compilerutils.h \
-    brackethighlighter.h \
+    lsp/brackethighlighter.h \
     lsp/cppsyntaxhighlighter.h \
     judge/crawler.h \
-    diagnosticsection.h \
-    editorwidget.h \
+    editor/diagnosticsection.h \
+    editor/editorwidget.h \
     flowlayout.h \
     languageutils.h \
     lsp/completionpopup.h \
@@ -126,7 +126,7 @@ HEADERS += \
     lsp/pythoncompletionprovider.h \
     lsp/signaturehelpmanager.h \
     lsp/smdlspmanager.h \
-    wikilinktextedit.h \
+    editor/wikilinktextedit.h \
     judge/judgeengine.h \
     keyrecorder.h \
     judge/logindialog.h \
@@ -147,12 +147,12 @@ HEADERS += \
     panels/submissionpanel.h \
     panels/smddiagnosticspanel.h \
     panels/smdoutputwidget.h \
-    tabbuttongroup.h \
+    editor/tabbuttongroup.h \
     windowdraghelper.h \
     smd/smddiagnostic.h \
     runner/processrunner.h \
     lsp/pythonsyntaxhighlighter.h \
-    scrollbarhider.h \
+    editor/scrollbarhider.h \
     config/settingschangehandler.h \
     index/indexmanager.h \
     smd/smdcell.h \
@@ -161,7 +161,7 @@ HEADERS += \
     index/tagindex.h \
     mainwindow.h \
     config/settingsmanager.h \
-    tabmanager.h
+    editor/tabmanager.h
 
 FORMS += \
     mainwindow.ui
