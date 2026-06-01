@@ -70,6 +70,7 @@ private slots:
     void onRefresh();
     void onPrevPage();
     void onNextPage();
+    void changePage(int delta);
     void onSelectClicked();
     void onToggleSidebar();
     void onToggleProblem();

@@ -139,21 +139,6 @@ QString replaceWikiLinkText(const QString &content, const QString &oldText, cons
 }
 } // anonymous namespace
 
-// ── Helper: create themed icon from SVG ──────────────────────────
-static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 24)
-{
-    QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull())
-        return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
-    QPainter p(&img);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
-    p.end();
-    return QIcon(QPixmap::fromImage(img));
-}
-
 // ── Helper: dock widget title bar with themed close button ──────
 static QWidget *createDockTitleBar(const QString &title, QDockWidget *dock)
 {
@@ -169,7 +154,7 @@ static QWidget *createDockTitleBar(const QString &title, QDockWidget *dock)
 
     auto *closeBtn = new QPushButton;
     closeBtn->setObjectName("dockTitleCloseBtn");
-    closeBtn->setIcon(coloredSvgIcon(":/icons/close",
+    closeBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/close",
         ThemeManager::instance().color("titleBar.foreground"), 16));
     closeBtn->setIconSize(QSize(16, 16));
     closeBtn->setFixedSize(22, 22);
@@ -2147,7 +2132,7 @@ void MainWindow::refreshTitleBarStyle()
 
     // File menu button — wider hover, themed "v" chevron, no native menu-indicator
     QColor fileFg = tm.color("titleBar.foreground");
-    m_fileMenuBtn->setIcon(coloredSvgIcon(":/icons/chevron-down", fileFg, 7));
+    m_fileMenuBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/chevron-down", fileFg, 7));
     m_fileMenuBtn->setStyleSheet(QStringLiteral(
         "QToolButton {"
         "  color: %1; background: transparent; border: none;"
@@ -2161,11 +2146,11 @@ void MainWindow::refreshTitleBarStyle()
 
     // Run buttons: main (green ▶) + dropdown (themed chevron)
     if (m_toolbarRunAction) {
-        m_toolbarRunAction->setIcon(coloredSvgIcon(":/icons/run", QColor("#4CAF50")));
+        m_toolbarRunAction->setIcon(IconUtils::coloredSvgIcon(":/icons/run", QColor("#4CAF50"), 24));
     }
     if (m_toolbarDropdownAction) {
         m_toolbarDropdownAction->setIcon(
-            coloredSvgIcon(":/icons/chevron-down", tm.color("titleBar.foreground"), 6));
+            IconUtils::coloredSvgIcon(":/icons/chevron-down", tm.color("titleBar.foreground"), 6));
     }
     // Style the QToolButton widgets created by addAction()
     if (auto *btn = qobject_cast<QToolButton *>(
@@ -2219,15 +2204,15 @@ void MainWindow::refreshTitleBarStyle()
 
     // Themed toolbar action icons — match activity bar icons
     QColor titleFg = tm.color("activityBar.foreground");
-    m_helpAction->setIcon(coloredSvgIcon(":/icons/help", titleFg));
-    toggleRightPanelAction->setIcon(coloredSvgIcon(":/icons/panel", titleFg));
-    m_previewAction->setIcon(coloredSvgIcon(":/icons/preview", titleFg));
-    m_splitPreviewAction->setIcon(coloredSvgIcon(":/icons/split", titleFg));
+    m_helpAction->setIcon(IconUtils::coloredSvgIcon(":/icons/help", titleFg, 24));
+    toggleRightPanelAction->setIcon(IconUtils::coloredSvgIcon(":/icons/panel", titleFg, 24));
+    m_previewAction->setIcon(IconUtils::coloredSvgIcon(":/icons/preview", titleFg, 24));
+    m_splitPreviewAction->setIcon(IconUtils::coloredSvgIcon(":/icons/split", titleFg, 24));
 
     // Themed close button icons — adapt to titleBar.foreground for light/dark mode
     QColor closeFg = tm.color("titleBar.foreground");
     auto recolorCloseBtn = [&](QPushButton *btn) {
-        if (btn) btn->setIcon(coloredSvgIcon(":/icons/close", closeFg, 16));
+        if (btn) btn->setIcon(IconUtils::coloredSvgIcon(":/icons/close", closeFg, 16));
     };
     recolorCloseBtn(m_leftSearchCloseBtn);
     recolorCloseBtn(m_leftJudgeCloseBtn);

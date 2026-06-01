@@ -32,13 +32,9 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QJsonObject>
 #include <QColor>
 #include <QDateTime>
-#include <QFile>
-#include <QTextStream>
 #include <QCoreApplication>
-#include <QDir>
 #include <QPageSize>
 #include <QWebEngineView>
 

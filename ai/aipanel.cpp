@@ -110,22 +110,22 @@ AiPanel::AiPanel(QWidget *parent)
         emit actionTriggered(static_cast<int>(action));
     });
 
+    auto doSend = [this]() {
+        QString text = m_inputEdit->text().trimmed();
+        if (!text.isEmpty()) {
+            emit sendMessage(text);
+            m_inputEdit->clear();
+        }
+    };
+
     connect(m_inputEdit, &QLineEdit::textChanged, this, [this](const QString &text) {
         m_sendBtn->setEnabled(!text.trimmed().isEmpty());
     });
-    connect(m_inputEdit, &QLineEdit::returnPressed, this, [this]() {
-        QString text = m_inputEdit->text().trimmed();
-        if (!text.isEmpty()) {
-            emit sendMessage(text);
-            m_inputEdit->clear();
-        }
+    connect(m_inputEdit, &QLineEdit::returnPressed, this, [doSend]() {
+        doSend();
     });
-    connect(m_sendBtn, &QPushButton::clicked, this, [this]() {
-        QString text = m_inputEdit->text().trimmed();
-        if (!text.isEmpty()) {
-            emit sendMessage(text);
-            m_inputEdit->clear();
-        }
+    connect(m_sendBtn, &QPushButton::clicked, this, [doSend]() {
+        doSend();
     });
     connect(m_clearBtn, &QPushButton::clicked, this, [this]() {
         clearChat();

@@ -1,5 +1,6 @@
 #include "fileexplorerwidget.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 #include "config/settingsmanager.h"
 #include <QFileDialog>
 #include <QDir>
@@ -24,20 +25,6 @@
 #include <QImage>
 
 namespace {
-
-QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
-{
-    QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull())
-        return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
-    QPainter p(&img);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
-    p.end();
-    return QIcon(QPixmap::fromImage(img));
-}
 
 // QTreeView subclass that draws custom ">" / "v" chevrons via drawBranches()
 // (bypassing the style/QSS chain to avoid hover-dependent layout shifts) and
@@ -609,10 +596,10 @@ void FileExplorerWidget::refreshStyle()
     m_collapseAllBtn->setStyleSheet(btnStyle);
 
     QColor iconColor = tm.color("sideBar.foreground");
-    m_newFileBtn->setIcon(coloredSvgIcon(":/icons/file-plus", iconColor, 14));
-    m_newFolderBtn->setIcon(coloredSvgIcon(":/icons/folder-plus", iconColor, 14));
-    m_refreshBtn->setIcon(coloredSvgIcon(":/icons/refresh", iconColor, 14));
-    m_collapseAllBtn->setIcon(coloredSvgIcon(":/icons/collapse-all", iconColor, 14));
+    m_newFileBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/file-plus", iconColor, 14));
+    m_newFolderBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/folder-plus", iconColor, 14));
+    m_refreshBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/refresh", iconColor, 14));
+    m_collapseAllBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/collapse-all", iconColor, 14));
 
     updateBreadcrumb();
 }

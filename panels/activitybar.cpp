@@ -1,24 +1,8 @@
 #include "activitybar.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 #include <QFont>
 #include <QIcon>
-#include <QPainter>
-
-namespace {
-QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
-{
-    QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull())
-        return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
-    QPainter p(&img);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
-    p.end();
-    return QIcon(QPixmap::fromImage(img));
-}
-} // anonymous namespace
 
 ActivityBar::ActivityBar(QWidget *parent)
     : QWidget(parent)
@@ -67,12 +51,12 @@ void ActivityBar::refreshStyle()
 
     QColor fg = tm.color("activityBar.foreground");
     const int iconSize = 22;
-    m_explorerBtn->setIcon(coloredSvgIcon(":/icons/file", fg, iconSize));
-    m_searchBtn->setIcon(coloredSvgIcon(":/icons/search", fg, iconSize));
-    m_aiBtn->setIcon(coloredSvgIcon(":/icons/ai", fg, iconSize));
-    m_settingsBtn->setIcon(coloredSvgIcon(":/icons/settings", fg, iconSize));
-    m_exportPdfBtn->setIcon(coloredSvgIcon(":/icons/pdf", fg, iconSize));
-    m_judgeBtn->setIcon(coloredSvgIcon(":/icons/judge", fg, iconSize));
+    m_explorerBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/file", fg, iconSize));
+    m_searchBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/search", fg, iconSize));
+    m_aiBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/ai", fg, iconSize));
+    m_settingsBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/settings", fg, iconSize));
+    m_exportPdfBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/pdf", fg, iconSize));
+    m_judgeBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/judge", fg, iconSize));
 
     updateButtonStyle(m_explorerBtn, m_explorerActive);
     updateButtonStyle(m_searchBtn, m_searchActive);

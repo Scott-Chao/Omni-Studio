@@ -10,6 +10,8 @@
 #include <QProcess>
 #include <QDateTime>
 #include <QStandardPaths>
+#include <QIcon>
+#include <QPainter>
 #include "config/configmanager.h"
 
 // ── String utilities ────────────────────────────────────────────────────────
@@ -65,6 +67,26 @@ inline QString completionKindToString(int kind)
 }
 
 } // namespace StringUtils
+
+// ── Icon utilities ─────────────────────────────────────────────────────────
+
+namespace IconUtils {
+
+inline QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
+{
+    QIcon src(svgPath);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
+    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
+    QPainter p(&img);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(img.rect(), color);
+    p.end();
+    return QIcon(QPixmap::fromImage(img));
+}
+
+} // namespace IconUtils
 
 // ── File utilities ──────────────────────────────────────────────────────────
 

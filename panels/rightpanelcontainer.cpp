@@ -1,5 +1,6 @@
 #include "rightpanelcontainer.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 #include "historypanel.h"
 #include "outlinepanel.h"
 #include "sidebarpanels.h"
@@ -8,22 +9,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QIcon>
-#include <QPainter>
-
-namespace {
-QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 14)
-{
-    QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull()) return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
-    QPainter p(&img);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
-    p.end();
-    return QIcon(QPixmap::fromImage(img));
-}
-} // anonymous namespace
 
 RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *parent)
     : QWidget(parent)
@@ -110,7 +95,7 @@ void RightPanelContainer::refreshStyle()
 
     auto fg = tm.color("sideBar.foreground");
     for (int i = 0; i < m_tabButtons.size(); ++i)
-        m_tabButtons[i]->setIcon(coloredSvgIcon(m_iconPaths[i], fg));
+        m_tabButtons[i]->setIcon(IconUtils::coloredSvgIcon(m_iconPaths[i], fg, 14));
 }
 
 QPushButton *RightPanelContainer::createTabButton(const QString &text, const QIcon &icon, int index)

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.14.1）
+## 功能说明文档（v0.14.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.14.1
-- 为程序增加图标
+### 代码简化与重复清理
+- `coloredSvgIcon()` 从 4 个文件中提取至 `IconUtils` 命名空间（`core/utilities.h`），删除 4 份独立拷贝
+- `JudgeEngine::readFile()` 私有方法替换为 `TextFileUtils::readTextFile()` 工具调用，删除重复文件读取逻辑
+- `AiPanel` 中 `returnPressed` 与 `clicked` 两处重复的发送消息 lambda 提取为共用 `doSend` 局部 lambda
+- `OpenJudgeWidget::onPrevPage()` 与 `onNextPage()` 合并为 `changePage(int delta)`
+- 清理 `codeeditor.cpp` 中 5 个头文件的重复包含及一处 Ctrl+D 空 if 体死代码
+- 清理 `editorwidget.cpp` 中 `QJsonObject`/`QFile`/`QTextStream`/`QDir` 的重复包含
 
 ### 1. `MainWindow` - 主窗口控制器
 

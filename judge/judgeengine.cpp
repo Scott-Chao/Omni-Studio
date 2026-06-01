@@ -50,8 +50,8 @@ QVector<JudgeEngine::TestCase> JudgeEngine::discoverTests() const
             tc.name = baseName;
             tc.inputFile = inInfo.absoluteFilePath();
             tc.expectedOutputFile = outPath;
-            tc.inputData = readFile(tc.inputFile);
-            tc.expectedOutput = readFile(tc.expectedOutputFile);
+            tc.inputData = TextFileUtils::readTextFile(tc.inputFile);
+            tc.expectedOutput = TextFileUtils::readTextFile(tc.expectedOutputFile);
             tests.append(tc);
         }
     }
@@ -449,15 +449,6 @@ void JudgeEngine::captureMemory()
 }
 
 // ---- Utilities ----
-
-QString JudgeEngine::readFile(const QString &path) const
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        return {};
-    QTextStream in(&file);
-    return in.readAll();
-}
 
 bool JudgeEngine::outputMatches(const QString &actual, const QString &expected)
 {

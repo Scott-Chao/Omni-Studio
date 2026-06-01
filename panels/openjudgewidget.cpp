@@ -629,32 +629,20 @@ void OpenJudgeWidget::onPastPageReady(const QList<HomeworkItem> &past,
 // Pagination
 // ======================================================================
 
-void OpenJudgeWidget::onPrevPage()
+void OpenJudgeWidget::onPrevPage() { changePage(-1); }
+void OpenJudgeWidget::onNextPage() { changePage(+1); }
+
+void OpenJudgeWidget::changePage(int delta)
 {
-    if (!m_pastPageInfo.hasPrev) return;
+    bool ok = (delta < 0) ? m_pastPageInfo.hasPrev : m_pastPageInfo.hasNext;
+    if (!ok) return;
 
     QUrl url(m_pastPageInfo.url);
     QUrlQuery query(url);
-    int newPage = m_pastPageInfo.currentPage - 1;
+    int newPage = m_pastPageInfo.currentPage + delta;
     query.removeAllQueryItems(QStringLiteral("page"));
     if (newPage > 1)
         query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
-    url.setQuery(query);
-
-    m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
-    m_refreshBtn->setEnabled(false);
-    m_crawler->fetchPastPage(url.toString());
-}
-
-void OpenJudgeWidget::onNextPage()
-{
-    if (!m_pastPageInfo.hasNext) return;
-
-    QUrl url(m_pastPageInfo.url);
-    QUrlQuery query(url);
-    int newPage = m_pastPageInfo.currentPage + 1;
-    query.removeAllQueryItems(QStringLiteral("page"));
-    query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
     url.setQuery(query);
 
     m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
