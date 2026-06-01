@@ -61,8 +61,20 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.13.27
-- 修复 `Ctrl+N` 无法使用的问题
+### 重构 v0.14.0
+- 将源代码按功能模块重组到以下子目录：
+  - `core/` — 核心组件：MainWindow、ThemeManager、CrashRecoveryManager、LanguageUtils、utilities.h
+  - `ai/` — AI 助手：AiPanel、AiRequestHandler、ChatBubble、ActionBar、AiProviders、ErrorJournal 等
+  - `editor/` — 编辑器组件：EditorWidget、CodeEditor、TabManager、SyntaxHighlighters、CompletionPopup、HoverManager、SignatureHelpManager、WikiLinkTextEdit
+  - `panels/` — 面板 UI：FileExplorer、RightPanelContainer、BottomPanel、SearchPanel、JudgePanel、SettingsPanel、HelpPanel 等
+  - `runner/` — 编译运行：CompileRunManager、ProcessRunner、CodeBlockRunner、CompilerErrorParser
+  - `lsp/` — LSP 语言服务：LspClient、CompletionProvider、Cpp/PythonCompletionProvider、SmdLspManager
+  - `smd/` — SMD 单元格编辑器：SmdEditor、SmdCell、SmdFormat、SmdDiagnostic
+  - `config/` — 配置管理：ConfigManager、SettingsManager、KeyRecorder、SettingsChangeHandler
+  - `index/` — 索引：IndexManager、BacklinkIndex、TagIndex
+  - `judge/` — 评测：JudgeEngine、Crawler、LoginDialog、OpenJudgeManager
+  - `widgets/` — 可复用组件：FlowLayout、TabButtonGroup、ScrollbarHider、TitleBarButton
+- 所有 #include 路径同步更新为带目录前缀的形式（如 `"core/thememanager.h"`）
 
 ### 1. `MainWindow` - 主窗口控制器
 
