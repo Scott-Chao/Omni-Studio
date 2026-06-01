@@ -1,0 +1,98 @@
+name: macOS Build
+
+on:
+  push:
+    branches: [crossos]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: brew install qt
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(sysctl -n hw.logicalcpu)
+
+      - name: Bundle .app with Qt frameworks
+        run: |
+          $(brew --prefix qt)/bin/macdeployqt build/SmartMarkdown.app \
+            -qmldir=. -verbose=2
+
+      - name: Remove broken signatures and re-sign
+        run: |
+          APP="build/SmartMarkdown.app"
+
+          # 1. Remove all existing signatures (macdeployqt breaks Qt's own sigs)
+          find "$APP" -type f \( -name "*.dylib" -o -name "SmartMarkdown" \) \
+            -exec codesign --remove-signature {} \; 2>/dev/null || true
+
+          # 2. Remove signatures from framework binaries
+          find "$APP" -type d -name "*.framework" | while read fw; do
+            name=$(basename "$fw" .framework)
+            for loc in "$fw/Versions/Current/$name" "$fw/$name"; do
+              [ -f "$loc" ] && codesign --remove-signature "$loc" 2>/dev/null || true
+            done
+          done
+
+          # 3. Remove QtWebEngineProcess signature
+          find "$APP" -name "QtWebEngineProcess" -type f \
+            -exec codesign --remove-signature {} \; 2>/dev/null || true
+
+          # 4. Re-sign from inside out.
+          #    --preserve-metadata keeps Qt's framework identifiers and
+          #    entitlements so the OS recognizes them correctly.
+          #    Sign helpers first, then frameworks, then main binary, then bundle.
+          find "$APP" -name "*.dylib" -type f \
+            -exec codesign --force --sign - --preserve-metadata=identifier,entitlements \
+              --timestamp=none {} \; 2>/dev/null || true
+
+          find "$APP" -type d -name "*.framework" | while read fw; do
+            name=$(basename "$fw" .framework)
+            for loc in "$fw/Versions/Current/$name" "$fw/$name"; do
+              [ -f "$loc" ] && codesign --force --sign - \
+                --preserve-metadata=identifier,entitlements \
+                --timestamp=none "$loc" 2>/dev/null || true
+            done
+          done
+
+          find "$APP" -name "QtWebEngineProcess" -type f \
+            -exec codesign --force --sign - \
+              --preserve-metadata=identifier,entitlements \
+              --timestamp=none {} \; 2>/dev/null || true
+
+          codesign --force --sign - \
+            --preserve-metadata=identifier,entitlements \
+            --timestamp=none "$APP/Contents/MacOS/SmartMarkdown"
+
+          codesign --force --sign - \
+            --preserve-metadata=identifier,entitlements \
+            --timestamp=none "$APP"
+
+      - name: Verify signing
+        run: |
+          APP="build/SmartMarkdown.app"
+          echo "=== CodeSign status ==="
+          codesign -dvvv --no-strict "$APP" 2>&1 || true
+          echo "=== Gatekeeper assessment ==="
+          spctl -a -v "$APP" 2>&1 || true
+
+      - name: Package .app as zip (preserve bundle structure)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/SmartMarkdown.app SmartMarkdown-macOS.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartMarkdown-macOS
+          path: SmartMarkdown-macOS.zip
