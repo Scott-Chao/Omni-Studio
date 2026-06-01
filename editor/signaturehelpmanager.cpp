@@ -169,15 +169,29 @@ void SignatureHelpPopup::updatePosition()
     QRect sg = screen->availableGeometry();
     QRect geo = geometry();
 
-    // Position above the text cursor (not mouse cursor).
+    // Position near the text cursor (not mouse cursor).
+    // Prefer below the cursor line so it doesn't block what the user is typing;
+    // fall back to above if insufficient room below.
     CodeEditor *editor = qobject_cast<CodeEditor *>(parentWidget());
     if (editor) {
         QRect cr = editor->cursorRect();
         QPoint cursorGlobal = editor->viewport()->mapToGlobal(cr.topLeft());
         int x = cursorGlobal.x();
-        int y = cursorGlobal.y() - geo.height() - 6;  // always above text cursor
-        if (y < sg.top())
-            y = sg.top();  // clamp to screen top, never go below
+
+        int cursorBottom = cursorGlobal.y() + cr.height();
+        int yBelow = cursorBottom + 4;   // 4px gap below cursor line
+        int yAbove = cursorGlobal.y() - geo.height() - 6;  // above cursor line
+
+        int y;
+        if (yBelow + geo.height() <= sg.bottom()) {
+            y = yBelow;     // enough room below — place below
+        } else if (yAbove >= sg.top()) {
+            y = yAbove;     // not enough below — place above
+        } else {
+            y = qMax(sg.top(), yBelow);
+            if (y + geo.height() > sg.bottom())
+                y = sg.bottom() - geo.height();
+        }
         move(x, y);
     }
 
