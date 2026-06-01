@@ -1,7 +1,7 @@
 #include "judgeengine.h"
 #include "runner/compilerutils.h"
 #include "config/configmanager.h"
-#include "utilities.h"
+#include "core/utilities.h"
 
 #include <QFile>
 #include <QFileInfo>

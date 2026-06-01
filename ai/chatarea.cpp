@@ -1,6 +1,6 @@
 #include "chatarea.h"
 #include "chatbubble.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QVBoxLayout>
 #include <QScrollBar>

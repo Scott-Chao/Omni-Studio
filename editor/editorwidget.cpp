@@ -6,9 +6,9 @@
 #include "languageutils.h"
 #include "lsp/keywords.h"
 #include <memory>
-#include "utilities.h"
+#include "core/utilities.h"
 #include "config/configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include "config/settingsmanager.h"
 #include <QFile>
 #include <QTextStream>

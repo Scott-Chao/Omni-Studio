@@ -1,5 +1,5 @@
 #include "smdoutputwidget.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QFont>
 #include <QTextCursor>
 #include <QTextBlock>

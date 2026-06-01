@@ -1,6 +1,6 @@
 #include "helppanel.h"
-#include "thememanager.h"
-#include "windowdraghelper.h"
+#include "core/thememanager.h"
+#include "core/windowdraghelper.h"
 
 #include <QLabel>
 #include <QListWidget>

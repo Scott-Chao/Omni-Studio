@@ -5,7 +5,7 @@
 #include "smd/smdeditor.h"
 #include "settingsmanager.h"
 #include "configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QAction>
 #include <QKeySequence>

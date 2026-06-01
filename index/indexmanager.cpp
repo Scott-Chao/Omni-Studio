@@ -3,7 +3,7 @@
 #include "tagindex.h"
 #include "editor/tabmanager.h"
 #include "editor/editorwidget.h"
-#include "utilities.h"
+#include "core/utilities.h"
 
 #include <QThread>
 #include <QDirIterator>

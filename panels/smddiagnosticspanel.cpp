@@ -1,7 +1,7 @@
 #include "smddiagnosticspanel.h"
 #include "smd/smdeditor.h"
 #include "lsp/smdlspmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include "editor/codeeditor.h"
 
 #include <QApplication>

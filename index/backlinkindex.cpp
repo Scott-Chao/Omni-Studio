@@ -1,5 +1,5 @@
 #include "backlinkindex.h"
-#include "utilities.h"
+#include "core/utilities.h"
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>

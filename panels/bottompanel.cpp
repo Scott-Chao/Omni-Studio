@@ -2,8 +2,8 @@
 #include "outputpanel.h"
 #include "editor/diagnosticsection.h"
 #include "editor/codeeditor.h"
-#include "utilities.h"
-#include "thememanager.h"
+#include "core/utilities.h"
+#include "core/thememanager.h"
 #include "editor/tabbuttongroup.h"
 
 #include <QVBoxLayout>

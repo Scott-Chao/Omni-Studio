@@ -3,8 +3,8 @@
 #include "judge/logindialog.h"
 #include "config/settingsmanager.h"
 #include "config/configmanager.h"
-#include "thememanager.h"
-#include "utilities.h"
+#include "core/thememanager.h"
+#include "core/utilities.h"
 
 #include <QComboBox>
 #include <QFrame>

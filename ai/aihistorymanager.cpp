@@ -1,5 +1,5 @@
 #include "aihistorymanager.h"
-#include "utilities.h"
+#include "core/utilities.h"
 
 #include <QDir>
 #include <QFile>

@@ -1,6 +1,6 @@
 #include "submissionpanel.h"
 #include "config/configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

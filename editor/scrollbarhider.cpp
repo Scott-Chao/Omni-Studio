@@ -1,5 +1,5 @@
 #include "scrollbarhider.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QAbstractScrollArea>
 #include <QScrollBar>
 #include <QTimer>

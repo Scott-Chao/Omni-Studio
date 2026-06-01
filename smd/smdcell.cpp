@@ -5,7 +5,7 @@
 #include "languageutils.h"
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QTimer>
 #include <QTextBlock>
 #include <QTextLayout>

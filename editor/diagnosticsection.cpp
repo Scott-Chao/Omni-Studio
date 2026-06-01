@@ -1,5 +1,5 @@
 #include "diagnosticsection.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <algorithm>
 #include <QMouseEvent>

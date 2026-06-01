@@ -1,7 +1,7 @@
 #include "hovermanager.h"
 #include "editor/codeeditor.h"
 #include "smd/smddiagnostic.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 
 #include <QApplication>
 #include <QFrame>

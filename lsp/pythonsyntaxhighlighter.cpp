@@ -1,7 +1,7 @@
 #include "pythonsyntaxhighlighter.h"
 #include "keywords.h"
 #include "../config/configmanager.h"
-#include "../thememanager.h"
+#include "core/thememanager.h"
 
 PythonSyntaxHighlighter::PythonSyntaxHighlighter(QTextDocument *parent)
     : BracketHighlighter(parent)

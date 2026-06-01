@@ -4,7 +4,7 @@
 #include <QWidget>
 #include <QVector>
 #include <QString>
-#include "windowdraghelper.h"
+#include "core/windowdraghelper.h"
 
 class QLabel;
 class QListWidget;

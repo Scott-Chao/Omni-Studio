@@ -14,8 +14,8 @@ win32: LIBS += -luser32 -ldwmapi
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    thememanager.cpp \
-    titlebarbutton.cpp \
+    core/thememanager.cpp \
+    core/titlebarbutton.cpp \
     ai/actionbar.cpp \
     ai/aicontextmanager.cpp \
     ai/aipanel.cpp \
@@ -28,7 +28,7 @@ SOURCES += \
     ai/aihistorymanager.cpp \
     ai/airequesthandler.cpp \
     config/configmanager.cpp \
-    crashrecoverymanager.cpp \
+    core/crashrecoverymanager.cpp \
     index/backlinkindex.cpp \
     lsp/brackethighlighter.cpp \
     editor/codeeditor.cpp \
@@ -38,7 +38,7 @@ SOURCES += \
     judge/crawler.cpp \
     editor/diagnosticsection.cpp \
     editor/editorwidget.cpp \
-    flowlayout.cpp \
+    core/flowlayout.cpp \
     languageutils.cpp \
     lsp/completionpopup.cpp \
     lsp/cppcompletionprovider.cpp \
@@ -50,7 +50,7 @@ SOURCES += \
     lsp/smdlspmanager.cpp \
     editor/wikilinktextedit.cpp \
     judge/judgeengine.cpp \
-    keyrecorder.cpp \
+    core/keyrecorder.cpp \
     judge/logindialog.cpp \
     judge/openjudgemanager.cpp \
     panels/activitybar.cpp \
@@ -70,7 +70,7 @@ SOURCES += \
     panels/smddiagnosticspanel.cpp \
     panels/smdoutputwidget.cpp \
     editor/tabbuttongroup.cpp \
-    windowdraghelper.cpp \
+    core/windowdraghelper.cpp \
     runner/processrunner.cpp \
     lsp/pythonsyntaxhighlighter.cpp \
     editor/scrollbarhider.cpp \
@@ -80,13 +80,13 @@ SOURCES += \
     smd/smdeditor.cpp \
     index/tagindex.cpp \
     main.cpp \
-    mainwindow.cpp \
+    core/mainwindow.cpp \
     config/settingsmanager.cpp \
     editor/tabmanager.cpp
 
 HEADERS += \
-    thememanager.h \
-    titlebarbutton.h \
+    core/thememanager.h \
+    core/titlebarbutton.h \
     ai/actionbar.h \
     ai/aicontextmanager.h \
     ai/aipanel.h \
@@ -101,8 +101,8 @@ HEADERS += \
     ai/airequesthandler.h \
     ai/prompttemplates.h \
     config/configmanager.h \
-    crashrecoverymanager.h \
-    utilities.h \
+    core/crashrecoverymanager.h \
+    core/utilities.h \
     lsp/keywords.h \
     index/backlinkindex.h \
     editor/codeeditor.h \
@@ -115,7 +115,7 @@ HEADERS += \
     judge/crawler.h \
     editor/diagnosticsection.h \
     editor/editorwidget.h \
-    flowlayout.h \
+    core/flowlayout.h \
     languageutils.h \
     lsp/completionpopup.h \
     lsp/completionprovider.h \
@@ -128,7 +128,7 @@ HEADERS += \
     lsp/smdlspmanager.h \
     editor/wikilinktextedit.h \
     judge/judgeengine.h \
-    keyrecorder.h \
+    core/keyrecorder.h \
     judge/logindialog.h \
     judge/openjudgemanager.h \
     panels/activitybar.h \
@@ -148,7 +148,7 @@ HEADERS += \
     panels/smddiagnosticspanel.h \
     panels/smdoutputwidget.h \
     editor/tabbuttongroup.h \
-    windowdraghelper.h \
+    core/windowdraghelper.h \
     smd/smddiagnostic.h \
     runner/processrunner.h \
     lsp/pythonsyntaxhighlighter.h \
@@ -159,12 +159,12 @@ HEADERS += \
     smd/smdeditor.h \
     smd/smdformat.h \
     index/tagindex.h \
-    mainwindow.h \
+    core/mainwindow.h \
     config/settingsmanager.h \
     editor/tabmanager.h
 
 FORMS += \
-    mainwindow.ui
+    core/mainwindow.ui
 
 RESOURCES += \
     resources/resources.qrc

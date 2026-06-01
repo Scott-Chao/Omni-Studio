@@ -4,9 +4,9 @@
 #include "smd/smddiagnostic.h"
 #include "languageutils.h"
 #include "config/configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include "config/settingsmanager.h"
-#include "utilities.h"
+#include "core/utilities.h"
 #include "lsp/cppcompletionprovider.h"
 #include "lsp/pythoncompletionprovider.h"
 #include "lsp/keywordcompletionprovider.h"
@@ -15,9 +15,9 @@
 #include "lsp/signaturehelpmanager.h"
 #include "languageutils.h"
 #include "config/configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include "config/settingsmanager.h"
-#include "utilities.h"
+#include "core/utilities.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QTextLayout>

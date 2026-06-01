@@ -1,5 +1,5 @@
 #include "completionpopup.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QVBoxLayout>
 #include <QPainter>
 #include <QScreen>

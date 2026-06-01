@@ -1,5 +1,5 @@
 #include "errorjournal.h"
-#include "utilities.h"
+#include "core/utilities.h"
 #include "aiproviders.h"
 #include "prompttemplates.h"
 #include "aicontextmanager.h"

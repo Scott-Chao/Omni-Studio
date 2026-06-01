@@ -1,5 +1,5 @@
 #include "rightpanelcontainer.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include "historypanel.h"
 #include "outlinepanel.h"
 #include "sidebarpanels.h"

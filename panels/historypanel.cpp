@@ -1,5 +1,5 @@
 #include "historypanel.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QFileInfo>
 #include <QVBoxLayout>
 #include <QDir>

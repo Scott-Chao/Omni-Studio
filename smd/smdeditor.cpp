@@ -10,8 +10,8 @@
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "languageutils.h"
-#include "thememanager.h"
-#include "utilities.h"
+#include "core/thememanager.h"
+#include "core/utilities.h"
 
 #include <QFile>
 #include <QTextStream>

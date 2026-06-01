@@ -1,5 +1,5 @@
 #include "activitybar.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QFont>
 #include <QIcon>
 #include <QPainter>

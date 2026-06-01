@@ -1,6 +1,6 @@
 #include "actionbar.h"
-#include "flowlayout.h"
-#include "thememanager.h"
+#include "core/flowlayout.h"
+#include "core/thememanager.h"
 
 #include <QPushButton>
 #include <QFrame>

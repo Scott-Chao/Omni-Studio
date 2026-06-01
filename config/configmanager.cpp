@@ -1,5 +1,5 @@
 #include "configmanager.h"
-#include "thememanager.h"
+#include "core/thememanager.h"
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFile>
