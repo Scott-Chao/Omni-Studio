@@ -7,6 +7,7 @@
 #include <QProxyStyle>
 #include <QLocale>
 #include <QTranslator>
+#include <QIcon>
 
 // QProxyStyle that reduces Qt's default tooltip internal margins.
 class CompactTooltipStyle : public QProxyStyle
@@ -50,6 +51,9 @@ int main(int argc, char *argv[])
     }
     // Load global QSS with theme color tokens
     ThemeManager::instance().loadQss();
+
+    QIcon::setFallbackSearchPaths(QIcon::fallbackSearchPaths() << ":/icons");
+    a.setWindowIcon(QIcon(":/icons/app"));
 
     MainWindow w;
     w.show();

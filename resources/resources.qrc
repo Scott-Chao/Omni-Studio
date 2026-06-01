@@ -54,6 +54,7 @@
     <file alias="folder-plus">icons/icon-folder-plus.svg</file>
     <file alias="chevron-down">icons/icon-chevron-down.svg</file>
     <file alias="close">icons/icon-close.svg</file>
+    <file alias="app">icons/icon-app.svg</file>
   </qresource>
   <qresource prefix="/help">
     <file alias="content">help-content.html</file>

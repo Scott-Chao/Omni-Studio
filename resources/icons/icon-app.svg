@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="docGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Document body with top-right corner cut out -->
+  <path d="M 356 48
+           L 452 144
+           L 452 452
+           A 12 12 0 0 1 440 464
+           L 72 464
+           A 12 12 0 0 1 60 452
+           L 60 60
+           A 12 12 0 0 1 72 48
+           Z"
+        fill="url(#docGrad)"/>
+
+  <!-- Fold flap below diagonal -->
+  <polygon points="356,48 452,144 356,144" fill="#d8b4fe" opacity="0.9"/>
+
+  <!-- Diagonal crease -->
+  <line x1="356" y1="48" x2="452" y2="144" stroke="#5b21b6" stroke-width="3" opacity="0.45"/>
+
+  <!-- 3 text lines -->
+  <g fill="#ffffff">
+    <rect x="116" y="188" width="280" height="20" rx="10" opacity="0.9"/>
+    <rect x="116" y="288" width="280" height="20" rx="10" opacity="0.85"/>
+    <rect x="116" y="388" width="280" height="20" rx="10" opacity="0.8"/>
+  </g>
+
+  <!-- 4-pointed sparkle star at TOP-LEFT -->
+  <g fill="#fbbf24" transform="translate(110,95)">
+    <polygon points="0,-60 15,-15 60,0 15,15 0,60 -15,15 -60,0 -15,-15"/>
+  </g>
+</svg>

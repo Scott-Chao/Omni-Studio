@@ -169,6 +169,8 @@ FORMS += \
 RESOURCES += \
     resources/resources.qrc
 
+RC_ICONS = resources/icons/icon-app.ico
+
 TRANSLATIONS += \
     smart-markdown_zh_CN.ts
 CONFIG += lrelease
