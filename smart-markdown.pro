@@ -1,4 +1,4 @@
-QT       += core gui webenginewidgets network pdf pdfwidgets
+QT       += core gui webenginewidgets network pdf pdfwidgets svg
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 

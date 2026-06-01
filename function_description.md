@@ -61,9 +61,25 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 代码简化与重复清理
-- `CompileRunManager` compile/run/compileAndRun 前导代码重复
-- 修复 `Ctrl+C` 无法终止程序运行的问题
+### 重构 v0.14.2
+针对 `docs/code-duplication-analysis.md` 报告中的代码重复与质量问题，已执行以下重构（共 12 项，另 2 项经评估认为不必要而跳过）：
+
+- **问题1** — 合并 Markdown→HTML 渲染器：统一 `ai/chatbubble.cpp` 和 `ai/errorlistpanel.cpp` 中的两套独立实现，保留功能更完整的版本
+- **问题2** — 消除 AiMessage vs Message 字段重复：`AiMessage` 嵌入 `Message`，添加转换构造函数，消除 `airequesthandler.cpp` 中的逐字段手动转换
+- **问题3** — 消除 LSP 解析逻辑重复：将 `CppCompletionProvider` 与 `SmdLspManager` 中重复的语义标记解析、补全响应解析、Hover/签名帮助解析、`sendInitialize()`、光标→行/列转换等提取到 `LspUtils` 共享基类
+- **问题4** — 消除制表/缩进/退格逻辑重复：将 `CodeEditor` 与 `WikiLinkTextEdit` 中独立实现的 `handleBackspaceIndent()`、`handleTabKey()`、`indentString()` 提取为共享的 `IndentStrategy` 工具类
+- **问题5** — 消除屏幕边界钳制逻辑重复：将 `completionpopup`、`signaturehelpmanager`、`hovermanager` 中的弹出窗口边界检查提取为 `clampToScreen()` 工具函数
+- **问题6** — ConfigManager 默认配置外置：将约 365 行的 `buildDefaultConfig()` 硬编码 JSON 提取为独立 JSON 资源文件
+- **问题7** — CompileRunManager 构造函数参数聚合：引入设置/配置聚合对象，消除 5 个独立参数
+- **问题8** — CompileRunManager 前导代码重复消除：提取 `resolveIdeFilePath()` 私有辅助方法，消除 compile/run/compileAndRun 中的 20 行重复
+- **问题10** — 提取爬虫 HTML 清理 lambda：`crawler.cpp` 中 `parseProblemDetail()` 两个 fallback 策略的 `<script>`/`<style>` 移除、内联样式剥离、`fixBareLt` 重复代码提取为 `cleanSectionHtml()` 共享 lambda
+- **问题11** — 提取预览内容更新共享方法：`editorwidget.cpp` 中 `updatePreviewContent()` 与 `updateSplitPreviewContentNow()` 约 80% 重复代码提取为 `runPreviewUpdate(QWebEngineView *, std::function<void()>)` 共享方法
+- **问题13** — 提取语义标记虚拟→本地行映射：`smdlspmanager.cpp` 中三处重复的语义标记虚拟行→cell 本地行映射逻辑提取为 `mapVirtualTokensToCells()` 方法
+- **问题14** — 提取异步文件索引构建共享逻辑：`indexmanager.cpp` 中 `startAsyncIndexBuild()` 与 `buildFileIndexAsync()` 重复的 `QDirIterator` 目录遍历提取为 `buildFileIndexOnThread()` 独立函数
+
+**已跳过：**
+- **问题9**（ActivityBar 5 个布尔字段合并为 `QVector<bool>`）：每个布尔字段具有独立语义和命名 setter，合并后降低可读性
+- **问题12**（SmdLspManager 中 LSP 请求辅助函数合并）：三个函数结构相似但 completion 版本含额外 `context` 字段，提取共享方法需增加回退分发参数，引入不必要的间接性
 
 ### 1. `MainWindow` - 主窗口控制器
 

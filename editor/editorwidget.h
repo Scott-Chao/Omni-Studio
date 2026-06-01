@@ -184,6 +184,7 @@ private:
     QString previewThemeJs(); // 返回更新 CSS 变量的 JavaScript 代码
     void createSplitPreviewWidgets();
     void updateSplitPreviewContentNow();
+    void runPreviewUpdate(QWebEngineView *view, std::function<void()> onFinished);
     void applyMarkdownExtraSelections();
     qreal m_zoomFactor = 1.0;
     int m_baseFontSize = 14;

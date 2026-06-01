@@ -121,6 +121,8 @@ private:
     void processDiagnostics(const QString &langId, const QJsonObject &params);
     void requestCppSemanticTokens();
     QList<SemanticToken> parseSemanticTokens(const QJsonObject &result);
+    QMap<int, QList<SemanticToken>> mapVirtualTokensToCells(
+        const QList<SemanticToken> &tokens, const LanguageServer &srv) const;
 
     // Python-specific
     void startPythonProcess();

@@ -11,6 +11,26 @@
 #include <QFile>
 #include <QMetaObject>
 
+namespace {
+
+QMap<QString, QStringList> buildFileIndexOnThread(
+    const QString &rootPath,
+    std::shared_ptr<std::atomic<bool>> cancelled)
+{
+    QMap<QString, QStringList> fileIndex;
+    QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        if (cancelled->load()) return {};
+        QString fullPath = it.next();
+        QFileInfo info(fullPath);
+        fileIndex[info.completeBaseName()].append(fullPath);
+    }
+    return fileIndex;
+}
+
+} // anonymous namespace
+
 IndexManager::IndexManager(QObject *parent)
     : QObject(parent)
     , m_backlinkIndex(new BacklinkIndex)
@@ -56,15 +76,7 @@ void IndexManager::startAsyncIndexBuild(const QString &rootPath)
     auto cancelled = m_scanCancelled;
     QThread::create([this, cancelled, scanId, rootPath]() {
         // Phase 1: Build file index
-        QMap<QString, QStringList> fileIndex;
-        QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            if (cancelled->load()) return;
-            QString fullPath = it.next();
-            QFileInfo info(fullPath);
-            fileIndex[info.completeBaseName()].append(fullPath);
-        }
+        QMap<QString, QStringList> fileIndex = buildFileIndexOnThread(rootPath, cancelled);
         if (cancelled->load()) return;
 
         // Phase 2: Build backlink index
@@ -110,15 +122,7 @@ void IndexManager::buildFileIndexAsync(const QString &rootPath,
     auto cancelled = m_fileIdxCancelled;
     QThread::create([this, cancelled, scanId, rootPath,
                      onComplete = std::move(onComplete)]() {
-        QMap<QString, QStringList> fileIndex;
-        QDirIterator it(rootPath, TextFileUtils::scanNameFilters(), QDir::Files,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            if (cancelled->load()) return;
-            QString fullPath = it.next();
-            QFileInfo info(fullPath);
-            fileIndex[info.completeBaseName()].append(fullPath);
-        }
+        QMap<QString, QStringList> fileIndex = buildFileIndexOnThread(rootPath, cancelled);
         if (cancelled->load()) return;
 
         QMetaObject::invokeMethod(this, [this, scanId,

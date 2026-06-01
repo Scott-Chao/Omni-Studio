@@ -817,6 +817,21 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
         QStringLiteral("来源")
     };
 
+    // HTML cleaning helper shared between strategies
+    static const auto cleanSectionHtml = [](QString cleaned) -> QString {
+        cleaned.replace(QRegularExpression(QStringLiteral("<script[^>]*>.*?</script>"),
+            QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
+        cleaned.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
+            QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
+        cleaned.replace(QRegularExpression(QStringLiteral("\\bcolor\\s*:\\s*[^;\"]+;?"),
+            QRegularExpression::CaseInsensitiveOption), QString());
+        cleaned.replace(QRegularExpression(QStringLiteral("\\bfont-family\\s*:\\s*[^;\"]+;?"),
+            QRegularExpression::CaseInsensitiveOption), QString());
+        cleaned.replace(QRegularExpression(QStringLiteral("\\bfont-size\\s*:\\s*[^;\"]+;?"),
+            QRegularExpression::CaseInsensitiveOption), QString());
+        return fixBareLt(cleaned);
+    };
+
     // --- Strategy 1: <dt> / <dd> pattern (most common in OpenJudge) ---
     {
         QRegularExpression dtRx(QStringLiteral("<dt[^>]*>(.*?)</dt>"),
@@ -873,22 +888,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                 contentHtml = rawHtml;
             }
 
-            // Clean scripts/style but keep structural HTML (<p>, <pre>, etc.)
-            contentHtml.replace(QRegularExpression(QStringLiteral("<script[^>]*>.*?</script>"),
-                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
-                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
-
-            // Strip inline color/font-family/font-size that conflict with theming
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bcolor\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-family\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-size\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-
-            // Escape bare '<' that are text content, not real HTML tags
-            contentHtml = fixBareLt(contentHtml);
+            contentHtml = cleanSectionHtml(contentHtml);
 
             detail.sections.append({headings[i].heading, contentHtml.trimmed()});
 
@@ -930,21 +930,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                     contentHtml = contentHtml.left(dlEnd).trimmed();
             }
 
-            contentHtml.replace(QRegularExpression(QStringLiteral("<script[^>]*>.*?</script>"),
-                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("<style[^>]*>.*?</style>"),
-                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption), QString());
-
-            // Strip inline color/font-family/font-size that conflict with theming
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bcolor\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-family\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-            contentHtml.replace(QRegularExpression(QStringLiteral("\\bfont-size\\s*:\\s*[^;\"]+;?"),
-                QRegularExpression::CaseInsensitiveOption), QString());
-
-            // Escape bare '<' that are text content, not real HTML tags
-            contentHtml = fixBareLt(contentHtml);
+            contentHtml = cleanSectionHtml(contentHtml);
 
             detail.sections.append({headings[i].heading, contentHtml.trimmed()});
         }

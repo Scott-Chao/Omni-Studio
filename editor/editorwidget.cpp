@@ -939,24 +939,21 @@ QString EditorWidget::injectHeadingAnchors(const QString &markdown)
     return result.join(QLatin1Char('\n'));
 }
 
-void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
+void EditorWidget::runPreviewUpdate(QWebEngineView *view, std::function<void()> onFinished)
 {
-    if (!m_previewView) {
+    if (!view) {
         if (onFinished) onFinished();
         return;
     }
     QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
     QString rawMarkdown = m_textEdit->toPlainText();
-
     QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
-    // Capture diagnostics and code snapshots for stale-detection on refresh
     QMap<int, QList<SmdDiagnostic>> savedDiags = m_blockDiagnostics;
     QMap<int, QString> savedCode = m_blockDiagnosticCode;
-    m_previewView->page()->runJavaScript(
+    view->page()->runJavaScript(
         QStringLiteral("window.renderFromBase64('%1')").arg(base64),
-        [this, onFinished, savedDiags, savedCode, rawMarkdown](const QVariant &) {
+        [this, onFinished, savedDiags, savedCode, rawMarkdown, view](const QVariant &) {
             if (!savedDiags.isEmpty()) {
-                // Filter: only re-apply diagnostics for blocks whose code hasn't changed
                 QMap<int, QString> currentCode = extractCodeBlockContents(rawMarkdown);
                 QMap<int, QList<SmdDiagnostic>> validDiags;
                 for (auto it = savedDiags.cbegin(); it != savedDiags.cend(); ++it) {
@@ -966,9 +963,7 @@ void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
                         validDiags[idx] = it.value();
                     }
                 }
-                // Update stored diagnostics to remove stale entries
                 m_blockDiagnostics = validDiags;
-                // Keep only valid code snapshots
                 QMap<int, QString> validCode;
                 for (auto it = savedCode.cbegin(); it != savedCode.cend(); ++it) {
                     if (validDiags.contains(it.key()))
@@ -992,13 +987,18 @@ void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
                     }
                     QString diagJson = QString::fromUtf8(
                         QJsonDocument(root).toJson(QJsonDocument::Compact));
-                    m_previewView->page()->runJavaScript(
+                    view->page()->runJavaScript(
                         QStringLiteral("window.applyBlockDiagnostics(%1)").arg(diagJson));
                 }
             }
             if (onFinished)
                 onFinished();
         });
+}
+
+void EditorWidget::updatePreviewContent(std::function<void()> onFinished)
+{
+    runPreviewUpdate(m_previewView, std::move(onFinished));
 }
 
 void EditorWidget::onTextChanged()
@@ -2032,56 +2032,8 @@ void EditorWidget::onSplitDebounceTimeout()
 
 void EditorWidget::updateSplitPreviewContentNow()
 {
-    if (!m_splitPreviewView || !m_splitPreviewReady) return;
-
-    QString safeContent = preparePreviewContent(m_textEdit->toPlainText());
-    QString rawMarkdown = m_textEdit->toPlainText();
-    QString base64 = QString::fromLatin1(safeContent.toUtf8().toBase64());
-    QMap<int, QList<SmdDiagnostic>> savedDiags = m_blockDiagnostics;
-    QMap<int, QString> savedCode = m_blockDiagnosticCode;
-    m_splitPreviewView->page()->runJavaScript(
-        QStringLiteral("window.renderFromBase64('%1')").arg(base64),
-        [this, savedDiags, savedCode, rawMarkdown](const QVariant &) {
-            if (!savedDiags.isEmpty()) {
-                // Filter: only re-apply diagnostics for blocks whose code hasn't changed
-                QMap<int, QString> currentCode = extractCodeBlockContents(rawMarkdown);
-                QMap<int, QList<SmdDiagnostic>> validDiags;
-                for (auto it = savedDiags.cbegin(); it != savedDiags.cend(); ++it) {
-                    int idx = it.key();
-                    if (savedCode.contains(idx) && currentCode.contains(idx)
-                        && savedCode[idx] == currentCode[idx]) {
-                        validDiags[idx] = it.value();
-                    }
-                }
-                m_blockDiagnostics = validDiags;
-                QMap<int, QString> validCode;
-                for (auto it = savedCode.cbegin(); it != savedCode.cend(); ++it) {
-                    if (validDiags.contains(it.key()))
-                        validCode[it.key()] = it.value();
-                }
-                m_blockDiagnosticCode = validCode;
-
-                if (!validDiags.isEmpty()) {
-                    QJsonObject root;
-                    for (auto it = validDiags.cbegin(); it != validDiags.cend(); ++it) {
-                        QJsonArray arr;
-                        for (const auto &d : it.value()) {
-                            QJsonObject dObj;
-                            dObj[QStringLiteral("startLine")] = d.startLine;
-                            dObj[QStringLiteral("endLine")]   = d.endLine;
-                            dObj[QStringLiteral("message")]   = d.message;
-                            dObj[QStringLiteral("severity")]  = d.severity;
-                            arr.append(dObj);
-                        }
-                        root[QString::number(it.key())] = arr;
-                    }
-                    QString diagJson = QString::fromUtf8(
-                        QJsonDocument(root).toJson(QJsonDocument::Compact));
-                    m_splitPreviewView->page()->runJavaScript(
-                        QStringLiteral("window.applyBlockDiagnostics(%1)").arg(diagJson));
-                }
-            }
-        });
+    if (!m_splitPreviewReady) return;
+    runPreviewUpdate(m_splitPreviewView, nullptr);
 }
 
 // ==================================================================

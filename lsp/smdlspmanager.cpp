@@ -412,6 +412,26 @@ QList<SemanticToken> SmdLspManager::parseSemanticTokens(const QJsonObject &resul
         result, m_cppServer.tokenTypeLegend, m_cppServer.tokenModifierLegend);
 }
 
+QMap<int, QList<SemanticToken>> SmdLspManager::mapVirtualTokensToCells(
+    const QList<SemanticToken> &tokens, const LanguageServer &srv) const
+{
+    QMap<int, QList<SemanticToken>> tokensByCell;
+    for (const SemanticToken &token : tokens) {
+        for (auto it = srv.cellRanges.begin(); it != srv.cellRanges.end(); ++it) {
+            int ci = it.key();
+            CellRange cr = it.value();
+            if (token.line >= cr.firstVirtualLine
+                && token.line < cr.firstVirtualLine + cr.localLineCount) {
+                SemanticToken localToken = token;
+                localToken.line = token.line - cr.firstVirtualLine;
+                tokensByCell[ci].append(localToken);
+                break;
+            }
+        }
+    }
+    return tokensByCell;
+}
+
 void SmdLspManager::cellLocalToVirtual(int cellIndex, int localLine, int localCol,
                                         const QString &langId,
                                         int &outLine, int &outCol) const
@@ -583,23 +603,7 @@ void SmdLspManager::onCppResponseReceived(int id, QJsonObject result)
         if (allTokens.isEmpty())
             return;
 
-        // Group tokens by cell, converting virtual → local line numbers
-        QMap<int, QList<SemanticToken>> tokensByCell;
-        for (const SemanticToken &token : allTokens) {
-            for (auto it = m_cppServer.cellRanges.begin();
-                 it != m_cppServer.cellRanges.end(); ++it) {
-                int ci = it.key();
-                CellRange cr = it.value();
-                if (token.line >= cr.firstVirtualLine
-                    && token.line < cr.firstVirtualLine + cr.localLineCount) {
-                    SemanticToken localToken = token;
-                    localToken.line = token.line - cr.firstVirtualLine;
-                    tokensByCell[ci].append(localToken);
-                    break;
-                }
-            }
-        }
-
+        QMap<int, QList<SemanticToken>> tokensByCell = mapVirtualTokensToCells(allTokens, m_cppServer);
         for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
             emit semanticTokensReadyForCell(it.key(), it.value());
     }
@@ -1155,23 +1159,7 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
                     allTokens.append(t);
                 }
 
-                // Map virtual line numbers back to cell-local line numbers
-                QMap<int, QList<SemanticToken>> tokensByCell;
-                for (const SemanticToken &token : allTokens) {
-                    for (auto it = m_pyServer.cellRanges.begin();
-                         it != m_pyServer.cellRanges.end(); ++it) {
-                        int ci = it.key();
-                        CellRange cr = it.value();
-                        if (token.line >= cr.firstVirtualLine
-                            && token.line < cr.firstVirtualLine + cr.localLineCount) {
-                            SemanticToken localToken = token;
-                            localToken.line = token.line - cr.firstVirtualLine;
-                            tokensByCell[ci].append(localToken);
-                            break;
-                        }
-                    }
-                }
-
+                QMap<int, QList<SemanticToken>> tokensByCell = mapVirtualTokensToCells(allTokens, m_pyServer);
                 m_pyTokensPending = false;
                 for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
                     emit semanticTokensReadyForCell(it.key(), it.value());
@@ -1284,23 +1272,7 @@ void SmdLspManager::processPythonResponse(const QByteArray &line)
             allTokens.append(t);
         }
 
-        // Map virtual line numbers back to cell-local line numbers
-        QMap<int, QList<SemanticToken>> tokensByCell;
-        for (const SemanticToken &token : allTokens) {
-            for (auto it = m_pyServer.cellRanges.begin();
-                 it != m_pyServer.cellRanges.end(); ++it) {
-                int ci = it.key();
-                CellRange cr = it.value();
-                if (token.line >= cr.firstVirtualLine
-                    && token.line < cr.firstVirtualLine + cr.localLineCount) {
-                    SemanticToken localToken = token;
-                    localToken.line = token.line - cr.firstVirtualLine;
-                    tokensByCell[ci].append(localToken);
-                    break;
-                }
-            }
-        }
-
+        QMap<int, QList<SemanticToken>> tokensByCell = mapVirtualTokensToCells(allTokens, m_pyServer);
         for (auto it = tokensByCell.begin(); it != tokensByCell.end(); ++it)
             emit semanticTokensReadyForCell(it.key(), it.value());
         break;
