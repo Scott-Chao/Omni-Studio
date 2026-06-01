@@ -66,4 +66,7 @@
   <qresource prefix="/styles">
     <file alias="global.qss">styles/global.qss</file>
   </qresource>
+  <qresource prefix="/config">
+    <file alias="default_config.json">../config/default_config.json</file>
+  </qresource>
 </RCC>
