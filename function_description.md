@@ -62,12 +62,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
 ### 代码简化与重复清理
-- `coloredSvgIcon()` 从 4 个文件中提取至 `IconUtils` 命名空间（`core/utilities.h`），删除 4 份独立拷贝
-- `JudgeEngine::readFile()` 私有方法替换为 `TextFileUtils::readTextFile()` 工具调用，删除重复文件读取逻辑
-- `AiPanel` 中 `returnPressed` 与 `clicked` 两处重复的发送消息 lambda 提取为共用 `doSend` 局部 lambda
-- `OpenJudgeWidget::onPrevPage()` 与 `onNextPage()` 合并为 `changePage(int delta)`
-- 清理 `codeeditor.cpp` 中 5 个头文件的重复包含及一处 Ctrl+D 空 if 体死代码
-- 清理 `editorwidget.cpp` 中 `QJsonObject`/`QFile`/`QTextStream`/`QDir` 的重复包含
+- 合并 Markdown→HTML 渲染器
 
 ### 1. `MainWindow` - 主窗口控制器
 

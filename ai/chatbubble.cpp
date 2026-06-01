@@ -1,5 +1,6 @@
 #include "chatbubble.h"
 #include "core/thememanager.h"
+#include "core/utilities.h"
 
 #include <QLabel>
 #include <QTextBrowser>
@@ -10,224 +11,15 @@
 #include <QTimer>
 #include <QScrollBar>
 
-// ── Markdown → HTML converter (lightweight) ──────────────────────────
-
-// Process inline formatting: `code`, **bold**, *italic*, [links](url)
-// Single-pass character-level state machine — avoids 5 separate regex scans and
-// intermediate QString allocations of the original approach.
-static QString processInline(const QString &text, const QColor &codeBg,
-                              const QColor &codeFg, const QColor &linkColor)
-{
-    QString result;
-    result.reserve(text.size() + (text.size() / 4));
-
-    int i = 0;
-    const int len = text.length();
-
-    while (i < len) {
-        const QChar c = text[i];
-
-        // Inline code `code` — processed first so its content is never
-        // mistaken for bold/italic markers.
-        if (c == QLatin1Char('`')) {
-            int end = text.indexOf(QLatin1Char('`'), i + 1);
-            if (end != -1) {
-                result += QStringLiteral("<code style=\"background-color:%1; color:%2; "
-                                        "padding:1px 4px; border-radius:3px; font-size:12px;\">")
-                         .arg(codeBg.name(), codeFg.name())
-                         + text.mid(i + 1, end - i - 1).toHtmlEscaped()
-                         + QStringLiteral("</code>");
-                i = end + 1;
-                continue;
-            }
-        }
-
-        // Link [label](url)
-        if (c == QLatin1Char('[')) {
-            int bracketEnd = text.indexOf(QStringLiteral("]("), i + 1);
-            if (bracketEnd != -1) {
-                int parenEnd = text.indexOf(QLatin1Char(')'), bracketEnd + 2);
-                if (parenEnd != -1) {
-                    result += QStringLiteral("<a href=\"")
-                            + text.mid(bracketEnd + 2, parenEnd - bracketEnd - 2).toHtmlEscaped()
-                            + QStringLiteral("\" style=\"color:") + linkColor.name()
-                            + QStringLiteral(";\">")
-                            + text.mid(i + 1, bracketEnd - i - 1).toHtmlEscaped()
-                            + QStringLiteral("</a>");
-                    i = parenEnd + 1;
-                    continue;
-                }
-            }
-        }
-
-        // Bold **text** — checked before single-* italic
-        if (c == QLatin1Char('*') && i + 1 < len && text[i + 1] == QLatin1Char('*')) {
-            int end = text.indexOf(QStringLiteral("**"), i + 2);
-            if (end != -1) {
-                result += QStringLiteral("<b>")
-                        + processInline(text.mid(i + 2, end - i - 2), codeBg, codeFg, linkColor)
-                        + QStringLiteral("</b>");
-                i = end + 2;
-                continue;
-            }
-        }
-
-        // Italic *text* — closing * must not be part of **, search past ** pairs
-        if (c == QLatin1Char('*')) {
-            int end = i + 1;
-            while (end < len) {
-                end = text.indexOf(QLatin1Char('*'), end);
-                if (end == -1) break;
-                if (end > i + 1 && (end + 1 >= len || text[end + 1] != QLatin1Char('*')))
-                    break;  // valid closing *
-                end += 2;  // skip past the whole ** pair and keep looking
-            }
-            if (end > i + 1) {
-                result += QStringLiteral("<i>")
-                        + processInline(text.mid(i + 1, end - i - 1), codeBg, codeFg, linkColor)
-                        + QStringLiteral("</i>");
-                i = end + 1;
-                continue;
-            }
-        }
-
-        // Regular character: HTML escape and append
-        switch (c.unicode()) {
-        case '<':  result += QStringLiteral("&lt;"); break;
-        case '>':  result += QStringLiteral("&gt;"); break;
-        case '&':  result += QStringLiteral("&amp;"); break;
-        case '"':  result += QStringLiteral("&quot;"); break;
-        default:   result += c; break;
-        }
-        ++i;
-    }
-
-    return result;
-}
+// processInline moved to MarkdownUtils in core/utilities.h
 
 QString ChatBubble::markdownToHtml(const QString &md, const QColor &textColor,
                                     const QColor &codeBg, const QColor &codeFg,
                                     const QColor &linkColor, const QColor &selectionBg,
                                     const QColor &headingColor)
 {
-    Q_UNUSED(selectionBg)
-    if (md.isEmpty())
-        return QStringLiteral("<p></p>");
-
-    QString html;
-    QStringList lines = md.split(QStringLiteral("\n"));
-
-    bool inCodeBlock = false;
-    QString codeBlockContent;
-    bool inUL = false;
-    bool inOL = false;
-
-    for (const QString &rawLine : lines) {
-        QString line = rawLine;
-
-        if (line.startsWith(QStringLiteral("```"))) {
-            if (inCodeBlock) {
-                html += QStringLiteral("<pre style=\"background-color:%1; color:%2; "
-                                       "padding:8px; border-radius:4px; font-size:12px; "
-                                       "overflow-x:auto;\"><code>")
-                      .arg(codeBg.name(), codeFg.name())
-                      + codeBlockContent.toHtmlEscaped()
-                      + QStringLiteral("</code></pre>\n");
-                codeBlockContent.clear();
-                inCodeBlock = false;
-            } else {
-                inCodeBlock = true;
-                codeBlockContent.clear();
-            }
-            continue;
-        }
-
-        if (inCodeBlock) {
-            if (!codeBlockContent.isEmpty())
-                codeBlockContent += QStringLiteral("\n");
-            codeBlockContent += line;
-            continue;
-        }
-
-        if (line.trimmed().isEmpty()) {
-            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
-            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
-            continue;
-        }
-
-        // Headings ## text
-        static const QRegularExpression hRe(QStringLiteral("^(#{1,6})\\s+(.+)$"));
-        QRegularExpressionMatch hMatch = hRe.match(line);
-        if (hMatch.hasMatch()) {
-            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
-            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
-            int level = hMatch.captured(1).length();
-            QString headingText = processInline(hMatch.captured(2), codeBg, codeFg, linkColor);
-            html += QStringLiteral("<h%1 style=\"color:%2; margin:8px 0 4px 0;\">%3</h%1>\n")
-                        .arg(level).arg(headingColor.name(), headingText);
-            continue;
-        }
-
-        // Unordered list - * item or - item
-        static const QRegularExpression ulRe(QStringLiteral("^[\\*\\-]\\s+(.+)$"));
-        QRegularExpressionMatch ulMatch = ulRe.match(line);
-        if (ulMatch.hasMatch()) {
-            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
-            if (!inUL) {
-                html += QStringLiteral("<ul style=\"margin:4px 0; padding-left:20px;\">\n");
-                inUL = true;
-            }
-            html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
-                        .arg(textColor.name(), processInline(ulMatch.captured(1), codeBg, codeFg, linkColor));
-            continue;
-        }
-
-        // Numbered list 1. item
-        static const QRegularExpression olRe(QStringLiteral("^\\d+\\.\\s+(.+)$"));
-        QRegularExpressionMatch olMatch = olRe.match(line);
-        if (olMatch.hasMatch()) {
-            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
-            if (!inOL) {
-                html += QStringLiteral("<ol style=\"margin:4px 0; padding-left:20px;\">\n");
-                inOL = true;
-            }
-            html += QStringLiteral("<li style=\"color:%1; margin:2px 0;\">%2</li>\n")
-                        .arg(textColor.name(), processInline(olMatch.captured(1), codeBg, codeFg, linkColor));
-            continue;
-        }
-
-        // Horizontal rule ---
-        static const QRegularExpression hrRe(QStringLiteral("^\\-{3,}\\s*$"));
-        if (hrRe.match(line).hasMatch()) {
-            if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
-            if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
-            html += QStringLiteral("<hr style=\"border:0; border-top:1px solid %1; margin:8px 0;\">\n")
-                        .arg(codeBg.name());
-            continue;
-        }
-
-        // Regular paragraph line
-        if (inUL) { html += QStringLiteral("</ul>\n"); inUL = false; }
-        if (inOL) { html += QStringLiteral("</ol>\n"); inOL = false; }
-        html += QStringLiteral("<p style=\"color:%1; margin:4px 0;\">%2</p>\n")
-                    .arg(textColor.name(), processInline(line, codeBg, codeFg, linkColor));
-    }
-
-    // Close any open lists at end of content
-    if (inUL) html += QStringLiteral("</ul>\n");
-    if (inOL) html += QStringLiteral("</ol>\n");
-
-    // Close unclosed code block
-    if (inCodeBlock) {
-        html += QStringLiteral("<pre style=\"background-color:%1; color:%2; "
-                               "padding:8px; border-radius:4px; font-size:12px; "
-                               "overflow-x:auto;\"><code>")
-              .arg(codeBg.name(), codeFg.name())
-              + codeBlockContent.toHtmlEscaped()
-              + QStringLiteral("</code></pre>\n");
-    }
-
-    return html;
+    return MarkdownUtils::markdownToHtml(md, textColor, codeBg, codeFg,
+                                         linkColor, selectionBg, headingColor);
 }
 
 // ── Incremental streaming helpers ───────────────────────────
@@ -271,7 +63,7 @@ QString ChatBubble::processSimpleDelta(const QString &delta,
             continue;
         html += QStringLiteral("<p style=\"color:%1; margin:4px 0;\">%2</p>\n")
                     .arg(textColor.name(),
-                         processInline(line, codeBg, codeFg, linkColor));
+                         MarkdownUtils::processInline(line, codeBg, codeFg, linkColor));
     }
     return html;
 }

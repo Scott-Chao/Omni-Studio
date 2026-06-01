@@ -11,9 +11,9 @@
 #include <QScrollBar>
 #include <QVBoxLayout>
 #include <QTextBrowser>
-#include <QRegularExpression>
 #include <QSet>
 #include "core/thememanager.h"
+#include "core/utilities.h"
 
 // ═══════════════════════════════════════════════════════════════════
 // Helpers
@@ -217,71 +217,6 @@ void ErrorListItem::paintEvent(QPaintEvent *event)
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Markdown → HTML renderer (simple but handles common AI output patterns)
-// ═══════════════════════════════════════════════════════════════════
-
-static QString renderMarkdown(const QString &md)
-{
-    if (md.isEmpty())
-        return {};
-
-    auto &tm = ThemeManager::instance();
-    QString codeBg = tm.color("aiAssistant.codeBackground").name();
-    QString codeFg = tm.color("aiAssistant.codeForeground").name();
-    QString headingFg = tm.color("workbench.foreground").name();
-    QString subheadingFg = tm.color("editorLineNumber.foreground").name();
-
-    // Must HTML-escape FIRST so code content (e.g. <iostream>, a < b) isn't
-    // misinterpreted as HTML tags by Qt's rich text renderer.
-    // Markdown syntax characters (#, *, `) are unaffected by escaping, so the
-    // pattern replacements below still work correctly.
-    QString html = md.toHtmlEscaped();
-
-    // Normalize line endings
-    html.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    html.replace(QStringLiteral("\r"), QStringLiteral("\n"));
-
-    // Code blocks must be handled before inline patterns to avoid
-    // contaminating code with heading / bold / etc. replacements.
-    // Opening: ```lang\n → <pre>
-    html.replace(QRegularExpression(QStringLiteral("```(?:\\w+)?\\n")),
-                 QStringLiteral("<pre style='background:%1;padding:8px;"
-                                "border-radius:3px;font-size:11px;color:%2'>")
-                 .arg(codeBg, codeFg));
-    // Closing: remaining ``` → </pre>
-    html.replace(QStringLiteral("```"), QStringLiteral("</pre>"));
-
-    // Headings (MultilineOption enables ^/$ per line)
-    html.replace(
-        QRegularExpression(QStringLiteral("^### (.+)$"),
-                           QRegularExpression::MultilineOption),
-        QStringLiteral("<h4 style='color:%1;margin:8px 0 4px'>\\1</h4>").arg(subheadingFg));
-    html.replace(
-        QRegularExpression(QStringLiteral("^## (.+)$"),
-                           QRegularExpression::MultilineOption),
-        QStringLiteral("<h3 style='color:%1;margin:10px 0 4px'>\\1</h3>").arg(headingFg));
-
-    // Bold **text**
-    html.replace(QRegularExpression(QStringLiteral("\\*\\*(.+?)\\*\\*")),
-                 QStringLiteral("<b>\\1</b>"));
-
-    // Inline code `code`
-    html.replace(QRegularExpression(QStringLiteral("`([^`]+)`")),
-                 QStringLiteral("<code style='background:%1;color:%2;"
-                                "padding:1px 5px;border-radius:2px;font-size:11px'>"
-                                "\\1</code>").arg(codeBg, codeFg));
-
-    // Newlines → <br>
-    html.replace(QStringLiteral("\n"), QStringLiteral("<br>"));
-
-    // Clean up: remove <br> that immediately follows block tags
-    html.replace(QRegularExpression(QStringLiteral("<br>(</h[34]>)")), QStringLiteral("\\1"));
-    html.replace(QRegularExpression(QStringLiteral("<br>(</pre>)")), QStringLiteral("\\1"));
-
-    return html;
-}
-
-// ═══════════════════════════════════════════════════════════════════
 // ErrorDetailWidget — expanded detail view for a single error record
 // ═══════════════════════════════════════════════════════════════════
 
@@ -344,7 +279,16 @@ ErrorDetailWidget::ErrorDetailWidget(const ErrorRecord &record, QWidget *parent)
     m_aiAnalysisLabel->setMinimumHeight(40);
 
     if (!m_record.aiAnalysis.isEmpty()) {
-        QString html = renderMarkdown(m_record.aiAnalysis);
+        auto &tm = ThemeManager::instance();
+        QString html = MarkdownUtils::markdownToHtml(
+            m_record.aiAnalysis,
+            tm.color("aiAssistant.foreground"),      // textColor
+            tm.color("aiAssistant.codeBackground"),   // codeBg
+            tm.color("aiAssistant.codeForeground"),   // codeFg
+            tm.color("aiAssistant.linkColor"),        // linkColor
+            tm.color("aiAssistant.selectionBackground"), // selectionBg
+            tm.color("workbench.foreground")          // headingColor
+        );
         m_aiAnalysisLabel->setText(html);
     } else {
         m_aiAnalysisLabel->setText(QStringLiteral(
@@ -480,7 +424,16 @@ void ErrorDetailWidget::setAnalysis(const QString &analysis)
         return;
     }
 
-    QString html = renderMarkdown(analysis);
+    auto &tm = ThemeManager::instance();
+    QString html = MarkdownUtils::markdownToHtml(
+        analysis,
+        tm.color("aiAssistant.foreground"),
+        tm.color("aiAssistant.codeBackground"),
+        tm.color("aiAssistant.codeForeground"),
+        tm.color("aiAssistant.linkColor"),
+        tm.color("aiAssistant.selectionBackground"),
+        tm.color("workbench.foreground")
+    );
     m_aiAnalysisLabel->setText(html);
 }
 
