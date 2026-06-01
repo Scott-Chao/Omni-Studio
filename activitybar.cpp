@@ -41,10 +41,10 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->addWidget(m_explorerBtn);
     layout->addWidget(m_searchBtn);
     layout->addWidget(m_aiBtn);
-    layout->addWidget(m_settingsBtn);
-    layout->addStretch(1);
-    layout->addWidget(m_exportPdfBtn);
     layout->addWidget(m_judgeBtn);
+    layout->addWidget(m_exportPdfBtn);
+    layout->addStretch(1);
+    layout->addWidget(m_settingsBtn);
 
     connect(m_explorerBtn, &QPushButton::clicked, this, &ActivityBar::explorerClicked);
     connect(m_searchBtn,    &QPushButton::clicked, this, &ActivityBar::searchClicked);
@@ -77,7 +77,7 @@ void ActivityBar::refreshStyle()
     updateButtonStyle(m_explorerBtn, m_explorerActive);
     updateButtonStyle(m_searchBtn, m_searchActive);
     updateButtonStyle(m_aiBtn, m_aiActive);
-    updateButtonStyle(m_settingsBtn, false);
+    updateButtonStyle(m_settingsBtn, m_settingsActive);
     updateButtonStyle(m_exportPdfBtn, false);
     updateButtonStyle(m_judgeBtn, m_judgeActive);
 }
@@ -140,6 +140,7 @@ void ActivityBar::updateButtonStyle(QPushButton *btn, bool active)
 void ActivityBar::setExplorerActive(bool active) { m_explorerActive = active; updateButtonStyle(m_explorerBtn, active); }
 void ActivityBar::setSearchActive(bool active) { m_searchActive = active; updateButtonStyle(m_searchBtn, active); }
 void ActivityBar::setAiActive(bool active)    { m_aiActive = active; updateButtonStyle(m_aiBtn, active); }
+void ActivityBar::setSettingsActive(bool active) { m_settingsActive = active; updateButtonStyle(m_settingsBtn, active); }
 void ActivityBar::setJudgeActive(bool active)  { m_judgeActive = active; updateButtonStyle(m_judgeBtn, active); }
 
 void ActivityBar::setExportPdfVisible(bool visible)

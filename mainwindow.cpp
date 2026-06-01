@@ -1507,6 +1507,7 @@ void MainWindow::toggleSettings()
 {
     if (m_settingsOverlay->isVisible()) {
         m_settingsOverlay->hide();
+        m_activityBar->setSettingsActive(false);
         if (auto *editor = m_tabManager->currentEditor())
             editor->refreshPreviewTheme();
     } else {
@@ -1514,6 +1515,7 @@ void MainWindow::toggleSettings()
         m_settingsPanel->syncFromSettings(*m_settings);
         positionOverlay(m_settingsOverlay, m_settingsPanel, this);
         m_settingsOverlay->show();
+        m_activityBar->setSettingsActive(true);
     }
 }
 

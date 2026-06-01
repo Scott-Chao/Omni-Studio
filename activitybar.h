@@ -15,6 +15,7 @@ public:
     void setSearchActive(bool active);
     void setJudgeActive(bool active);
     void setAiActive(bool active);
+    void setSettingsActive(bool active);
     void setExplorerActive(bool active);
     void setExportPdfVisible(bool visible);
 
@@ -42,6 +43,7 @@ private:
     bool m_explorerActive = false;
     bool m_searchActive = false;
     bool m_aiActive = false;
+    bool m_settingsActive = false;
     bool m_judgeActive = false;
 };
 
