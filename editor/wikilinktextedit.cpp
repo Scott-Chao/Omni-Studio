@@ -1,4 +1,5 @@
 #include "wikilinktextedit.h"
+#include "indenthelper.h"
 
 #include <QKeyEvent>
 #include <QAbstractItemView>
@@ -255,62 +256,19 @@ void WikiLinkTextEdit::setIndentWidth(int width)
 
 QString WikiLinkTextEdit::indentString() const
 {
-    return QString(m_indentWidth, QLatin1Char(' '));
+    return IndentUtils::indentString(m_indentWidth);
 }
 
 bool WikiLinkTextEdit::handleTabKey()
 {
     QTextCursor cursor = textCursor();
-
-    if (cursor.hasSelection()) {
-        QTextDocument *doc = document();
-        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
-        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
-
-        cursor.beginEditBlock();
-        for (int i = startBlock; i <= endBlock; ++i) {
-            QTextBlock block = doc->findBlockByNumber(i);
-            QTextCursor blockCursor(block);
-            blockCursor.insertText(indentString());
-        }
-        cursor.endEditBlock();
-    } else {
-        cursor.insertText(indentString());
-    }
-    return true;
+    return IndentUtils::handleTabKey(cursor, m_indentWidth);
 }
 
 bool WikiLinkTextEdit::handleBackspaceIndent()
 {
     QTextCursor cursor = textCursor();
-
-    if (cursor.hasSelection())
-        return false;
-
-    int pos = cursor.position();
-    if (pos == 0)
-        return false;
-
-    QTextBlock block = cursor.block();
-    int posInBlock = cursor.positionInBlock();
-    if (posInBlock == 0)
-        return false;
-
-    // Only in leading whitespace
-    QString textBeforeCursor = block.text().left(posInBlock);
-    if (!textBeforeCursor.trimmed().isEmpty())
-        return false;
-
-    // Delete spaces back to previous tab stop
-    int spaceCount = posInBlock % m_indentWidth;
-    if (spaceCount == 0)
-        spaceCount = m_indentWidth;
-
-    cursor.beginEditBlock();
-    for (int j = 0; j < spaceCount; ++j)
-        cursor.deletePreviousChar();
-    cursor.endEditBlock();
-    return true;
+    return IndentUtils::handleBackspaceIndent(cursor, m_indentWidth);
 }
 
 void WikiLinkTextEdit::handleAutoIndentOnReturn()

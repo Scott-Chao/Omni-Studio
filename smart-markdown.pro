@@ -114,6 +114,7 @@ HEADERS += \
     editor/cppsyntaxhighlighter.h \
     judge/crawler.h \
     editor/diagnosticsection.h \
+    editor/indenthelper.h \
     editor/editorwidget.h \
     widgets/flowlayout.h \
     core/languageutils.h \

@@ -13,6 +13,7 @@
 #include "completionpopup.h"
 #include "hovermanager.h"
 #include "signaturehelpmanager.h"
+#include "indenthelper.h"
 #include <QPainter>
 #include <QTextBlock>
 #include <QTextLayout>
@@ -944,21 +945,13 @@ bool CodeEditor::handleBackspaceIndent(QKeyEvent *event)
     if (!textBeforeCursor.trimmed().isEmpty())
         return false;
 
+    // Handle literal \t character
     if (block.text().at(posInBlock - 1) == QLatin1Char('\t')) {
         cursor.deletePreviousChar();
         return true;
     }
 
-    // Delete spaces back to previous tab stop
-    int spaceCount = posInBlock % m_indentWidth;
-    if (spaceCount == 0)
-        spaceCount = m_indentWidth;
-
-    cursor.beginEditBlock();
-    for (int j = 0; j < spaceCount; ++j)
-        cursor.deletePreviousChar();
-    cursor.endEditBlock();
-    return true;
+    return IndentUtils::handleBackspaceIndent(cursor, m_indentWidth);
 }
 
 bool CodeEditor::handleBackspacePairRemoval(QKeyEvent *event)
@@ -1001,26 +994,8 @@ bool CodeEditor::handleBackspacePairRemoval(QKeyEvent *event)
 bool CodeEditor::handleTabKey(QKeyEvent *event)
 {
     Q_UNUSED(event);
-
     QTextCursor cursor = textCursor();
-
-    if (cursor.hasSelection()) {
-        // Indent selected lines
-        QTextDocument *doc = document();
-        int startBlock = doc->findBlock(cursor.selectionStart()).blockNumber();
-        int endBlock = doc->findBlock(cursor.selectionEnd()).blockNumber();
-
-        cursor.beginEditBlock();
-        for (int i = startBlock; i <= endBlock; ++i) {
-            QTextBlock block = doc->findBlockByNumber(i);
-            QTextCursor blockCursor(block);
-            blockCursor.insertText(indentString());
-        }
-        cursor.endEditBlock();
-    } else {
-        cursor.insertText(indentString());
-    }
-    return true;
+    return IndentUtils::handleTabKey(cursor, m_indentWidth);
 }
 
 // ---- Toggle comment ----
@@ -1389,7 +1364,7 @@ void CodeEditor::paintEvent(QPaintEvent *event)
 
 QString CodeEditor::indentString() const
 {
-    return QString(m_indentWidth, QLatin1Char(' '));
+    return IndentUtils::indentString(m_indentWidth);
 }
 
 bool CodeEditor::isCursorInStringOrComment() const
