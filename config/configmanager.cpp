@@ -8,6 +8,17 @@
 #include <QFileInfo>
 #include <QDebug>
 
+namespace {
+QString defaultMonospaceFont()
+{
+#ifdef Q_OS_MACOS
+    return QStringLiteral("Menlo");
+#else
+    return QStringLiteral("Consolas");
+#endif
+}
+} // anonymous namespace
+
 ConfigManager &ConfigManager::instance()
 {
     static ConfigManager inst;
@@ -200,7 +211,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     editor["markdown_indent_width"] = 2;
     editor["content_check_timer_ms"] = 300;
     QJsonObject editorFont;
-    editorFont["family"] = "Consolas";
+    editorFont["family"] = defaultMonospaceFont();
     editorFont["size"] = 12;
     editor["font"] = editorFont;
     QJsonObject zoom;
@@ -221,7 +232,7 @@ QJsonObject ConfigManager::buildDefaultConfig()
     // ---- output_panel ----
     QJsonObject outputPanel;
     QJsonObject opFont;
-    opFont["family"] = "Consolas";
+    opFont["family"] = defaultMonospaceFont();
     opFont["size"] = 10;
     outputPanel["font"] = opFont;
     outputPanel["max_blocks"] = 10000;
@@ -567,7 +578,7 @@ int ConfigManager::editorMarkdownIndentWidth() const { return intValue("editor.m
 int ConfigManager::editorFileTreeItemHeight() const { return intValue("editor.file_tree_item_height", 28); }
 int ConfigManager::tabHeight() const { return intValue("appearance.tab_height", 26); }
 int ConfigManager::editorLineNumberRightPadding() const { return intValue("editor.line_number_area.right_padding", 4); }
-QString ConfigManager::editorFontFamily() const { return stringValue("editor.font.family", "Consolas"); }
+QString ConfigManager::editorFontFamily() const { return stringValue("editor.font.family", defaultMonospaceFont()); }
 int ConfigManager::editorFontSize() const { return intValue("editor.font.size", 12); }
 double ConfigManager::zoomMin() const { return doubleValue("editor.zoom.min", 0.5); }
 double ConfigManager::zoomMax() const { return doubleValue("editor.zoom.max", 3.0); }
@@ -578,7 +589,7 @@ int ConfigManager::fontMinPointSize() const { return intValue("editor.font_limit
 int ConfigManager::fontMaxPointSize() const { return intValue("editor.font_limits.max_point_size", 72); }
 
 // ---- Output Panel ----
-QString ConfigManager::outputPanelFontFamily() const { return stringValue("output_panel.font.family", "Consolas"); }
+QString ConfigManager::outputPanelFontFamily() const { return stringValue("output_panel.font.family", defaultMonospaceFont()); }
 int ConfigManager::outputPanelFontSize() const { return intValue("output_panel.font.size", 10); }
 int ConfigManager::outputPanelMaxBlocks() const { return intValue("output_panel.max_blocks", 10000); }
 int ConfigManager::outputPanelMinHeight() const { return intValue("output_panel.min_height", 100); }
