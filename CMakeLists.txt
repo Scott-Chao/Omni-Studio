@@ -15,6 +15,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Network
     Pdf
     PdfWidgets
+    Svg
 )
 
 set(SOURCES
@@ -187,6 +188,7 @@ target_link_libraries(SmartMarkdown PRIVATE
     Qt6::Network
     Qt6::Pdf
     Qt6::PdfWidgets
+    Qt6::Svg
 )
 
 if(WIN32)

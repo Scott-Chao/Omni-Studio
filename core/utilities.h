@@ -17,6 +17,7 @@
 #include <QScreen>
 #include <QGuiApplication>
 #include <QWidget>
+#include <QSvgRenderer>
 #include "config/configmanager.h"
 
 // ── String utilities ────────────────────────────────────────────────────────
@@ -79,16 +80,42 @@ namespace IconUtils {
 
 inline QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
 {
-    QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull())
-        return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    QSvgRenderer renderer(svgPath);
+    if (!renderer.isValid()) {
+        QIcon fallback(svgPath);
+        return fallback;
+    }
+
+    qreal dpr = 1.0;
+    if (auto *screen = QGuiApplication::primaryScreen())
+        dpr = screen->devicePixelRatio();
+
+    int pxSize = qRound(size * dpr);
+    QImage img(pxSize, pxSize, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+
+    QRectF viewBox = renderer.viewBoxF();
+    if (viewBox.isEmpty())
+        viewBox = QRectF(0, 0, 1, 1);
+
+    // Preserve aspect ratio, center within the target rect
+    qreal scale  = qMin(size / viewBox.width(), size / viewBox.height());
+    qreal w     = viewBox.width() * scale;
+    qreal h     = viewBox.height() * scale;
+    qreal x     = (size - w) / 2.0;
+    qreal y     = (size - h) / 2.0;
+
     QPainter p(&img);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.scale(dpr, dpr);
+    renderer.render(&p, QRectF(x, y, w, h));
     p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
+    p.fillRect(QRectF(0, 0, size, size), color);
     p.end();
-    return QIcon(QPixmap::fromImage(img));
+
+    QPixmap result = QPixmap::fromImage(img);
+    result.setDevicePixelRatio(dpr);
+    return QIcon(result);
 }
 
 } // namespace IconUtils

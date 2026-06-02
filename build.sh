@@ -66,6 +66,7 @@ if [ "$PLATFORM" = "linux" ]; then
         qt6-base-dev
         qt6-webengine-dev
         qt6-pdf-dev
+        qt6-svg-dev
         cmake
         g++
     )
