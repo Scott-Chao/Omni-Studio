@@ -14,14 +14,13 @@ namespace {
 QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 14)
 {
     QIcon src(svgPath);
-    QPixmap srcPm = src.pixmap(size, size);
-    if (srcPm.isNull()) return src;
-    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32);
-    QPainter p(&img);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(img.rect(), color);
+    QPixmap result(size, size);
+    result.fill(color);
+    QPainter p(&result);
+    p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+    src.paint(&p, 0, 0, size, size);
     p.end();
-    return QIcon(QPixmap::fromImage(img));
+    return QIcon(result);
 }
 } // anonymous namespace
 
