@@ -991,9 +991,13 @@ void SmdLspManager::sendPythonRequest(const QString &action, int cellIndex,
     int vl, vc;
     cellLocalToVirtual(cellIndex, line, col, QStringLiteral("python"), vl, vc);
 
+    QString virtualDoc = pythonVirtualDoc();
+    // Base64-encode to match completion_helper.py's expectation.
+    QByteArray codeBase64 = virtualDoc.toUtf8().toBase64();
+
     QJsonObject req;
     req[QStringLiteral("action")] = action;
-    req[QStringLiteral("code")] = pythonVirtualDoc();
+    req[QStringLiteral("code")] = QString::fromLatin1(codeBase64);
     QJsonArray cursor;
     cursor.append(vl);
     cursor.append(vc);

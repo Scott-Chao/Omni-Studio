@@ -1,4 +1,4 @@
-## 功能说明文档（v0.14.7）
+## 功能说明文档（v0.14.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.14.7
-- 新增补全函数自动添加括号：`CodeEditor::insertCompletion` 中，当 `CompletionItem.type` 为 `"Method"`/`"Function"`/`"Constructor"`（或对应小写）时自动追加 `()` 并将光标置于括号中间。设置面板 → 编辑页新增"函数补全自动添加括号"开关（默认开启），支持普通代码文件与 SMD 代码块。配置项 `editor.completion_paren`，通过 `ConfigManager::editorCompletionParenEnabled()` 访问。
+### 修复 v0.14.8
+- 修复 SMD Python 无法弹出自动补全的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
