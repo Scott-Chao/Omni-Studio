@@ -78,6 +78,7 @@ private:
 
     bool loadThemeFromFile(const QString &path, ThemeData &out);
     void initBuiltinThemes();
+    void loadOverridesFromSettings();
 };
 
 #endif // THEMEMANAGER_H

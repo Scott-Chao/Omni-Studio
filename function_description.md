@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.5）
+## 功能说明文档（v0.15.6）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,10 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.15.5
-- 修复 OpenJudge 标签页无法拖动的问题
+### 新增 v0.15.6
+加入自定义主题
+- 主题新增 `Custom` 选项，可切换颜色设置并及时生效
+- 原有深色和浅色模式下，颜色显示但不可修改
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -248,7 +250,7 @@
 **职责**：
 - 处理所有来自 `SettingsPanel` 的设置变更信号，将设置持久化到 `SettingsManager` 并实时应用到所有已打开的编辑器。
 - **编辑器设置**：缩进宽度（代码/Markdown 分别处理）、字体（族/大小）、自动保存开关。使用 `applyToAllEditors()` 工具方法遍历所有标签页应用设置。
-- **主题/外观设置**：通过 `ThemeManager::setOverride()` 与 `appearance.colors.*` → 颜色令牌映射表桥接，将 `ConfigManager` JSON 路径的配置键转换为 `ThemeManager` 的颜色令牌，调用 `editor->reloadEditorColors()` 刷新所有编辑器。
+- **主题/外观设置**：通过 `ThemeManager::setOverride()` 与 `appearance.colors.*` → 颜色令牌映射表桥接，将 `ConfigManager` JSON 路径的配置键转换为 `ThemeManager` 的颜色令牌，调用 `editor->reloadEditorColors()` 刷新所有编辑器。**v0.15.6 起仅在 Custom 主题模式下生效**——Dark/Light 模式下颜色变更被 `color()` 方法忽略，仅持久化到 SettingsManager；切换到 Custom 时自动从 SettingsManager 加载所有覆盖值。
 - **快捷键处理**：`handleShortcutChanged()` 持久化快捷键覆盖、应用到 `QAction`、通知编辑器 `reloadShortcuts()`。
 - **重置默认**：`handleResetToDefaults()` 清除所有覆盖、重置字体/缩放/缩进、恢复快捷键默认值、重置输出面板。`resetComplete()` 信号通知 MainWindow 同步 `SettingsPanel` 的 UI 显示。
 - 部分 MainWindow 特有的设置（如 `file_tree_item_height`、`equal_width_tab`、`tab_height`）通过 lambda 在 MainWindow 中直接处理，再委托到 `SettingsChangeHandler` 处理通用逻辑。
@@ -692,7 +694,7 @@
 
 **职责**：
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
-- 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，背景色与编辑区一致（跟随 `sideBar.background` 主题色），数字颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`）。
+- 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，背景色与编辑区一致（跟随 `editor.background` 主题色），数字颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`）。
 - **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。弹窗保持：触发后继续输入字母/数字/下划线、按 Backspace/Delete 时弹窗保持打开并重新请求 LSP 实现实时过滤，非标识符字符（空格/括号/分号等）自动关闭。函数括号自动补全：接受补全时若 `CompletionItem.type` 为方法/函数/构造函数，自动追加 `()` 并置光标于括号中间，可通过设置面板开关（默认开启）控制。
 - **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
   - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
@@ -1247,7 +1249,7 @@
 - **分类侧边栏布局**：`QHBoxLayout`（0 边距、0 间距）左侧 `QVBoxLayout` 内含 `QListWidget`（170px 宽、深色 `#252525`）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧 `QStackedWidget` 显示对应分类页面。每个分类页面为 `QScrollArea` 内含内容 Widget。
 - **7 个分类页面**：
   - **编辑器**：默认缩放比例滑块+输入框（50%-300%）、代码缩进宽度微调框（1-8）、Markdown 缩进宽度微调框（1-8，默认 2）、编辑器字体下拉框（`FontDropdown` 自定义控件，系统字体列表，最多显示 10 行并滚动）、字号微调框（8-24）。
-  - **外观**：主题选择下拉框（深色/浅色）+ 恢复主题默认值按钮；文件树条目行高微调框（24-32px，默认 28px，实时生效）；可折叠分组颜色按钮+十六进制预览标签——编辑器（6 色）、语法高亮（11 色）、输出面板（4 色）、搜索（2 色）、预览（2 色）、Judge 状态（8 色）。点击弹出 `QColorDialog`，实时应用并持久化。**主题感知刷新**：`ColorControl` 存储 `std::function<QColor()>` 而非缓存 `QColor`，切换主题后从 `ConfigManager` 重新获取当前主题默认色；`themeChanged` 处理器遍历 `m_colorControls` 刷新按钮和预览文本；`settingOverride()` 仅检查用户显式修改值（不再用 `value()` 读 `config.json` 旧值）。Section header 按钮（QToolButton）存储在 `m_sectionButtons` 中，主题切换时在 `refreshStyle()` 末尾重新设置 stylesheet。
+  - **外观**：主题选择下拉框（深色/浅色/Custom）+ 恢复主题默认值按钮；文件树条目行高微调框（24-32px，默认 28px，实时生效）；可折叠分组颜色按钮+十六进制预览标签——编辑器（6 色）、语法高亮（11 色）、输出面板（4 色）、搜索（2 色）、预览（2 色）、Judge 状态（8 色）。点击弹出 `QColorDialog`，实时应用并持久化。**主题感知刷新**：`ColorControl` 存储 `std::function<QColor()>` 而非缓存 `QColor`，切换主题后从 `ConfigManager` 重新获取当前主题默认色；`themeChanged` 处理器遍历 `m_colorControls` 刷新按钮和预览文本；`settingOverride()` 仅检查用户显式修改值（不再用 `value()` 读 `config.json` 旧值）。Section header 按钮（QToolButton）存储在 `m_sectionButtons` 中，主题切换时在 `refreshStyle()` 末尾重新设置 stylesheet。**Custom 主题模式（v0.15.6+）**：主题下拉框新增 "Custom" 选项，选定后以深色为基础，用户在颜色按钮处修改的颜色立即生效。Dark/Light 模式下颜色按钮自动置灰不可编辑，修改被持久化但不影响 UI，切换回 Custom 后恢复生效。
   - **输出面板**：输出面板字号微调框（8-24）、最大行数微调框。
   - **预览**：分屏防抖延迟微调框（100-2000ms）、分屏比例微调框（30-70）。所有带单位的微调框，单位统一以括号形式标注在左侧标签中（如"分屏防抖（ms）"、"分屏比例（%）"），微调框本身为纯数字输入框，无箭头按钮和单位后缀。
   - **搜索**：每文件最大匹配数（1-50）、总结果上限（50-2000）、片段最大长度（50-500）。
@@ -1752,12 +1754,14 @@
 **文件**：`thememanager.h` / `thememanager.cpp`
 
 **职责**：
-- 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
+- 单例 `QObject`，管理 VS Code 2026 Dark/Light 双主题 + Custom 用户自定义主题。内置 `QMap<QString, QColor>` 调色板覆盖所有 UI 组件（editor, panel, activitybar, scrollbar, input, button, tab, overlay, treeview, separator, labels, accents, close button, slider, toggle, cell, chat, titlebar, menu, statusbar 等 20+ 分类）。
+- **Custom 主题（v0.15.6+）**：以深色主题为基础，用户可在设置面板外观栏中自由定制各颜色项。`color()` 在 Custom 模式下优先返回 `m_overrides` 中的覆盖值。Dark/Light 模式下所有覆盖值被忽略，颜色按钮置灰不可编辑。
 - 主题枚举：`Dark=0, Light=1, System=2`。`setTheme(System)` 自动检测系统主题：优先读取 Windows 注册表 `AppsUseLightTheme`，兜底根据当前时间（6:00-18:00 → Light，其余 → Dark）判断。
 - System 模式下 5 分钟 `QTimer` 自动刷新系统主题检测。
 - **防重入守卫**：`loadTheme()` 入口检查 `m_loadingTheme` 标志，阻止递归调用（如 `themeChanged()` 槽中再次触发主题切换）。重入时输出警告并返回 `false`，所有返回路径均复位标志。
 - `themeChanged(Theme)` 信号在主题实际变化时发出；`applyCurrentTheme()` 重新发射信号强制所有组件刷新。
 - 语义化颜色访问：`color("editor.background")` 返回 `QColor`，`hex("panel.border")` 返回 `"#RRGGBB"` 字符串。缺失 key 返回品红色 `#FF00FF` 方便开发时发现遗漏。
+- **覆盖优先级**（v0.15.6+）：仅在 Custom 主题下优先检查 `m_overrides`，再回退主题 JSON。Dark/Light 模式直接返回主题 JSON 值，忽略覆盖。
 
 **主要接口**：
 - `static ThemeManager &instance()`：单例访问。
@@ -2121,7 +2125,7 @@ enum class MessageRole { User, Assistant, System };
 - **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
-- **代码编辑器主题**：代码编辑模式背景色与文件树背景保持一致（跟随 `sideBar.background` 主题色：深色 `#191A1B`，浅色 `#FAFAFD`），前景色跟随 `editor.foreground`（深色 `#BBBEBF`，浅色 `#202020`），行号区背景与编辑区一致（不单独设色），行号颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`），当前行高亮跟随 `editor.lineHighlightBackground`（深色 `#242526`，浅色 `#EAEAEA40`）。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
+- **代码编辑器主题**：代码编辑模式背景色跟随 `editor.background` 主题色（深色 `#191A1B`，浅色 `#FAFAFD`），前景色跟随 `editor.foreground`（深色 `#BBBEBF`，浅色 `#202020`），行号区背景与编辑区一致（不单独设色），行号颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`），当前行高亮跟随 `editor.lineHighlightBackground`（深色 `#242526`，浅色 `#EAEAEA40`）。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
 - **拖拽移动视觉反馈**：当用户在文件树中拖拽文件经过文件夹时，目标文件夹底部会显示一条 3 像素高的蓝色指示条（颜色 `#2196F3`），拖拽离开或释放鼠标后消失。
 - **设置面板**：通过工具栏"设置"按钮或快捷键 `Ctrl+,` 打开/关闭。遮罩层为独立顶层 `Qt::Tool` 窗口（`OverlayWidget`），在 `MainWindow` 构造函数中创建，通过 `WA_TranslucentBackground` + `paintEvent` 绘制 `QColor(0,0,0,128)` 实现半透明背景变暗效果，由 Windows DWM 逐像素 alpha 合成。面板居中显示，深色主题（背景 `#2b2b2b`、边框 `#555555`、圆角 8px），标题栏背景 `#333333`。Obsidian 风格分类侧边栏：左侧 5 个分类（编辑器/外观/AI 服务/快捷键/工具）+ 底部"恢复默认设置"按钮（确认后清除所有覆盖值），右侧对应设置页面。编辑器字体、缩进宽度、外观颜色、输出面板字号、预览参数、搜索限制等配置项均实时应用，自动持久化至 `config.ini`（v0.5.4 起采用内存缓冲 + 关闭时统一写入，避免频繁 I/O）。新打开文件继承已有设置值。所有 QSpinBox 上下按钮和 QComboBox 下拉按钮使用内嵌 SVG 三角形图标渲染。八方向边缘缩放已禁用（`kEdgeMargin = 0`）。关闭后通过 `refreshPreviewTheme()` 刷新预览主题。已知问题：程序启动时创建 `WA_TranslucentBackground` 顶层窗口可能导致短暂的白色窗口闪烁。
 - **帮助面板**：通过工具栏帮助按钮或快捷键 `F1` 打开/关闭。与设置面板相同，使用 `OverlayWidget` 顶层遮罩层 + 居中面板模式，在 `MainWindow` 构造函数中创建。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置，点击 overlay 背景自动关闭，仅支持标题栏拖拽移动，不可缩放。

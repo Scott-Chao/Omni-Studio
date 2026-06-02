@@ -167,7 +167,7 @@ EditorWidget::EditorWidget(QWidget *parent)
         auto &tm = ThemeManager::instance();
         m_textEdit->setStyleSheet(QString(
             "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-        ).arg(tm.color("sideBar.background").name(),
+        ).arg(tm.color("editor.background").name(),
               tm.color("editor.foreground").name(),
               tm.color("editor.selectionBackground").name()));
     }
@@ -1414,7 +1414,7 @@ void EditorWidget::reloadEditorColors()
     auto &tm = ThemeManager::instance();
     m_textEdit->setStyleSheet(QString(
         "QTextEdit { background-color: %1; color: %2; selection-background-color: %3; }"
-    ).arg(tm.color("sideBar.background").name(),
+    ).arg(tm.color("editor.background").name(),
           tm.color("editor.foreground").name(),
           tm.color("editor.selectionBackground").name()));
 

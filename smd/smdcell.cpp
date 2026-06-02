@@ -1208,24 +1208,24 @@ void SmdCell::updateBorderStyle()
             "SmdCell { border: 2px solid %1; "
             "background-color: %2; }"
         ).arg(tm.color("cell.border.activeCommand").name(),
-              tm.color("sideBar.background").name()));
+              tm.color("editor.background").name()));
     } else if (m_active) {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid %1; "
             "background-color: %2; }"
         ).arg(tm.color("activityBar.activeBorder").name(),
-              tm.color("sideBar.background").name()));
+              tm.color("editor.background").name()));
     } else if (m_commandMode) {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid %1; "
             "background-color: %2; }"
         ).arg(tm.color("panel.border").name(),
-              tm.color("sideBar.background").name()));
+              tm.color("editor.background").name()));
     } else {
         setStyleSheet(QStringLiteral(
             "SmdCell { border: 2px solid transparent; "
             "background-color: %1; }"
-        ).arg(tm.color("sideBar.background").name()));
+        ).arg(tm.color("editor.background").name()));
     }
 }
 
@@ -1245,7 +1245,7 @@ void SmdCell::refreshStyle()
         m_markdownEditor->setStyleSheet(QStringLiteral(
             "QPlainTextEdit { background-color: %1; color: %2; "
             "selection-background-color: %3; border: none; padding: 8px; }")
-            .arg(tm.color("sideBar.background").name(),
+            .arg(tm.color("editor.background").name(),
                  tm.color("editor.foreground").name(),
                  tm.color("editor.selectionBackground").name()));
     }

@@ -1,4 +1,5 @@
 #include "thememanager.h"
+#include "config/settingsmanager.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -31,6 +32,7 @@ void ThemeManager::initBuiltinThemes()
           QStringLiteral(":/themes/dark-vscode.json") },
         { QStringLiteral("2026 Light"), Light,
           QStringLiteral(":/themes/light-vscode.json") },
+        { QStringLiteral("Custom"),     Dark,  QString() },
     };
 }
 
@@ -48,12 +50,35 @@ bool ThemeManager::loadTheme(const QString &name)
     for (const auto &entry : m_builtinThemes) {
         if (entry.name == name) {
             ThemeData data;
-            if (!loadThemeFromFile(entry.filePath, data)) {
-                m_loadingTheme = false;
-                return false;
+
+            if (name == QStringLiteral("Custom")) {
+                // Custom theme: load dark as base, apply saved overrides
+                QString darkPath;
+                for (const auto &e : m_builtinThemes) {
+                    if (e.type == Dark && !e.filePath.isEmpty()) {
+                        darkPath = e.filePath;
+                        break;
+                    }
+                }
+                if (darkPath.isEmpty() || !loadThemeFromFile(darkPath, data)) {
+                    m_loadingTheme = false;
+                    return false;
+                }
+                data.name = QStringLiteral("Custom");
+                data.type = Dark;
+            } else {
+                if (!loadThemeFromFile(entry.filePath, data)) {
+                    m_loadingTheme = false;
+                    return false;
+                }
             }
 
             m_currentTheme = data;
+            m_overrides.clear();
+
+            if (name == QStringLiteral("Custom"))
+                loadOverridesFromSettings();
+
             applyPalette();
             loadQss();
             emit themeChanged();
@@ -112,10 +137,12 @@ bool ThemeManager::loadThemeFromFile(const QString &path, ThemeData &out)
 
 QColor ThemeManager::color(const QString &token) const
 {
-    // 1. Check user overrides
-    auto overrideIt = m_overrides.find(token);
-    if (overrideIt != m_overrides.end())
-        return overrideIt.value();
+    // 1. User overrides only apply in Custom theme mode
+    if (m_currentTheme.name == QStringLiteral("Custom")) {
+        auto overrideIt = m_overrides.find(token);
+        if (overrideIt != m_overrides.end())
+            return overrideIt.value();
+    }
 
     // 2. Check current theme
     auto themeIt = m_currentTheme.colors.find(token);
@@ -134,6 +161,63 @@ void ThemeManager::setOverride(const QString &token, const QColor &color)
 void ThemeManager::clearOverrides()
 {
     m_overrides.clear();
+}
+
+void ThemeManager::loadOverridesFromSettings()
+{
+    m_overrides.clear();
+    auto &sm = SettingsManager::instance();
+
+    // Map of settings keys → theme tokens (must match s_colorTokenMap in
+    // SettingsChangeHandler for consistency between save and load).
+    static const QMap<QString, QString> s_colorTokenMap = {
+        {QStringLiteral("appearance.colors.editor.background"),        QStringLiteral("editor.background")},
+        {QStringLiteral("appearance.colors.editor.foreground"),        QStringLiteral("editor.foreground")},
+        {QStringLiteral("appearance.colors.editor.selection"),         QStringLiteral("editor.selectionBackground")},
+        {QStringLiteral("appearance.colors.current_line.highlight"),   QStringLiteral("editor.lineHighlightBackground")},
+        {QStringLiteral("appearance.colors.line_number.background"),   QStringLiteral("editorLineNumber.background")},
+        {QStringLiteral("appearance.colors.line_number.foreground"),   QStringLiteral("editorLineNumber.foreground")},
+        {QStringLiteral("appearance.colors.syntax_highlight.keywords"),         QStringLiteral("syntax.keywords")},
+        {QStringLiteral("appearance.colors.syntax_highlight.controlKeywords"),  QStringLiteral("syntax.controlKeywords")},
+        {QStringLiteral("appearance.colors.syntax_highlight.preprocessor"),     QStringLiteral("syntax.preprocessor")},
+        {QStringLiteral("appearance.colors.syntax_highlight.types"),            QStringLiteral("syntax.types")},
+        {QStringLiteral("appearance.colors.syntax_highlight.numbers"),          QStringLiteral("syntax.numbers")},
+        {QStringLiteral("appearance.colors.syntax_highlight.strings"),          QStringLiteral("syntax.strings")},
+        {QStringLiteral("appearance.colors.syntax_highlight.comments"),         QStringLiteral("syntax.comments")},
+        {QStringLiteral("appearance.colors.syntax_highlight.functions"),        QStringLiteral("syntax.functions")},
+        {QStringLiteral("appearance.colors.syntax_highlight.parameters"),       QStringLiteral("syntax.parameters")},
+        {QStringLiteral("appearance.colors.syntax_highlight.python_decorators"), QStringLiteral("syntax.pythonDecorators")},
+        {QStringLiteral("appearance.colors.syntax_highlight.python_self_cls"),  QStringLiteral("syntax.pythonSelfCls")},
+        {QStringLiteral("appearance.colors.syntax_highlight.brackets0"),        QStringLiteral("syntax.brackets0")},
+        {QStringLiteral("appearance.colors.syntax_highlight.brackets1"),        QStringLiteral("syntax.brackets1")},
+        {QStringLiteral("appearance.colors.syntax_highlight.brackets2"),        QStringLiteral("syntax.brackets2")},
+        {QStringLiteral("appearance.colors.syntax_highlight.unpairedBracket"),  QStringLiteral("syntax.unpairedBracket")},
+        {QStringLiteral("appearance.colors.output_panel.background"),  QStringLiteral("output.background")},
+        {QStringLiteral("appearance.colors.output_panel.foreground"),  QStringLiteral("output.foreground")},
+        {QStringLiteral("appearance.colors.output_panel.selection"),   QStringLiteral("output.selectionBackground")},
+        {QStringLiteral("appearance.colors.output_panel.stderr"),      QStringLiteral("output.stderr")},
+        {QStringLiteral("appearance.colors.search.highlight_background"), QStringLiteral("search.highlightBackground")},
+        {QStringLiteral("appearance.colors.search.highlight_foreground"), QStringLiteral("search.highlightForeground")},
+        {QStringLiteral("appearance.colors.preview.container_background"), QStringLiteral("preview.containerBackground")},
+        {QStringLiteral("appearance.colors.preview.webengine_background"), QStringLiteral("preview.webEngineBackground")},
+        {QStringLiteral("appearance.colors.judge_status.ac"),  QStringLiteral("judge.ac")},
+        {QStringLiteral("appearance.colors.judge_status.wa"),  QStringLiteral("judge.wa")},
+        {QStringLiteral("appearance.colors.judge_status.tle"), QStringLiteral("judge.tle")},
+        {QStringLiteral("appearance.colors.judge_status.mle"), QStringLiteral("judge.mle")},
+        {QStringLiteral("appearance.colors.judge_status.re"),  QStringLiteral("judge.re")},
+        {QStringLiteral("appearance.colors.judge_status.pe"),  QStringLiteral("judge.pe")},
+        {QStringLiteral("appearance.colors.judge_status.ole"), QStringLiteral("judge.ole")},
+        {QStringLiteral("appearance.colors.judge_status.ce"),  QStringLiteral("judge.ce")},
+    };
+
+    for (auto it = s_colorTokenMap.constBegin(); it != s_colorTokenMap.constEnd(); ++it) {
+        QVariant ov = sm.settingOverride(it.key());
+        if (ov.isValid()) {
+            QColor c(ov.toString());
+            if (c.isValid())
+                m_overrides[it.value()] = c;
+        }
+    }
 }
 
 QStringList ThemeManager::availableThemes() const

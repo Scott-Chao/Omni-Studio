@@ -1056,19 +1056,26 @@ QWidget *SettingsPanel::createAppearancePage()
         refreshStyle();
 
         // Refresh colour rows — theme defaults have changed.
-        // Only honour user overrides; ignore stale config.json entries.
+        // In Dark/Light mode, ignore saved overrides so buttons match the theme.
         auto &sm2 = SettingsManager::instance();
+        auto &ctm = ThemeManager::instance();
+        bool isCustom = (ctm.currentThemeName() == QStringLiteral("Custom"));
         for (const auto &cc : m_colorControls) {
             QColor curDefault = cc.themeDefault();
-            QVariant ov = sm2.settingOverride(cc.configKey);
-            QString hex = ov.isValid() ? ov.toString() : curDefault.name();
-            auto &ctm = ThemeManager::instance();
+            QString hex;
+            if (isCustom) {
+                QVariant ov = sm2.settingOverride(cc.configKey);
+                hex = ov.isValid() ? ov.toString() : curDefault.name();
+            } else {
+                hex = curDefault.name();
+            }
             cc.btn->setStyleSheet(
                 QStringLiteral(
                     "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                     "QPushButton:hover { border-color: %3; }"
                 ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
             cc.preview->setText(hex);
+            cc.btn->setEnabled(isCustom);
         }
     });
 
@@ -1086,15 +1093,17 @@ QWidget *SettingsPanel::createAppearancePage()
     );
     connect(m_resetThemeBtn, &QPushButton::clicked, this, [this]() {
         auto &tm = ThemeManager::instance();
-        tm.clearOverrides();
-        tm.loadTheme(tm.currentThemeName());
-
-        // Keep SettingsManager in sync so panel values match on next open
         auto &sm = SettingsManager::instance();
+
+        // Clear SettingsManager overrides first (so Custom theme reload
+        // doesn't re-import stale overrides via loadOverridesFromSettings).
         for (const auto &k : sm.allOverrideKeys()) {
             if (k.startsWith(QStringLiteral("appearance.colors.")))
                 sm.removeSettingOverride(k);
         }
+
+        tm.clearOverrides();
+        tm.loadTheme(tm.currentThemeName());
         syncFromSettings(sm);
     });
 
@@ -1183,6 +1192,7 @@ QWidget *SettingsPanel::createAppearancePage()
 
         auto *colorBtn = new QPushButton;
         colorBtn->setFixedSize(24, 24);
+        colorBtn->setEnabled(tm.currentThemeName() == QStringLiteral("Custom"));
         QString btnBorder = tm.color("input.border").name();
         QString btnActive = tm.color("badge.background").name();
         colorBtn->setStyleSheet(

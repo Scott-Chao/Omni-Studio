@@ -189,7 +189,7 @@ SmdEditor::SmdEditor(QWidget *parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
 
     auto &tm = ThemeManager::instance();
-    QString editorBg = tm.color("sideBar.background").name();
+    QString editorBg = tm.color("editor.background").name();
     QString panelBorder = tm.color("panel.border").name();
 
     // Splitter so the user can drag the diagnostics panel top edge to resize.
@@ -503,7 +503,7 @@ void SmdEditor::refreshStyle()
     int savedScroll = m_scrollArea->verticalScrollBar()->value();
 
     auto &tm = ThemeManager::instance();
-    QString editorBg = tm.color("sideBar.background").name();
+    QString editorBg = tm.color("editor.background").name();
     QString panelBorder = tm.color("panel.border").name();
 
     m_splitter->setStyleSheet(QStringLiteral(
