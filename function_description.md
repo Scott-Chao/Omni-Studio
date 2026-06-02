@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.0）
+## 功能说明文档（v0.15.1）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,26 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.14.8
-- 修复 SMD Python 无法弹出自动补全的问题
-
-### 新增 v0.15.0 — 跨平台支持（Linux / macOS）
-- **CMake 构建系统**：新增 `CMakeLists.txt`（Qt 6 + C++17，支持 Core/Gui/Widgets/WebEngineWidgets/Network/Pdf/PdfWidgets）、`CMakePresets.json`（linux/macos/win32 各两组 debug/release preset + build preset）和 `build.sh`（macOS/Linux 便捷构建脚本，支持 `debug|release|clean|rebuild`，自动检测 Linux 缺失依赖包）
-- **CI 三平台工作流**：`.github/workflows/` 下拆分 Linux/macOS/Windows 三个独立 workflow，全部使用 `workflow_dispatch` 手动触发。macOS 使用 `cmake --preset macos-release` 构建并递归签名 QtWebEngineProcess.app
-- **macOS 原生窗口**：`core/macoswindow.h/mm`（Obj-C++ AppKit 桥接）通过 `setTitlebarAppearsTransparent` + `NSWindowStyleMaskFullSizeContentView` 保留红绿灯按钮的同时让自定义工具栏渲染到标题栏区域。`MainWindow` 在 macOS 上使用 `Qt::Window` 标志（非 FramelessWindowHint），`QTimer::singleShot(0)` 延迟调用确保 NSWindow 存在
-- **macOS 原生菜单栏**：`QMenuBar` 替代工具栏的「文件▼」按钮和窗口控制按钮。菜单结构：Smart Markdown（关于/偏好设置/退出）、文件（打开目录/新建/保存/另存为/导出PDF）、视图（预览/分割预览/各面板切换/缩放）、工具（编译/运行/编译并运行/SMD↔MD转换）、帮助（F1 帮助面板）
-- **macOS 快捷键适配**：
-  - `ActivityBar` 工具提示使用 `QKeySequence::NativeText` 自动映射为 `⌘B` 等本地化显示
-  - `SmdCell` 命令模式提示使用 `nativeShortcutHint()` 替换 `Ctrl+`→`⌘`、`Shift+`→`⇧`
-  - 设置面板快捷键 `Ctrl+,` 由 macOS Preferences 菜单项拥有，免除全局冲突
-- **macOS 等宽字体**：`ConfigManager.defaultMonospaceFont()` 在 macOS 上优先使用 Menlo（回退至系统固定字体），其他平台保持 Consolas。编辑器、输出面板、默认配置均使用该函数
-- **SVG 图标着色统一**：所有 `coloredSvgIcon()` 辅助函数改用 `CompositionMode_DestinationIn`（透明画布填充颜色 + SVG 作为蒙版绘制），避免 `SourceIn` 在 macOS CoreGraphics 与 Windows GDI 之间的格式差异
-- **跨平台编译器检测**：`CompilerUtils::findCompilers()` 按平台返回可用编译器列表——Windows：MinGW g++ + MSVC cl.exe；Linux：g++ + clang++；macOS：Clang++（Apple）+ g++（Homebrew）。`getCompileArgs()` 同时接受 `gcc` 和 `clang` 编译器 ID
-- **跨平台评测内存监控**：`JudgeEngine::captureMemory()` 按平台实现——Windows：`OpenProcess` + `GetProcessMemoryInfo`；Linux：`/proc/<pid>/status`（VmRSS）+ `waitid` WNOWAIT 获取已退出子进程峰值 RSS；macOS：`proc_pidinfo(PROC_PIDTASKINFO)` + `wait4` 回退
-- **跨平台 Esc 键处理**：`CodeEditor` 按平台使用不同事件机制——Windows：`EscNativeFilter` 通过 `qApp->installNativeEventFilter()` 捕获 `VK_ESCAPE` 原生消息；Linux/macOS：`EscEventFilter` 通过 `installEventFilter()` 在 Qt `KeyPress` 事件层处理
-- **X11/Linux 无边框窗口**：`MainWindow::nativeEvent` 添加 X11 分支（预留 xcb 边缘检测接口，当前使用 Qt `windowHandle()->startSystemResize` 回退）。Wayland 遵循协议限制使用 Qt 级拖拽 API
-- **资源清理**：移除内置 `icon-app.ico/png/svg` 文件和 `QIcon::setFallbackSearchPaths` 注册。macOS 使用 `.app` 包图标，Windows 由 `.pro`/`.rc` 提供
-- **跨平台设计文档**：新增 `docs/cross-platform-design.md`，记录分阶段迁移策略（CMake → Linux → macOS）和平台约束
+### 修复 v0.15.1
+- 修复 SMD 代码运行输出颜色渲染错误的问题
 
 ### 1. `MainWindow` - 主窗口控制器
 

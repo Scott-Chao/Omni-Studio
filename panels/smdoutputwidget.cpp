@@ -40,9 +40,11 @@ void SmdOutputWidget::refreshStyle()
 {
     auto &tm = ThemeManager::instance();
     m_outputEdit->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit { selection-background-color: %1; border: none; "
-        "border-top: 1px solid %2; padding: 2px 8px; }"
-    ).arg(tm.color("output.selectionBackground").name(),
+        "QPlainTextEdit { background-color: %1; color: %2; selection-background-color: %3; border: none; "
+        "border-top: 1px solid %4; padding: 2px 8px; }"
+    ).arg(tm.color("output.background").name(),
+          tm.color("output.foreground").name(),
+          tm.color("output.selectionBackground").name(),
           tm.color("panel.border").name()));
 }
 
@@ -98,7 +100,7 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
         fmt.setForeground(ThemeManager::instance().color("output.stderr"));
         cursor.insertText(text, fmt);
     } else {
-        cursor.insertText(text);
+        cursor.insertText(text, QTextCharFormat());
     }
 
     // Enforce max output lines: keep first kMaxOutputLines, drop from the end.
