@@ -1,8 +1,6 @@
 name: macOS Build
 
 on:
-  push:
-    branches: [crossos]
   workflow_dispatch:
 
 jobs:
@@ -15,22 +13,21 @@ jobs:
         run: brew install qt
 
       - name: Configure CMake
-        run: |
-          cmake -B build \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" \
-            -DCMAKE_BUILD_TYPE=Debug
+        run: cmake --preset macos-release
+        env:
+          CMAKE_PREFIX_PATH: $(brew --prefix qt)
 
       - name: Build
-        run: cmake --build build -j$(sysctl -n hw.logicalcpu)
+        run: cmake --build build/release -j$(sysctl -n hw.logicalcpu)
 
       - name: Bundle .app with Qt frameworks
         run: |
-          $(brew --prefix qt)/bin/macdeployqt build/SmartMarkdown.app \
+          $(brew --prefix qt)/bin/macdeployqt build/release/SmartMarkdown.app \
             -qmldir=. -verbose=2
 
       - name: Remove broken signatures and re-sign
         run: |
-          APP="build/SmartMarkdown.app"
+          APP="build/release/SmartMarkdown.app"
 
           # Remove all existing signatures recursively
           codesign --remove-signature "$APP" 2>/dev/null || true
@@ -49,7 +46,7 @@ jobs:
 
       - name: Verify signing
         run: |
-          APP="build/SmartMarkdown.app"
+          APP="build/release/SmartMarkdown.app"
           echo "=== CodeSign status ==="
           codesign -dvvv --no-strict "$APP" 2>&1 || true
           echo "=== Verification ==="
@@ -58,7 +55,7 @@ jobs:
       - name: Package .app as zip (preserve bundle structure)
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
-            build/SmartMarkdown.app SmartMarkdown-macOS.zip
+            build/release/SmartMarkdown.app SmartMarkdown-macOS.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

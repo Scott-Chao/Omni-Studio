@@ -46,6 +46,28 @@
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/release",
                 "CMAKE_CXX_FLAGS": "/utf-8"
             }
+        },
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug",
+            "description": "Debug build on macOS (Clang)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/release"
+            }
+        },
+        {
+            "name": "macos-release",
+            "displayName": "macOS Release",
+            "description": "Release build on macOS (Clang)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/release"
+            }
         }
     ],
     "buildPresets": [
@@ -67,6 +89,16 @@
         {
             "name": "win32-release",
             "configurePreset": "win32-release",
+            "jobs": 0
+        },
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos-debug",
+            "jobs": 0
+        },
+        {
+            "name": "macos-release",
+            "configurePreset": "macos-release",
             "jobs": 0
         }
     ]

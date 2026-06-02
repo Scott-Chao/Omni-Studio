@@ -1,0 +1,21 @@
+name: Linux Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev
+
+      - name: Configure CMake
+        run: cmake --preset linux-release
+
+      - name: Build
+        run: cmake --build build/release -j$(nproc)
