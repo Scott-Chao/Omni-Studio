@@ -6,18 +6,27 @@
 #include <QTabBar>
 #include <QMouseEvent>
 #include <QApplication>
+#include <QPointer>
+#include <QStyleOptionTab>
 
 
 // 拖拽时在关闭按钮 widget 之上渲染被拖标签的覆盖层
+// 直接在 widget 表面渲染（而非预渲染到 QPixmap），确保文字使用 ClearType 子像素渲染
 class DragOverlay : public QWidget
 {
 public:
     explicit DragOverlay(QWidget *parent);
-    void setPixmap(const QPixmap &pm);
+    void setRenderData(const QStyleOptionTab &opt,
+                       QWidget *closeBtn, const QPoint &closeBtnOffset,
+                       bool isSelected, const QFont &font);
 protected:
     void paintEvent(QPaintEvent *) override;
 private:
-    QPixmap m_pixmap;
+    QStyleOptionTab m_opt;
+    QPointer<QWidget> m_closeBtn;
+    QPoint m_closeBtnOffset;
+    QFont m_font;
+    bool m_isSelected = false;
 };
 
 // 为了修复默认 QTabBar 拖拽时的视觉问题，改用自定义 CustomTabBar
@@ -46,7 +55,7 @@ private:
     int  m_dragTabWidth = 0;
     int  m_dragOffsetX = 0;
     QPoint m_dragCurrentPos;
-    EditorWidget *m_dragEditor = nullptr;
+    QWidget *m_dragWidget = nullptr;
     int  m_lastMoveCenterX = 0;
     DragOverlay *m_dragOverlay = nullptr;
     bool m_equalWidth = false;
