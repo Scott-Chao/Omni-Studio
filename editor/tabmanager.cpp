@@ -726,34 +726,31 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
             QStyleOptionTab opt;
             initStyleOption(&opt, draggedIdx);
             opt.rect = QRect(0, 0, m_dragTabWidth, tabR.height());
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-            opt.position = QStyleOptionTab::Moving;
-#endif
+
+            // 统一使用手动文字渲染，避免依赖 style 的文字定位（Qt 6 移除了
+            // QStyleOptionTab::Moving，直接使用 style()->drawControl 渲染
+            // 文字在不同 Qt 版本下表现不一致）
             pp.setFont(draggedIsPreview ? italicFont : normalFont);
-            if (m_equalWidth || draggedIsPreview) {
-                QString overlayText = opt.text;
-                opt.text = QString();
-                style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
-                opt.text = overlayText;
-                QRect overlayR = opt.rect;
-                overlayR.setLeft(overlayR.left() + 8);
-                QWidget *cb2 = tabButton(draggedIdx, QTabBar::RightSide);
-                if (!cb2) cb2 = tabButton(draggedIdx, QTabBar::LeftSide);
-                if (cb2) overlayR.setRight(cb2->pos().x() - tabR.left() - 4);
-                else overlayR.setRight(overlayR.right() - 8);
-                if (m_equalWidth) {
-                    QString overlayElided = pp.fontMetrics().elidedText(overlayText, Qt::ElideRight,
-                                                                        overlayR.width());
-                    pp.setPen(ThemeManager::instance().color(
-                        (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
-                    pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayElided);
-                } else {
-                    pp.setPen(ThemeManager::instance().color(
-                        (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
-                    pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayText);
-                }
+            QString overlayText = opt.text;
+            opt.text = QString();
+            style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+            opt.text = overlayText;
+            QRect overlayR = opt.rect;
+            overlayR.setLeft(overlayR.left() + 8);
+            QWidget *cb2 = tabButton(draggedIdx, QTabBar::RightSide);
+            if (!cb2) cb2 = tabButton(draggedIdx, QTabBar::LeftSide);
+            if (cb2) overlayR.setRight(cb2->pos().x() - tabR.left() - 4);
+            else overlayR.setRight(overlayR.right() - 8);
+            if (m_equalWidth) {
+                QString overlayElided = pp.fontMetrics().elidedText(overlayText, Qt::ElideRight,
+                                                                    overlayR.width());
+                pp.setPen(ThemeManager::instance().color(
+                    (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+                pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayElided);
             } else {
-                style()->drawControl(QStyle::CE_TabBarTab, &opt, &pp, this);
+                pp.setPen(ThemeManager::instance().color(
+                    (opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground"));
+                pp.drawText(overlayR, Qt::AlignLeft | Qt::AlignVCenter, overlayText);
             }
 
             // 把关闭按钮 widget 渲染到 pixmap 上
