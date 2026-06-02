@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#ifdef Q_OS_WIN
 #include <dwmapi.h>
+#endif
 #include <QPainter>
 
 namespace {
@@ -81,6 +83,8 @@ protected:
 #include <windows.h>
 #include <windowsx.h>
 #endif
+
+#include "macoswindow.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -1396,6 +1400,17 @@ void MainWindow::saveSettings()
     m_settings->setLastFolderPath(m_explorer->rootPath());
     m_settings->setWindowGeometry(saveGeometry());
     m_settings->setSplitterState(m_splitter->saveState());
+}
+
+void MainWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+#ifdef Q_OS_MACOS
+    QTimer::singleShot(0, this, [this]() {
+        if (windowHandle())
+            MacOSWindow::enableFullSizeContentView(windowHandle());
+    });
+#endif
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)

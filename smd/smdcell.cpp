@@ -18,6 +18,27 @@
 #include <QDir>
 #include <QPainter>
 
+namespace {
+
+// Converts keyboard shortcut prefixes in label text to native macOS symbols.
+// Unlike activitybar.cpp's nativeShortcutText() which handles pure key sequences
+// via QKeySequence::NativeText, this function operates on mixed-text labels
+// (e.g. "Ctrl+Enter: 运行") and preserves readable key names like "Enter" that
+// QKeySequence::NativeText would render as abstract symbols (↩, ⌅, etc.).
+QString nativeShortcutHint(const QString &text)
+{
+#ifdef Q_OS_MACOS
+    QString r = text;
+    r.replace(QStringLiteral("Ctrl+"), QStringLiteral("⌘"))
+     .replace(QStringLiteral("Shift+"), QStringLiteral("⇧"));
+    return r;
+#else
+    return text;
+#endif
+}
+
+} // anonymous namespace
+
 // Minimal HTML page that embeds KaTeX + Mermaid + marked.js for
 // rendering Markdown cells with full math / diagram support.
 // Uses %1 as placeholder for the base64-encoded markdown content.
@@ -350,13 +371,13 @@ void SmdCell::setCommandMode(bool cmd)
             m_markdownEditor->setCursorWidth(0);
         }
         if (m_rendered) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Shift+Z: 编辑")));
             m_executeHint->setVisible(true);
         } else if (m_type == Markdown) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转")));
             m_executeHint->setVisible(true);
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 运行 | Shift+Enter: 运行并跳转"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Enter: 运行 | Shift+Enter: 运行并跳转")));
             m_executeHint->setVisible(true);
         }
     } else {
@@ -575,9 +596,9 @@ void SmdCell::setRendered(bool rendered)
     }
     if (m_commandMode) {
         if (rendered) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Shift+Z: 编辑")));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转")));
         }
         m_executeHint->setVisible(true);
     }
@@ -606,9 +627,9 @@ void SmdCell::setRenderedState(bool rendered)
 
     if (m_commandMode) {
         if (rendered) {
-            m_executeHint->setText(QStringLiteral("Ctrl+Shift+Z: 编辑"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Shift+Z: 编辑")));
         } else {
-            m_executeHint->setText(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转"));
+            m_executeHint->setText(nativeShortcutHint(QStringLiteral("Ctrl+Enter: 渲染 | Shift+Enter: 渲染并跳转")));
         }
         m_executeHint->setVisible(true);
     }

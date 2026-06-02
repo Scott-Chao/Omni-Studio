@@ -4,7 +4,8 @@
 
 ```
 main.cpp                  → QApplication + MainWindow bootstrap
-core/mainwindow.*         → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar, window drag/resize via nativeEvent & event(); right panel auto-hide via QApplication::focusChanged (no global event filter)
+core/mainwindow.*         → orchestrator: owns all widgets, routes signals/slots — frameless window with toolbar-as-title-bar (Win/Lin) or native title bar with traffic light buttons (macOS); window drag/resize via nativeEvent & event(); macOS QMenuBar replaces toolbar file button and window controls; right panel auto-hide via QApplication::focusChanged (no global event filter)
+  ├── core/macoswindow.*      → macOS native window bridge (Obj-C++ via AppKit). `enableFullSizeContentView()`: `setTitlebarAppearsTransparent:YES`, `NSWindowStyleMaskFullSizeContentView`, `NSWindowTitleHidden`. Keeps native traffic light buttons while custom toolbar renders behind them. Invoked via `QTimer::singleShot(0)` in `showEvent` to ensure native NSWindow exists.
   ├── ai/airequesthandler.*    → AI request lifecycle (provider management, streaming, history, token estimation / context pruning)
   ├── index/indexmanager.*     → File index, backlinks, tags, async index build, wiki-link resolution, completion data
   ├── core/crashrecoverymanager.* → Stale recovery file cleanup, recovery directory management
@@ -161,7 +162,11 @@ Header-only. 40+ text extension list + scan name filters.
 QTextEdit with QCompleter. `[[` triggers filename popup (case-insensitive prefix). `#` triggers tag autocomplete. Tab accepts, first item auto-selected.
 
 ### CodeEditor (`editor/codeeditor.h/cpp`)
-QPlainTextEdit with line numbers, auto-indent, bracket completion, search highlights, code completion. Dark theme Consolas 12pt. setLanguage() installs highlighter via LanguageUtils and creates a CompletionProvider (CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider fallback). setDocumentUri() sets file identity for LSP diagnostics. Owns CompletionPopup, HoverManager, SignatureHelpManager. EscNativeFilter (Windows native event filter) catches VK_ESCAPE to close tool windows when Qt routing fails. **Diagnostics**: connects `provider->diagnosticsUpdated` → `setDiagnostics()` to cache `m_diagnostics` and draw squiggly underlines. `diagnostics()` getter exposes cache for BottomPanel restoration on tab switch. **Ctrl+D shortcut**: `m_toggleDiagnostics` QKeySequence; eventFilter handles ShortcutOverride (accept) + KeyPress (emit `diagnosticsToggleRequested()`); keyPressEvent has backup matchShortcut check.
+QPlainTextEdit with line numbers, auto-indent, bracket completion, search highlights, code completion. Dark theme Consolas/Menlo 12pt (Menlo on macOS, Consolas on other platforms). setLanguage() installs highlighter via LanguageUtils and creates a CompletionProvider (CppCompletionProvider / PythonCompletionProvider / KeywordCompletionProvider fallback). setDocumentUri() sets file identity for LSP diagnostics. Owns CompletionPopup, HoverManager, SignatureHelpManager. Platform-specific Esc key handling for tool window dismissal:
+- **Windows**: `EscNativeFilter` installed via `qApp->installNativeEventFilter()` — catches `VK_ESCAPE` Windows message directly (required because Qt routes Esc to the Tool HWND when a Qt::Tool window is visible).
+- **Linux and macOS**: `EscEventFilter` installed via `installEventFilter()` on the editor — catches `QEvent::KeyPress` with `Qt::Key_Escape`.
+Both implementations close CompletionPopup and SignatureHelpManager identically.
+**Diagnostics**: connects `provider->diagnosticsUpdated` → `setDiagnostics()` to cache `m_diagnostics` and draw squiggly underlines. `diagnostics()` getter exposes cache for BottomPanel restoration on tab switch. **Ctrl+D shortcut**: `m_toggleDiagnostics` QKeySequence; eventFilter handles ShortcutOverride (accept) + KeyPress (emit `diagnosticsToggleRequested()`); keyPressEvent has backup matchShortcut check.
 
 ### CompletionProvider (`lsp/completionprovider.h`)
 Abstract QObject interface. Defines CompletionItem/HoverInfo/SignatureInfo structs. Pure virtual: requestCompletion, requestHover, requestSignatureHelp. Virtual no-op openDocument/updateText (overridden by LSP providers for text sync). Signals: completionReady, hoverReady, signatureHelpReady, **diagnosticsUpdated(QList<SmdDiagnostic>)**. Includes `smd/smddiagnostic.h` for the shared `SmdDiagnostic` struct.
@@ -200,7 +205,11 @@ QSyntaxHighlighter. Dark theme colors. Supports f-strings and raw strings. Tripl
 QSyntaxHighlighter for bracket matching. Highlights matching `{}()[]` pairs and provides companion `BracketCompletionFilter` for auto-pair skipping inside string/comment contexts.
 
 ### CompilerUtils (`runner/compilerutils.h`)
-Header-only. Detects g++ (QStandardPaths), MSVC cl.exe (VSCMD_VER env), python (QStandardPaths). Compile args: g++ `-std=c++17 -Wall -Wextra`, cl `/std:c++17 /W4 /EHsc`.
+Header-only. Platform-specific compiler detection via `#ifdef`:
+- **Windows**: g++ (MinGW via QStandardPaths) + MSVC cl.exe (VSCMD_VER env).
+- **Linux**: g++ (QStandardPaths) + clang++ (QStandardPaths fallback).
+- **macOS**: clang++ (Apple, QStandardPaths + `/usr/bin/clang++` fallback) + g++ (Homebrew via QStandardPaths).
+Compile args: g++/clang `-std=c++17 -Wall -Wextra`, cl `/std:c++17 /W4 /EHsc`. Accepts both `gcc` and `clang` compiler IDs in `getCompileArgs()` and `getCompileOnlyArgs()`.
 
 ### ProcessRunner (`runner/processrunner.h/cpp`)
 Two-phase compile→run via sequential QProcess. Methods: startCompile, startRun, startCompileAndRun (auto-transitions), startRunPython. writeInput(text) appends `\n`; writeRaw doesn't. isAcceptingInput() false during compile. Output raw (no .trimmed()). Signals: compileFinished, runFinished, processStarted, processStopped.
@@ -212,7 +221,11 @@ Bottom QPlainTextEdit (Consolas 10pt, #1E1E1E bg). stdout white, stderr red. std
 Unified bottom panel (QSplitter bottom) replacing standalone OutputPanel. 28px header bar with tab buttons (输出/诊断) + close button. QStackedWidget: index 0 = OutputPanel, index 1 = diagnostics page (QScrollArea with two `DiagnosticSection` widgets for errors/warnings). Stores `QList<SmdDiagnostic> m_diagnostics` and `CodeEditor *m_currentEditor`. `rebuildDiagnostics()` auto-hides sections with zero count, shows "无诊断信息" placeholder when all empty. `setCurrentEditor()` tracks which editor diagnostics belong to. Uses `DiagnosticSection` from `editor/diagnosticsection.h` (shared with `SmdDiagnosticsPanel`).
 
 ### JudgeEngine (`judge/judgeengine.h/cpp`)
-Discovers `.in`/`.out` pairs. Compile → warmup (empty stdin, discarded output — populates OS cache for stable first test result) → per-test execution. 1000ms timeout (TLE). 64MB memory limit with triple-capture monitoring. m_testHandled prevents dual-fire between timeout and process finish. Output: trimmed line-by-line comparison. TestResult struct includes `inputData` (read from `.in` file) for ErrorJournal recording.
+Discovers `.in`/`.out` pairs. Compile → warmup (empty stdin, discarded output — populates OS cache for stable first test result) → per-test execution. 1000ms timeout (TLE). 64MB memory limit with triple-capture monitoring. Platform-specific `captureMemory()`:
+- **Windows**: `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetProcessMemoryInfo`.
+- **Linux**: `/proc/<pid>/status` (VmRSS) + `waitid` WNOWAIT `ru_maxrss` via syscall for exited processes.
+- **macOS**: `proc_pidinfo(PROC_PIDTASKINFO)` for `pti_resident_size` + `wait4` fallback.
+`m_testHandled` prevents dual-fire between timeout and process finish. Output: trimmed line-by-line comparison. TestResult struct includes `inputData` (read from `.in` file) for ErrorJournal recording.
 
 ### JudgePanel (`panels/judgepanel.h/cpp`)
 Folder selector + OpenJudge buttons + 5-column result table + detail view. Owns JudgeEngine. Emits runAllRequested, openJudgeRequested, submitToOpenJudgeRequested. In `onTestFinished()`, non-AC results call `ErrorJournal::instance().recordFailure()`.
@@ -291,7 +304,10 @@ Singleton (QObject) managing VS Code 2026 Dark/Light themes. Built-in `QMap<QStr
 **QSS scope optimization**: `setStyleSheetTarget(QWidget*)` allows limiting `loadQss()` output to a specific widget tree (MainWindow) instead of `qApp->setStyleSheet()`. This avoids Qt re-styling every widget in the application when the theme changes. When target is null, falls back to `qApp->setStyleSheet()` for backward compatibility.
 
 ### CaptionBtn (anonymous namespace in `core/mainwindow.cpp`)
-Custom `QPushButton` subclass for system-native title bar icons (minimize/maximize/restore/close). Uses `QApplication::style()->standardIcon(SP_TitleBarMinButton etc.)` for icons. `QPainter::fillRect` self-paints hover background for immediate visual response (no Qt style lag). Used in `setupCustomTitleBar()` for the frameless window's right-side window control buttons.
+Custom `QPushButton` subclass for system-native title bar icons (minimize/maximize/restore/close). Uses `QApplication::style()->standardIcon(SP_TitleBarMinButton etc.)` for icons. `QPainter::fillRect` self-paints hover background for immediate visual response (no Qt style lag). Used in `setupCustomTitleBar()` for the frameless window's right-side window control buttons. Conditionally compiled with `#ifndef Q_OS_MACOS` — macOS uses native traffic light buttons.
+
+### MacOSWindow (`core/macoswindow.h/mm`)
+Obj-C++ bridge (`.mm` file) enabling macOS native window behavior through AppKit. Compiled only on Apple platforms via `target_sources` in CMakeLists.txt. `enableFullSizeContentView(QWindow*)` obtains the `NSView` from Qt's `winId()`, traverses to the `NSWindow`, and calls `setTitlebarAppearsTransparent:YES`, `NSWindowStyleMaskFullSizeContentView`, `NSWindowTitleHidden`. This preserves native traffic light buttons while allowing the custom toolbar to render behind them. Called from `MainWindow::showEvent()` via `QTimer::singleShot(0)` to ensure the native NSWindow exists.
 
 ### CompilerErrorParser (`runner/compilererrorparser.h`)
 Header-only utility namespace. Parses compiler stderr output into `QList<SmdDiagnostic>` for MD preview code block diagnostics. Two functions: `parseCompileErrors()` handles g++ (`file:line:col: error/warning: message`) and MSVC (`file(line,col): error Cxxxx: message`) formats; `parsePythonTraceback()` extracts last `File "...", line N` position and final exception message. Called by `MainWindow::parseAndShowBlockDiagnostics()` after MD code block run completes.

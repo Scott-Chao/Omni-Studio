@@ -1,0 +1,26 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: |
+          pip install aqtinstall
+          aqt install-qt windows desktop 6.11.0 win64_msvc2022_64 -O C:\Qt
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
+        run: cmake --preset win32-release
+        env:
+          CMAKE_PREFIX_PATH: C:\Qt\6.11.0\msvc2022_64
+
+      - name: Build
+        run: cmake --build build/release --config Release -j $env:NUMBER_OF_PROCESSORS

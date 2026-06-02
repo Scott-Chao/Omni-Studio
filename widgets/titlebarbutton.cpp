@@ -40,8 +40,12 @@ QStyle::StandardPixmap TitleBarButton::standardPixmap(Type type) const
 
 void TitleBarButton::updateIcon()
 {
-    // Use native Windows style for icons, independent of the app's Fusion style
+    // Use native style for title bar icons (windowsvista on Windows, fusion elsewhere)
     static QStyle *s_nativeStyle = QStyleFactory::create(QStringLiteral("windowsvista"));
+    if (!s_nativeStyle)
+        s_nativeStyle = QStyleFactory::create(QStringLiteral("Fusion"));
+    if (!s_nativeStyle)
+        s_nativeStyle = style();
     setIcon(s_nativeStyle->standardIcon(standardPixmap(m_type)));
     if (m_type == Minimize)
         setIconSize(QSize(28, 28));

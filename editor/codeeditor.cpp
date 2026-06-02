@@ -30,7 +30,6 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
-#endif
 
 // ============================================================
 // EscNativeFilter — catches VK_ESCAPE at the Windows message level
@@ -48,7 +47,6 @@ public:
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
     {
         Q_UNUSED(result);
-#ifdef Q_OS_WIN
         if (eventType == "windows_generic_MSG") {
             MSG *msg = static_cast<MSG *>(message);
             if (msg->message == WM_KEYDOWN && msg->wParam == VK_ESCAPE) {
@@ -62,13 +60,42 @@ public:
                 }
             }
         }
-#else
-        Q_UNUSED(eventType);
-        Q_UNUSED(message);
-#endif
         return false;
     }
 };
+#else
+// ============================================================
+// EscEventFilter — catches Escape via Qt QEvent::KeyPress.
+// Used on Linux/macOS where Qt properly routes key events.
+// ============================================================
+
+class EscEventFilter : public QObject
+{
+    Q_OBJECT
+public:
+    explicit EscEventFilter(QObject *parent = nullptr) : QObject(parent) {}
+    QPointer<CompletionPopup> popup;
+    QPointer<SignatureHelpManager> sigMgr;
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::KeyPress) {
+            auto *ke = static_cast<QKeyEvent *>(event);
+            if (ke->key() == Qt::Key_Escape) {
+                if (sigMgr && sigMgr->isActive()) {
+                    sigMgr->hide();
+                    return true;
+                }
+                if (popup && popup->isActive()) {
+                    popup->hide();
+                    return true;
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+#endif
 
 // ============================================================
 // LineNumberArea
@@ -131,6 +158,7 @@ CodeEditor::CodeEditor(QWidget *parent)
     m_hoverManager = new HoverManager(this, nullptr, this);
     m_signatureHelpManager = new SignatureHelpManager(this, nullptr, this);
 
+#ifdef Q_OS_WIN
     // Native Windows event filter — the only way to catch Esc when
     // a Qt::Tool window is visible (Windows routes Esc to the Tool HWND).
     {
@@ -139,6 +167,15 @@ CodeEditor::CodeEditor(QWidget *parent)
         nativeFilter->sigMgr = m_signatureHelpManager;
         qApp->installNativeEventFilter(nativeFilter);
     }
+#else
+    // Qt-level event filter — catches Esc via QEvent::KeyPress on Linux/macOS.
+    {
+        auto *escFilter = new EscEventFilter(this);
+        escFilter->popup = m_completionPopup;
+        escFilter->sigMgr = m_signatureHelpManager;
+        installEventFilter(escFilter);
+    }
+#endif
 
     viewport()->installEventFilter(this);
 
