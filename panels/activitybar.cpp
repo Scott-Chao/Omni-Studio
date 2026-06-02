@@ -5,6 +5,15 @@
 #include <QPainter>
 
 namespace {
+
+// Convert "Ctrl+B" to native display text ("⌘B" on macOS, "Ctrl+B" on Win).
+// Qt 6's QKeySequence::NativeText handles the platform mapping.
+static QString nativeShortcutText(const char *shortcut)
+{
+    return QKeySequence(QString::fromLatin1(shortcut))
+        .toString(QKeySequence::NativeText);
+}
+
 QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
 {
     // Create a solid-colored pixmap, then apply the SVG shape as a mask
@@ -33,13 +42,19 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->setContentsMargins(0, 4, 0, 4);
     layout->setSpacing(0);
 
-    m_explorerBtn = createButton(QIcon(":/icons/file"),  tr("文件浏览 (Ctrl+B)"));
-    m_searchBtn    = createButton(QIcon(":/icons/search"),    tr("搜索 (Ctrl+Shift+F)"));
-    m_aiBtn        = createButton(QIcon(":/icons/ai"),        tr("AI 助手 (Ctrl+Shift+A)"));
-    m_settingsBtn  = createButton(QIcon(":/icons/settings"),  tr("设置 (Ctrl+,)"));
-    m_exportPdfBtn = createButton(QIcon(":/icons/pdf"),       tr("导出 PDF (Ctrl+E)"));
+    m_explorerBtn = createButton(QIcon(":/icons/file"),
+        tr("文件浏览 (%1)").arg(nativeShortcutText("Ctrl+B")));
+    m_searchBtn    = createButton(QIcon(":/icons/search"),
+        tr("搜索 (%1)").arg(nativeShortcutText("Ctrl+Shift+F")));
+    m_aiBtn        = createButton(QIcon(":/icons/ai"),
+        tr("AI 助手 (%1)").arg(nativeShortcutText("Ctrl+Shift+A")));
+    m_settingsBtn  = createButton(QIcon(":/icons/settings"),
+        tr("设置 (%1)").arg(nativeShortcutText("Ctrl+,")));
+    m_exportPdfBtn = createButton(QIcon(":/icons/pdf"),
+        tr("导出 PDF (%1)").arg(nativeShortcutText("Ctrl+E")));
     m_exportPdfBtn->setVisible(false);
-    m_judgeBtn     = createButton(QIcon(":/icons/judge"),     tr("评测 (Ctrl+Shift+J)"));
+    m_judgeBtn     = createButton(QIcon(":/icons/judge"),
+        tr("评测 (%1)").arg(nativeShortcutText("Ctrl+Shift+J")));
 
     layout->addWidget(m_explorerBtn);
     layout->addWidget(m_searchBtn);

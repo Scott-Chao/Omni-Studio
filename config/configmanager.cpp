@@ -824,6 +824,8 @@ QColor ConfigManager::judgeColorCe() const
     { return syntaxThemeOr("judge.ce", QColor("#e5ba7d"), QColor("#d18616")); }
 
 // ---- Shortcuts ----
+// On macOS, Qt 6's QKeySequence natively maps "Ctrl" to the Command key.
+// No manual transformation is needed.
 QString ConfigManager::shortcut(const QString &actionName, const QString &defaultValue) const
 {
     return stringValue("shortcuts." + actionName, defaultValue);
