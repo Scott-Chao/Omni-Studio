@@ -1251,8 +1251,31 @@ void CodeEditor::insertCompletion(const CompletionItem &item)
         cursor.setPosition(start);
         cursor.setPosition(pos, QTextCursor::KeepAnchor);
     }
-    cursor.insertText(name);
-    setTextCursor(cursor);
+
+    // Function/method/constructor completion: auto-append ()
+    bool addParens = m_completionParenEnabled
+                     && !name.endsWith(QStringLiteral("()"))
+                     && (item.type == QStringLiteral("Method")
+                         || item.type == QStringLiteral("Function")
+                         || item.type == QStringLiteral("Constructor")
+                         || item.type == QStringLiteral("method")
+                         || item.type == QStringLiteral("function")
+                         || item.type == QStringLiteral("constructor"));
+    if (addParens) {
+        cursor.insertText(name + QStringLiteral("()"));
+        setTextCursor(cursor);
+        QTextCursor mc = textCursor();
+        mc.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, 1);
+        setTextCursor(mc);
+    } else {
+        cursor.insertText(name);
+        setTextCursor(cursor);
+    }
+}
+
+void CodeEditor::setCompletionParenEnabled(bool enabled)
+{
+    m_completionParenEnabled = enabled;
 }
 
 bool CodeEditor::eventFilter(QObject *obj, QEvent *event)

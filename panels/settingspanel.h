@@ -134,6 +134,7 @@ private:
     QSpinBox *m_indentWidthSpin = nullptr;
     QSpinBox *m_markdownIndentWidthSpin = nullptr;
     ToggleSwitch *m_autoSaveToggle = nullptr;
+    ToggleSwitch *m_completionParenToggle = nullptr;
     QSpinBox *m_autoSaveIntervalSpin = nullptr;
 
     // Output panel controls (moved to editor page)

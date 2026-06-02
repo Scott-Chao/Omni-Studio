@@ -4,6 +4,7 @@
         "indent_width": 4,
         "markdown_indent_width": 2,
         "content_check_timer_ms": 300,
+        "completion_paren": true,
         "font": {
             "family": "Consolas",
             "size": 12

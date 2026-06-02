@@ -751,6 +751,38 @@ QWidget *SettingsPanel::createEditorPage()
         emit defaultZoomChanged(value / 100.0);
     });
 
+    // ---- 函数补全括号 ----
+    auto *parenRow = new QHBoxLayout;
+    auto *parenLabel = new QLabel(tr("函数补全自动添加括号"));
+    parenLabel->setStyleSheet(labelStyle());
+
+    m_completionParenToggle = new ToggleSwitch;
+    m_completionParenToggle->setChecked(true);
+
+    auto *parenStateLabel = new QLabel(tr("开"));
+    QColor parenAccent = ThemeManager::instance().color("badge.background");
+    parenStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;").arg(parenAccent.name()));
+
+    m_completionParenToggle->onToggled = [this, parenStateLabel](bool checked) {
+        parenStateLabel->setText(checked ? tr("开") : tr("关"));
+        parenStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;")
+            .arg(checked ? ThemeManager::instance().color("badge.background").name()
+                         : ThemeManager::instance().color("tab.inactiveForeground").name()));
+        emit editorSettingChanged("editor.completion_paren", checked);
+    };
+
+    auto *parenToggleWidget = new QWidget;
+    auto *parenToggleLayout = new QHBoxLayout(parenToggleWidget);
+    parenToggleLayout->setContentsMargins(0, 0, 0, 0);
+    parenToggleLayout->setSpacing(6);
+    parenToggleLayout->addWidget(m_completionParenToggle);
+    parenToggleLayout->addWidget(parenStateLabel);
+
+    parenRow->addWidget(parenLabel);
+    parenRow->addStretch();
+    parenRow->addWidget(parenToggleWidget);
+    layout->addLayout(parenRow);
+
     // ====================================================================
     // Section: 自动保存
     // ====================================================================
@@ -2052,6 +2084,9 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
     if (m_markdownIndentWidthSpin) {
         m_markdownIndentWidthSpin->setValue(sm.value("editor.markdown_indent_width", cfg.editorMarkdownIndentWidth()).toInt());
+    }
+    if (m_completionParenToggle) {
+        m_completionParenToggle->setChecked(sm.value("editor.completion_paren", cfg.editorCompletionParenEnabled()).toBool());
     }
     if (m_autoSaveToggle) {
         m_autoSaveToggle->setChecked(sm.value("auto_save.enabled", cfg.autoSaveEnabled()).toBool());

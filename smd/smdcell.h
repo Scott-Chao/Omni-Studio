@@ -44,6 +44,7 @@ public:
     void setRenderedState(bool rendered);
 
     QWidget *editorWidget() const;
+    CodeEditor *codeEditor() const { return m_codeEditor; }
     QWidget *renderImageWidget() const;
     void setEditorFocus();
 

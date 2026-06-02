@@ -70,6 +70,14 @@ void SettingsChangeHandler::handleEditorSetting(const QString &key, const QVaria
         applyToAllEditors([family, size](EditorWidget *editor) {
             editor->setEditorFont(family, size);
         });
+    } else if (key == "editor.completion_paren") {
+        bool enabled = value.toBool();
+        applyToAllEditors([enabled](EditorWidget *editor) {
+            if (editor->isCodeEdit() && editor->codeEditor())
+                editor->codeEditor()->setCompletionParenEnabled(enabled);
+            else if (editor->isSmdEdit() && editor->smdEditor())
+                editor->smdEditor()->setCompletionParenEnabled(enabled);
+        });
     } else if (key == "auto_save.enabled") {
         bool enabled = value.toBool();
         applyToAllEditors([enabled](EditorWidget *editor) {

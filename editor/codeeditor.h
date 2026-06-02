@@ -31,6 +31,7 @@ public:
     CompletionProvider *completionProvider() const { return m_completionProvider; }
 
     void setCompletionProvider(CompletionProvider *provider);
+    void setCompletionParenEnabled(bool enabled);
 
     void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
     QList<SmdDiagnostic> diagnostics() const { return m_diagnostics; }
@@ -105,6 +106,7 @@ private:
     QList<SmdDiagnostic> m_diagnostics;
 
     // Configurable shortcuts
+    bool m_completionParenEnabled = true;
     QKeySequence m_completionTrigger;
     QKeySequence m_indentRight;
     QKeySequence m_indentLeft;

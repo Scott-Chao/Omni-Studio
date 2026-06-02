@@ -580,6 +580,14 @@ SmdCell *SmdEditor::addCell(int index, SmdCell::CellType type, const QString &co
     return cell;
 }
 
+void SmdEditor::setCompletionParenEnabled(bool enabled)
+{
+    for (SmdCell *cell : m_cells) {
+        if (auto *ce = cell->codeEditor())
+            ce->setCompletionParenEnabled(enabled);
+    }
+}
+
 void SmdEditor::removeCell(int index)
 {
     if (index < 0 || index >= m_cells.size() || m_cells.size() <= 1)

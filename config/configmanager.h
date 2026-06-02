@@ -46,6 +46,7 @@ public:
     double zoomStep() const;
     double zoomDefault() const;
     int editorContentCheckTimerMs() const;
+    bool editorCompletionParenEnabled() const;
     int fontMinPointSize() const;
     int fontMaxPointSize() const;
 

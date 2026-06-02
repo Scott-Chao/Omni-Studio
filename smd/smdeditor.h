@@ -56,6 +56,7 @@ public:
     void scrollCellToLine(int cellIndex, int line);
     QList<SmdFormat::Cell> exportCells() const;
     void reloadShortcuts();
+    void setCompletionParenEnabled(bool enabled);
     void toggleDiagnosticsPanel();
 
 signals:

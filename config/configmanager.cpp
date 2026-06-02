@@ -222,6 +222,7 @@ double ConfigManager::zoomMax() const { return doubleValue("editor.zoom.max", 3.
 double ConfigManager::zoomStep() const { return doubleValue("editor.zoom.step", 0.1); }
 double ConfigManager::zoomDefault() const { return doubleValue("editor.zoom.default", 1.0); }
 int ConfigManager::editorContentCheckTimerMs() const { return intValue("editor.content_check_timer_ms", 300); }
+bool ConfigManager::editorCompletionParenEnabled() const { return boolValue("editor.completion_paren", true); }
 int ConfigManager::fontMinPointSize() const { return intValue("editor.font_limits.min_point_size", 1); }
 int ConfigManager::fontMaxPointSize() const { return intValue("editor.font_limits.max_point_size", 72); }
 

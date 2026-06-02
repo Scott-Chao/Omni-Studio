@@ -1,4 +1,4 @@
-## 功能说明文档（v0.14.6）
+## 功能说明文档（v0.14.7）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.14.6
-- 修复补全弹窗在输入字母/数字后立即关闭的问题：`CodeEditor::keyPressEvent` 中弹窗活跃时，标识符字符（字母/数字/下划线）和 Backspace/Delete 不再关闭弹窗，而是插入/删除字符后重新调用 `triggerCompletion()` 实时过滤结果；非标识符字符（空格/括号/分号等）仍正常关闭弹窗。
+### 新增 v0.14.7
+- 新增补全函数自动添加括号：`CodeEditor::insertCompletion` 中，当 `CompletionItem.type` 为 `"Method"`/`"Function"`/`"Constructor"`（或对应小写）时自动追加 `()` 并将光标置于括号中间。设置面板 → 编辑页新增"函数补全自动添加括号"开关（默认开启），支持普通代码文件与 SMD 代码块。配置项 `editor.completion_paren`，通过 `ConfigManager::editorCompletionParenEnabled()` 访问。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -693,7 +693,7 @@
 **职责**：
 - 基于 `QPlainTextEdit` 的代码编辑器，提供 IDE 风格编辑体验。
 - 行号区域（`LineNumberArea`）：自定义 `QWidget`，绘制在编辑器左侧视口边距内，背景色与编辑区一致（跟随 `sideBar.background` 主题色），数字颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`）。
-- **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。弹窗保持：触发后继续输入字母/数字/下划线、按 Backspace/Delete 时弹窗保持打开并重新请求 LSP 实现实时过滤，非标识符字符（空格/括号/分号等）自动关闭。
+- **补全弹出（CompletionPopup）**：`Qt::Tool | Qt::FramelessWindowHint` 无焦点浮动窗口，位于文本光标下方，列表项+提示栏。输入 `.`、`->`、`::` 或 `Ctrl+I` 触发，Tab/Enter 插入，Esc/点击外部关闭。弹窗保持：触发后继续输入字母/数字/下划线、按 Backspace/Delete 时弹窗保持打开并重新请求 LSP 实现实时过滤，非标识符字符（空格/括号/分号等）自动关闭。函数括号自动补全：接受补全时若 `CompletionItem.type` 为方法/函数/构造函数，自动追加 `()` 并置光标于括号中间，可通过设置面板开关（默认开启）控制。
 - **悬停提示（HoverManager）**：400ms 延迟定时器监听鼠标移动，停止后在鼠标位置触发悬停请求。通过 `CodeEditor::isPositionOverText()` 精确判断鼠标是否位于实际文本内容区域内（遍历可见块→定位可视行→比较 `QTextLine::naturalTextRect()` 真实文本宽度），杜绝行尾空白区域和文档末尾空白区域误触悬停。
   - **诊断提示**：错误/警告工具提示仍使用 `QToolTip::showText()` 显示，应用紧凑彩色样式（`padding: 0px 4px; margin: 0px;`，错误红色/警告黄色背景）。
   - **LSP 悬停提示（自定义浮窗）**：使用自定义 `QFrame`（`Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint | WindowDoesNotAcceptFocus` + `WA_ShowWithoutActivating`，无焦点可交互的浮动窗口），内含 `QScrollArea` + `QLabel`。`QTextDocument::setHtml()` + `setTextWidth()` 精确测量内容渲染高度实现自适应尺寸：短内容紧凑无滚动条，长内容上限 300px 并显示垂直滚动条（宽度 8px，仅在需要时出现）。布局边距 6/4/6/4 px，圆角 5px。**主题感知**：`createTooltipWidget()` 在所有子控件创建完毕后调用 `refreshTooltipStyle()` 设置初始样式。`HoverManager` 构造函数连接 `ThemeManager::themeChanged`，当主题切换且弹窗已创建时自动调用 `refreshTooltipStyle()` 刷新。`refreshTooltipStyle()` 通过 `ThemeManager::color("menu.background")` / `menu.foreground` / `menu.separatorColor` 直接读取当前主题颜色（不依赖 widget 缓存 palette — 父 QFrame 有 stylesheet 时子控件不会自动继承 `QApplication::setPalette()` 的变更），计算边框色后写入 QFrame stylesheet，并显式构建 `QPalette`（`ToolTipBase` / `ToolTipText` / `Base` / `Text` / `Window` / `WindowText`）propagate 到 `m_tooltipScrollArea`、viewport 和 `m_tooltipLabel`。所有子控件均设置 `setAutoFillBackground(true)`。
