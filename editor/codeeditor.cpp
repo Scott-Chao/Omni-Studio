@@ -662,10 +662,25 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
         case Qt::Key_Escape:
             m_completionPopup->hide();
             return;
+        case Qt::Key_Backspace:
+        case Qt::Key_Delete:
+            // Keep popup open, delete char, re-trigger completion
+            QPlainTextEdit::keyPressEvent(event);
+            triggerCompletion();
+            return;
         default:
-            // Any other key: close popup, then let normal handling proceed
+        {
+            // Identifier chars: keep popup open, re-trigger completion
+            QString text = event->text();
+            if (!text.isEmpty() && (text[0].isLetterOrNumber() || text[0] == QLatin1Char('_'))) {
+                QPlainTextEdit::keyPressEvent(event);
+                triggerCompletion();
+                return;
+            }
+            // Non-identifier: close popup, then let normal handling proceed
             m_completionPopup->hide();
             break;
+        }
         }
     }
 
