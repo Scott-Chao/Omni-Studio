@@ -66,7 +66,7 @@ OutputPanel::OutputPanel(QWidget *parent)
     monoFont.setStyleHint(QFont::Monospace);
     m_outputEdit->setFont(monoFont);
 
-    m_outputEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    m_outputEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     m_outputEdit->setFrameShape(QFrame::NoFrame);
     m_outputEdit->installEventFilter(this);
 
