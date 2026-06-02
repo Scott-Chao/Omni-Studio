@@ -5,6 +5,43 @@
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTimer>
+#include <QRegularExpression>
+
+enum class CompilerSeverity { None, Warning, Error };
+
+static CompilerSeverity detectSeverity(const QString &line)
+{
+    // GCC/Clang:  file:line:col: warning|error|note:
+    static const QRegularExpression gccRe(
+        QStringLiteral("^(.+?):(\\d+):(\\d+):\\s*(warning|error|note):\\s*"));
+    QRegularExpressionMatch m = gccRe.match(line.trimmed());
+    if (m.hasMatch()) {
+        QString s = m.captured(4).toLower();
+        if (s == QStringLiteral("warning")) return CompilerSeverity::Warning;
+        if (s == QStringLiteral("error"))   return CompilerSeverity::Error;
+        return CompilerSeverity::None;
+    }
+    // MSVC: file(line,col): warning|error Cxxxx:
+    static const QRegularExpression msvcRe(
+        QStringLiteral("^(.+?)\\((\\d+)(?:,(\\d+))?\\)\\s*:\\s*(warning|error)\\s+(C\\d+):"));
+    m = msvcRe.match(line.trimmed());
+    if (m.hasMatch()) {
+        QString s = m.captured(4).toLower();
+        if (s == QStringLiteral("warning")) return CompilerSeverity::Warning;
+        if (s == QStringLiteral("error"))   return CompilerSeverity::Error;
+    }
+    return CompilerSeverity::None;
+}
+
+// GCC preamble lines that introduce the function being compiled:
+//   "file: In function '...':" / "file: In member function '...':" / etc.
+static bool isGccPreamble(const QString &line)
+{
+    return line.contains(QStringLiteral(": In function "))
+        || line.contains(QStringLiteral(": In member function "))
+        || line.contains(QStringLiteral(": In constructor "))
+        || line.contains(QStringLiteral(": In destructor "));
+}
 
 SmdOutputWidget::SmdOutputWidget(QWidget *parent)
     : QWidget(parent)
@@ -96,9 +133,49 @@ void SmdOutputWidget::appendText(const QString &text, bool isStderr)
 
     // Append the new text
     if (isStderr) {
-        QTextCharFormat fmt;
-        fmt.setForeground(ThemeManager::instance().color("output.stderr"));
-        cursor.insertText(text, fmt);
+        auto &tm = ThemeManager::instance();
+        const QColor warningColor = tm.color("diagnostics.warning");
+        const QColor errorColor = tm.color("output.stderr");
+        const bool trailingNewline = text.endsWith(QLatin1Char('\n'));
+        const QStringList lines = text.split(QLatin1Char('\n'));
+        bool lastWasWarning = false;
+        for (int i = 0; i < lines.size(); ++i) {
+            if (i == lines.size() - 1 && lines[i].isEmpty() && trailingNewline)
+                continue; // skip trailing empty string from split
+
+            QTextCharFormat fmt;
+            CompilerSeverity sev = detectSeverity(lines[i]);
+
+            if (sev == CompilerSeverity::Warning) {
+                fmt.setForeground(warningColor);
+                lastWasWarning = true;
+            } else if (sev == CompilerSeverity::Error) {
+                fmt.setForeground(errorColor);
+                lastWasWarning = false;
+            } else if (lastWasWarning && !lines[i].isEmpty()
+                       && lines[i].at(0) == QLatin1Char(' ')) {
+                // Indented continuation (code context / caret) of a warning
+                fmt.setForeground(warningColor);
+            } else if (isGccPreamble(lines[i])) {
+                // Look ahead to see what severity follows this preamble
+                bool followedByWarning = false;
+                for (int j = i + 1; j < lines.size(); ++j) {
+                    CompilerSeverity nextSev = detectSeverity(lines[j]);
+                    if (nextSev == CompilerSeverity::Warning) { followedByWarning = true; break; }
+                    if (nextSev == CompilerSeverity::Error) break;
+                }
+                fmt.setForeground(followedByWarning ? warningColor : errorColor);
+                lastWasWarning = followedByWarning;
+            } else {
+                fmt.setForeground(errorColor);
+                lastWasWarning = false;
+            }
+
+            cursor.insertText(lines[i], fmt);
+            // Restore newline between lines and after final if input ended with \n
+            if (i < lines.size() - 1 || trailingNewline)
+                cursor.insertText(QStringLiteral("\n"), fmt);
+        }
     } else {
         cursor.insertText(text, QTextCharFormat());
     }
