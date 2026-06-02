@@ -194,6 +194,13 @@ MainWindow::MainWindow(QWidget *parent)
     ThemeManager::instance().setStyleSheetTarget(this);
     ThemeManager::instance().loadQss(); // apply QSS to MainWindow unconditionally
     QString savedTheme = m_settings->settingOverride("appearance.theme").toString();
+    if (savedTheme == QStringLiteral("Custom")) {
+        // Custom is session-only — always start with a built-in theme
+        // so the settings panel shows correct default colours at startup.
+        // Custom overrides are preserved in the INI and activate when the
+        // user switches to Custom in the theme combo.
+        savedTheme.clear();
+    }
     if (!savedTheme.isEmpty())
         ThemeManager::instance().loadTheme(savedTheme);
 

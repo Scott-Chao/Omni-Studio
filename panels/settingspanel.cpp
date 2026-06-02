@@ -31,6 +31,7 @@
 #include <QMessageBox>
 #include <QMap>
 #include <QTimer>
+#include <QScrollBar>
 #include <QPointer>
 #include <QScreen>
 #include <QGuiApplication>
@@ -1017,7 +1018,6 @@ QWidget *SettingsPanel::createEditorPage()
 QWidget *SettingsPanel::createAppearancePage()
 {
     const auto &cfg = ConfigManager::instance();
-    auto &sm = SettingsManager::instance();
     auto *page = new QWidget;
     auto *outerLayout = new QVBoxLayout(page);
     outerLayout->setContentsMargins(0, 0, 0, 0);
@@ -1049,7 +1049,10 @@ QWidget *SettingsPanel::createAppearancePage()
 
     connect(m_themeCombo, &QComboBox::currentTextChanged, this, [this](const QString &name) {
         ThemeManager::instance().loadTheme(name);
-        SettingsManager::instance().setSettingOverride("appearance.theme", name);
+        auto &sm = SettingsManager::instance();
+
+        sm.setSettingOverride("appearance.theme", name);
+        sm.flushOverrides(); // persist immediately — closeEvent may not fire
     });
     connect(&tm, &ThemeManager::themeChanged, this, [this]() {
         m_themeCombo->setCurrentText(ThemeManager::instance().currentThemeName());
@@ -1185,10 +1188,8 @@ QWidget *SettingsPanel::createAppearancePage()
         auto *lbl = new QLabel(label);
         lbl->setStyleSheet(labelStyle());
 
-        // Only honour user overrides for the initial colour; config.json may
-        // hold stale values from a different theme.
-        QVariant ov = sm.settingOverride(configKey);
-        QString currentHex = ov.isValid() ? ov.toString() : defaultColorFn().name();
+        // Get colour from ThemeManager (respects mode & overrides internally).
+        QString currentHex = defaultColorFn().name();
 
         auto *colorBtn = new QPushButton;
         colorBtn->setFixedSize(24, 24);
@@ -1263,9 +1264,38 @@ QWidget *SettingsPanel::createAppearancePage()
         contentLayout->setContentsMargins(8, 4, 0, 4);
         contentLayout->setSpacing(4);
 
-        QObject::connect(btn, &QToolButton::toggled, content, &QWidget::setVisible);
-        QObject::connect(btn, &QToolButton::toggled, btn, [btn](bool checked) {
+        // Cache section height across visibility toggles so we can adjust
+        // scrollbar on expand (when content->height() is 0 because hidden).
+        auto *cachedH = new int(0);
+        QObject::connect(btn, &QToolButton::toggled, this, [this, btn, content, scrollArea, cachedH, page](bool checked) {
+            auto *vbar = scrollArea->verticalScrollBar();
+            int oldVal = vbar->value();
+
+            // Suppress painting so the layout change + scrollbar compensation
+            // are rendered in a single frame.
+            page->setUpdatesEnabled(false);
+
+            if (checked) {
+                content->setVisible(true);
+            } else {
+                *cachedH = content->height();
+                content->setVisible(false);
+            }
+
+            // Drain pending layout events synchronously so QScrollArea
+            // finishes its widget resize + scrollbar range update before
+            // we compensate — otherwise vbar->maximum() is still stale.
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+            // Delta-compensate against the now-final scrollbar range.
+            if (checked)
+                vbar->setValue(qBound(0, oldVal + *cachedH, vbar->maximum()));
+            else
+                vbar->setValue(qBound(0, oldVal - *cachedH, vbar->maximum()));
+
             btn->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+            page->setUpdatesEnabled(true);
+            page->update();
         });
 
         return QPair<QToolButton*, QVBoxLayout*>(btn, contentLayout);
@@ -2117,18 +2147,27 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
 
     // Refresh color controls (appearance page).
-    // Use settingOverride() — NOT value() — so config.json stale defaults
-    // don't shadow the current theme's colours. Only user overrides survive.
+    // Only apply saved overrides when in Custom mode; otherwise use
+    // theme defaults so stale overrides from previous Custom sessions
+    // don't shadow the current built-in theme's colours.
+    auto &ctm = ThemeManager::instance();
+    bool isCustom = (ctm.currentThemeName() == QStringLiteral("Custom"));
     for (const auto &cc : m_colorControls) {
-        QVariant ov = sm.settingOverride(cc.configKey);
-        QString hex = ov.isValid() ? ov.toString() : cc.themeDefault().name();
-        auto &ctm = ThemeManager::instance();
+        QColor curDefault = cc.themeDefault();
+        QString hex;
+        if (isCustom) {
+            QVariant ov = sm.settingOverride(cc.configKey);
+            hex = ov.isValid() ? ov.toString() : curDefault.name();
+        } else {
+            hex = curDefault.name();
+        }
         cc.btn->setStyleSheet(
             QStringLiteral(
                 "QPushButton { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
                 "QPushButton:hover { border-color: %3; }"
             ).arg(hex, ctm.color("input.border").name(), ctm.color("badge.background").name()));
         cc.preview->setText(hex);
+        cc.btn->setEnabled(isCustom);
     }
 
     // Output panel (now in editor page)
