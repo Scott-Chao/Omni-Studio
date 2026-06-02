@@ -444,10 +444,11 @@ inline void debugLog(const QString &msg, const QString &filePath = QString())
         path = dir + QStringLiteral("/log.txt");
     }
     QFile f(path);
-    f.open(QIODevice::Append | QIODevice::Text);
-    QTextStream s(&f);
-    s << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"))
-      << " [" << msg << "]\n";
+    if (f.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream s(&f);
+        s << QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"))
+          << " [" << msg << "]\n";
+    }
 }
 
 inline void clearLog(const QString &filePath = QString())
@@ -458,7 +459,8 @@ inline void clearLog(const QString &filePath = QString())
                + QStringLiteral("/smd-debug/log.txt");
     }
     QFile f(path);
-    f.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    }
 }
 
 #endif // UTILITIES_H

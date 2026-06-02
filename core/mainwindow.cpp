@@ -97,6 +97,7 @@ protected:
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QCloseEvent>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QFileInfo>
 #include <QToolButton>
