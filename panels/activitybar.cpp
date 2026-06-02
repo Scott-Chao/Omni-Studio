@@ -16,21 +16,32 @@ static QString nativeShortcutText(const char *shortcut)
 
 QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
 {
-    // Create a solid-colored pixmap, then apply the SVG shape as a mask
-    // via DestinationIn composition. This avoids platform differences in
-    // QImage format conversion (macOS CoreGraphics vs Windows GDI).
+    // Render SVG to QImage first (default SourceOver), then tint via
+    // SourceIn using the SVG's alpha as a mask.  This correctly handles
+    // SVGs with fill="none" (stroke-only) because the initial render
+    // produces proper transparent-background alpha, whereas painting
+    // the SVG directly with DestinationIn would leave un-painted areas
+    // retaining the fill colour (a solid-coloured rectangle).
+    //
+    // Using ARGB32_Premultiplied avoids format conversion in the final
+    // QPixmap::fromImage() step, eliminating the platform differences
+    // between macOS CoreGraphics and Windows GDI.
     QIcon src(svgPath);
     if (src.isNull())
         return src;
 
-    QPixmap result(size, size);
-    result.fill(color);
+    QPixmap srcPm = src.pixmap(size, size);
+    if (srcPm.isNull())
+        return src;
 
-    QPainter p(&result);
-    p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
-    src.paint(&p, 0, 0, size, size);
+    QImage img = srcPm.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+
+    QPainter p(&img);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(img.rect(), color);
     p.end();
-    return QIcon(result);
+
+    return QIcon(QPixmap::fromImage(img));
 }
 } // anonymous namespace
 
