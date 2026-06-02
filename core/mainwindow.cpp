@@ -198,8 +198,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 设置窗口标题与无边框
     setWindowTitle(tr("Smart Markdown"));
+#ifdef Q_OS_MACOS
+    // macOS: keep native title bar (with traffic light buttons) but hide it
+    // via setTitlebarAppearsTransparent in showEvent
+    setWindowFlags(Qt::Window | Qt::WindowMinimizeButtonHint |
+                   Qt::WindowMaximizeButtonHint | Qt::WindowCloseButtonHint);
+#else
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint |
                    Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint);
+#endif
 
     // 强制创建原生窗口句柄，添加 WS_THICKFRAME 以启用边缘缩放和 Aero Snap
     // 并向 DWM 请求圆角（Windows 11 系统级窗口圆角）
@@ -657,8 +664,10 @@ MainWindow::MainWindow(QWidget *parent)
     // 终止 (Ctrl+Break) — 仅快捷键，不放在工具栏
     addAction(m_compileRunMgr->stopAction());
 
-    // 窗口控制按钮（置于最右）
+#ifndef Q_OS_MACOS
+    // 窗口控制按钮（置于最右，macOS 使用原生红绿灯）
     setupCustomTitleBar();
+#endif
 
     // 设置（快捷键 Ctrl+,，不在工具栏中）
     m_settingsAction = new QAction(tr("设置"), this);
@@ -2249,6 +2258,8 @@ void MainWindow::setupCustomTitleBar()
     // Spacer is already created and added before the call
     m_toolbarSpacer->installEventFilter(this);
 
+#ifndef Q_OS_MACOS
+    // macOS: native traffic light buttons handle window controls
     m_minimizeBtn = new TitleBarButton(TitleBarButton::Minimize, this);
     connect(m_minimizeBtn, &QPushButton::clicked, this, &QMainWindow::showMinimized);
     tb->addWidget(m_minimizeBtn);
@@ -2262,6 +2273,10 @@ void MainWindow::setupCustomTitleBar()
     m_closeBtn = new TitleBarButton(TitleBarButton::Close, this);
     connect(m_closeBtn, &QPushButton::clicked, this, &QMainWindow::close);
     tb->addWidget(m_closeBtn);
+#else
+    // Reserve left margin for native traffic light buttons
+    m_toolbarSpacer->setMinimumWidth(70);
+#endif
 }
 
 // ============================================================
