@@ -531,7 +531,30 @@ MainWindow::MainWindow(QWidget *parent)
     m_toolBar->installEventFilter(this);
     m_toolBar->setIconSize(QSize(18, 18));
 
-    // 左侧：[文件 ▼] 下拉菜单
+    // ----- 文件操作动作（跨平台通用）-----
+    QAction *openDirAct = new QAction(tr("打开目录"), this);
+    connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
+
+    QAction *newAct = new QAction(tr("新建文件"), this);
+    newAct->setShortcut(QKeySequence::New);
+    addAction(newAct);
+    connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
+    m_shortcutActions["new_file"] = newAct;
+
+    QAction *saveAct = new QAction(tr("保存"), this);
+    saveAct->setShortcut(QKeySequence::Save);
+    addAction(saveAct);
+    connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
+    m_shortcutActions["save"] = saveAct;
+
+    QAction *saveAsAct = new QAction(tr("另存为"), this);
+    saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
+    addAction(saveAsAct);
+    connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
+    m_shortcutActions["save_as"] = saveAsAct;
+
+#ifndef Q_OS_MACOS
+    // 左侧：[文件 ▼] 下拉菜单（Windows/Linux 保留工具栏文件按钮）
     m_fileMenuBtn = new QToolButton(m_toolBar);
     m_fileMenuBtn->setText(tr("文件"));
     m_fileMenuBtn->setToolTip(tr("文件操作"));
@@ -546,28 +569,11 @@ MainWindow::MainWindow(QWidget *parent)
         m_fileMenu = new QMenu(m_fileMenuBtn);
         m_fileMenu->setLayoutDirection(Qt::LeftToRight);
 
-        QAction *openDirAct = m_fileMenu->addAction(tr("打开目录"));
-        connect(openDirAct, &QAction::triggered, this, &MainWindow::onOpenFolder);
-
+        m_fileMenu->addAction(openDirAct);
         m_fileMenu->addSeparator();
-
-        QAction *newAct = m_fileMenu->addAction(tr("新建文件"));
-        newAct->setShortcut(QKeySequence::New);
-        addAction(newAct);
-        connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
-        m_shortcutActions["new_file"] = newAct;
-
-        QAction *saveAct = m_fileMenu->addAction(tr("保存"));
-        saveAct->setShortcut(QKeySequence::Save);
-        addAction(saveAct);
-        connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
-        m_shortcutActions["save"] = saveAct;
-
-        QAction *saveAsAct = m_fileMenu->addAction(tr("另存为"));
-        saveAsAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("save_as", "Ctrl+Shift+S")));
-        addAction(saveAsAct);
-        connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
-        m_shortcutActions["save_as"] = saveAsAct;
+        m_fileMenu->addAction(newAct);
+        m_fileMenu->addAction(saveAct);
+        m_fileMenu->addAction(saveAsAct);
 
         // Manual popup to control position — left edge must stay on screen
         connect(m_fileMenuBtn, &QToolButton::clicked, this, [this]() {
@@ -583,6 +589,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     }
     m_toolBar->addWidget(m_fileMenuBtn);
+#endif
 
     // 中间可拖拽区域（Expanding spacer — 双击最大化/还原）
     m_toolbarSpacer = new QWidget;
@@ -1197,6 +1204,69 @@ MainWindow::MainWindow(QWidget *parent)
     // stylesheet's padding:0 until a parent-triggered style recalculation —
     // which normally only happens on theme switch via loadQss().
     ThemeManager::instance().loadQss();
+
+#ifdef Q_OS_MACOS
+    // ----- macOS 原生菜单栏 -----
+    QMenuBar *mb = menuBar();
+
+    // Application menu (Smart Markdown) — Qt/macOS auto-places these in the app menu
+    QMenu *appMenu = mb->addMenu(tr("Smart Markdown"));
+    QAction *aboutAct = appMenu->addAction(tr("关于 Smart Markdown"));
+    connect(aboutAct, &QAction::triggered, this, [this]() {
+        QMessageBox::about(this, tr("关于 Smart Markdown"),
+            tr("Smart Markdown v1.0\n\n智能 Markdown 编辑器"));
+    });
+    appMenu->addSeparator();
+    QAction *prefAct = appMenu->addAction(tr("偏好设置..."));
+    prefAct->setShortcut(QKeySequence::Preferences);
+    connect(prefAct, &QAction::triggered, this, &MainWindow::toggleSettings);
+    appMenu->addSeparator();
+    QAction *quitAct = appMenu->addAction(tr("退出 Smart Markdown"));
+    quitAct->setShortcut(QKeySequence::Quit);
+    connect(quitAct, &QAction::triggered, this, &QMainWindow::close);
+
+    // File menu
+    QMenu *fileMenu = mb->addMenu(tr("文件"));
+    fileMenu->addAction(openDirAct);
+    fileMenu->addSeparator();
+    fileMenu->addAction(newAct);
+    fileMenu->addAction(saveAct);
+    fileMenu->addAction(saveAsAct);
+    fileMenu->addSeparator();
+    fileMenu->addAction(m_exportPdfAction);
+
+    // View menu
+    QMenu *viewMenu = mb->addMenu(tr("视图"));
+    viewMenu->addAction(m_previewAction);
+    viewMenu->addAction(m_splitPreviewAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_toggleExplorerAction);
+    viewMenu->addAction(toggleSearchAction);
+    viewMenu->addAction(m_toggleAiAction);
+    viewMenu->addAction(m_toggleJudgeAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(toggleRightPanelAction);
+    viewMenu->addAction(m_toggleHistoryAction);
+    viewMenu->addAction(m_toggleOutlineAction);
+    viewMenu->addAction(m_toggleTagsAction);
+    viewMenu->addAction(m_toggleBacklinksAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_zoomInAction);
+    viewMenu->addAction(m_zoomOutAction);
+    viewMenu->addAction(m_zoomResetAction);
+
+    // Tools menu
+    QMenu *toolsMenu = mb->addMenu(tr("工具"));
+    toolsMenu->addAction(m_compileRunMgr->compileAction());
+    toolsMenu->addAction(m_compileRunMgr->runAction());
+    toolsMenu->addAction(m_compileRunMgr->compileRunAction());
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(m_convertMdSmdAction);
+
+    // Help menu
+    QMenu *helpMenu = mb->addMenu(tr("帮助"));
+    helpMenu->addAction(m_helpAction);
+#endif
 
 }
 
@@ -2165,6 +2235,7 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("titleBar.buttonHover").name()));
     m_toolBar->setContentsMargins(0, 0, 0, 0);
 
+#ifndef Q_OS_MACOS
     // File menu button — wider hover, themed "v" chevron, no native menu-indicator
     QColor fileFg = tm.color("titleBar.foreground");
     m_fileMenuBtn->setIcon(coloredSvgIcon(":/icons/chevron-down", fileFg, 7));
@@ -2178,6 +2249,7 @@ void MainWindow::refreshTitleBarStyle()
         "QToolButton::menu-indicator { image: none; width: 0px; }"
     ).arg(fileFg.name(),
           tm.color("titleBar.buttonHover").name()));
+#endif
 
     // Run buttons: main (green ▶) + dropdown (themed chevron)
     if (m_toolbarRunAction) {
@@ -2208,6 +2280,7 @@ void MainWindow::refreshTitleBarStyle()
         ).arg(tm.color("titleBar.buttonHover").name()));
     }
 
+#ifndef Q_OS_MACOS
     // File menu dropdown
     m_fileMenu->setStyleSheet(QStringLiteral(
         "QMenu { background: %1; border: 1px solid %2; padding: 4px; }"
@@ -2220,6 +2293,7 @@ void MainWindow::refreshTitleBarStyle()
           tm.color("menu.selectionBackground").name(),
           tm.color("badge.foreground").name(),
           tm.color("menu.separatorColor").name()));
+#endif
 
     // Run menus (main button + dropdown chevron button)
     if (m_compileRunMgr) {
