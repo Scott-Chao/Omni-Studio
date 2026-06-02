@@ -5,12 +5,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Run
 
 ### Prerequisites
-- **Environment**: MUST run from "x64 Native Tools Command Prompt for VS 2022".
-- **System**: Qt 6.11.0 + MSVC 2022.
-- **Build Dir**: `./build/Desktop_Qt_6_11_0_MSVC2022_64_bit-Debug`
-- **Output**: `./release/smart-markdown.exe`
+- **System**: Qt 6.11.0 + MSVC 2022 (Windows) / Clang (macOS) / GCC (Linux).
+- **CMake**: 3.22+, with Ninja (Windows) or Unix Makefiles (macOS/Linux).
+- **Windows-only**: Can also use qmake from "x64 Native Tools Command Prompt for VS 2022".
 
-### Commands
+### CMake (cross-platform, preferred for non-Windows)
+
+Configure preset builds into `./build/{debug,release}`; output lands in `./release/`.
+
+| Platform | Configure | Build |
+|----------|-----------|-------|
+| Windows  | `cmake --preset win32-debug` | `cmake --build --preset win32-debug` |
+| macOS    | `cmake --preset macos-debug`  | `cmake --build --preset macos-debug` |
+| Linux    | `cmake --preset linux-debug`  | `cmake --build --preset linux-debug` |
+
+Use `*-release` preset for Release builds. Re-run configure when QRC changes.
+
+**Convenience script (macOS / Linux)**: `./build.sh [debug|release|clean|rebuild]` — wraps CMake presets with platform auto-detection and Linux dependency checking.
+
+### qmake (Windows-only)
+
+Run from "x64 Native Tools Command Prompt for VS 2022".
 - **Configure**: `qmake.exe -r smart-markdown.pro` (re-run when QRC changes)
 - **Build**: `jom.exe -f Makefile.Release -j22` (or `nmake` as fallback)
 - **Clean**: `jom.exe -f Makefile.Release clean` (or `nmake clean`)
@@ -29,8 +44,11 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full component map, data flows, and c
 ### Component Map (high-level)
 
 ```
+CMakeLists.txt / CMakePresets.json / build.sh → CMake 构建系统（跨平台）
+.github/workflows/{linux,macos,windows}-build.yml → CI（手动触发）
+
 main.cpp                  → QApplication + MainWindow bootstrap
-core/mainwindow.*        → frameless orchestrator
+core/mainwindow.*        → frameless orchestrator (Win/Lin) / native title bar (macOS)
  ├── ai/airequesthandler.*    → AI request lifecycle (provider, streaming, history pruning)
  ├── index/indexmanager.*     → file index, backlinks, tags, async index build
  ├── core/crashrecoverymanager.* → stale recovery file cleanup
@@ -38,6 +56,7 @@ core/mainwindow.*        → frameless orchestrator
  ├── runner/compilerunmanager.* → compile/run/stop lifecycle, owns ProcessRunner, action enable/disable
  ├── runner/codeblockrunner.* → MD preview ▶  code block execution, stderr buffering, diagnostics
  ├── judge/openjudgemanager.* → OpenJudge tab creation, code submission, result display, error analysis
+ ├── core/macoswindow.*     → macOS native window: transparent title bar + traffic light buttons (Obj-C++ via AppKit)
  ├── config/settingschangehandler.* → setting change application, ThemeManager color bridge, shortcut rebinding
  ├── panels/activitybar.*     → 48px left bar: Search/AI/Settings/Export PDF/Judge buttons
  ├── panels/fileexplorerwidget.* → QTreeView + QFileSystemModel, breadcrumb bar, toolbar
@@ -76,6 +95,14 @@ core/mainwindow.*        → frameless orchestrator
 - **ChatBubble streaming**: 80ms debounce coalesces SSE chunks; incremental HTML with full rebuild on structural changes (code fences, headings, lists).
 - **Markdown indent**: Default 2 spaces, configurable via `editor.markdown_indent_width`. Code indent defaults to 4 — don't assume they're the same.
 - **OpenJudge tab**: Non-file tab in TabManager — `closeTab()` removes directly without save prompts.
+- **Cross-platform window**: `Q_OS_MACOS` keeps native title bar with traffic light buttons (`Window` flags); `Q_OS_WIN`/`Q_OS_LINUX` use `FramelessWindowHint` with custom TitleBarButton minimize/maximize/close. macOS reserves 70px left margin on toolbar spacer for traffic lights.
+- **macOS menu bar**: `QMenuBar` added on macOS only — replaces `[文件 ▼]` toolbar button and window control buttons. Application/File/View/Tools/Help menus. Preferences item owns Ctrl+, shortcut.
+- **macOS keyboard display**: ActivityBar tooltips use `QKeySequence::NativeText` to show `⌘B` etc. SmdCell hints use `nativeShortcutHint()` to convert `Ctrl+`→`⌘`, `Shift+`→`⇧`.
+- **Compiler detection per platform**: `compilerutils.h` — Windows detects g++ (MinGW) + MSVC cl.exe; Linux detects g++ + clang++; macOS detects clang++ (Apple) + g++ (Homebrew). `getCompileArgs()` accepts `clang` ID alongside `gcc`.
+- **Judge memory monitoring per platform**: `judgeengine.cpp` — Windows uses `OpenProcess` + `GetProcessMemoryInfo`; Linux uses `/proc/<pid>/status` (VmRSS) + `waitid` WNOWAIT; macOS uses `proc_pidinfo` (`PROC_PIDTASKINFO`) + `wait4` fallback.
+- **Esc key handling per platform**: `codeeditor.cpp` — Windows uses `EscNativeFilter` (`qApp->installNativeEventFilter` catches `VK_ESCAPE`); Linux/macOS use `EscEventFilter` (Qt `installEventFilter` on `KeyPress`).
+- **SVG icon tinting**: All `coloredSvgIcon()` helpers use `CompositionMode_DestinationIn` (fill blank pixmap with color, paint SVG as mask) — consistent across CoreGraphics and GDI.
+- **macOS default font**: `ConfigManager` defaults to Menlo on macOS (fallback to system fixed font), Consolas on other platforms.
 
 ## Coding Standards
 - **Qt Logic**: Use **new signal/slot syntax**: `connect(sender, &Sender::signal, receiver, &Receiver::slot)`.

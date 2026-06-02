@@ -1,4 +1,4 @@
-## 功能说明文档（v0.14.0）
+## 功能说明文档（v0.15.0）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -76,6 +76,24 @@
   - `widgets/` — 可复用组件：FlowLayout、TabButtonGroup、ScrollbarHider、TitleBarButton
 - 所有 #include 路径同步更新为带目录前缀的形式（如 `"core/thememanager.h"`）
 - 更新 `CLAUDE.md` 和 `ARCHITECTURE.md` 反映新的目录结构
+
+### 新增 v0.15.0 — 跨平台支持（Linux / macOS）
+- **CMake 构建系统**：新增 `CMakeLists.txt`（Qt 6 + C++17，支持 Core/Gui/Widgets/WebEngineWidgets/Network/Pdf/PdfWidgets）、`CMakePresets.json`（linux/macos/win32 各两组 debug/release preset + build preset）和 `build.sh`（macOS/Linux 便捷构建脚本，支持 `debug|release|clean|rebuild`，自动检测 Linux 缺失依赖包）
+- **CI 三平台工作流**：`.github/workflows/` 下拆分 Linux/macOS/Windows 三个独立 workflow，全部使用 `workflow_dispatch` 手动触发。macOS 使用 `cmake --preset macos-release` 构建并递归签名 QtWebEngineProcess.app
+- **macOS 原生窗口**：`core/macoswindow.h/mm`（Obj-C++ AppKit 桥接）通过 `setTitlebarAppearsTransparent` + `NSWindowStyleMaskFullSizeContentView` 保留红绿灯按钮的同时让自定义工具栏渲染到标题栏区域。`MainWindow` 在 macOS 上使用 `Qt::Window` 标志（非 FramelessWindowHint），`QTimer::singleShot(0)` 延迟调用确保 NSWindow 存在
+- **macOS 原生菜单栏**：`QMenuBar` 替代工具栏的「文件▼」按钮和窗口控制按钮。菜单结构：Smart Markdown（关于/偏好设置/退出）、文件（打开目录/新建/保存/另存为/导出PDF）、视图（预览/分割预览/各面板切换/缩放）、工具（编译/运行/编译并运行/SMD↔MD转换）、帮助（F1 帮助面板）
+- **macOS 快捷键适配**：
+  - `ActivityBar` 工具提示使用 `QKeySequence::NativeText` 自动映射为 `⌘B` 等本地化显示
+  - `SmdCell` 命令模式提示使用 `nativeShortcutHint()` 替换 `Ctrl+`→`⌘`、`Shift+`→`⇧`
+  - 设置面板快捷键 `Ctrl+,` 由 macOS Preferences 菜单项拥有，免除全局冲突
+- **macOS 等宽字体**：`ConfigManager.defaultMonospaceFont()` 在 macOS 上优先使用 Menlo（回退至系统固定字体），其他平台保持 Consolas。编辑器、输出面板、默认配置均使用该函数
+- **SVG 图标着色统一**：所有 `coloredSvgIcon()` 辅助函数改用 `CompositionMode_DestinationIn`（透明画布填充颜色 + SVG 作为蒙版绘制），避免 `SourceIn` 在 macOS CoreGraphics 与 Windows GDI 之间的格式差异
+- **跨平台编译器检测**：`CompilerUtils::findCompilers()` 按平台返回可用编译器列表——Windows：MinGW g++ + MSVC cl.exe；Linux：g++ + clang++；macOS：Clang++（Apple）+ g++（Homebrew）。`getCompileArgs()` 同时接受 `gcc` 和 `clang` 编译器 ID
+- **跨平台评测内存监控**：`JudgeEngine::captureMemory()` 按平台实现——Windows：`OpenProcess` + `GetProcessMemoryInfo`；Linux：`/proc/<pid>/status`（VmRSS）+ `waitid` WNOWAIT 获取已退出子进程峰值 RSS；macOS：`proc_pidinfo(PROC_PIDTASKINFO)` + `wait4` 回退
+- **跨平台 Esc 键处理**：`CodeEditor` 按平台使用不同事件机制——Windows：`EscNativeFilter` 通过 `qApp->installNativeEventFilter()` 捕获 `VK_ESCAPE` 原生消息；Linux/macOS：`EscEventFilter` 通过 `installEventFilter()` 在 Qt `KeyPress` 事件层处理
+- **X11/Linux 无边框窗口**：`MainWindow::nativeEvent` 添加 X11 分支（预留 xcb 边缘检测接口，当前使用 Qt `windowHandle()->startSystemResize` 回退）。Wayland 遵循协议限制使用 Qt 级拖拽 API
+- **资源清理**：移除内置 `icon-app.ico/png/svg` 文件和 `QIcon::setFallbackSearchPaths` 注册。macOS 使用 `.app` 包图标，Windows 由 `.pro`/`.rc` 提供
+- **跨平台设计文档**：新增 `docs/cross-platform-design.md`，记录分阶段迁移策略（CMake → Linux → macOS）和平台约束
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -2078,6 +2096,21 @@ enum class MessageRole { User, Assistant, System };
 **协作关系**：
 - 由 `MainWindow` 创建并持有。
 - `MainWindow::checkCrashRecovery()` 负责 UI 交互（QMessageBox 对话框 + TabManager 文件恢复），底层文件操作委托给该类。
+
+
+### 46. `MacOSWindow` — macOS 原生窗口桥接
+
+**文件**：`core/macoswindow.h` / `core/macoswindow.mm`
+
+**职责**：
+- macOS 平台专用的 Obj-C++ 桥接层，通过 AppKit 实现原生窗口行为。
+- `enableFullSizeContentView(QWindow*)`：从 Qt 的 `winId()` 获取原生 `NSView`，遍历至关联的 `NSWindow`，调用 `setTitlebarAppearsTransparent:YES`、`NSWindowStyleMaskFullSizeContentView`、`NSWindowTitleHidden`，保留系统原生红绿灯按钮（关闭/最小化/最大化）的同时使自定义工具栏渲染到标题栏区域。
+- 仅在 Apple 平台上编译（`target_sources` 添加 `.mm` 源文件 + `-framework AppKit` 链接）。
+- 由 `MainWindow::showEvent()` 通过 `QTimer::singleShot(0)` 延迟调用，确保 Qt 的 `QWindow` 和原生 `NSWindow` 已创建完毕。
+
+**协作关系**：
+- `MainWindow` 在 `showEvent()` 中调用 `MacOSWindow::enableFullSizeContentView(windowHandle())`。
+- 配合 `MainWindow` 的 `#ifdef Q_OS_MACOS` 条件编译：不使用 FramelessWindowHint，保留 Qt::Window 原生标题栏标志；`setupCustomTitleBar()` 跳过自定义最小化/最大化/关闭按钮，在 spacer 左侧预留 70px 边距放置红绿灯。
 
 
 ### 配置存储说明
