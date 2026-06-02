@@ -21,6 +21,8 @@
 #include <signal.h>
 #elif defined(Q_OS_MACOS)
 #include <libproc.h>
+#include <sys/wait.h>
+#include <sys/resource.h>
 #endif
 
 JudgeEngine::JudgeEngine(QObject *parent)
@@ -499,10 +501,23 @@ void JudgeEngine::captureMemory()
     struct proc_taskinfo pti;
     const int size = proc_pidinfo(static_cast<int>(pid), PROC_PIDTASKINFO,
                                   0, &pti, PROC_PIDTASKINFO_SIZE);
-    if (size > 0) {
+    if (size == PROC_PIDTASKINFO_SIZE) {
         quint64 memKb = static_cast<quint64>(pti.pti_resident_size / 1024);
         if (memKb > m_peakMemoryKb)
             m_peakMemoryKb = memKb;
+    } else if (m_peakMemoryKb == 0) {
+        // Process may have exited — try wait4 to get ru_maxrss.
+        // Note: wait4 reaps the child, so this only succeeds if QProcess
+        // has not yet processed SIGCHLD. In practice, QProcess reaps via
+        // the event loop's SIGCHLD handler before onTestProcessFinished
+        // runs, so this is best-effort for race conditions.
+        struct rusage usage = {};
+        pid_t ret = wait4(static_cast<pid_t>(pid), nullptr, WNOHANG, &usage);
+        if (ret == static_cast<pid_t>(pid)) {
+            quint64 memKb = static_cast<quint64>(usage.ru_maxrss);
+            if (memKb > m_peakMemoryKb)
+                m_peakMemoryKb = memKb;
+        }
     }
 #endif
 }

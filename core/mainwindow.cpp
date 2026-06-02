@@ -146,6 +146,8 @@ QString replaceWikiLinkText(const QString &content, const QString &oldText, cons
 static QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 24)
 {
     QIcon src(svgPath);
+    if (src.isNull())
+        return src;
     QPixmap result(size, size);
     result.fill(color);
     QPainter p(&result);
@@ -689,8 +691,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 设置（快捷键 Ctrl+,，不在工具栏中）
     m_settingsAction = new QAction(tr("设置"), this);
+#ifndef Q_OS_MACOS
+    // On macOS the shortcut is owned by the Preferences menu item (see macOS menu bar block).
     m_settingsAction->setShortcut(
         QKeySequence(ConfigManager::instance().shortcut("toggle_settings", "Ctrl+,")));
+#endif
     addAction(m_settingsAction);
     connect(m_settingsAction, &QAction::triggered, this, &MainWindow::toggleSettings);
 

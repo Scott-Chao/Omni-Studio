@@ -1,3 +1,5 @@
+#ifdef Q_OS_MACOS
+
 #ifndef MACOSWINDOW_H
 #define MACOSWINDOW_H
 
@@ -10,3 +12,5 @@ namespace MacOSWindow {
 }
 
 #endif // MACOSWINDOW_H
+
+#endif // Q_OS_MACOS

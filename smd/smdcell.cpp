@@ -20,6 +20,11 @@
 
 namespace {
 
+// Converts keyboard shortcut prefixes in label text to native macOS symbols.
+// Unlike activitybar.cpp's nativeShortcutText() which handles pure key sequences
+// via QKeySequence::NativeText, this function operates on mixed-text labels
+// (e.g. "Ctrl+Enter: 运行") and preserves readable key names like "Enter" that
+// QKeySequence::NativeText would render as abstract symbols (↩, ⌅, etc.).
 QString nativeShortcutHint(const QString &text)
 {
 #ifdef Q_OS_MACOS

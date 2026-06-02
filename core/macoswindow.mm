@@ -9,6 +9,9 @@ namespace MacOSWindow {
 
 void enableFullSizeContentView(QWindow *window)
 {
+    if (!window)
+        return;
+
     // Obtain the native NSView from Qt's window handle
     NSView *nativeView = (NSView *)(window->winId());
     if (!nativeView)

@@ -20,6 +20,8 @@ QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
     // via DestinationIn composition. This avoids platform differences in
     // QImage format conversion (macOS CoreGraphics vs Windows GDI).
     QIcon src(svgPath);
+    if (src.isNull())
+        return src;
 
     QPixmap result(size, size);
     result.fill(color);

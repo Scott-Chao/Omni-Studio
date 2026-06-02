@@ -14,6 +14,8 @@ namespace {
 QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size = 14)
 {
     QIcon src(svgPath);
+    if (src.isNull())
+        return src;
     QPixmap result(size, size);
     result.fill(color);
     QPainter p(&result);

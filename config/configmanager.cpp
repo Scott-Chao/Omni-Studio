@@ -7,12 +7,17 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QDebug>
+#include <QFontDatabase>
 
 namespace {
 QString defaultMonospaceFont()
 {
 #ifdef Q_OS_MACOS
-    return QStringLiteral("Menlo");
+    // Menlo is the standard monospace font on macOS with Xcode/CLT installed.
+    // Fall back to the system fixed font if Menlo is unavailable.
+    if (QFontDatabase().hasFamily(QStringLiteral("Menlo")))
+        return QStringLiteral("Menlo");
+    return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
 #else
     return QStringLiteral("Consolas");
 #endif

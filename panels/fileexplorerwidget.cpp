@@ -28,6 +28,8 @@ namespace {
 QIcon coloredSvgIcon(const QString &svgPath, const QColor &color, int size)
 {
     QIcon src(svgPath);
+    if (src.isNull())
+        return src;
     QPixmap result(size, size);
     result.fill(color);
     QPainter p(&result);
