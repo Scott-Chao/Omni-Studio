@@ -64,6 +64,7 @@ signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
     void contentChanged();
+    void activeCellChanged(int index);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

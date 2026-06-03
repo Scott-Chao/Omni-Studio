@@ -1069,6 +1069,8 @@ MainWindow::MainWindow(QWidget *parent)
             });
         }
 
+        connectSmdActiveCell();
+
         refreshBacklinks();
         refreshTags();
         refreshOutline();
@@ -1310,6 +1312,7 @@ void MainWindow::onFileSelected(const QString &filePath)
     filterAiHistoryByCurrentFile();
     updateCurrentEditorCompletions();
     updateAiActionBar();
+    connectSmdActiveCell();
     // Also update diagnostics — preview reuse bypasses the currentChanged
     // handler that normally wires up the provider connection.
     updateCurrentEditorDiagnostics();
@@ -1678,6 +1681,21 @@ void MainWindow::updateAiActionBar()
 
     const AiEditorMode mode = AiContextManager::currentEditorMode(editor);
     m_aiPanel->setActionList(actionsForMode(mode));
+}
+
+void MainWindow::connectSmdActiveCell()
+{
+    disconnect(m_smdCellChangedConnection);
+    EditorWidget *editor = m_tabManager->currentEditor();
+    if (editor && editor->isSmdEdit()) {
+        SmdEditor *smd = editor->smdEditor();
+        if (smd) {
+            m_smdCellChangedConnection = connect(smd, &SmdEditor::activeCellChanged,
+                                                 this, [this](int) {
+                updateAiActionBar();
+            });
+        }
+    }
 }
 
 void MainWindow::filterAiHistoryByCurrentFile()

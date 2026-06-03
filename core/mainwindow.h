@@ -166,6 +166,7 @@ private:
     QMetaObject::Connection m_diagnosticsProviderConnection;
     QMetaObject::Connection m_codeBlockConnection;
     QMetaObject::Connection m_fileLoadedConnection;  // current editor fileLoaded → refresh panels
+    QMetaObject::Connection m_smdCellChangedConnection; // SmdEditor activeCellChanged → updateAiActionBar
 
     // 本地评测
     JudgePanel *m_judgePanel;
@@ -243,6 +244,7 @@ private:
 
     void updateCurrentEditorCompletions();
     void updateCurrentEditorDiagnostics();
+    void connectSmdActiveCell();
 
     // 崩溃恢复
     void checkCrashRecovery();

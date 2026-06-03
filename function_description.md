@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.10）
+## 功能说明文档（v0.15.11）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,9 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- 修复临时打开文件切换时，AI 面板功能按钮不更新的问题
-- 修复文件树内联重命名文件后，AI 面板功能按钮不立即更新的问题
+### 新增 v0.15.11
+- SMD 编辑器 AI 功能按钮上下文感知：切换单元格时，AI 面板功能按钮自动跟随当前单元格类型切换（Markdown 单元格显示改进写作/总结笔记等，代码单元格显示解释代码/寻找 Bug 等）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1519,6 +1518,7 @@
 
 **信号**：
 - `void modificationChanged(bool modified)`、`void fileLoaded(const QString &filePath)`、`void fileSaved(const QString &filePath)`：转发给 `EditorWidget`。
+- `void activeCellChanged(int index)`：当前活动单元格变化时发射（在 `setActiveCell()` 末尾触发），供 `MainWindow::connectSmdActiveCell()` 连接至 `updateAiActionBar()`，使 AI 面板功能按钮随单元格类型（Markdown/代码）即时切换。
 
 **内部类 `LangSelectorPopup`**：
 - 在 `smdeditor.cpp` 中定义，`Q_OBJECT` 宏，MOC 通过 `#include "smdeditor.moc"` 处理。

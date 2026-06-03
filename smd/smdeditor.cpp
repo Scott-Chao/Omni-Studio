@@ -734,6 +734,8 @@ void SmdEditor::setActiveCell(int index)
 
     if (m_diagnosticsPanel && m_diagnosticsPanel->isVisible())
         m_diagnosticsPanel->scheduleRefresh();
+
+    emit activeCellChanged(m_activeCellIndex);
 }
 
 SmdCell *SmdEditor::cellAt(int index) const
