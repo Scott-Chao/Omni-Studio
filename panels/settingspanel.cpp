@@ -535,7 +535,16 @@ void SettingsPanel::refreshPageTree(QWidget *w)
             return; // font is set via QFont — only refresh color here
         }
         QString ss = label->styleSheet();
-        if (ss.contains(QStringLiteral("font-size: 14px")))
+        if (label->objectName() == QStringLiteral("promptTemplateHint"))
+            label->setStyleSheet(QStringLiteral("color: %1; font-size: 12px; margin-bottom: 4px;")
+                .arg(tm.color("tab.inactiveForeground").name()));
+        else if (label->objectName() == QStringLiteral("promptTemplatePath"))
+            label->setStyleSheet(QStringLiteral("color: %1; font-size: 12px; padding: 4px 8px; "
+                "background: %2; border: 1px solid %3; border-radius: 3px;")
+                .arg(tm.color("input.foreground").name(),
+                     tm.color("input.background").name(),
+                     tm.color("input.border").name()));
+        else if (ss.contains(QStringLiteral("font-size: 14px")))
             label->setStyleSheet(sectionLabelStyle());
         else if (ss.contains(QStringLiteral("font-size: 11px")))
             label->setStyleSheet(QStringLiteral("color: %1; font-size: 11px; margin-bottom: 8px;")
@@ -1825,28 +1834,28 @@ QWidget *SettingsPanel::createAiServicePage()
 
     auto *promptHint = new QLabel(
         tr("Prompt 模板由 prompts.json 文件定义，修改后点击下方按钮重新加载。"));
+    promptHint->setObjectName(QStringLiteral("promptTemplateHint"));
     promptHint->setStyleSheet(QStringLiteral(
-        "color: %1; font-size: 11px; margin-bottom: 4px;")
+        "color: %1; font-size: 12px; margin-bottom: 4px;")
         .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
     promptHint->setWordWrap(true);
     layout->addWidget(promptHint);
 
     // External path display
-    auto *pathRow = new QHBoxLayout;
     auto *pathLabel = new QLabel(tr("配置文件路径"));
     pathLabel->setStyleSheet(labelStyle());
+    layout->addWidget(pathLabel);
     auto *pathValue = new QLabel(PromptManager::instance().externalPath());
+    pathValue->setObjectName(QStringLiteral("promptTemplatePath"));
     pathValue->setStyleSheet(QStringLiteral(
-        "color: %1; font-size: 11px; padding: 4px 8px; "
+        "color: %1; font-size: 12px; padding: 4px 8px; "
         "background: %2; border: 1px solid %3; border-radius: 3px;")
         .arg(ThemeManager::instance().color("input.foreground").name(),
              ThemeManager::instance().color("input.background").name(),
              ThemeManager::instance().color("input.border").name()));
     pathValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    pathRow->addWidget(pathLabel);
-    pathRow->addStretch();
-    pathRow->addWidget(pathValue, 1);
-    layout->addLayout(pathRow);
+    pathValue->setWordWrap(true);
+    layout->addWidget(pathValue);
 
     // Reload button
     auto *reloadBtn = new QPushButton(tr("重新加载 Prompt 模板"));
