@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.12）
+## 功能说明文档（v0.15.13）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,11 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.15.12
-- 预览代码块高亮规则大幅扩展：C++ 新增基础类型（`int`/`char`/`float` 等）、控制流关键字（紫色，`if`/`for`/`return`/`new`/`using` 等）、函数调用启发（`name(` 黄色）、作用域限定（`name::` 类型色）、类/结构体/枚举声明名、`#include` 路径（`\K` 仅着色路径部分）、raw string 字面量（`R"(...)"`）共 8 条新规则。Python 新增控制流关键字（紫色）与函数调用启发 2 条新规则。关键字统一不加粗（与代码编辑器一致）。修复 Python 三引号字符串颜色：注释色 → 字符串色
-- 预览代码块头部主题感知：`.code-block-header` 背景和 `.code-lang-label` 文字颜色从硬编码 `#333`/`#999` 改为 CSS 变量（`--code-block-header-bg` / `--code-lang-label-fg`），新增 `preview.codeBlockHeaderBackground` 和 `preview.codeBlockLangLabelForeground` 主题令牌，深色/浅色主题自动适配
-- 预览代码块背景主题感知：`highlightCodeBlock()` 生成的 `<pre>` 移除硬编码 `background:#1e1e1e`，改由 CSS `var(--code-bg)` 接管，浅色模式下代码块背景自动切换为 `#e8e8e8`
-- 主题切换时预览自动重渲染：`reloadEditorColors()` 中追加 `runPreviewUpdate()` 调用，主题变更时完整重渲染预览 HTML，确保语法高亮的 `<span style="color:...">` 内联样式与当前主题一致
+### 修复 v0.15.13
+- 导出 PDF 时，代码块背景色由主题定义，不再硬编码
 
 ### 1. `MainWindow` - 主窗口控制器
 

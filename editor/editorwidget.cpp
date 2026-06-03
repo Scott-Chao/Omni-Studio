@@ -877,6 +877,8 @@ void EditorWidget::exportToPdf(const QString &filePath, const QPageLayout &layou
     tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),QStringLiteral("#666666"));
     tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     QStringLiteral("#f0f0f0"));
     tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        QStringLiteral("#cccccc"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      QStringLiteral("#e8e8e8"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  QStringLiteral("#666666"));
 
     // 5. Create a hidden, off-screen WebEngine view for rendering
     QWebEngineView *pdfView = new QWebEngineView();
