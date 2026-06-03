@@ -1,4 +1,5 @@
 #include "actionbar.h"
+#include "promptmanager.h"
 #include "widgets/flowlayout.h"
 #include "core/thememanager.h"
 
@@ -77,12 +78,15 @@ void ActionBar::rebuildButtons()
     auto &tm = ThemeManager::instance();
 
     for (AiAction action : m_currentActions) {
-        const ActionInfo *info = findActionInfo(action);
-        if (!info)
+        auto &pm = PromptManager::instance();
+        QString label = pm.actionLabel(action);
+        if (label.isEmpty())
             continue;
 
-        auto *btn = new QPushButton(info->label);
-        btn->setToolTip(info->tooltip ? QString::fromUtf8(info->tooltip) : QString());
+        auto *btn = new QPushButton(label);
+        QString tip = pm.actionTooltip(action);
+        if (!tip.isEmpty())
+            btn->setToolTip(tip);
         btn->setCursor(Qt::PointingHandCursor);
         btn->setFixedHeight(26);
         btn->setStyleSheet(QStringLiteral(

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.7）
+## 功能说明文档（v0.15.8）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,10 +61,14 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复 v0.15.7
-设置面板主题问题修复
-- 修复启动程序时颜色设置默认显示 custom 的问题
-- 修复颜色菜单收起/展开时出现视觉跳动的问题
+### 重构 v0.15.8
+AI Prompt 模板外置与热重载
+- 将 `ai/prompttemplates.h` 中所有 AI 提示词模板文本（共 11 组 action：ImproveWriting、SummarizeNote、ExtractTags、SelfTest、Translate、ExplainCode、FindBugs、AddComments、OptimizeCode、ErrorAnalysis、FreeChat）从 C++ 硬编码字符串外置到 `ai/prompts.json` 独立配置文件。
+- 新增 `PromptManager`（`ai/promptmanager.h/cpp`）：QObject 单例，JSON 加载优先级为 {exeDir}/prompts.json → Qt 内置资源 → C++ 硬编码兜底（`loadDefaults()`）。提供 `buildPrompt()`、`actionLabel()`、`actionTooltip()` 接口替代原有的内联函数。支持运行时 `reload()` 热重载。
+- 模板语法：`{fileContent}`、`{selectedText}`、`{language}`、`{extension}`、`{filePath}`、`{freeQuery}` 等 14 个占位符，以及 `defaultQuery` 回退字段（用于 FreeChat 空输入场景）。
+- 设置面板 "AI 服务" 页新增 "Prompt 模板" 区域：显示 prompts.json 外部路径（可选文字），提供 "重新加载 Prompt 模板" 按钮，加载成功显示 ✓ 反馈 2 秒。
+- 精简 `prompttemplates.h`：仅保留 `AiAction` 枚举、`PromptBundle` 结构体、`actionsForMode()` 函数，删除 `buildPrompt()`、ActionInfo、actionInfos()、findActionInfo()。
+- 相关调用方（`actionbar.cpp`、`airequesthandler.cpp`、`errorjournal.cpp`）迁移至 `PromptManager` 接口。
 
 ### 1. `MainWindow` - 主窗口控制器
 

@@ -1,5 +1,6 @@
 #include "errorjournal.h"
 #include "core/utilities.h"
+#include "promptmanager.h"
 #include "aiproviders.h"
 #include "prompttemplates.h"
 #include "aicontextmanager.h"
@@ -225,7 +226,7 @@ void ErrorJournal::requestAnalysis(const QString &recordId)
     ctx.errorDetail = rec.detail;
 
     // 4. Build prompt
-    PromptBundle prompt = buildPrompt(AiAction::ErrorAnalysis, ctx);
+    PromptBundle prompt = PromptManager::instance().buildPrompt(AiAction::ErrorAnalysis, ctx);
 
     // 5. Helper: finalize analysis result (set text, save, emit)
     auto finalizeAnalysis = [this](const QString &id, const QString &text) {

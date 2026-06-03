@@ -1,4 +1,5 @@
 #include "airequesthandler.h"
+#include "promptmanager.h"
 #include "aipanel.h"
 #include "aicontextmanager.h"
 #include "aiproviders.h"
@@ -130,7 +131,7 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
         ctx = AiContextManager::collectContext(editor);
 
     // 3. Build prompt
-    PromptBundle prompt = buildPrompt(action, ctx, freeQuery);
+    PromptBundle prompt = PromptManager::instance().buildPrompt(action, ctx, freeQuery);
 
     // 4. Read AI settings
     const QString apiKey = m_settings->aiApiKey();
@@ -186,8 +187,8 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
         userDisplayText = freeQuery;
         m_aiPanel->addUserMessage(freeQuery);
     } else {
-        const ActionInfo *info = findActionInfo(action);
-        userDisplayText = info ? tr(info->label) : tr("AI 操作");
+        QString actLabel = PromptManager::instance().actionLabel(action);
+        userDisplayText = actLabel.isEmpty() ? tr("AI 操作") : actLabel;
         if (!ctx.selectedText.isEmpty()) {
             userDisplayText += QStringLiteral("\n\n```\n") + ctx.selectedText + QStringLiteral("\n```");
         }
@@ -204,8 +205,8 @@ void AiRequestHandler::startAiRequest(AiAction action, const QString &freeQuery)
                 convTitle = freeQuery.left(30).trimmed();
                 if (convTitle.isEmpty()) convTitle = tr("新对话");
             } else {
-                const ActionInfo *info = findActionInfo(action);
-                convTitle = info ? tr(info->label) : tr("AI 操作");
+                QString actLabel2 = PromptManager::instance().actionLabel(action);
+                convTitle = actLabel2.isEmpty() ? tr("AI 操作") : actLabel2;
             }
             QString filePath = (action != AiAction::FreeChat) ? ctx.filePath : QString();
             mgr.createConversation(convTitle, filePath);

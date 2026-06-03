@@ -27,6 +27,7 @@ SOURCES += \
     ai/aihistorylistwidget.cpp \
     ai/aihistorymanager.cpp \
     ai/airequesthandler.cpp \
+    ai/promptmanager.cpp \
     config/configmanager.cpp \
     core/crashrecoverymanager.cpp \
     index/backlinkindex.cpp \
@@ -100,6 +101,7 @@ HEADERS += \
     ai/aihistorymanager.h \
     ai/airequesthandler.h \
     ai/prompttemplates.h \
+    ai/promptmanager.h \
     config/configmanager.h \
     core/crashrecoverymanager.h \
     core/utilities.h \

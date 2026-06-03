@@ -2,6 +2,7 @@
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "core/thememanager.h"
+#include "ai/promptmanager.h"
 #include "windowdraghelper.h"
 
 #include <QLabel>
@@ -1793,6 +1794,55 @@ QWidget *SettingsPanel::createAiServicePage()
     });
     // 焦点离开时立即 emit 最终值
     m_aiSystemPromptEdit->installEventFilter(this);
+
+    // ──── Prompt 模板管理 ────
+    layout->addWidget(createSectionLabel(tr("Prompt 模板")));
+
+    auto *promptHint = new QLabel(
+        tr("Prompt 模板由 prompts.json 文件定义，修改后点击下方按钮重新加载。"));
+    promptHint->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 11px; margin-bottom: 4px;")
+        .arg(ThemeManager::instance().color("tab.inactiveForeground").name()));
+    promptHint->setWordWrap(true);
+    layout->addWidget(promptHint);
+
+    // External path display
+    auto *pathRow = new QHBoxLayout;
+    auto *pathLabel = new QLabel(tr("配置文件路径"));
+    pathLabel->setStyleSheet(labelStyle());
+    auto *pathValue = new QLabel(PromptManager::instance().externalPath());
+    pathValue->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 11px; padding: 4px 8px; "
+        "background: %2; border: 1px solid %3; border-radius: 3px;")
+        .arg(ThemeManager::instance().color("input.foreground").name(),
+             ThemeManager::instance().color("input.background").name(),
+             ThemeManager::instance().color("input.border").name()));
+    pathValue->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    pathRow->addWidget(pathLabel);
+    pathRow->addStretch();
+    pathRow->addWidget(pathValue, 1);
+    layout->addLayout(pathRow);
+
+    // Reload button
+    auto *reloadBtn = new QPushButton(tr("重新加载 Prompt 模板"));
+    reloadBtn->setCursor(Qt::PointingHandCursor);
+    reloadBtn->setFixedHeight(28);
+    reloadBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; color: %2; border: 1px solid %3; "
+        "border-radius: 3px; padding: 4px 16px; font-size: 12px; }"
+        "QPushButton:hover { background: %4; }")
+        .arg(ThemeManager::instance().color("button.background").name(),
+             ThemeManager::instance().color("button.foreground").name(),
+             ThemeManager::instance().color("input.border").name(),
+             ThemeManager::instance().color("aiAssistant.actionButtonHoverBackground").name()));
+    connect(reloadBtn, &QPushButton::clicked, this, [this, reloadBtn]() {
+        PromptManager::instance().reload();
+        reloadBtn->setText(tr("✓ 已重新加载"));
+        QTimer::singleShot(2000, reloadBtn, [reloadBtn]() {
+            reloadBtn->setText(tr("重新加载 Prompt 模板"));
+        });
+    });
+    layout->addWidget(reloadBtn);
 
     layout->addStretch();
     scrollArea->setWidget(content);

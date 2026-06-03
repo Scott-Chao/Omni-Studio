@@ -42,7 +42,8 @@ core/mainwindow.*         → orchestrator: owns all widgets, routes signals/slo
   ├── ai/errorjournal.*         → Singleton (QObject). ErrorRecord struct + JSON persistence to error_journal/records.json. recordFailure() called from JudgePanel::onTestFinished for non-AC results (WA/RE/TLE/MLE). requestAnalysis() builds ErrorAnalysis prompt and streams AI response back into ErrorRecord::aiAnalysis. Signals: analysisReady(recordId), recordsChanged().
   ├── ai/errorlistpanel.*       → QWidget with status filter (ComboBox: 全部/WA/RE/TLE/MLE), keyword search (LineEdit), scrollable error list (QListWidget), expand-to-detail view (QStackedWidget switching list↔detail). Detail shows problem info, I/O comparison, AI analysis Markdown rendering, action buttons (re-analyze/delete/review). Delete/delete-all/clear-all operations through ErrorJournal.
   ├── ai/aicontextmanager.*     → Static utility class. collectContext(EditorWidget*) returns ContextBundle{mode, filePath, fileContent, selectedText, language, cursorLine/Column, plus error analysis fields}. currentEditorMode() returns AiEditorMode::Markdown|Code|Unknown. Handles SMD cells, PDF view, code files.
-  ├── ai/prompttemplates.h      → Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. AiAction enum covers 10 actions + FreeChat (added ErrorAnalysis). actionsForMode(mode) maps editor mode to available action list. Metadata in actionInfos() provides display labels/tooltips.
+  ├── ai/prompttemplates.h      → AiAction enum (11 values), PromptBundle struct, actionsForMode() — editor-mode-to-action mapping. Prompt text moved to external prompts.json.
+  ├── ai/promptmanager.*        → QObject singleton, loads prompts from {exeDir}/prompts.json / Qt resource / C++ fallback. buildPrompt(), actionLabel(), actionTooltip(). reload() hot-reload. 14 template placeholders, defaultQuery fallback.
   ├── ai/aiproviders.*           → `ai/aiproviders.h/cpp`: AiProvider (abstract), AnthropicProvider, OpenAiProvider, AiProviderFactory, Message struct, MessageRole enum. All AI provider classes in one unit.
   ├── panels/searchpanel.*      → QDockWidget + QLineEdit + QListWidget, full-text search (left dock, tabbed with Judge)
   ├── panels/judgepanel.*       → QDockWidget + QTableWidget + JudgeEngine, local judge (left dock, tabbed with Search)
@@ -266,10 +267,28 @@ Static utility class. collectContext(EditorWidget*) returns ContextBundle: mode 
 All AI provider classes in one unit. **AiProvider**: abstract QObject base class with Message struct, MessageRole enum, chatStream/cancel API, SSE frame buffer, 30s timeout. **AnthropicProvider**: POST `{endpoint}/messages`, x-api-key auth, event/data SSE dual parsing → content_block_delta→partialResponse. **OpenAiProvider** (DeepSeek-compatible): POST `{endpoint}/chat/completions`, Bearer auth, `data:` SSE lines → choices[0].delta.content→partialResponse, `[DONE]`→finished. **AiProviderFactory**: static factory, createProvider(Anthropic|OpenAiCompatible). Both providers guard against duplicate `finished()` via `m_finished` flag.
 
 ### PromptTemplates (`ai/prompttemplates.h`)
-Header-only. buildPrompt(action, ctx, freeQuery) returns PromptBundle{systemPrompt, userPrompt}. 10 predefined AiActions: ImproveWriting, SummarizeNote, ExtractTags, SelfTest, Translate (Markdown); ExplainCode, FindBugs, AddComments, OptimizeCode (Code); ErrorAnalysis (Judge — no button, triggered by ErrorJournal); FreeChat (general). Each has tailored Chinese system prompt and user prompt template. ErrorAnalysis uses ctx.errorStatusCode/elapsedMs/inputData/expectedOutput/actualOutput/errorDetail fields for the prompt. actionsForMode(mode) returns appropriate action list per editor context. ActionInfo struct and actionInfos() supply display labels and tooltips for UI buttons.
+Header-only. Defines `AiAction` enum (11 values: ImproveWriting, SummarizeNote, ExtractTags, SelfTest, Translate, ExplainCode, FindBugs, AddComments, OptimizeCode, ErrorAnalysis, FreeChat) and `PromptBundle{systemPrompt, userPrompt}` struct. `actionsForMode(mode)` returns the appropriate action list per editor context (Markdown → 5 MD actions, Code → 4 code actions). All prompt text content externalized to `prompts.json` — loaded at runtime by `PromptManager`.
+
+### PromptManager (`ai/promptmanager.h/cpp`)
+QObject singleton (`PromptManager::instance()`). Manages loading, resolution and hot-reload of AI prompt templates.
+
+**Load priority**: `{executable_dir}/prompts.json` → Qt resource `:/prompts/prompts.json` → C++ hardcoded defaults (`loadDefaults()`).
+
+**Public API**:
+- `buildPrompt(action, ctx, freeQuery)` → `PromptBundle{sytemPrompt, userPrompt}` — resolves the appropriate template with context, supporting selection-aware branching (with/without selected text).
+- `actionLabel(action)` / `actionTooltip(action)` — UI metadata for action bar buttons.
+- `reload()` — hot-reload from external file (fallback to resource), emits `promptsReloaded()`.
+
+**Template placeholders**: `{fileContent}`, `{selectedText}`, `{language}`, `{extension}`, `{filePath}`, `{freeQuery}`, `{errorStatusCode}`, `{elapsedMs}`, `{memoryKb}`, `{inputData}`, `{expectedOutput}`, `{actualOutput}`, `{errorDetail}`, `{cursorLine}`, `{cursorColumn}`. Supported in both `userPrompt` and `userPromptWithSelection` fields.
+
+**defaultQuery**: per-action fallback used when the resolved user prompt is empty — primarily for FreeChat's empty-input greeting.
+
+**reload() behavior**: always tries external file first; on failure falls to resource. Always emits `promptsReloaded()`.
+
+**Configuration file** (`ai/prompts.json`): JSON format with version field. Each action entry has systemPrompt, userPrompt (template when no selection), userPromptWithSelection (template when text selected, empty → use userPrompt), defaultQuery (optional fallback), label/tooltip (UI metadata).
 
 ### SettingsPanel AI Service page (`panels/settingspanel.cpp`)
-Category "AI 服务" (index 6) in settings panel sidebar. Controls: API type ComboBox (Anthropic/OpenAI), endpoint LineEdit, API Key LineEdit (password echo), model LineEdit, max_tokens SpinBox (256-16384), system prompt TextEdit. Signals aiSettingChanged(key, value). API Key stored via SettingsManager::setAiApiKey() (base64 obfuscation, same as OJ password).
+Category "AI 服务" (index 6) in settings panel sidebar. Controls: API type ComboBox (Anthropic/OpenAI), endpoint LineEdit, API Key LineEdit (password echo), model LineEdit, max_tokens SpinBox (256-16384), system prompt TextEdit. **Prompt 模板** section: external path display (selectable text) + "重新加载 Prompt 模板" button (calls `PromptManager::reload()`, shows ✓ feedback for 2s). Signals aiSettingChanged(key, value). API Key stored via SettingsManager::setAiApiKey() (base64 obfuscation, same as OJ password).
 
 ### LoginDialog (`judge/logindialog.h/cpp`)
 QDialog: username, password, auto-login checkbox, Login/Skip buttons.
