@@ -111,12 +111,12 @@ ChatBubble::ChatBubble(MessageRole role, const QString &text, QWidget *parent)
     innerLayout->addWidget(m_browser);
 
     if (role == MessageRole::User) {
-        bubbleRow->addStretch();
-        bubbleRow->addWidget(bubbleInner);
+        bubbleRow->addStretch(1);
+        bubbleRow->addWidget(bubbleInner, 9);
         outerLayout->addWidget(m_roleLabel, 0, Qt::AlignRight);
     } else {
-        bubbleRow->addWidget(bubbleInner);
-        bubbleRow->addStretch();
+        bubbleRow->addWidget(bubbleInner, 9);
+        bubbleRow->addStretch(1);
         outerLayout->addWidget(m_roleLabel);
     }
 
@@ -129,13 +129,6 @@ ChatBubble::ChatBubble(MessageRole role, const QString &text, QWidget *parent)
     m_updateTimer->setSingleShot(true);
     m_updateTimer->setInterval(UPDATE_INTERVAL_MS);
     connect(m_updateTimer, &QTimer::timeout, this, &ChatBubble::updateContent);
-
-    // Set a max width proportionally to parent
-    if (parent) {
-        int pw = parent->width();
-        if (pw > 0)
-            m_browser->setMaximumWidth(qMax(200, pw * 7 / 10));
-    }
 
     ThemeManager::watchTheme(this, &ChatBubble::refreshStyle);
     refreshStyle();
@@ -279,18 +272,9 @@ void ChatBubble::updateBrowserHeight()
 {
     QTextDocument *doc = m_browser->document();
 
-    // During initial construction (or when the widget hasn't been laid
-    // out yet), m_browser->viewport()->width() is the default widget
-    // size — typically 0 or 100 — which would make the text wrap into
-    // an extremely tall document.  The maximumWidth we set in the
-    // constructor (* 7/10 of parent) is a much better estimate of the
-    // final layout width, so use it as the text width when the viewport
-    // hasn't been assigned its real size yet.
     int w = m_browser->viewport()->width();
-    if (w < m_browser->maximumWidth())
-        w = m_browser->maximumWidth();
     if (w <= 0)
-        w = 200;    // safe fallback — matches minimum in constructor
+        w = 200;
 
     doc->setTextWidth(w);
 

@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.9）
+## 功能说明文档（v0.15.10）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增
-- 调整深色模式下搜索高亮颜色
+### 新增 v0.15.10
+- 聊天气泡面板拉伸优化：AI 助手聊天窗口拖拽缩放时，气泡宽度与面板间隙始终保持比例（气泡:间隙 = 9:1），消除先位移后缩放问题
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -2084,6 +2084,46 @@ enum class MessageRole { User, Assistant, System };
 **协作关系**：
 - `MainWindow` 在 `showEvent()` 中调用 `MacOSWindow::enableFullSizeContentView(windowHandle())`。
 - 配合 `MainWindow` 的 `#ifdef Q_OS_MACOS` 条件编译：不使用 FramelessWindowHint，保留 Qt::Window 原生标题栏标志；`setupCustomTitleBar()` 跳过自定义最小化/最大化/关闭按钮，在 spacer 左侧预留 70px 边距放置红绿灯。
+
+
+### 47. `ChatBubble` — AI 聊天气泡
+
+**文件**：`chatbubble.h` / `chatbubble.cpp`
+
+**职责**：
+- AI 助手聊天窗口中单条消息的视觉呈现。支持两种角色：用户（`MessageRole::User`，右对齐蓝色气泡）和 AI（`MessageRole::Assistant`，左对齐灰色气泡）。
+- 管理流式文本渲染：通过 80ms 防抖定时器合并 SSE 数据块，增量转 HTML 后更新 `QTextBrowser`。
+- 自适应文本宽度：气泡容器（`bubbleInner`）在行布局中占 9/10 的额外空间，留 1/10 给对侧间隙（通过 `QHBoxLayout` stretch 因子实现），拖拽面板时气泡与间隙同步按比例缩放。`QTextBrowser` 不再设置硬编码 `setMaximumWidth`，文档文本宽度跟随实际视口宽度实时折行。
+
+**子组件**：
+- `m_roleLabel`（`QLabel`）：顶部角色名标签（"你" / "AI 助手"），11px 加粗。
+- `m_browser`（`QTextBrowser`）：HTML 渲染区域，透明背景，禁用滚动条，无边框。`sizePolicy = Expanding, Minimum` 填充气泡容器。
+- `bubbleInner`（`QWidget`，`objectName = "bubbleInner"`）：带圆角背景色的容器，通过 QSS 设置 `background-color` 和 `border-radius: 8px`。
+
+**布局结构**：
+```
+ChatBubble (QWidget)
+  QVBoxLayout
+    m_roleLabel
+    QHBoxLayout (bubbleRow, margins 4px)
+      [用户消息] addStretch(1) | addWidget(bubbleInner, 9) → 气泡靠右，间隙在左
+      [AI 消息]  addWidget(bubbleInner, 9) | addStretch(1) → 气泡靠左，间隙在右
+        bubbleInner (QVBoxLayout, padding 8,6,8,6)
+          m_browser (QTextBrowser)
+```
+
+**关键技术决策**：
+- 使用 `QHBoxLayout` stretch 因子（9:1）而非 `setMaximumWidth` + `addStretch()` 控制气泡最大宽度。旧方案中 `setMaximumWidth` 仅在构造时基于父容器宽度计算一次，面板缩放时无法更新，导致气泡先位移后跳变。新方案利用 stretch 因子动态分配额外空间，面板拖拽时气泡与间隙始终保持 9:1 比例。
+- `updateBrowserHeight()` 不再回退到旧 `maximumWidth`，直接使用 `m_browser->viewport()->width()` 作为 `QTextDocument` 的文本宽度，确保每次缩放即时折行。
+
+**流式渲染**：
+- 增量处理：`processSimpleDelta()` 对非结构性增量做简单 `<p>` 段落包裹；结构性增量（代码围栏、标题、列表、水平线、块引用）触发完整 `markdownToHtml()` 重建。
+- 防抖合并：`m_updateTimer` 80ms 单次触发，快速 SSE 数据块合并为一次 `updateContent()` 调用。`flushUpdate()` 强制刷新用于流结束同步。
+
+**协作关系**：
+- 由 `ChatArea`（`QScrollArea`）创建并管理生命周期。`ChatArea::addMessage()` 将新气泡插入容器布局（`insertWidget` 在底部弹性弹簧之前）。
+- 引用 `ThemeManager` 获取颜色令牌（`aiAssistant.*` 系列），通过 `watchTheme` 模板自动响应主题切换。
+- 引用 `MarkdownUtils::markdownToHtml()` 进行完整 Markdown→HTML 转换。
 
 
 ### 配置存储说明
