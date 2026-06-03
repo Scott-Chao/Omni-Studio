@@ -548,6 +548,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(saveAsAct, &QAction::triggered, this, &MainWindow::onSaveFileAs);
     m_shortcutActions["save_as"] = saveAsAct;
 
+    QAction *closeTabAct = new QAction(tr("关闭标签页"), this);
+    closeTabAct->setShortcut(QKeySequence(ConfigManager::instance().shortcut("close_tab", "Ctrl+W")));
+    addAction(closeTabAct);
+    connect(closeTabAct, &QAction::triggered, this, [this]() {
+        m_tabManager->closeCurrentTab();
+    });
+    m_shortcutActions["close_tab"] = closeTabAct;
+
 #ifndef Q_OS_MACOS
     // 左侧：[文件 ▼] 下拉菜单（Windows/Linux 保留工具栏文件按钮）
     m_fileMenuBtn = new QToolButton(m_toolBar);

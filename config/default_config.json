@@ -281,6 +281,7 @@
         "toggle_diagnostics": "Ctrl+D",
         "cell_insert_above": "A",
         "cell_insert_below": "B",
-        "cell_delete": "Delete"
+        "cell_delete": "Delete",
+        "close_tab": "Ctrl+W"
     }
 }

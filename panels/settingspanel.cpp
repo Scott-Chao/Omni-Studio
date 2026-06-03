@@ -1455,6 +1455,7 @@ QWidget *SettingsPanel::createShortcutsPage()
         {tr("删除文件"),           "delete_file"},
         {tr("导出 PDF"),           "export_pdf"},
         {tr("转换 .md ↔ .smd"),   "convert_md_smd"},
+        {tr("关闭标签页"),        "close_tab"},
 
         // --- CodeEditor ---
         {tr("代码补全"),           "completion_trigger"},
@@ -1519,10 +1520,10 @@ QWidget *SettingsPanel::createShortcutsPage()
     struct GroupMarker { int index; QString name; };
     GroupMarker markers[] = {
         {0,   tr("通用")},
-        {25,  tr("CodeEditor")},
-        {28,  tr("SmdEditor")},
-        {35,  tr("SmdEditor 命令模式")},
-        {38,  tr("输出面板")},
+        {26,  tr("CodeEditor")},
+        {29,  tr("SmdEditor")},
+        {36,  tr("SmdEditor 命令模式")},
+        {39,  tr("输出面板")},
     };
 
     int markerIdx = 0;
