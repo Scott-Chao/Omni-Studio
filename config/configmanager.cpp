@@ -402,7 +402,7 @@ QColor ConfigManager::outputErrorStatus() const
 QColor ConfigManager::outputSuccessStatus() const
     { return syntaxThemeOr("output.successStatus", QColor("#73c991"), QColor("#008000")); }
 QColor ConfigManager::searchHighlightBackground() const
-    { return syntaxThemeOr("search.highlightBackground", QColor("#27678280"), QColor("#FFFF00")); }
+    { return syntaxThemeOr("search.highlightBackground", QColor("#3987A8CC"), QColor("#FFFF00")); }
 QColor ConfigManager::searchHighlightForeground() const
     { return syntaxThemeOr("search.highlightForeground", QColor("#bfbfbf"), QColor("#000000")); }
 QColor ConfigManager::previewContainerBackground() const

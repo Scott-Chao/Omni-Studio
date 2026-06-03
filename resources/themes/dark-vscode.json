@@ -58,7 +58,7 @@
     "output.stderr": "#f48771",
     "output.errorStatus": "#f48771",
     "output.successStatus": "#73c991",
-    "search.highlightBackground": "#27678280",
+    "search.highlightBackground": "#3987A8CC",
     "search.highlightForeground": "#bfbfbf",
     "preview.containerBackground": "#242526",
     "preview.webEngineBackground": "#121314",
