@@ -58,7 +58,9 @@ int main(int argc, char *argv[])
 
     MainWindow w;
 
-    // 预热 Qt WebEngine：创建一个 QWebEngineView 作为主窗口的子控件，
+#ifndef Q_OS_WIN
+    // 预热 Qt WebEngine（Linux/macOS）：创建一个 QWebEngineView 作为
+    // 主窗口的子控件，
     // 使其在首次映射时创建 Wayland 子表面并初始化 Chromium 的 EGL 上下文。
     // 子表面创建+EGL 握手的闪屏代价在启动阶段支付，而非用户首次预览时。
     {
@@ -69,6 +71,7 @@ int main(int argc, char *argv[])
         QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         // 热视图作为 MainWindow 子控件持续存活，不析构
     }
+#endif
     w.show();
     return a.exec();
 }
