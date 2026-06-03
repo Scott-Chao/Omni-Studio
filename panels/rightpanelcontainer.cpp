@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QSizePolicy>
 
 RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *parent)
     : QWidget(parent)
@@ -35,7 +36,6 @@ RightPanelContainer::RightPanelContainer(SettingsManager *settings, QWidget *par
         m_tabButtons.append(btn);
         tabLayout->addWidget(btn);
     }
-    tabLayout->addStretch();
 
     // Panels
     m_historyPanel = new HistoryPanel(settings, this);
@@ -104,6 +104,7 @@ QPushButton *RightPanelContainer::createTabButton(const QString &text, const QIc
     btn->setFlat(true);
     btn->setCursor(Qt::PointingHandCursor);
     btn->setFixedHeight(32);
+    btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     btn->setIconSize(QSize(14, 14));
 
     connect(btn, &QPushButton::clicked, this, [this, index]() {
