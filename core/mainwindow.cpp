@@ -1045,6 +1045,7 @@ MainWindow::MainWindow(QWidget *parent)
                 refreshOutline();
                 filterAiHistoryByCurrentFile();
                 updateCurrentEditorCompletions();
+                updateAiActionBar();
                 if (m_compileRunMgr)
                     m_compileRunMgr->updateActions();
 
@@ -1308,6 +1309,7 @@ void MainWindow::onFileSelected(const QString &filePath)
     refreshOutline();
     filterAiHistoryByCurrentFile();
     updateCurrentEditorCompletions();
+    updateAiActionBar();
     // Also update diagnostics — preview reuse bypasses the currentChanged
     // handler that normally wires up the provider connection.
     updateCurrentEditorDiagnostics();
