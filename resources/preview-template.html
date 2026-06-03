@@ -15,6 +15,8 @@
     --blockquote: {{PREVIEW_BLOCKQUOTE}};
     --th-bg: {{PREVIEW_TH_BG}};
     --hr: {{PREVIEW_HR}};
+    --code-block-header-bg: {{PREVIEW_CODE_HEADER_BG}};
+    --code-lang-label-fg: {{PREVIEW_CODE_LANG_LABEL_FG}};
     --scrollbar-bg: rgba(136, 136, 136, 0.4);
     --scrollbar-hover-bg: rgba(136, 136, 136, 0.55);
   }
@@ -135,13 +137,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #333;
+    background: var(--code-block-header-bg);
     padding: 4px 12px;
     border-radius: 6px 6px 0 0;
     font-size: 0.85em;
   }
   .code-lang-label {
-    color: #999;
+    color: var(--code-lang-label-fg);
   }
   .run-code-btn {
     color: #4ec9b0;
@@ -413,6 +415,8 @@
     if (vars.blockquote) root.setProperty('--blockquote', vars.blockquote);
     if (vars.thBg) root.setProperty('--th-bg', vars.thBg);
     if (vars.hr) root.setProperty('--hr', vars.hr);
+    if (vars.codeHeaderBg) root.setProperty('--code-block-header-bg', vars.codeHeaderBg);
+    if (vars.codeLangLabelFg) root.setProperty('--code-lang-label-fg', vars.codeLangLabelFg);
   };
 })();
 </script>

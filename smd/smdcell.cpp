@@ -540,6 +540,8 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
             tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),hex("tab.inactiveForeground"));
             tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     hex("list.hoverBackground"));
             tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        hex("panel.border"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      hex("preview.codeBlockHeaderBackground"));
+            tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  hex("preview.codeBlockLangLabelForeground"));
         }
         tmpl.replace(QStringLiteral("padding: 24px 32px;"),
                      QStringLiteral("padding: 8px 12px;"));

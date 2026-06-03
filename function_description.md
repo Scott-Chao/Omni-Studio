@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.11）
+## 功能说明文档（v0.15.12）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -31,7 +31,7 @@
 - OpenJudge IDE 模式：题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C++/Python），语言默认选择逻辑：①题目仅支持一种 IDE 语言时自动选中该语言；②否则优先使用该题目上次提交/切换的语言（`lang_prefs.json` 按题目持久化）；③兜底选第一项（C++）。语言切换通过 `m_ideLangChanging` 布尔守卫防止重入，避免快速切换导致 LSP 子进程堆积和信号竞争引发卡死闪退；`setupIdeMode()` 填充下拉框时使用 `blockSignals(true)` 阻止 `currentIndexChanged` 误触发。题目可用语言由 `Crawler::parseProblemDetail()` 从问题页 HTML 解析（`<select name="language">` 或 `<input type="radio" name="language">`），通过 `mapOJLangName` 将 OJ 字符串标识（如 `"Python3"`、`"G++"`）映射为内部数值 ID，存入 `ProblemDetail::availableLanguages`。代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。IDE 模式下编译运行（F5/F6/F7）、本地评测、OpenJudge 提交均使用编辑器当前内容。`Ctrl+D` 可切换底部诊断面板。
 - 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
-- Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，复用与代码编辑器完全一致的语法高亮规则，支持 C/C++ 和 Python，通过 `highlighted` 自定义围栏块绕过 marked.js 处理
+- Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，通过 `highlighted` 自定义围栏块绕过 marked.js 处理。完整复用 `CppSyntaxHighlighter` / `PythonSyntaxHighlighter` 的启发式高亮规则（包括控制流关键字紫色、基础类型蓝色、函数调用启发、类声明名/作用域限定类型色、include 路径字符串色、raw string 字面量等），与代码编辑器保持一致的 token 层级着色。代码块头部（语言标签 + ▶ Run 按钮）和代码背景色通过 CSS 变量响应主题切换。主题切换时自动重渲染预览内容以同步语法颜色
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 **[文件 ▼]** 按钮（文字右侧 SVG chevron 箭头，`spacing: -2px` 紧凑间距，点击手动弹出菜单并限制左侧不超出屏幕边界），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 **[▶ 运行][▼]** 按钮组（绿色运行按钮 + 独立 chevron 下拉按钮，仅代码文件可见，按钮状态由 `CompileRunManager::runToolAction()` 的 `changed` 信号驱动同步）。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
 - ActivityBar 左侧活动栏：48px 固定宽度竖条，#333337 背景。5 个 SVG 图标按钮（搜索/AI 助手/设置/导出PDF/评测），每个 48×48px。激活态左边框 #0078D4 高亮。搜索与 AI 在上方，stretch 后将设置/导出PDF/评测挤到底部。导出 PDF 仅 .md 文件可见。
@@ -61,8 +61,11 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 新增 v0.15.11
-- SMD 编辑器 AI 功能按钮上下文感知：切换单元格时，AI 面板功能按钮自动跟随当前单元格类型切换（Markdown 单元格显示改进写作/总结笔记等，代码单元格显示解释代码/寻找 Bug 等）
+### 新增 v0.15.12
+- 预览代码块高亮规则大幅扩展：C++ 新增基础类型（`int`/`char`/`float` 等）、控制流关键字（紫色，`if`/`for`/`return`/`new`/`using` 等）、函数调用启发（`name(` 黄色）、作用域限定（`name::` 类型色）、类/结构体/枚举声明名、`#include` 路径（`\K` 仅着色路径部分）、raw string 字面量（`R"(...)"`）共 8 条新规则。Python 新增控制流关键字（紫色）与函数调用启发 2 条新规则。关键字统一不加粗（与代码编辑器一致）。修复 Python 三引号字符串颜色：注释色 → 字符串色
+- 预览代码块头部主题感知：`.code-block-header` 背景和 `.code-lang-label` 文字颜色从硬编码 `#333`/`#999` 改为 CSS 变量（`--code-block-header-bg` / `--code-lang-label-fg`），新增 `preview.codeBlockHeaderBackground` 和 `preview.codeBlockLangLabelForeground` 主题令牌，深色/浅色主题自动适配
+- 预览代码块背景主题感知：`highlightCodeBlock()` 生成的 `<pre>` 移除硬编码 `background:#1e1e1e`，改由 CSS `var(--code-bg)` 接管，浅色模式下代码块背景自动切换为 `#e8e8e8`
+- 主题切换时预览自动重渲染：`reloadEditorColors()` 中追加 `runPreviewUpdate()` 调用，主题变更时完整重渲染预览 HTML，确保语法高亮的 `<span style="color:...">` 内联样式与当前主题一致
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -350,11 +353,11 @@
 - `void navigateEditorToLine(int lineNumber)`：大纲面板点击和诊断条目点击的统一跳转入口（1-based 行号）。CodeEdit 模式先设置大纲高亮（`setOutlineHighlightLine`，1 秒自动消失），再调用 `scrollToLine()` 复用搜索跳转的代码路径。MarkdownEdit 模式通过 `setTextCursor()` + `ensureCursorVisible()` 跳转并高亮目标行。
 - `void clearExtraSelections()`：清除搜索高亮，同时清空存储的高亮文本。
 - `void refreshPreview()`：强制刷新预览内容（委托 `updatePreviewContent(nullptr)` 异步更新）。
-- `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM。设置面板关闭时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
+- `void refreshPreviewTheme()`：刷新预览页面主题颜色，更新 WebEngine 页面背景色并通过 `previewThemeJs()` 同步 CSS 变量到预览 DOM（含代码块头部背景和语言标签颜色）。主题切换时由 `MainWindow::toggleSettings()` 调用，确保主题变更实时生效。
 - `void updatePreviewContent(std::function<void()> onFinished)`：调用 `preparePreviewContent()` 获取预处理内容 → base64 编码 → `runJavaScript("window.renderFromBase64(...)")`，JS 执行完成后回调 `onFinished`。
 - `QString preparePreviewContent(const QString &rawMarkdown)`：统一预处理管线——`preHighlightCodeBlocks()` → `processWikiLinks()` → `TagIndex::processTagsForPreview()` → `</script>` 转义。被 `setPreviewMode()` 和 `updatePreviewContent()` 共同使用。
-- `QString preHighlightCodeBlocks(const QString &markdown)`：使用正则匹配所有 fenced 代码块，对可识别语言（C/C++、Python）调用 `highlightCodeBlock()` 生成内联样式 HTML，经 Base64 编码后替换为 `highlighted` 自定义围栏块。
-- `QString highlightCodeBlock(const QString &code, const QString &langId)`：使用直接正则匹配（复用 CppSyntaxHighlighter / PythonSyntaxHighlighter 的规则和 ConfigManager 颜色），对代码逐行逐片着生成 `<span style="color:...">` 内联样式 HTML。
+- `QString preHighlightCodeBlocks(const QString &markdown)`：使用正则匹配所有 fenced 代码块，对可识别语言（C/C++、Python）调用 `highlightCodeBlock()` 生成内联样式 HTML（含 `.code-block-wrapper` 包装和 `.code-block-header` 头部），经 Base64 编码后替换为 `highlighted` 自定义围栏块。
+- `QString highlightCodeBlock(const QString &code, const QString &langId)`：使用 `highlightWithRules()` 引擎应用启发式高亮规则（完整复用 `CppSyntaxHighlighter` / `PythonSyntaxHighlighter` 的 token 级别规则，包括关键字、控制流关键字、基础类型、常见类型、函数调用启发、作用域限定、类声明名、预处理器、include 路径、raw string、字符串/字符字面量、单行/多行注释等），通过 `ConfigManager` 获取主题感知颜色，生成 `<span style="color:...">` 内联样式 HTML。多行注释和三引号字符串通过占位符预处理保护。
 - `QString processWikiLinks(const QString &markdown)`：将 `[[链接]]` 转换为 `<a href="wikilink:...">` HTML 超链接格式（供首次加载和增量更新共用）。
 - `void zoomIn()` / `void zoomOut()` / `void zoomReset()`：按 0.1 步长调整缩放因子（范围 0.5～3.0），并立即应用字体变化。
 - `qreal zoomFactor() const`：返回当前缩放倍数。

@@ -63,6 +63,8 @@
     "preview.containerBackground": "#242526",
     "preview.webEngineBackground": "#121314",
     "preview.codeBackground": "#1e1e1e",
+    "preview.codeBlockHeaderBackground": "#2D2D30",
+    "preview.codeBlockLangLabelForeground": "#999999",
     "cell.foreground": "#BBBEBF",
     "cell.badge.foreground": "#0D0D0D",
     "cell.badge.markdown": "#48A0C7",

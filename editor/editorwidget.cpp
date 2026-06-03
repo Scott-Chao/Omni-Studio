@@ -410,7 +410,7 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
 {
     const auto &cfg = ConfigManager::instance();
     QString html;
-    html += QStringLiteral("<pre style=\"background:#1e1e1e;padding:16px;border-radius:0 0 6px 6px;"
+    html += QStringLiteral("<pre style=\"padding:16px;border-radius:0 0 6px 6px;"
                            "overflow-x:auto;margin:0;\">");
     html += QStringLiteral("<code style=\"background:none;padding:0;"
                            "font-family:Consolas,'Courier New',monospace;font-size:0.9em;\">");
@@ -425,39 +425,51 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
     struct MultiLineSpan { QString placeholder; QString raw; };
 
     if (langId == QStringLiteral("cpp")) {
-        const QColor preprocColor = cfg.syntaxPreprocessor(); // #C586C0
+        const QColor preprocColor = cfg.syntaxPreprocessor(); // #C586C0 / #AF00DB
+        const QColor ctrlColor   = cfg.syntaxControlKeywords(); // #D192CC / #AF00DB
+        const QColor funcColor   = cfg.syntaxFunctions();       // #DCDCAA / #795E26
 
-        const QStringList keywords = cppKeywords();
-        // Build keyword regex
-        QString kwPattern;
-        for (int i = 0; i < keywords.size(); ++i) {
-            if (i > 0) kwPattern += QChar(L'|');
-            kwPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(keywords[i]));
-        }
+        auto buildAlt = [](const QStringList &words) -> QString {
+            QString pat;
+            for (int i = 0; i < words.size(); ++i) {
+                if (i > 0) pat += QChar(L'|');
+                pat += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(words[i]));
+            }
+            return pat;
+        };
 
-        // Type list
-        const QStringList types = cppCommonTypes();
-        QString typePattern;
-        for (int i = 0; i < types.size(); ++i) {
-            if (i > 0) typePattern += QChar(L'|');
-            typePattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(types[i]));
-        }
-
-        // Combine patterns — lowest priority first, so later rules override earlier ones
-        // This matches CppSyntaxHighlighter's rule application order
+        // Rules in priority order — lowest priority first, highest last.
+        // highlightWithRules processes in reverse, so higher-priority rules
+        // lock in their colors before lower-priority ones fill remaining gaps.
         QVector<QPair<QRegularExpression, QPair<QColor,bool>>> cppRules;
-        // Keywords (bold) — lowest priority
-        cppRules.append({QRegularExpression(kwPattern), {kwColor, true}});
+        // Keywords — lowest priority
+        cppRules.append({QRegularExpression(buildAlt(cppKeywords())), {kwColor, false}});
+        // Primitive types
+        cppRules.append({QRegularExpression(buildAlt(cppPrimitiveTypes())), {kwColor, false}});
+        // Control-flow keywords (overrides regular keywords)
+        cppRules.append({QRegularExpression(buildAlt(cppControlKeywords())), {ctrlColor, false}});
         // Preprocessor
         cppRules.append({QRegularExpression(QStringLiteral("^\\s*#\\s*\\w+")), {preprocColor, false}});
-        // Types
-        cppRules.append({QRegularExpression(typePattern), {typeColor, false}});
+        // Function call heuristic — names before (  [lower priority than types]
+        cppRules.append({QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()")), {funcColor, false}});
+        // Common types (higher priority than function calls — known types keep their color)
+        cppRules.append({QRegularExpression(buildAlt(cppCommonTypes())), {typeColor, false}});
+        // Scope resolution: names before ::
+        cppRules.append({QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*::)")), {typeColor, false}});
+        // Class/struct/enum declaration names
+        cppRules.append({QRegularExpression(
+            QStringLiteral("(?<=\\b(?:class|struct|enum(?:\\s+class)?)\\s+)\\w+")), {typeColor, false}});
         // Numbers
         cppRules.append({QRegularExpression(
             QStringLiteral("\\b0[xX][0-9a-fA-F]+[']?[0-9a-fA-F]*\\b"
                            "|\\b0[bB][01]+[']?[01]*\\b"
                            "|\\b[0-9]+[']?[0-9]*(?:\\.[0-9]+[']?[0-9]*)?(?:[eE][+-]?[0-9]+)?(?:f|F|l|L|u|U|ll|LL|ull|ULL)?\\b")),
             {numColor, false}});
+        // #include paths — \K resets match start so only the path is colored
+        cppRules.append({QRegularExpression(QStringLiteral("#include\\s*\\K<[^>]+>")), {strColor, false}});
+        cppRules.append({QRegularExpression(QStringLiteral("#include\\s*\\K\"[^\"]+\"")), {strColor, false}});
+        // Raw string literals
+        cppRules.append({QRegularExpression(QStringLiteral(R"(R"([^(]*)\([^)]*\)\1")")), {strColor, false}});
         // Char literals
         cppRules.append({QRegularExpression(QStringLiteral(R"('(?:[^'\\]|\\.)'|'(?:\\.)')")), {strColor, false}});
         // String literals
@@ -487,31 +499,40 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
                     .arg(cmtColor.name(), s.raw.toHtmlEscaped()));
         html += highlighted;
     } else if (langId == QStringLiteral("python")) {
-        const QColor decorColor = cfg.syntaxPythonDecorators(); // #C586C0
-        const QColor selfColor  = cfg.syntaxPythonSelfCls();    // #DCDCDC
+        const QColor decorColor = cfg.syntaxPythonDecorators(); // #D192CC / #AF00DB
+        const QColor selfColor  = cfg.syntaxPythonSelfCls();    // #DCDCDC / #0000FF
+        const QColor ctrlColor  = cfg.syntaxControlKeywords();
+        const QColor funcColor  = cfg.syntaxFunctions();
 
-        // Python keyword list
-        const QStringList pyKeywords = ::pyKeywords();
-        QString pyKwPattern;
-        for (int i = 0; i < pyKeywords.size(); ++i) {
-            if (i > 0) pyKwPattern += QChar(L'|');
-            pyKwPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(pyKeywords[i]));
-        }
+        auto buildAlt = [](const QStringList &words) -> QString {
+            QString pat;
+            for (int i = 0; i < words.size(); ++i) {
+                if (i > 0) pat += QChar(L'|');
+                pat += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(words[i]));
+            }
+            return pat;
+        };
 
-        // Builtins
-        const QStringList builtins = pyBuiltins();
-        QString builtinPattern;
-        for (int i = 0; i < builtins.size(); ++i) {
-            if (i > 0) builtinPattern += QChar(L'|');
-            builtinPattern += QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(builtins[i]));
-        }
+        // Python control-flow keywords (subset of pyKeywords that get separate coloring)
+        static const QStringList pyControlKeywords = {
+            QStringLiteral("if"), QStringLiteral("elif"), QStringLiteral("else"),
+            QStringLiteral("for"), QStringLiteral("while"), QStringLiteral("try"),
+            QStringLiteral("except"), QStringLiteral("finally"), QStringLiteral("with"),
+            QStringLiteral("return"), QStringLiteral("yield"), QStringLiteral("break"),
+            QStringLiteral("continue"), QStringLiteral("raise"), QStringLiteral("assert"),
+            QStringLiteral("pass"), QStringLiteral("match"), QStringLiteral("case")
+        };
 
         // Python rules — lowest priority first
         QVector<QPair<QRegularExpression, QPair<QColor,bool>>> pyRules;
-        // Keywords (bold) — lowest priority
-        pyRules.append({QRegularExpression(pyKwPattern), {kwColor, true}});
+        // Keywords — lowest priority
+        pyRules.append({QRegularExpression(buildAlt(pyKeywords())), {kwColor, false}});
+        // Control-flow keywords (overrides regular keyword color)
+        pyRules.append({QRegularExpression(buildAlt(pyControlKeywords)), {ctrlColor, false}});
         // Builtins
-        pyRules.append({QRegularExpression(builtinPattern), {typeColor, false}});
+        pyRules.append({QRegularExpression(buildAlt(pyBuiltins())), {typeColor, false}});
+        // Function call heuristic
+        pyRules.append({QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()")), {funcColor, false}});
         // Numbers
         pyRules.append({QRegularExpression(
             QStringLiteral("\\b0[xX][0-9a-fA-F](?:[0-9a-fA-F_]*[0-9a-fA-F])?\\b"
@@ -536,7 +557,6 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         pyRules.append({QRegularExpression(QStringLiteral("#[^\n]*")), {cmtColor, false}});
 
         // Pre-process triple-quoted strings """...""" and '''...''' (with optional prefix)
-        // to protect them from single-line string rule fragmentation
         QString procCode = code;
         QVector<MultiLineSpan> tqSpans;
         {
@@ -553,11 +573,11 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
             }
         }
         QString highlighted = highlightWithRules(procCode, pyRules);
-        // Restore triple-quoted strings with comment color (matching PythonSyntaxHighlighter)
+        // Restore triple-quoted strings with string color (matching PythonSyntaxHighlighter)
         for (const auto &s : tqSpans)
             highlighted.replace(s.placeholder,
                 QStringLiteral("<span style=\"color:%1;\">%2</span>")
-                    .arg(cmtColor.name(), s.raw.toHtmlEscaped()));
+                    .arg(strColor.name(), s.raw.toHtmlEscaped()));
         html += highlighted;
     } else {
         // Unknown language — plain text
@@ -763,6 +783,8 @@ void EditorWidget::applyPreviewTheme(QString &tmpl)
     tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),hex("tab.inactiveForeground"));
     tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     hex("list.hoverBackground"));
     tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        hex("panel.border"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      hex("preview.codeBlockHeaderBackground"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  hex("preview.codeBlockLangLabelForeground"));
 }
 
 QString EditorWidget::previewThemeJs()
@@ -775,7 +797,8 @@ QString EditorWidget::previewThemeJs()
     return QStringLiteral(
         "window.updateTheme({"
         "  bg: '%1', fg: '%2', codeBg: '%3', border: '%4',"
-        "  link: '%5', heading: '%6', blockquote: '%7', thBg: '%8', hr: '%9'"
+        "  link: '%5', heading: '%6', blockquote: '%7', thBg: '%8', hr: '%9',"
+        "  codeHeaderBg: '%10', codeLangLabelFg: '%11'"
         "});"
     ).arg(hex("preview.containerBackground"),
           hex("editor.foreground"),
@@ -785,7 +808,9 @@ QString EditorWidget::previewThemeJs()
           hex("editor.foreground"),
           hex("tab.inactiveForeground"),
           hex("list.hoverBackground"),
-          hex("panel.border"));
+          hex("panel.border"),
+          hex("preview.codeBlockHeaderBackground"),
+          hex("preview.codeBlockLangLabelForeground"));
 }
 
 void EditorWidget::refreshPreviewTheme()
@@ -1454,12 +1479,15 @@ void EditorWidget::reloadEditorColors()
     }
 
     // Push CSS variable updates to preview HTML via JavaScript
+    // Re-render preview content to update syntax highlighting colors
     QString js = previewThemeJs();
     if (m_previewReady && m_previewView && m_previewView->page()) {
         m_previewView->page()->runJavaScript(js);
+        runPreviewUpdate(m_previewView, nullptr);
     }
     if (m_splitPreviewReady && m_splitPreviewView) {
         m_splitPreviewView->page()->runJavaScript(js);
+        runPreviewUpdate(m_splitPreviewView, nullptr);
     }
 }
 
