@@ -120,10 +120,18 @@ inline QString serialize(const QList<Cell> &cells)
 
 inline QString toMarkdown(const QList<Cell> &cells)
 {
+    // Auto-append no-cell to code blocks inside markdown cells so re-conversion
+    // back to SMD won't split them into separate code cells.
+    static const QRegularExpression fenceNoCell(
+        QStringLiteral(R"(^```(cpp|python|c|py|cc|cxx)\b(?!.*no-cell))"),
+        QRegularExpression::MultilineOption);
+
     QStringList result;
     for (const Cell &cell : cells) {
         if (cell.type == QStringLiteral("markdown")) {
-            result.append(cell.content);
+            QString content = cell.content;
+            content.replace(fenceNoCell, QStringLiteral("```\\1 no-cell"));
+            result.append(content);
         } else {
             QString lang = (cell.type == QStringLiteral("cpp"))
                 ? QStringLiteral("cpp") : QStringLiteral("python");
@@ -141,6 +149,11 @@ inline QString toMarkdown(const QList<Cell> &cells)
 // when cell content already contains any intentional blank lines.
 inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
 {
+    // Auto-append no-cell to code blocks inside markdown cells
+    static const QRegularExpression fenceNoCell(
+        QStringLiteral(R"(^```(cpp|python|c|py|cc|cxx)\b(?!.*no-cell))"),
+        QRegularExpression::MultilineOption);
+
     ToMarkdownResult result;
     QStringList parts;
     int currentLine = 0;
@@ -149,9 +162,11 @@ inline ToMarkdownResult toMarkdownWithMapping(const QList<Cell> &cells)
         const Cell &cell = cells[i];
 
         if (cell.type == QStringLiteral("markdown")) {
+            QString content = cell.content;
+            content.replace(fenceNoCell, QStringLiteral("```\\1 no-cell"));
             result.cellContentStartLine.append(currentLine);
-            parts.append(cell.content);
-            currentLine += cell.content.count(QLatin1Char('\n')) + 1;
+            parts.append(content);
+            currentLine += content.count(QLatin1Char('\n')) + 1;
         } else {
             QString lang = (cell.type == QStringLiteral("cpp"))
                 ? QStringLiteral("cpp") : QStringLiteral("python");
@@ -181,6 +196,7 @@ inline QList<Cell> fromMarkdown(const QString &markdown)
     QStringList currentContent;
     bool inFence = false;
     bool inMermaidBlock = false;
+    bool inNoCellBlock = false;
     QString fenceLang;
 
     auto flush = [&]() {
@@ -193,15 +209,19 @@ inline QList<Cell> fromMarkdown(const QString &markdown)
     };
 
     for (const QString &line : lines) {
-        static const QRegularExpression fenceStart(R"(^```(\w*)$)");
+        // Match ```lang or ```lang keyword (e.g. "cpp no-cell")
+        static const QRegularExpression fenceStart(R"(^```(\S+(?:\s+\S+)*)?$)");
 
         if (!inFence && !inMermaidBlock) {
             QRegularExpressionMatch m = fenceStart.match(line);
-            if (m.hasMatch() && m.captured(1).toLower() == QStringLiteral("mermaid")) {
-                flush();
-                inMermaidBlock = true;
-                currentContent.append(line);
-                continue;
+            if (m.hasMatch()) {
+                QString fenceInfo = m.captured(1).trimmed().toLower();
+                if (fenceInfo == QStringLiteral("mermaid")) {
+                    flush();
+                    inMermaidBlock = true;
+                    currentContent.append(line);
+                    continue;
+                }
             }
         }
 
@@ -221,11 +241,28 @@ inline QList<Cell> fromMarkdown(const QString &markdown)
             continue;
         }
 
+        // Detect closing ``` of a no-cell block
+        if (inNoCellBlock && line.trimmed() == QStringLiteral("```")) {
+            currentContent.append(line);
+            inNoCellBlock = false;
+            continue;
+        }
+
         if (!inFence) {
             QRegularExpressionMatch m = fenceStart.match(line);
             if (m.hasMatch()) {
+                QString fenceInfo = m.captured(1).trimmed().toLower();
+
+                // Check for no-cell keyword — keep block inside markdown cell
+                const bool isNoCell = fenceInfo.contains(QStringLiteral("no-cell"));
+                if (isNoCell) {
+                    currentContent.append(line);
+                    inNoCellBlock = true;
+                    continue;
+                }
+
                 flush();
-                fenceLang = m.captured(1).toLower();
+                fenceLang = fenceInfo.isEmpty() ? QString() : fenceInfo;
                 if (fenceLang.isEmpty() || fenceLang == QStringLiteral("c"))
                     fenceLang = QStringLiteral("cpp");
                 currentType = (fenceLang == QStringLiteral("python") || fenceLang == QStringLiteral("py"))
@@ -264,6 +301,7 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
     QStringList currentContent;
     bool inFence = false;
     bool inMermaidBlock = false;
+    bool inNoCellBlock = false;
     QString fenceLang;
     int currentCellIndex = -1;
     int currentCellLine = 0;
@@ -285,19 +323,23 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
     };
 
     for (const QString &line : lines) {
-        static const QRegularExpression fenceStart(R"(^```(\w*)$)");
+        // Match ```lang or ```lang keyword (e.g. "cpp no-cell")
+        static const QRegularExpression fenceStart(R"(^```(\S+(?:\s+\S+)*)?$)");
 
         // Mermaid block: start
         if (!inFence && !inMermaidBlock) {
             QRegularExpressionMatch m = fenceStart.match(line);
-            if (m.hasMatch() && m.captured(1).toLower() == QStringLiteral("mermaid")) {
-                flushCell();
-                inMermaidBlock = true;
-                currentCellIndex = result.cells.size();
-                currentCellLine = 0;
-                currentContent.append(line);
-                mapLine(-1, -1);
-                continue;
+            if (m.hasMatch()) {
+                QString fenceInfo = m.captured(1).trimmed().toLower();
+                if (fenceInfo == QStringLiteral("mermaid")) {
+                    flushCell();
+                    inMermaidBlock = true;
+                    currentCellIndex = result.cells.size();
+                    currentCellLine = 0;
+                    currentContent.append(line);
+                    mapLine(-1, -1);
+                    continue;
+                }
             }
         }
 
@@ -324,12 +366,35 @@ inline FromMarkdownResult fromMarkdownWithMapping(const QString &markdown)
             continue;
         }
 
+        // Detect closing ``` of a no-cell block
+        if (inNoCellBlock && line.trimmed() == QStringLiteral("```")) {
+            currentContent.append(line);
+            mapLine(currentCellIndex, currentCellLine);
+            ++currentCellLine;
+            inNoCellBlock = false;
+            continue;
+        }
+
         // Regular fence: start
         if (!inFence) {
             QRegularExpressionMatch m = fenceStart.match(line);
             if (m.hasMatch()) {
+                QString fenceInfo = m.captured(1).trimmed().toLower();
+
+                // Check for no-cell keyword — keep block inside markdown cell
+                const bool isNoCell = fenceInfo.contains(QStringLiteral("no-cell"));
+                if (isNoCell) {
+                    if (currentCellIndex < 0)
+                        currentCellIndex = result.cells.size();
+                    currentContent.append(line);
+                    mapLine(currentCellIndex, currentCellLine);
+                    ++currentCellLine;
+                    inNoCellBlock = true;
+                    continue;
+                }
+
                 flushCell();
-                fenceLang = m.captured(1).toLower();
+                fenceLang = fenceInfo.isEmpty() ? QString() : fenceInfo;
                 if (fenceLang.isEmpty() || fenceLang == QStringLiteral("c"))
                     fenceLang = QStringLiteral("cpp");
                 currentType = (fenceLang == QStringLiteral("python") || fenceLang == QStringLiteral("py"))

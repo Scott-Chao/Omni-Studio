@@ -664,10 +664,10 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
 {
     // Match fenced code blocks: ```lang\n...\n```
     // Group 1: opening ``` (captured for closing match via backreference)
-    // Group 2: language identifier (optional)
+    // Group 2: rest of fence line (language + optional keyword, e.g. "cpp no-cell")
     // Group 3: code content
     static const QRegularExpression fencedRegex(
-        QStringLiteral("(```)(\\w*)\\r?\\n([\\s\\S]*?)\\1"));
+        QStringLiteral("(```)([^\\r\\n]*)\\r?\\n([\\s\\S]*?)\\1"));
 
     // Runnable languages matching the preview-template.js list
     static const QStringList runnableLangs = {
@@ -687,27 +687,43 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
         // Append text before this code block
         result += QStringView(markdown).mid(lastPos, match.capturedStart() - lastPos).toString();
 
-        const QString lang  = match.captured(2);
-        const QString code  = match.captured(3);
-        const QString langLower = lang.toLower();
+        const QString rawLang = match.captured(2);
+        const QString code    = match.captured(3);
+        const QString langLower = rawLang.toLower().trimmed();
+
+        // Strip no-cell keyword to get the clean language for highlighting/display
+        bool hasNoCell = langLower.contains(QStringLiteral("no-cell"));
+        QString cleanLang = langLower;
+        if (hasNoCell) {
+            QStringList parts = langLower.split(QLatin1Char(' '));
+            parts.removeAll(QStringLiteral("no-cell"));
+            cleanLang = parts.join(QLatin1Char(' '));
+        }
 
         // Check if this is a known code language
-        QString langId = LanguageUtils::normalizeCodeFenceLanguage(langLower);
+        QString langId = LanguageUtils::normalizeCodeFenceLanguage(cleanLang);
 
         if (langId.isEmpty()) {
-            // Unknown language — keep original fenced block
-            result += match.captured(0);
+            // Unknown language — pass through with no-cell stripped from fence
+            if (hasNoCell) {
+                const QString fence = match.captured(1);
+                const QString fenceLine = cleanLang.isEmpty()
+                    ? fence : fence + cleanLang;
+                result += fenceLine + QStringLiteral("\n") + code + QStringLiteral("\n") + fence;
+            } else {
+                result += match.captured(0);
+            }
         } else {
             // Known language — apply syntax highlighting
-            bool showRun = runnableLangs.contains(langLower);
+            bool showRun = runnableLangs.contains(cleanLang);
 
             // Build the complete HTML wrapper
             QString blockHtml;
             blockHtml += QStringLiteral("<div class=\"code-block-wrapper\" data-block-index=\"%1\">").arg(blockIndex);
 
-            // Always show header when lang is specified
+            // Always show header when lang is specified (display clean language name)
             blockHtml += QStringLiteral("<div class=\"code-block-header\">");
-            blockHtml += QStringLiteral("<span class=\"code-lang-label\">%1</span>").arg(lang);
+            blockHtml += QStringLiteral("<span class=\"code-lang-label\">%1</span>").arg(cleanLang);
 
             if (showRun && !code.isEmpty()) {
                 // HTML-escape code for data-code attribute
@@ -720,7 +736,7 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
 
                 blockHtml += QStringLiteral("<a class=\"run-code-btn\" href=\"runblock:execute\""
                                             " data-lang=\"%1\" data-code=\"%2\" data-block-index=\"%3\">▶ Run</a>")
-                                .arg(langLower, escapedCode).arg(blockIndex);
+                                .arg(cleanLang, escapedCode).arg(blockIndex);
             }
 
             blockHtml += QStringLiteral("</div>");
