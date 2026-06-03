@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.8）
+## 功能说明文档（v0.15.9）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变
 
-### 修复
-- 右侧面板顶部按钮均匀填充，自适应宽度
+### 新增 v0.15.9
+- 历史记录最大条数加入设置面板
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -454,7 +454,7 @@
 - `void setLastSaveAsFolderPath(const QString &path)` / `QString lastSaveAsFolderPath(const QString &defaultPath = QString()) const`
 - `void flushOverrides()`：将所有待写的设置覆盖值和默认缩放值刷新到磁盘，在 `MainWindow::closeEvent` 中调用。
 - `void clear()`：清除所有设置。
-- `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（最多50条），键名 `History/recentFiles`。
+- `void setRecentFiles(const QStringList &files)` / `QStringList recentFiles() const`：读写最近打开的文件列表（默认最多 50 条，条目上限从 `history.max_entries` 覆写值读取），键名 `History/recentFiles`。
 - **设置覆盖**：
   - `void setSettingOverride(const QString &key, const QVariant &value)`：写入内存 map，延迟持久化。
   - `QVariant settingOverride(const QString &key, const QVariant &defaultValue = QVariant()) const`：从内存 map 读取。
@@ -478,16 +478,17 @@
 
 **职责**：
 - 以 `QListWidget` 纵向展示用户最近打开的文件列表，顶部为最新打开的文件，底部为最早的文件。
-- 列表上限为 50 条，自动去重：如果新加入的文件已在历史中存在，会先删除所有同名项（不区分大小写），再将新条目插入顶部，确保无重复。
-- 提供 `addFile(const QString &filePath)` 公共方法用于添加历史记录，内部自动规范化路径、去重，但不负责持久化。
+- 列表上限默认为 50 条，可通过设置面板调节（10–500 条），自动去重：如果新加入的文件已在历史中存在，会先删除所有同名项（不区分大小写），再将新条目插入顶部，确保无重复。
+- 提供 `addFile(const QString &filePath)` 公共方法用于添加历史记录，内部自动规范化路径、去重并按上限裁剪，不立即持久化。
 - 从 `SettingsManager` 加载/保存最近文件列表，通过 `loadHistory()` 和 `saveHistory()` 与配置文件同步。
 - 当用户点击列表中的文件时，发出 `fileClicked(const QString &filePath)` 信号，供主窗口调用打开与目录切换逻辑。
 - 面板自身是一个 `QWidget`，被嵌入 `QDockWidget` 中由主窗口管理显示/隐藏。
 - 界面底部提供一个"清空历史记录"按钮，点击后弹出确认对话框，确认后立即删除所有历史记录并写入空列表到配置。
 
 **主要接口**：
-- `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并自动限制数量。操作仅更新内存数据，不立即持久化。
+- `void addFile(const QString &filePath)`：将指定文件加入历史（已存在则置顶），并按当前上限 `m_maxHistorySize` 裁剪。操作仅更新内存数据，不立即持久化。
 - `void removeFile(const QString &filePath)`：从历史记录中移除指定文件路径。支持精确文件匹配和文件夹前缀匹配（删除文件夹时一并清理其下所有文件的历史条目）。操作仅更新内存数据，不立即持久化。
+- `void setMaxHistorySize(int size)`：更新历史记录上限，立即裁剪超出部分的条目（仅内存，程序关闭时统一保存）。由设置面板 `history.max_entries` 变更触发。
 - `void loadHistory()` / `void saveHistory()`：从配置读取/保存最近文件列表。`saveHistory()` 仅在程序关闭时由 `MainWindow::closeEvent` 调用，运行期间不主动写磁盘。
 - `void clearHistory()`：清空所有历史记录并立即写入配置文件（破坏性操作，即时持久化）。
 - `void replacePath(const QString &oldBase, const QString &newBase)`：在文件移动后，将历史记录中相关路径更新为新路径，支持精确/前缀匹配。更新后重建 UI 列表，但不立即持久化（延迟至程序关闭时统一保存）。
@@ -498,6 +499,7 @@
 **协作关系**：
 - 由 `MainWindow` 创建并持有，作为 `QDockWidget` 的内容部件。
 - 通过 `SettingsManager` 读写最近文件列表，配置键名称为 `History/recentFiles`。
+- `m_maxHistorySize` 初始化时从 `SettingsManager` 读取 `history.max_entries` 覆写值（回退到 `ConfigManager.historyMaxEntries()` 默认值），并在设置面板变更时通过 `setMaxHistorySize()` 实时更新。
 - `MainWindow` 在打开文件、另存为等操作成功后调用 `addFile` 以更新历史；文件删除时调用 `removeFile` 清理对应条目；文件移动/重命名时调用 `replacePath` 更新路径。所有增删改操作仅更新内存，窗口正常关闭时调用 `saveHistory()` 统一持久化到配置。
   同时连接其 `fileClicked` 信号到 `onHistoryFileClicked` 槽，处理文件打开与目录切换，若文件不存在则自动清理历史条目。
 

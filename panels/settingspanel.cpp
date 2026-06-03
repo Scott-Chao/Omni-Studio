@@ -1007,6 +1007,30 @@ QWidget *SettingsPanel::createEditorPage()
         emit searchSettingChanged("search_panel.snippet_max_length", val);
     });
 
+    // ====================================================================
+    // Section: 历史记录
+    // ====================================================================
+    layout->addSpacing(12);
+    layout->addWidget(createSectionLabel(tr("历史记录")));
+
+    // ---- 历史记录最大条数 ----
+    auto *historyRow = new QHBoxLayout;
+    auto *historyLabel = new QLabel(tr("最大条数"));
+    historyLabel->setStyleSheet(labelStyle());
+    m_historyMaxEntriesSpin = new ClampSpinBox;
+    m_historyMaxEntriesSpin->setRange(10, 500);
+    m_historyMaxEntriesSpin->setValue(cfg.historyMaxEntries());
+    m_historyMaxEntriesSpin->setFixedWidth(100);
+    m_historyMaxEntriesSpin->setStyleSheet(inputStyle());
+    historyRow->addWidget(historyLabel);
+    historyRow->addStretch();
+    historyRow->addWidget(m_historyMaxEntriesSpin);
+    layout->addLayout(historyRow);
+
+    connect(m_historyMaxEntriesSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+        emit editorSettingChanged("history.max_entries", val);
+    });
+
     layout->addStretch();
     scrollArea->setWidget(content);
     outerLayout->addWidget(scrollArea);
@@ -2253,6 +2277,11 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
     if (m_searchSnippetSpin) {
         m_searchSnippetSpin->setValue(sm.value("search_panel.snippet_max_length", cfg.searchSnippetMaxLength()).toInt());
+    }
+
+    // History page
+    if (m_historyMaxEntriesSpin) {
+        m_historyMaxEntriesSpin->setValue(sm.value("history.max_entries", cfg.historyMaxEntries()).toInt());
     }
 
     // AI service page

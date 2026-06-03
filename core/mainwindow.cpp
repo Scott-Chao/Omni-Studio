@@ -787,6 +787,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPanel, &SettingsPanel::closeRequested, this, &MainWindow::toggleSettings);
     connect(m_settingsPanel, &SettingsPanel::defaultZoomChanged, m_settingsHandler, &SettingsChangeHandler::handleDefaultZoom);
     connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleEditorSetting);
+    connect(m_settingsPanel, &SettingsPanel::editorSettingChanged, this, [this](const QString &key, const QVariant &value) {
+        if (key == "history.max_entries") {
+            m_rightPanel->historyPanel()->setMaxHistorySize(value.toInt());
+        }
+    });
     connect(m_settingsPanel, &SettingsPanel::appearanceSettingChanged, this, [this](const QString &key, const QVariant &value) {
         // Handle MainWindow-specific appearance changes
         if (key == "editor.file_tree_item_height") {

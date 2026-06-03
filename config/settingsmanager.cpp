@@ -132,7 +132,7 @@ QString SettingsManager::lastSaveAsFolderPath(const QString &defaultPath) const
 }
 
 void SettingsManager::setRecentFiles(const QStringList &files) {
-    int maxEntries = ConfigManager::instance().historyMaxEntries();
+    int maxEntries = value("history.max_entries", ConfigManager::instance().historyMaxEntries()).toInt();
     QStringList trimmed = files.mid(0, maxEntries);
     m_settings->setValue("History/recentFiles", trimmed);
 }

@@ -152,6 +152,9 @@ private:
     QSpinBox *m_searchTotalSpin = nullptr;
     QSpinBox *m_searchSnippetSpin = nullptr;
 
+    // History controls
+    QSpinBox *m_historyMaxEntriesSpin = nullptr;
+
     // Appearance page controls
     QComboBox *m_themeCombo = nullptr;
     QSpinBox *m_fileTreeItemHeightSpin = nullptr;

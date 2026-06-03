@@ -1,5 +1,6 @@
 #include "historypanel.h"
 #include "core/thememanager.h"
+#include "config/configmanager.h"
 #include <QFileInfo>
 #include <QVBoxLayout>
 #include <QDir>
@@ -7,7 +8,8 @@
 #include <QMessageBox>
 
 HistoryPanel::HistoryPanel(SettingsManager *settings, QWidget *parent)
-    : QWidget(parent), m_settings(settings) {
+    : QWidget(parent), m_settings(settings)
+    , m_maxHistorySize(m_settings->value("history.max_entries", ConfigManager::instance().historyMaxEntries()).toInt()) {
     m_listWidget = new QListWidget(this);
     m_listWidget->setSelectionMode(QAbstractItemView::NoSelection);
     connect(m_listWidget, &QListWidget::itemClicked, this, &HistoryPanel::onItemClicked);
@@ -54,8 +56,18 @@ void HistoryPanel::addFile(const QString &rawPath)
     item->setData(Qt::UserRole, filePath);
     m_listWidget->insertItem(0, item);
 
-    // 限制数量并持久化
-    while (m_filePaths.size() > MaxHistorySize) {
+    // 限制数量（仅内存，程序关闭时统一保存）
+    while (m_filePaths.size() > m_maxHistorySize) {
+        m_filePaths.removeLast();
+        delete m_listWidget->takeItem(m_listWidget->count() - 1);
+    }
+}
+
+void HistoryPanel::setMaxHistorySize(int size)
+{
+    m_maxHistorySize = size;
+    // 如果当前超出新限制则裁剪（仅内存，程序关闭时由 closeEvent 统一保存）
+    while (m_filePaths.size() > m_maxHistorySize) {
         m_filePaths.removeLast();
         delete m_listWidget->takeItem(m_listWidget->count() - 1);
     }
@@ -87,6 +99,11 @@ void HistoryPanel::loadHistory()
         if (m_filePaths.contains(cleanPath, Qt::CaseInsensitive))
             continue;
         m_filePaths.append(cleanPath);
+    }
+
+    // 裁剪到当前限制
+    while (m_filePaths.size() > m_maxHistorySize) {
+        m_filePaths.removeLast();
     }
 
     m_listWidget->clear();

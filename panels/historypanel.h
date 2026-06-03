@@ -13,6 +13,7 @@ public:
     void loadHistory(); // 从配置加载并显示
     void saveHistory(); // 持久化到配置
     void replacePath(const QString &oldBase, const QString &newBase);
+    void setMaxHistorySize(int size);
 
 signals:
     void fileClicked(const QString &filePath); // 用户点击历史文件
@@ -26,6 +27,6 @@ private:
     QListWidget *m_listWidget;
     QStringList m_filePaths; // 按显示顺序的完整路径
     SettingsManager *m_settings;
-    static const int MaxHistorySize = 50;
+    int m_maxHistorySize;
     QPushButton *m_clearButton; // 清空按钮
 };
