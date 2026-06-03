@@ -320,6 +320,7 @@ void EditorWidget::setPreviewMode(bool preview)
 
             QFile tmplFile(QStringLiteral(":/preview/template.html"));
             if (!tmplFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                m_previewMode = false;
                 return;
             }
             QString tmpl = QString::fromUtf8(tmplFile.readAll());
@@ -335,8 +336,14 @@ void EditorWidget::setPreviewMode(bool preview)
             // 用 setFixedSize 绕过布局，强制 WebEngineView 在 setHtml 时使用正确尺寸
             QSize correctSize = m_stackedWidget->size();
             m_previewView->setFixedSize(correctSize);
+#ifdef Q_OS_WIN
+            // Windows-only: force native HWND creation at correct size
+            // to prevent Chromium from initializing at the default 100x30
+            // (a QStackedWidget hidden-page layout artifact), which would
+            // leave white margins on subsequent stretch.
             m_previewView->setAttribute(Qt::WA_NativeWindow, true);
             m_previewView->winId();
+#endif
 
             m_previewView->setHtml(tmpl, QUrl(QStringLiteral("qrc:/preview/")));
 
@@ -2037,8 +2044,10 @@ void EditorWidget::setSplitPreviewMode(bool split)
             QSize splitViewSize(previewWidth, stackedSize.height());
             m_splitPreviewView->setFixedSize(splitViewSize);
             m_splitPreviewView->setAttribute(Qt::WA_NoSystemBackground, true);
+#ifdef Q_OS_WIN
             m_splitPreviewView->setAttribute(Qt::WA_NativeWindow, true);
             m_splitPreviewView->winId();
+#endif
 
             m_splitPreviewView->page()->setBackgroundColor(
                 ThemeManager::instance().color("preview.webEngineBackground"));

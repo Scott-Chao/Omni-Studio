@@ -8,6 +8,7 @@
 #include <QLocale>
 #include <QTranslator>
 #include <QIcon>
+#include <QWebEngineView>
 
 // QProxyStyle that reduces Qt's default tooltip internal margins.
 class CompactTooltipStyle : public QProxyStyle
@@ -56,6 +57,18 @@ int main(int argc, char *argv[])
     a.setWindowIcon(QIcon(":/icons/app"));
 
     MainWindow w;
+
+    // 预热 Qt WebEngine：创建一个 QWebEngineView 作为主窗口的子控件，
+    // 使其在首次映射时创建 Wayland 子表面并初始化 Chromium 的 EGL 上下文。
+    // 子表面创建+EGL 握手的闪屏代价在启动阶段支付，而非用户首次预览时。
+    {
+        auto *warmup = new QWebEngineView(&w);
+        warmup->resize(1, 1);
+        warmup->move(-1, -1);
+        warmup->page()->load(QUrl(QStringLiteral("about:blank")));
+        QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        // 热视图作为 MainWindow 子控件持续存活，不析构
+    }
     w.show();
     return a.exec();
 }
