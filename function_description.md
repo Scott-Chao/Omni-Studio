@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.14）
+## 功能说明文档（v0.15.15）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -48,7 +48,7 @@
   - 单元格增删：命令模式下 `A` 上方插入、`B` 下方插入、`Delete` 删除（至少保留一个），支持 `Ctrl+Shift+-` 在光标处分割单元格
   - *`Ctrl+K` 弹出语言选择菜单（Markdown/C++/Python），新建单元格时自动弹出
 - 单元格执行：编辑模式下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转下一个）触发执行。
-  - Markdown 单元格：异步渲染为图片（QWebEngineView 加载 HTML → 轮询 Mermaid 完成 → 抓取 QPixmap 遮罩），空单元格跳过
+  - Markdown 单元格：异步渲染为图片（QWebEngineView 加载 HTML → 轮询 Mermaid 完成 → 抓取 QPixmap 遮罩），空单元格跳过。渲染管道复用 `EditorWidget::preparePreviewContent()`，代码块获得完整 C++/Python 启发式语法高亮，`no-cell` 关键字自动剥离，不显示 ▶ Run 按钮
   - C++ 单元格：按 `main()` 函数边界自动分组，同组 cell 合并写入临时文件编译运行，不同程序组互不干扰
   - Python 单元格：持久化进程执行（`python_executor.py` 守护进程 + JSON-line 协议），跨 cell 共享命名空间，每 cell 独立捕获 stdout/stderr，避免前面 cell 的输出污染
   - 输出持久化：分隔线 `---smd:<type>` 后支持 JSON 元数据，自动持久化代码输出（base64 编码）和 Markdown 渲染状态，重新打开文件时自动恢复
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增 v0.15.14
-- **MD 代码块 `no-cell` 关键字**：在 fenced code block 语言标识后追加 `no-cell` 关键字（如 ` ```cpp no-cell`），预览时正常高亮渲染（语言标签不显示 `no-cell`），MD→SMD 转换时此类代码块保留在 Markdown Cell 内部不拆分为独立代码 Cell。SMD→MD 转换时，Markdown Cell 内的代码块自动追加 `no-cell` 关键字（使用 `(?!.*no-cell)` 负向前瞻防止重复追加），确保往返转换一致性。`no-cell` 可独立使用（如 ` ``` no-cell`）表示无语言代码块不拆分。修改涉及 `editor/editorwidget.cpp`（`preHighlightCodeBlocks` 正则及语言名清理）、`smd/smdformat.h`（`fromMarkdown`/`fromMarkdownWithMapping` 的 `inNoCellBlock` 标志及 `toMarkdown`/`toMarkdownWithMapping` 的自动追加逻辑）
+### 新增 v0.15.15
+- **SMD Markdown Cell 代码块语法高亮**：SMD Markdown Cell 的渲染管线改用 `EditorWidget::preparePreviewContent(content(), false)` 替代原始 `content()` 直传，复用与 MD 预览完全一致的 C++ 端语法高亮管线（`preHighlightCodeBlocks` → `highlightCodeBlock`），代码块支持 C++/Python 启发式高亮着色；`no-cell` 关键字自动剥离（语言标签不再显示 `no-cell`）；`showRunButtons=false` 参数禁止 Cell 内代码块显示 ▶ Run 按钮（Markdown Cell 为非可执行上下文）。`preparePreviewContent`、`preHighlightCodeBlocks`、`highlightCodeBlock`、`processWikiLinks`、`injectHeadingAnchors` 改为 `public static`，供 `SmdCell::startRenderPipeline()` 外部调用
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1422,7 +1422,7 @@
 
 **单元格执行**：
 - `executeCurrentCell()`：根据当前活动单元格类型分发执行。**仅编辑模式**下 `Ctrl+Enter`（不跳转）或 `Shift+Enter`（跳转）触发，通过 `eventFilter` 处理 `ShortcutOverride` 事件确保不被 Qt 快捷键系统拦截。`m_jumpAfterExecute` 标志控制执行后是否跳转到下一个单元格。执行前后不改变编辑/命令模式状态。执行前通过 `CodeEditor::hideSignatureHelp()` 主动关闭签名帮助弹出窗口，防止执行后弹出窗口残留。
-- **Markdown 单元格**：空单元格（`content().trimmed().isEmpty()`）跳过渲染，直接根据 `m_jumpAfterExecute` 决定是否跳转。非空且未渲染时调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
+- **Markdown 单元格**：空单元格（`content().trimmed().isEmpty()`）跳过渲染，直接根据 `m_jumpAfterExecute` 决定是否跳转。非空且未渲染时调用 `SmdCell::setRendered(true)` 启动异步渲染流程（QWebEngineView 顶层窗口加载 HTML，通过 `EditorWidget::preparePreviewContent(content(), false)` 预处理——代码块获得 C++/Python 启发式高亮，`no-cell` 剥离，不显示 Run 按钮 → 轮询高度与 Mermaid 完成 → 抓取 QPixmap → 销毁 WebEngineView）。已渲染的单元格跳过渲染。`m_jumpAfterExecute` 为 true 时跳转下一个单元格。
 - **C++ 单元格**：执行时按 `main()` 函数边界**自动分组**（`cppGroupForCell()`），仅合并与当前 cell **同组** 的 C++ cell 内容写入临时文件（不同程序组互不干扰）→ `ProcessRunner::startCompileAndRun()`（或 `startCompileOnly`，当不含 `main()` 时仅编译不链接）→ stdout/stderr 流式输出到独立的 `SmdOutputWidget`（输出控件仅在有实际输出时通过 `appendText()` 自动显示，无输出时保持隐藏） → 清理临时文件 → `m_jumpAfterExecute` 为 true 时跳转下一个单元格。
 - **Python 单元格**（`executePythonCell()`）：采用持久化进程执行模型（JSON-line stdin/stdout 协议），所有阻塞调用已消除。
 

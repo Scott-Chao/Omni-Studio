@@ -6,6 +6,7 @@
 #include "config/configmanager.h"
 #include "config/settingsmanager.h"
 #include "core/thememanager.h"
+#include "editor/editorwidget.h"
 #include <QTimer>
 #include <QTextBlock>
 #include <QTextLayout>
@@ -522,8 +523,7 @@ void SmdCell::startRenderPipeline(bool isInitialRender)
         tmpl = smdRenderTemplate().arg(
             QString::fromLatin1(content().toUtf8().toBase64()));
     } else {
-        QString safeContent = content();
-        safeContent.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
+        QString safeContent = EditorWidget::preparePreviewContent(content(), false);
         tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), safeContent);
         {
             auto &tm = ThemeManager::instance();

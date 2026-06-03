@@ -113,6 +113,13 @@ public:
     // PDF 导出
     void exportToPdf(const QString &filePath, const QPageLayout &layout);
 
+    // 静态 Markdown 预处理管线——可供 SmdCell 等外部调用
+    static QString preparePreviewContent(const QString &rawMarkdown, bool showRunButtons = true);
+    static QString preHighlightCodeBlocks(const QString &markdown, bool showRunButtons = true);
+    static QString highlightCodeBlock(const QString &code, const QString &langId);
+    static QString processWikiLinks(const QString &markdown);
+    static QString injectHeadingAnchors(const QString &markdown);
+
 signals:
     void fileLoaded(const QString &filePath);
     void fileSaved(const QString &filePath);
@@ -174,12 +181,7 @@ private:
     void destroyPreviewView();   // 销毁并释放预览视图
     void destroySplitPreviewWidgets(); // 销毁分屏预览控件
     void applyZoom();  // 将当前缩放因子应用到编辑器和预览器
-    QString processWikiLinks(const QString &markdown); // [[link]] → [link](wikilink:...)
-    QString preHighlightCodeBlocks(const QString &markdown); // 对 fenced 代码块进行 C++ 端语法着色
-    QString injectHeadingAnchors(const QString &markdown); // 为标题注入 <a id="hl-N"> 锚点，供预览导航用
-    QString highlightCodeBlock(const QString &code, const QString &langId); // 单块着色，返回 HTML
     QMap<int, QString> extractCodeBlockContents(const QString &markdown) const; // 提取围栏代码块内容，key=blockIndex
-    QString preparePreviewContent(const QString &rawMarkdown); // 完整预处理：高亮→保护→wikilink→tag→恢复→</script>转义
     void applyPreviewTheme(QString &tmpl); // 替换模板中的 {{PREVIEW_*}} 为当前主题颜色
     QString previewThemeJs(); // 返回更新 CSS 变量的 JavaScript 代码
     void createSplitPreviewWidgets();

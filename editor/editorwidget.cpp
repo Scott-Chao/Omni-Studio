@@ -660,7 +660,7 @@ QString highlightWithRules(
     return result;
 }
 
-QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
+QString EditorWidget::preHighlightCodeBlocks(const QString &markdown, bool showRunButtons)
 {
     // Match fenced code blocks: ```lang\n...\n```
     // Group 1: opening ``` (captured for closing match via backreference)
@@ -715,7 +715,7 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
             }
         } else {
             // Known language — apply syntax highlighting
-            bool showRun = runnableLangs.contains(cleanLang);
+            bool showRun = showRunButtons && runnableLangs.contains(cleanLang);
 
             // Build the complete HTML wrapper
             QString blockHtml;
@@ -769,14 +769,14 @@ QString EditorWidget::preHighlightCodeBlocks(const QString &markdown)
     return result;
 }
 
-QString EditorWidget::preparePreviewContent(const QString &rawMarkdown)
+QString EditorWidget::preparePreviewContent(const QString &rawMarkdown, bool showRunButtons)
 {
     // Step 0: Inject heading anchors for preview navigation
     // Step 1: Pre-highlight code blocks (produces ```highlighted\n<base64>\n``` custom blocks)
     // Step 2: Process wiki links and tags (base64 content won't match [[...]] or #tag)
     // Step 3: Prevent </script> injection for the setHtml() path
     QString content = injectHeadingAnchors(rawMarkdown);
-    content = preHighlightCodeBlocks(content);
+    content = preHighlightCodeBlocks(content, showRunButtons);
     content = processWikiLinks(content);
     content = TagIndex::processTagsForPreview(content);
     content.replace(QStringLiteral("</script>"), QStringLiteral("<\\/script>"));
