@@ -74,6 +74,78 @@ jobs:
             echo "=== QtWebEngineProcess QtQuick deployment complete ==="
           fi
 
+      - name: Verify QtWebEngineProcess dependencies
+        run: |
+          APP="build/release/OmniStudio.app"
+          WEP="$(find "$APP" -path "*/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess" | head -1 || true)"
+          echo "========================================"
+          echo "  QtWebEngineProcess dependency check"
+          echo "========================================"
+
+          # 1. Check QtQuick.framework exists
+          if [ -d "$APP/Contents/Frameworks/QtQuick.framework" ]; then
+            echo "[PASS] QtQuick.framework is bundled"
+          else
+            echo "[FAIL] QtQuick.framework is MISSING"
+          fi
+
+          # 2. Check QtWebEngineProcess's linked libraries
+          if [ -n "$WEP" ]; then
+            echo ""
+            echo "--- QtWebEngineProcess linked libraries ---"
+            otool -L "$WEP" 2>/dev/null | grep -v "^.*:$" | while IFS= read -r line; do
+              lib=$(echo "$line" | awk '{print $1}')
+              if echo "$lib" | grep -q "QtQuick"; then
+                echo "  [QtQuick] $line"
+              elif echo "$lib" | grep -q "@executable_path"; then
+                echo "  [EXEC_PATH] $line"
+              elif echo "$lib" | grep -q "@rpath"; then
+                echo "  [RPATH] $line"
+              elif echo "$lib" | grep -q "/opt/homebrew"; then
+                echo "  [ABSOLUTE - PROBLEM] $line"
+              else
+                echo "  $line"
+              fi
+            done
+
+            # 3. Show rpaths
+            echo ""
+            echo "--- QtWebEngineProcess rpaths ---"
+            otool -l "$WEP" 2>/dev/null | grep -A2 "LC_RPATH" | grep "path " | awk '{print "  " $2}'
+          fi
+
+          # 4. Check for remaining LC_ID_DYLIB (install name) with @executable_path
+          # These are self-references, NOT actual dependencies — harmless.
+          echo ""
+          echo "--- LC_ID_DYLIB with @executable_path/../Frameworks (self-refs, harmless) ---"
+          found=0
+          while IFS= read -r binary; do
+            result=$(otool -L "$binary" 2>/dev/null | grep "@executable_path/../Frameworks" | head -1)
+            if [ -n "$result" ]; then
+              echo "  [REMAINING] $binary  ->  $(echo "$result" | awk '{print $1}')"
+              found=1
+            fi
+          done < <(find "$APP/Contents/Frameworks" ! -path "*/Helpers/*" -type f \
+              \( -name "*.dylib" -o -name "*.so" -o -name "Qt*" \) 2>/dev/null)
+          if [ "$found" -eq 0 ]; then
+            echo "  None found (all fixed)"
+          fi
+
+          # 5. Dynamic library load test
+          echo ""
+          echo "--- DYLD library load test ---"
+          if [ -n "$WEP" ]; then
+            chmod +x "$WEP" 2>/dev/null || true
+            # Run with DYLD_PRINT_LIBRARIES to see load order, kill after 5s
+            DYLD_PRINT_LIBRARIES=1 "$WEP" --type=renderer --no-sandbox 2>&1 &
+            WEP_PID=$!
+            (sleep 5; kill $WEP_PID 2>/dev/null) &
+            wait $WEP_PID 2>/dev/null || true
+            echo ""
+            echo "[DONE] Dynamic load test completed"
+          fi
+          exit 0
+
       - name: Remove broken signatures and re-sign
         run: |
           APP="build/release/OmniStudio.app"
