@@ -33,6 +33,7 @@ int main(int argc, char *argv[])
             ConfigManager::instance().webEngineDebuggingPort().toUtf8());
 
     QApplication a(argc, argv);
+    a.setApplicationName(QStringLiteral("OmniStudio"));
 
     // Fusion style wrapped with compact tooltip proxy
     a.setStyle(new CompactTooltipStyle(QStyleFactory::create("Fusion")));
