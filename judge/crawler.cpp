@@ -185,6 +185,16 @@ void Crawler::fetchHomeworkProblems(const QString &url)
             if (allDigits && !lastSeg.isEmpty()) looksLikeProblemId = true;
             if (!looksLikeProblemId && lastSeg.length() == 1 && lastSeg[0].isLetter())
                 looksLikeProblemId = true;
+            // Accept letter-prefixed IDs like "T03094" or "M04089"
+            if (!looksLikeProblemId && lastSeg.length() >= 2) {
+                if (lastSeg[0].isLetter()) {
+                    bool restDigits = true;
+                    for (int i = 1; i < lastSeg.length(); ++i) {
+                        if (!lastSeg[i].isDigit()) { restDigits = false; break; }
+                    }
+                    if (restDigits) looksLikeProblemId = true;
+                }
+            }
             if (!looksLikeProblemId) continue;
 
             QString displayTitle = title;
@@ -275,28 +285,37 @@ void Crawler::fetchPastPage(const QString &url)
         QList<HomeworkItem> past;
         PageInfo info;
 
-        // Parse past-contest items
-        QRegularExpression rx(QStringLiteral(
-            "<a\\s+href=\"([^\"]+)\"[^>]*>([^<]+)</a>"),
-            QRegularExpression::CaseInsensitiveOption);
-        QRegularExpressionMatchIterator it = rx.globalMatch(html);
-
-        // Find the past-contest section
+        // Find the past-contest section on the page
+        // If the .past-list div exists, we can extract links from there
+        // directly (all links within it are contests, no keyword filter needed)
         QString sectionHtml;
+        bool hasPastList = false;
         QRegularExpression secRx(QStringLiteral(
             "<div[^>]*class=\"past-list\"[^>]*>(.*?)</div>\\s*(?=</div>)"),
             QRegularExpression::DotMatchesEverythingOption);
         QRegularExpressionMatch secMatch = secRx.match(html);
-        if (secMatch.hasMatch())
+        if (secMatch.hasMatch()) {
             sectionHtml = secMatch.captured(1);
-        else
-            sectionHtml = html; // fallback
+            hasPastList = true;
+        } else {
+            // Some groups (e.g. cs101) use <table id="pastContest"> instead
+            QRegularExpression tableRx(QStringLiteral(
+                "<table[^>]*id=\"pastContest\"[^>]*>(.*?)</table>"),
+                QRegularExpression::DotMatchesEverythingOption);
+            QRegularExpressionMatch tableMatch = tableRx.match(html);
+            if (tableMatch.hasMatch()) {
+                sectionHtml = tableMatch.captured(1);
+                hasPastList = true;
+            } else {
+                sectionHtml = html; // fallback — use full page
+            }
+        }
 
-        // Fallback: just find all contest-like links on the page
+        // Extract contest links from the scoped section (or full page if no past-list div)
         QRegularExpression contestRx(QStringLiteral(
             "<a\\s+href=\"/([^/\"]+/)\"[^>]*>([^<]+)</a>"),
             QRegularExpression::CaseInsensitiveOption);
-        QRegularExpressionMatchIterator cit = contestRx.globalMatch(html);
+        QRegularExpressionMatchIterator cit = contestRx.globalMatch(sectionHtml);
 
         QSet<QString> seen;
         while (cit.hasNext()) {
@@ -312,13 +331,19 @@ void Crawler::fetchPastPage(const QString &url)
                 || title == QStringLiteral("English"))
                 continue;
 
-            // Only keep contest-like URLs (hw, practise, midexam, pool)
-            if (linkUrl.contains(QLatin1String("hw"))
-                || linkUrl.contains(QLatin1String("practise"))
-                || linkUrl.contains(QLatin1String("midexam"))
-                || linkUrl.contains(QLatin1String("pool"))
-                || linkUrl.contains(QLatin1String("contest")))
-            {
+            // When .past-list is found, all links inside are contests — accept them all.
+            // Otherwise, only keep URLs matching known contest patterns.
+            bool keep = hasPastList;
+            if (!keep) {
+                keep = linkUrl.contains(QLatin1String("hw"))
+                    || linkUrl.contains(QLatin1String("practise"))
+                    || linkUrl.contains(QLatin1String("midexam"))
+                    || linkUrl.contains(QLatin1String("pool"))
+                    || linkUrl.contains(QLatin1String("contest"))
+                    || linkUrl.contains(QLatin1String("mockexam"))
+                    || linkUrl.contains(QLatin1String("final"));
+            }
+            if (keep) {
                 QString fullUrl = m_baseUrl + QLatin1Char('/') + linkUrl;
                 past.append({title, fullUrl});
             }
@@ -613,7 +638,9 @@ void Crawler::parseMainPage(const QString &html,
         }
     }
 
-    // Extract all current-contest sections
+    // Extract all current-contest sections — but strip embedded <table> rows
+    // (some groups like cs101 list individual problems in tables on the main page,
+    //  which would pollute the homework list with individual problem links)
     {
         QRegularExpression secRx(QStringLiteral(
             "<ul[^>]*class=[\"']current-contest[^\"']*[\"'][^>]*>(.*?)</ul>"),
@@ -623,8 +650,12 @@ void Crawler::parseMainPage(const QString &html,
         while (sit.hasNext()) {
             QRegularExpressionMatch sm = sit.next();
             sectionCount++;
+            QString sectionHtml = sm.captured(1);
+            // Remove <table> blocks so only top-level <h3> homework links are extracted
+            sectionHtml.remove(QRegularExpression(QStringLiteral("<table[^>]*>.*?</table>"),
+                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption));
             int before = ongoing.size();
-            extractLinks(sm.captured(1), ongoing);
+            extractLinks(sectionHtml, ongoing);
             int after = ongoing.size();
             crawlerLog(QStringLiteral("  current-contress section #%1: captured len=%2, links found=%3")
                 .arg(sectionCount).arg(sm.captured(1).length()).arg(after - before));

@@ -96,6 +96,11 @@ OpenJudgeWidget::OpenJudgeWidget(SettingsManager *settings, QWidget *parent)
     , m_sectionContent(new QTextBrowser)
     , m_settingsManager(settings)
 {
+    // Apply any user-overridden base URL from settings
+    QVariant urlOverride = settings->settingOverride(QStringLiteral("open_judge.base_url"));
+    if (urlOverride.isValid())
+        m_crawler->setBaseUrl(urlOverride.toString());
+
     setupUi();
 
     // --- Crawler signals ---
@@ -606,12 +611,12 @@ void OpenJudgeWidget::onMainPageReady(const QList<HomeworkItem> &ongoing,
     m_refreshBtn->setText(QStringLiteral("刷新"));
     m_backBtn->setVisible(false);
 
+    m_pastItems = past;
+
     if (!pastPage.url.isEmpty()) {
-        m_pastItems.clear();
         rebuildListView();
         m_crawler->fetchPastPage(pastPage.url);
     } else {
-        m_pastItems = past;
         rebuildListView();
     }
 }
@@ -619,8 +624,10 @@ void OpenJudgeWidget::onMainPageReady(const QList<HomeworkItem> &ongoing,
 void OpenJudgeWidget::onPastPageReady(const QList<HomeworkItem> &past,
                                        const PageInfo &pageInfo)
 {
-    m_pastItems = past;
-    m_pastPageInfo = pageInfo;
+    if (!past.isEmpty()) {
+        m_pastItems = past;
+        m_pastPageInfo = pageInfo;
+    }
     if (m_viewState == OJ_HOMEWORK_LIST)
         rebuildListView();
 }
@@ -943,6 +950,11 @@ void OpenJudgeWidget::onBack()
 
 void OpenJudgeWidget::onRefresh()
 {
+    // Apply latest base URL from settings before refreshing
+    QVariant urlOverride = m_settingsManager->settingOverride(QStringLiteral("open_judge.base_url"));
+    if (urlOverride.isValid())
+        m_crawler->setBaseUrl(urlOverride.toString());
+
     m_refreshBtn->setEnabled(false);
     m_refreshBtn->setText(QStringLiteral("加载中..."));
 

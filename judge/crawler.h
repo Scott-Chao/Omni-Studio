@@ -47,6 +47,7 @@ class Crawler : public QObject
 public:
     explicit Crawler(QObject *parent = nullptr);
 
+    void setBaseUrl(const QString &url) { m_baseUrl = url; }
     void login(const QString &username, const QString &password);
     void fetchMainPage();
     void fetchHomeworkProblems(const QString &url);
