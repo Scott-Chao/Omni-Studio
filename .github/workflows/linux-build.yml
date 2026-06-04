@@ -22,7 +22,7 @@ jobs:
       - name: Install Qt6
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev qt6-svg-dev
+          sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev qt6-svg-dev qt6-wayland
 
       - name: Configure CMake
         run: cmake --preset linux-release
@@ -55,16 +55,30 @@ jobs:
           QT_PLUGIN_DIR="$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || true)"
           QT_LIBEXEC_DIR="$(qmake6 -query QT_INSTALL_LIBEXECS 2>/dev/null || true)"
 
-          # Copy xcb platform plugin and its Qt dependencies
-          XCB_PLUGIN=""
-          if [ -n "$QT_PLUGIN_DIR" ] && [ -f "$QT_PLUGIN_DIR/platforms/libqxcb.so" ]; then
-            XCB_PLUGIN="$QT_PLUGIN_DIR/platforms/libqxcb.so"
-          elif [ -n "$QT_PREFIX" ] && [ -f "$QT_PREFIX/plugins/platforms/libqxcb.so" ]; then
-            XCB_PLUGIN="$QT_PREFIX/plugins/platforms/libqxcb.so"
+          # Copy platform plugins and their Qt dependencies
+          PLATFORM_PLUGIN_DIR=""
+          if [ -n "$QT_PLUGIN_DIR" ] && [ -d "$QT_PLUGIN_DIR/platforms" ]; then
+            PLATFORM_PLUGIN_DIR="$QT_PLUGIN_DIR/platforms"
+          elif [ -n "$QT_PREFIX" ] && [ -d "$QT_PREFIX/plugins/platforms" ]; then
+            PLATFORM_PLUGIN_DIR="$QT_PREFIX/plugins/platforms"
           fi
-          if [ -n "$XCB_PLUGIN" ]; then
-            cp -L "$XCB_PLUGIN" "$DEPLOY/plugins/platforms/"
-            copy_qt_deps "$XCB_PLUGIN"
+          for plugin in libqxcb.so libqwayland-generic.so libqwayland-egl.so; do
+            if [ -n "$PLATFORM_PLUGIN_DIR" ] && [ -f "$PLATFORM_PLUGIN_DIR/$plugin" ]; then
+              cp -L "$PLATFORM_PLUGIN_DIR/$plugin" "$DEPLOY/plugins/platforms/"
+              copy_qt_deps "$PLATFORM_PLUGIN_DIR/$plugin"
+            fi
+          done
+
+          # Copy Wayland sub-plugin directories (shell integration, graphics, decorations)
+          if [ -n "$QT_PLUGIN_DIR" ] && [ -d "$QT_PLUGIN_DIR" ]; then
+            for sub in wayland-shell-integration wayland-graphics-integration-client wayland-decoration-client; do
+              if [ -d "$QT_PLUGIN_DIR/$sub" ]; then
+                cp -rL "$QT_PLUGIN_DIR/$sub" "$DEPLOY/plugins/$sub"
+                for lib in "$QT_PLUGIN_DIR/$sub"/*.so; do
+                  [ -f "$lib" ] && copy_qt_deps "$lib"
+                done
+              fi
+            done
           fi
 
           # Copy WebEngine process via canonical path, fallback to find
@@ -87,6 +101,19 @@ jobs:
           fi
           if [ -n "$WEBENGINE_RES" ] && [ "$(ls -A "$WEBENGINE_RES" 2>/dev/null)" ]; then
             cp -rL "$WEBENGINE_RES" "$DEPLOY/resources"
+          fi
+
+          # Copy WebEngine locale files (en-US.pak etc.)
+          WEBENGINE_LOCALES=""
+          QT_TRANSLATIONS_DIR="$(qmake6 -query QT_INSTALL_TRANSLATIONS 2>/dev/null || true)"
+          if [ -n "$QT_TRANSLATIONS_DIR" ] && [ -d "$QT_TRANSLATIONS_DIR/qtwebengine_locales" ]; then
+            WEBENGINE_LOCALES="$QT_TRANSLATIONS_DIR/qtwebengine_locales"
+          else
+            WEBENGINE_LOCALES="$(find /usr/lib /usr/share -maxdepth 5 -path "*/qtwebengine_locales" -type d 2>/dev/null | head -1 || true)"
+          fi
+          if [ -n "$WEBENGINE_LOCALES" ] && [ "$(ls -A "$WEBENGINE_LOCALES" 2>/dev/null)" ]; then
+            mkdir -p "$DEPLOY/translations"
+            cp -rL "$WEBENGINE_LOCALES" "$DEPLOY/translations/"
           fi
 
           # qt.conf tells Qt6 to look for plugins in the plugins/ subdirectory
