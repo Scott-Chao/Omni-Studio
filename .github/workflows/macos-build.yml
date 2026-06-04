@@ -3,14 +3,27 @@ name: macOS Build
 on:
   workflow_dispatch:
 
+env:
+  CCACHE_BASEDIR: ${{ github.workspace }}
+
 jobs:
   build:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
       - name: Install Qt6
         run: brew install qt
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
 
       - name: Configure CMake
         run: cmake --preset macos-release
@@ -52,7 +65,7 @@ jobs:
           echo "=== Verification ==="
           codesign --verify --verbose --no-strict "$APP" 2>&1 || true
 
-      - name: Package .app as zip (preserve bundle structure)
+      - name: Package .app as zip
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             build/release/OmniStudio.app OmniStudio-macOS.zip
