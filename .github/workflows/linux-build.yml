@@ -3,19 +3,82 @@ name: Linux Build
 on:
   workflow_dispatch:
 
+env:
+  CCACHE_BASEDIR: ${{ github.workspace }}
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
       - name: Install Qt6
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev
+          sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev qt6-svg-dev
 
       - name: Configure CMake
         run: cmake --preset linux-release
 
       - name: Build
         run: cmake --build build/release -j$(nproc)
+
+      - name: Bundle Qt libraries
+        run: |
+          sudo apt-get install -y patchelf
+
+          BIN="build/release/OmniStudio"
+          DEPLOY="build/deploy"
+          mkdir -p "$DEPLOY/lib" "$DEPLOY/plugins/platforms"
+
+          # Collect and copy Qt shared libs into lib/
+          for lib in $(ldd "$BIN" | grep -E 'Qt[6]' | awk '{print $3}'); do
+            [ -f "$lib" ] && cp -L "$lib" "$DEPLOY/lib/"
+          done
+
+          # Copy platform plugin (xcb) and its Qt dependencies
+          QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || echo "")
+          if [ -n "$QT_PLUGIN_DIR" ] && [ -f "$QT_PLUGIN_DIR/platforms/libqxcb.so" ]; then
+            cp -L "$QT_PLUGIN_DIR/platforms/libqxcb.so" "$DEPLOY/plugins/platforms/"
+            for lib in $(ldd "$QT_PLUGIN_DIR/platforms/libqxcb.so" | grep -E 'Qt[6]' | awk '{print $3}'); do
+              [ -f "$lib" ] && cp -L "$lib" "$DEPLOY/lib/"
+            done
+          fi
+
+          # Copy WebEngine process and resources
+          WEBENGINE_PROC=$(find /usr/lib /usr/share -name "QtWebEngineProcess" 2>/dev/null | head -1)
+          if [ -n "$WEBENGINE_PROC" ]; then
+            cp -L "$WEBENGINE_PROC" "$DEPLOY/" 2>/dev/null || true
+          fi
+          WEBENGINE_RES=$(find /usr/lib /usr/share -path "*/qt6/resources" -type d 2>/dev/null | head -1)
+          if [ -n "$WEBENGINE_RES" ]; then
+            cp -rL "$WEBENGINE_RES" "$DEPLOY/resources" 2>/dev/null || true
+          fi
+
+          # qt.conf tells Qt6 to look for plugins in the plugins/ subdirectory
+          cat > "$DEPLOY/qt.conf" << 'EOF'
+[Paths]
+Plugins = plugins
+EOF
+
+          # Copy binary and set rpath so it finds libs in ./lib/
+          cp "$BIN" "$DEPLOY/"
+          patchelf --set-rpath '$ORIGIN/lib' "$DEPLOY/OmniStudio"
+
+      - name: Package
+        run: |
+          tar -czf OmniStudio-Linux.tar.gz \
+            -C build/deploy .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmniStudio-Linux
+          path: OmniStudio-Linux.tar.gz
