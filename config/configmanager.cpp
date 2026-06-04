@@ -236,6 +236,7 @@ int ConfigManager::outputPanelPasteTimerMs() const { return intValue("output_pan
 int ConfigManager::outputPanelInputEnableDelayMs() const { return intValue("output_panel.input_enable_delay_ms", 50); }
 
 // ---- Preview ----
+int ConfigManager::previewDefaultMode() const { return intValue("preview.default_mode", 0); }
 int ConfigManager::previewSplitDebounceMs() const { return intValue("preview.split_debounce_ms", 500); }
 int ConfigManager::previewSplitPreviewRatio() const { return intValue("preview.split_preview_ratio", 50); }
 

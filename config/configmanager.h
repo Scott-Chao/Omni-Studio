@@ -60,6 +60,7 @@ public:
     int outputPanelInputEnableDelayMs() const;
 
     // ---- Preview ----
+    int previewDefaultMode() const;
     int previewSplitDebounceMs() const;
     int previewSplitPreviewRatio() const;
 

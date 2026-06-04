@@ -144,6 +144,7 @@ private:
     QSpinBox *m_outputMaxBlocksSpin = nullptr;
 
     // Preview controls
+    QComboBox *m_previewDefaultModeCombo = nullptr;
     QSpinBox *m_previewDebounceSpin = nullptr;
     QSpinBox *m_previewRatioSpin = nullptr;
 

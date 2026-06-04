@@ -1183,6 +1183,16 @@ bool EditorWidget::loadFile(const QString &filePath)
     // 文件加载后启动自动保存定时器
     startAutoSave();
 
+    // 根据设置在打开 Markdown 文件时自动进入预览模式
+    if (m_editorMode == MarkdownEdit) {
+        int defaultMode = SettingsManager::instance().value("preview.default_mode",
+                            ConfigManager::instance().previewDefaultMode()).toInt();
+        if (defaultMode == 1)
+            setPreviewMode(true);
+        else if (defaultMode == 2)
+            setSplitPreviewMode(true);
+    }
+
     return true;
 }
 

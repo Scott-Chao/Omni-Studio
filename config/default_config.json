@@ -35,6 +35,7 @@
         "input_enable_delay_ms": 50
     },
     "preview": {
+        "default_mode": 0,
         "split_debounce_ms": 500,
         "split_preview_ratio": 50
     },

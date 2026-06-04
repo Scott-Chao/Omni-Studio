@@ -954,6 +954,25 @@ QWidget *SettingsPanel::createEditorPage()
         emit previewSettingChanged("preview.split_preview_ratio", val);
     });
 
+    // ---- 默认打开方式 ----
+    auto *defaultModeRow = new QHBoxLayout;
+    auto *defaultModeLabel = new QLabel(tr("默认打开方式"));
+    defaultModeLabel->setStyleSheet(labelStyle());
+    m_previewDefaultModeCombo = new QComboBox;
+    m_previewDefaultModeCombo->addItem(tr("不预览"), 0);
+    m_previewDefaultModeCombo->addItem(tr("预览"), 1);
+    m_previewDefaultModeCombo->addItem(tr("分屏预览"), 2);
+    m_previewDefaultModeCombo->setFixedWidth(120);
+    m_previewDefaultModeCombo->setStyleSheet(inputStyle());
+    defaultModeRow->addWidget(defaultModeLabel);
+    defaultModeRow->addStretch();
+    defaultModeRow->addWidget(m_previewDefaultModeCombo);
+    layout->addLayout(defaultModeRow);
+
+    connect(m_previewDefaultModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        emit previewSettingChanged("preview.default_mode", m_previewDefaultModeCombo->itemData(idx).toInt());
+    });
+
     // ====================================================================
     // Section: 搜索
     // ====================================================================
@@ -2270,6 +2289,12 @@ void SettingsPanel::syncFromSettings(SettingsManager &sm)
     }
 
     // Preview page
+    if (m_previewDefaultModeCombo) {
+        int mode = sm.value("preview.default_mode", cfg.previewDefaultMode()).toInt();
+        int idx = m_previewDefaultModeCombo->findData(mode);
+        if (idx >= 0)
+            m_previewDefaultModeCombo->setCurrentIndex(idx);
+    }
     if (m_previewDebounceSpin) {
         m_previewDebounceSpin->setValue(sm.value("preview.split_debounce_ms", cfg.previewSplitDebounceMs()).toInt());
     }
