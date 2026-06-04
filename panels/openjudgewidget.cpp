@@ -261,11 +261,25 @@ void OpenJudgeWidget::setupUi()
     // --- Setup stacked widget pages ---
     setupDetailPage();
 
-    // Page 0: list + pagination
+    // Page 0: list + title + pagination
     {
         auto *listPage = new QWidget;
         auto *listLayout = new QVBoxLayout(listPage);
         listLayout->setContentsMargins(0, 0, 0, 0);
+
+        m_titleBar = new QLabel;
+        m_titleBar->setTextInteractionFlags(Qt::NoTextInteraction);
+        m_titleBar->setWordWrap(true);
+        m_titleBar->setContentsMargins(12, 8, 12, 8);
+        m_titleBar->setStyleSheet(QStringLiteral(
+            "color: %1; background: %2; font-weight: bold; font-size: 12pt;"
+            "border-bottom: 1px solid %3;")
+            .arg(tm.color("editor.foreground").name(),
+                 tm.color("sideBar.background").name(),
+                 tm.color("input.border").name()));
+        m_titleBar->setVisible(false);
+
+        listLayout->addWidget(m_titleBar);
         listLayout->addWidget(m_listWidget, 1);
 
         m_paginationBar = new QWidget;
@@ -318,9 +332,29 @@ void OpenJudgeWidget::setupUi()
 void OpenJudgeWidget::setupDetailPage()
 {
     auto &tm = ThemeManager::instance();
-    auto *layout = new QHBoxLayout(m_detailPage);
+    auto *layout = new QVBoxLayout(m_detailPage);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
+
+    // Title bar at top (visible only when a problem is loaded)
+    m_detailTitleBar = new QLabel;
+    m_detailTitleBar->setTextInteractionFlags(Qt::NoTextInteraction);
+    m_detailTitleBar->setWordWrap(true);
+    m_detailTitleBar->setContentsMargins(12, 8, 12, 8);
+    m_detailTitleBar->setStyleSheet(QStringLiteral(
+        "color: %1; background: %2; font-weight: bold; font-size: 12pt;"
+        "border-bottom: 1px solid %3;")
+        .arg(tm.color("editor.foreground").name(),
+             tm.color("sideBar.background").name(),
+             tm.color("input.border").name()));
+    m_detailTitleBar->setVisible(false);
+    layout->addWidget(m_detailTitleBar);
+
+    // Horizontal content area: section list + content browser
+    auto *contentArea = new QWidget;
+    auto *contentLayout = new QHBoxLayout(contentArea);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(0);
 
     // Left: section list — tight fit to content
     m_sectionList->setFont(QFont("Microsoft YaHei", 10));
@@ -360,8 +394,9 @@ void OpenJudgeWidget::setupDetailPage()
     m_ideSplitter->setChildrenCollapsible(false);
     m_ideSplitter->addWidget(m_sectionContent);
 
-    layout->addWidget(m_sectionList);
-    layout->addWidget(m_ideSplitter, 1);
+    contentLayout->addWidget(m_sectionList);
+    contentLayout->addWidget(m_ideSplitter, 1);
+    layout->addWidget(contentArea, 1);
 
     connect(m_sectionContent->verticalScrollBar(), &QScrollBar::valueChanged,
             this, &OpenJudgeWidget::onContentScrolled);
@@ -426,6 +461,12 @@ void OpenJudgeWidget::showListPage()
 
 void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
 {
+    // Show title bar with problem title
+    if (m_detailTitleBar) {
+        m_detailTitleBar->setText(detail.title);
+        m_detailTitleBar->setVisible(true);
+    }
+
     m_sectionList->clear();
     m_sectionContent->clear();
     m_sectionYOffsets.clear();
@@ -602,10 +643,12 @@ void OpenJudgeWidget::onLogoutClicked()
 
 void OpenJudgeWidget::onMainPageReady(const QList<HomeworkItem> &ongoing,
                                        const QList<HomeworkItem> &past,
-                                       const PageInfo &pastPage)
+                                       const PageInfo &pastPage,
+                                       const QString &groupTitle)
 {
     m_ongoingItems = ongoing;
     m_pastPageInfo = pastPage;
+    m_groupTitle = groupTitle;
     m_viewState = OJ_HOMEWORK_LIST;
     m_refreshBtn->setEnabled(true);
     m_refreshBtn->setText(QStringLiteral("刷新"));
@@ -641,20 +684,37 @@ void OpenJudgeWidget::onNextPage() { changePage(+1); }
 
 void OpenJudgeWidget::changePage(int delta)
 {
-    bool ok = (delta < 0) ? m_pastPageInfo.hasPrev : m_pastPageInfo.hasNext;
-    if (!ok) return;
+    if (m_viewState == OJ_PROBLEM_LIST) {
+        bool ok = (delta < 0) ? m_homeworkPageInfo.hasPrev : m_homeworkPageInfo.hasNext;
+        if (!ok) return;
 
-    QUrl url(m_pastPageInfo.url);
-    QUrlQuery query(url);
-    int newPage = m_pastPageInfo.currentPage + delta;
-    query.removeAllQueryItems(QStringLiteral("page"));
-    if (newPage > 1)
-        query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
-    url.setQuery(query);
+        QUrl url(m_homeworkBaseUrl);
+        QUrlQuery query(url);
+        int newPage = m_homeworkPageInfo.currentPage + delta;
+        query.removeAllQueryItems(QStringLiteral("page"));
+        if (newPage > 1)
+            query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
+        url.setQuery(query);
 
-    m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
-    m_refreshBtn->setEnabled(false);
-    m_crawler->fetchPastPage(url.toString());
+        m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
+        m_refreshBtn->setEnabled(false);
+        m_crawler->fetchHomeworkProblems(url.toString());
+    } else {
+        bool ok = (delta < 0) ? m_pastPageInfo.hasPrev : m_pastPageInfo.hasNext;
+        if (!ok) return;
+
+        QUrl url(m_pastPageInfo.url);
+        QUrlQuery query(url);
+        int newPage = m_pastPageInfo.currentPage + delta;
+        query.removeAllQueryItems(QStringLiteral("page"));
+        if (newPage > 1)
+            query.addQueryItem(QStringLiteral("page"), QString::number(newPage));
+        url.setQuery(query);
+
+        m_statusLabel->setText(QStringLiteral("正在加载第 %1 页...").arg(newPage));
+        m_refreshBtn->setEnabled(false);
+        m_crawler->fetchPastPage(url.toString());
+    }
 }
 
 // ======================================================================
@@ -665,6 +725,19 @@ void OpenJudgeWidget::rebuildListView()
 {
     showListPage();
     m_listWidget->clear();
+
+    // Update title bar
+    if (m_titleBar) {
+        if (m_viewState == OJ_HOMEWORK_LIST && !m_groupTitle.isEmpty()) {
+            m_titleBar->setText(m_groupTitle);
+            m_titleBar->setVisible(true);
+        } else if (m_viewState == OJ_PROBLEM_LIST && !m_currentHomeworkTitle.isEmpty()) {
+            m_titleBar->setText(m_currentHomeworkTitle);
+            m_titleBar->setVisible(true);
+        } else {
+            m_titleBar->setVisible(false);
+        }
+    }
 
     // --- 进行中的作业 ---
     if (!m_ongoingItems.isEmpty()) {
@@ -719,11 +792,22 @@ void OpenJudgeWidget::rebuildListView()
         m_listWidget->addItem(emptyItem);
     }
 
-    // Pagination bar
-    m_pageLabel->setText(QStringLiteral("第 %1 页").arg(m_pastPageInfo.currentPage));
-    m_prevPageBtn->setEnabled(m_pastPageInfo.hasPrev);
-    m_nextPageBtn->setEnabled(m_pastPageInfo.hasNext);
-    m_paginationBar->setVisible(!m_pastItems.isEmpty() || !m_pastPageInfo.url.isEmpty());
+    // Pagination bar — only show when multi-page
+    bool hasPastPagination = m_pastPageInfo.hasPrev || m_pastPageInfo.hasNext;
+    bool hasHomeworkPagination = m_homeworkPageInfo.hasPrev || m_homeworkPageInfo.hasNext;
+    if (m_viewState == OJ_HOMEWORK_LIST) {
+        m_pageLabel->setText(QStringLiteral("第 %1 页").arg(m_pastPageInfo.currentPage));
+        m_prevPageBtn->setEnabled(m_pastPageInfo.hasPrev);
+        m_nextPageBtn->setEnabled(m_pastPageInfo.hasNext);
+        m_paginationBar->setVisible(hasPastPagination);
+    } else if (m_viewState == OJ_PROBLEM_LIST) {
+        m_pageLabel->setText(QStringLiteral("第 %1 页").arg(m_homeworkPageInfo.currentPage));
+        m_prevPageBtn->setEnabled(m_homeworkPageInfo.hasPrev);
+        m_nextPageBtn->setEnabled(m_homeworkPageInfo.hasNext);
+        m_paginationBar->setVisible(hasHomeworkPagination);
+    } else {
+        m_paginationBar->setVisible(false);
+    }
 }
 
 // ======================================================================
@@ -731,12 +815,13 @@ void OpenJudgeWidget::rebuildListView()
 // ======================================================================
 
 void OpenJudgeWidget::onHomeworkProblemsReady(const QString &homeworkTitle,
-                                               const QList<HomeworkItem> &problems)
+                                               const QList<HomeworkItem> &problems,
+                                               const PageInfo &pageInfo)
 {
     showListPage();
-    m_listWidget->clear();
     m_problemItems = problems;
     m_currentHomeworkTitle = homeworkTitle;
+    m_homeworkPageInfo = pageInfo;
     m_viewState = OJ_PROBLEM_LIST;
     m_backBtn->setVisible(true);
     m_refreshBtn->setText(QStringLiteral("刷新"));
@@ -744,20 +829,34 @@ void OpenJudgeWidget::onHomeworkProblemsReady(const QString &homeworkTitle,
     m_statusLabel->setText(QString::fromUtf8("题目列表 - %1 (%2 题)")
                            .arg(homeworkTitle).arg(problems.size()));
 
+    m_listWidget->clear();
+
     if (problems.isEmpty()) {
         auto *emptyItem = new QListWidgetItem(QStringLiteral("(该作业暂无题目)"));
         emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
         emptyItem->setForeground(ThemeManager::instance().color("tab.inactiveForeground"));
         m_listWidget->addItem(emptyItem);
-        return;
+    } else {
+        // Update title bar
+        if (m_titleBar) {
+            m_titleBar->setText(homeworkTitle);
+            m_titleBar->setVisible(true);
+        }
+
+        for (const auto &problem : problems) {
+            auto *listItem = new QListWidgetItem(problem.title);
+            listItem->setData(Qt::UserRole, problem.url);
+            listItem->setSizeHint(QSize(0, 36));
+            m_listWidget->addItem(listItem);
+        }
     }
 
-    for (const auto &problem : problems) {
-        auto *listItem = new QListWidgetItem(problem.title);
-        listItem->setData(Qt::UserRole, problem.url);
-        listItem->setSizeHint(QSize(0, 36));
-        m_listWidget->addItem(listItem);
-    }
+    // Update pagination bar for homework pages
+    bool hasPagination = pageInfo.hasPrev || pageInfo.hasNext;
+    m_pageLabel->setText(QStringLiteral("第 %1 页").arg(pageInfo.currentPage));
+    m_prevPageBtn->setEnabled(pageInfo.hasPrev);
+    m_nextPageBtn->setEnabled(pageInfo.hasNext);
+    m_paginationBar->setVisible(hasPagination);
 }
 
 // ======================================================================
@@ -817,6 +916,8 @@ void OpenJudgeWidget::onItemClicked(QListWidgetItem *item)
 
     if (m_viewState == OJ_HOMEWORK_LIST) {
         m_currentHomeworkUrl = url;
+        m_homeworkBaseUrl = url;
+        m_homeworkPageInfo = PageInfo(); // reset
         // Check if this homework is ongoing by looking up the URL in m_ongoingItems
         m_currentHomeworkOngoing = false;
         for (const auto &item : m_ongoingItems) {
@@ -938,7 +1039,7 @@ void OpenJudgeWidget::onBack()
         m_selectBtn->setVisible(false);
         m_statusLabel->setText(QString::fromUtf8("题目列表 - %1").arg(m_currentHomeworkTitle));
         showListPage();
-        onHomeworkProblemsReady(m_currentHomeworkTitle, m_problemItems);
+        onHomeworkProblemsReady(m_currentHomeworkTitle, m_problemItems, m_homeworkPageInfo);
     } else if (m_viewState == OJ_PROBLEM_LIST) {
         m_viewState = OJ_HOMEWORK_LIST;
         m_backBtn->setVisible(false);
@@ -958,9 +1059,10 @@ void OpenJudgeWidget::onRefresh()
     m_refreshBtn->setEnabled(false);
     m_refreshBtn->setText(QStringLiteral("加载中..."));
 
-    if (m_viewState == OJ_PROBLEM_LIST && !m_currentHomeworkUrl.isEmpty()) {
+    if (m_viewState == OJ_PROBLEM_LIST && !m_homeworkBaseUrl.isEmpty()) {
         m_statusLabel->setText(QStringLiteral("正在刷新题目列表..."));
-        m_crawler->fetchHomeworkProblems(m_currentHomeworkUrl);
+        m_crawler->fetchHomeworkProblems(m_homeworkBaseUrl);
+        m_homeworkPageInfo = PageInfo(); // reset pagination
     } else if (m_viewState == OJ_PROBLEM_DETAIL && !m_currentProblemUrl.isEmpty()) {
         m_statusLabel->setText(QStringLiteral("正在刷新题目详情..."));
         m_crawler->fetchProblemDetail(m_currentProblemUrl);
@@ -1105,6 +1207,26 @@ void OpenJudgeWidget::refreshStyle()
     if (m_separator) {
         m_separator->setStyleSheet(QStringLiteral("QFrame { color: %1; }")
                                    .arg(tm.color("input.border").name()));
+    }
+
+    // Title bar
+    if (m_titleBar) {
+        m_titleBar->setStyleSheet(QStringLiteral(
+            "color: %1; background: %2; font-weight: bold; font-size: 12pt;"
+            "border-bottom: 1px solid %3;")
+            .arg(tm.color("editor.foreground").name(),
+                 tm.color("sideBar.background").name(),
+                 tm.color("input.border").name()));
+    }
+
+    // Detail title bar
+    if (m_detailTitleBar) {
+        m_detailTitleBar->setStyleSheet(QStringLiteral(
+            "color: %1; background: %2; font-weight: bold; font-size: 12pt;"
+            "border-bottom: 1px solid %3;")
+            .arg(tm.color("editor.foreground").name(),
+                 tm.color("sideBar.background").name(),
+                 tm.color("input.border").name()));
     }
 
     setStyleSheet(QStringLiteral(

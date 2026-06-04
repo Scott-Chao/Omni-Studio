@@ -113,7 +113,7 @@ void Crawler::fetchHomeworkProblems(const QString &url)
     request.setTransferTimeout(ConfigManager::instance().openJudgeTransferTimeoutMs());
 
     QNetworkReply *reply = m_manager->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url, qurl]() {
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
@@ -220,12 +220,81 @@ void Crawler::fetchHomeworkProblems(const QString &url)
         for (const auto &url : urlOrder)
             problems.append({best[url], url});
 
-        QRegularExpression titleRx(QStringLiteral("<title>([^<]+)</title>"));
-        QRegularExpressionMatch titleMatch = titleRx.match(html);
-        QString homeworkTitle = titleMatch.hasMatch()
-            ? decodeHtmlEntities(titleMatch.captured(1).trimmed()) : url;
+        // Extract homework title from <div class="contest-title-tab"> → second <h2>
+        // The <title> is always "OpenJudge - OpenJudge - 题目" on these pages, so it's useless.
+        QString homeworkTitle;
+        {
+            QRegularExpression tabRx(QStringLiteral(
+                "<div[^>]*class=\"contest-title-tab\"[^>]*>(.*?)</div>"),
+                QRegularExpression::DotMatchesEverythingOption
+                | QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch tabMatch = tabRx.match(html);
+            if (tabMatch.hasMatch()) {
+                QString tabHtml = tabMatch.captured(1);
+                QRegularExpression h2Rx(QStringLiteral("<h2[^>]*>([^<]+)</h2>"),
+                    QRegularExpression::CaseInsensitiveOption);
+                QRegularExpressionMatchIterator h2It = h2Rx.globalMatch(tabHtml);
+                QStringList h2Texts;
+                while (h2It.hasNext())
+                    h2Texts.append(decodeHtmlEntities(h2It.next().captured(1).trimmed()));
+                // Second <h2> is the homework title, first is the group name
+                if (h2Texts.size() >= 2)
+                    homeworkTitle = h2Texts.last();
+                else if (!h2Texts.isEmpty())
+                    homeworkTitle = h2Texts.first();
+            }
+            if (homeworkTitle.isEmpty()) {
+                // Fallback: use <title> as before
+                QRegularExpression titleRx(QStringLiteral("<title>([^<]+)</title>"));
+                QRegularExpressionMatch titleMatch = titleRx.match(html);
+                homeworkTitle = titleMatch.hasMatch()
+                    ? decodeHtmlEntities(titleMatch.captured(1).trimmed()) : url;
+            }
+        }
 
-        emit homeworkProblemsReady(homeworkTitle, problems);
+        // --- Parse page-bar for pagination ---
+        PageInfo pageInfo;
+        {
+            QRegularExpression pageBarRx(QStringLiteral(
+                "<p[^>]*class=\"page-bar\"[^>]*>(.*?)</p>"),
+                QRegularExpression::DotMatchesEverythingOption
+                | QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch pageBarMatch = pageBarRx.match(html);
+            if (pageBarMatch.hasMatch()) {
+                QString pageBarHtml = pageBarMatch.captured(1);
+                // Check for <span class="pages"> with actual <a> links
+                QRegularExpression spanRx(QStringLiteral(
+                    "<span[^>]*class=\"pages\"[^>]*>(.*)</span>"),
+                    QRegularExpression::DotMatchesEverythingOption
+                    | QRegularExpression::CaseInsensitiveOption);
+                QRegularExpressionMatch spanMatch = spanRx.match(pageBarHtml);
+                if (spanMatch.hasMatch() && spanMatch.captured(1).contains(QLatin1String("<a "))) {
+                    // Multi-page: extract page links
+                    QRegularExpression pageLinkRx(QStringLiteral(
+                        "<a\\s+href=\"([^\"]*page=([0-9]+)[^\"]*)\"[^>]*>([0-9]+)</a>"),
+                        QRegularExpression::CaseInsensitiveOption);
+                    QRegularExpressionMatchIterator pit = pageLinkRx.globalMatch(html);
+                    int maxPage = 0;
+                    while (pit.hasNext()) {
+                        QRegularExpressionMatch pm = pit.next();
+                        int p = pm.captured(2).toInt();
+                        if (p > maxPage) maxPage = p;
+                    }
+
+                    int curPage = QUrlQuery(qurl).queryItemValue(
+                        QStringLiteral("page")).toInt();
+                    if (curPage < 1) curPage = 1;
+
+                    pageInfo.url = qurl.toString();
+                    pageInfo.currentPage = curPage;
+                    pageInfo.hasPrev = (curPage > 1);
+                    pageInfo.hasNext = (curPage < maxPage);
+                }
+            }
+            // If no <span class="pages"> with links → pageInfo stays default (no pagination)
+        }
+
+        emit homeworkProblemsReady(homeworkTitle, problems, pageInfo);
     });
 }
 
@@ -420,9 +489,10 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
                 // No login form – content is public
                 QList<HomeworkItem> ongoing, past;
                 PageInfo pastPage;
-                parseMainPage(html, ongoing, past, pastPage);
+                QString groupTitle;
+                parseMainPage(html, ongoing, past, pastPage, groupTitle);
                 if (!ongoing.isEmpty() || !past.isEmpty())
-                    emit mainPageReady(ongoing, past, pastPage);
+                    emit mainPageReady(ongoing, past, pastPage, groupTitle);
                 else
                     emit loginFailed(QStringLiteral("无法获取页面内容"));
             }
@@ -555,9 +625,10 @@ void Crawler::onMainPageFinished(QNetworkReply *reply)
 
     QList<HomeworkItem> ongoing, past;
     PageInfo pastPage;
-    parseMainPage(html, ongoing, past, pastPage);
+    QString groupTitle;
+    parseMainPage(html, ongoing, past, pastPage, groupTitle);
 
-    emit mainPageReady(ongoing, past, pastPage);
+    emit mainPageReady(ongoing, past, pastPage, groupTitle);
     // Backward compat
     emit homeworkListReady(ongoing);
 }
@@ -582,8 +653,41 @@ QString Crawler::extractCsrfToken(const QString &html)
 void Crawler::parseMainPage(const QString &html,
                             QList<HomeworkItem> &ongoing,
                             QList<HomeworkItem> &past,
-                            PageInfo &pastPage)
+                            PageInfo &pastPage,
+                            QString &groupTitle)
 {
+    // Extract group title from <div class="group-name"><h1>...</h1></div>
+    {
+        QRegularExpression grpRx(QStringLiteral(
+            "<div[^>]*class=\"group-name\"[^>]*>.*?<h1[^>]*>([^<]+)</h1>"),
+            QRegularExpression::DotMatchesEverythingOption
+            | QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch grpMatch = grpRx.match(html);
+        if (grpMatch.hasMatch()) {
+            groupTitle = decodeHtmlEntities(grpMatch.captured(1).trimmed());
+        } else {
+            // Fallback: extract from <title> between "OpenJudge - " and " - 首页"
+            QRegularExpression titleRx(QStringLiteral("<title>([^<]+)</title>"),
+                QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch titleMatch = titleRx.match(html);
+            if (titleMatch.hasMatch()) {
+                QString t = decodeHtmlEntities(titleMatch.captured(1).trimmed());
+                // Format: "OpenJudge - CS101 - 计算思维算法实践 - 首页"
+                // Take the first meaningful segment after "OpenJudge - "
+                if (t.startsWith(QStringLiteral("OpenJudge - "))) {
+                    QString after = t.mid(12); // strip "OpenJudge - "
+                    int dashPos = after.indexOf(QStringLiteral(" - "));
+                    if (dashPos > 0)
+                        groupTitle = after.left(dashPos).trimmed();
+                    else
+                        groupTitle = after;
+                } else {
+                    groupTitle = t;
+                }
+            }
+        }
+    }
+
     auto extractLinks = [&](const QString &sectionHtml,
                             QList<HomeworkItem> &out) {
         static const QRegularExpression ddlRx(
@@ -762,8 +866,12 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
 
     QRegularExpression titleRx(QStringLiteral("<title>([^<]+)</title>"));
     QRegularExpressionMatch titleMatch = titleRx.match(html);
-    if (titleMatch.hasMatch())
+    if (titleMatch.hasMatch()) {
         detail.title = decodeHtmlEntities(titleMatch.captured(1).trimmed());
+        // Strip "OpenJudge - " prefix — the raw title is "OpenJudge - ProblemName"
+        if (detail.title.startsWith(QStringLiteral("OpenJudge - ")))
+            detail.title = detail.title.mid(12);
+    }
 
     crawlerLog(QStringLiteral("parseProblemDetail title=%1").arg(detail.title));
     crawlerLog(QStringLiteral("  contains &lt;dt&gt;=%1, contains &lt;h3&gt;=%2, contains &lt;pre&gt;=%3")

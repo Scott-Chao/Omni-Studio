@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.17）
+## 功能说明文档（v0.15.19）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,14 +61,13 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增/修复 v0.15.17
-- **OpenJudge 服务器URL设置生效**：新增 `Crawler::setBaseUrl()` 方法，设置面板的"服务器URL"更改在 OpenJudge 面板构造函数和"刷新"按钮中生效——现有窗口内容不自动更新，点击刷新后按最新设置加载。
-- **OpenJudge 题目ID解析扩展**：`Crawler::fetchHomeworkProblems` 中的 `looksLikeProblemId` 检测新增「字母前缀 + 数字」格式支持（如 `T03094`、`M04089`），适配 cs101 等使用复合题号规则的 OpenJudge 小组。
-- **OpenJudge 主页解析优化**：`Crawler::parseMainPage` 在提取 `current-contest` 作业链接前自动剥离 `<table>` 块，避免某些小组（如 cs101）主页表格中嵌入的题目链接被错误提取为作业条目。
-- **OpenJudge 已结束作业修复**：
-  - `fetchPastPage()` 改用作用域内 `sectionHtml` 提取链接（原代码计算后未使用），新增 `<table id="pastContest">` 容器识别（适配 cs101 的 `/contests/past` 页面结构），当找到 `.past-list` 或 `#pastContest` 容器时跳过关键词过滤接受全部链接；
-  - `onPastPageReady()` 仅在返回结果非空时覆盖 `m_pastItems`，避免异步请求返回空列表导致已结束作业闪退消失；
-  - `onMainPageReady()` 不再丢弃主页已解析的已结束作业，立即显示的同时异步获取完整列表。
+### 新增/修复 v0.15.19
+- **OpenJudge 作业翻页支持**：`Crawler::fetchHomeworkProblems()` 新增 `<p class="page-bar">` 解析，检测 `<span class="pages">` 中的 `<a href="?page=N">` 链接提取最大页码，通过 `homeworkProblemsReady` 信号携带 `PageInfo` 分页状态；`OpenJudgeWidget::changePage()` 在 `OJ_PROBLEM_LIST` 状态下使用 `m_homeworkBaseUrl` + `m_homeworkPageInfo` 路由翻页请求；分页栏（上一页/下一页/页码标签）仅在多页时显示，单页作业自动隐藏。
+- **OpenJudge 作业标题修复**：`fetchHomeworkProblems()` 标题提取从 `<title>` 标签改为 `<div class="contest-title-tab">` 的第二个 `<h2>`，解决 `<title>` 固定为 "OpenJudge - OpenJudge - 题目" 的问题；回退到 `<title>` 作为 fallback。
+- **OpenJudge 题目标题修复**：`parseProblemDetail()` 对 `detail.title` 剥离 "OpenJudge - " 前缀，标题栏仅显示题目名。
+- **OpenJudge 小组标题提取**：`parseMainPage()` 新增 `<div class="group-name"><h1>` 提取小组名称，通过 `mainPageReady` 信号新增 `groupTitle` 参数传递。
+- **OpenJudge 列表页标题栏**：`OpenJudgeWidget` 新增 `m_titleBar`，在列表页顶部显示当前小组名或作业名，带底部边框分隔线，非交互式（`Qt::NoTextInteraction`）。
+- **OpenJudge 题目详情标题栏**：重构 `setupDetailPage()` 布局从 `QHBoxLayout` 改为 `QVBoxLayout`，顶端新增 `m_detailTitleBar` 显示题目标题，风格与列表页标题栏一致。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1156,10 +1155,10 @@
 **职责**：
 - 基于 `QNetworkAccessManager` + `QNetworkCookieJar` 的 HTTP 爬虫，目标站点通过 `ConfigManager` 配置（`open_judge.base_url`），支持运行时通过 `setBaseUrl()` 动态切换。
 - **登录流程**（PHP JSON API）：先 GET `/auth/login/` 建立 PHPSESSID 会话，再 POST 凭据到 `/api/auth/login/`（`email` + `password` 参数），解析 JSON 响应 `{"result":"SUCCESS"}`，成功后 GET 主页验证登录状态（检测用户名、退出链接等指标）。失败时自动回退到 CSRF 旧版登录（GET `/login/` → 提取 token → POST）。
-- `fetchMainPage()` 获取主页 HTML，`parseMainPage()` 解析"进行中的作业"（`<ul class="current-contest">`，自动剥离内部 `<table>` 避免 cs101 等小组的表格内题目链接被误提取）和"已结束的作业"（`<div class="past-contest">`）两部分，提取作业条目和"更多"分页链接。
+- `fetchMainPage()` 获取主页 HTML，`parseMainPage()` 解析"进行中的作业"（`<ul class="current-contest">`，自动剥离内部 `<table>` 避免 cs101 等小组的表格内题目链接被误提取）和"已结束的作业"（`<div class="past-contest">`）两部分，提取作业条目和"更多"分页链接；同时从 `<div class="group-name"><h1>` 提取小组名称（回退到 `<title>` 标签解析）。
 - `fetchPastPage(url)` 获取 `/contests/past` 分页，优先在 `<div class="past-list">` 或 `<table id="pastContest">` 作用域内提取比赛链接（自动接受域内全部链接），回退到全页扫描＋关键词过滤（`hw`、`practise`、`midexam`、`pool`、`contest`、`mockexam`、`final`），支持分页导航。
-- `fetchHomeworkProblems(url)` 获取指定作业的题目列表，过滤导航链接（排名、状态、提交等），自动跳过 user/profile/auth 等非题目路径段，保留题目编号链接（支持纯数字 `12`、字母 `A`、字母前缀+数字 `T03094` 三种格式），去重排序。
-- `fetchProblemDetail(url)` 获取题目详情 HTML，`parseProblemDetail()` 使用双策略（`<dt>/<dd>` 主策略 + `<h3>` 回退策略）提取章节（描述、输入、输出、样例输入、样例输出、提示），保留原始 HTML 结构供渲染。提取后通过 `fixBareLt` Lambda 将内容文本中的裸 `<` 字符（如 `1 < n <= 52`）转义为 `&lt;`，防止 Qt `QTextBrowser` 的严格 HTML 解析器将其误判为无效标签导致内容截断，同时保留真正的 HTML 标签（`<p>`、`<pre>` 等）。
+- `fetchHomeworkProblems(url)` 获取指定作业的题目列表，过滤导航链接（排名、状态、提交等），自动跳过 user/profile/auth 等非题目路径段，保留题目编号链接（支持纯数字 `12`、字母 `A`、字母前缀+数字 `T03094` 三种格式），去重排序。标题从 `<div class="contest-title-tab">` 的第二个 `<h2>` 提取（回退到 `<title>`）。新增分页解析：检测 `<p class="page-bar"><span class="pages">` 中的 `<a href="?page=N">` 链接提取最大页码并构造 `PageInfo`。
+- `fetchProblemDetail(url)` 获取题目详情 HTML，`parseProblemDetail()` 使用双策略（`<dt>/<dd>` 主策略 + `<h3>` 回退策略）提取章节（描述、输入、输出、样例输入、样例输出、提示），保留原始 HTML 结构供渲染。从 `<title>` 提取题目标题后自动剥离 "OpenJudge - " 前缀。提取后通过 `fixBareLt` Lambda 将内容文本中的裸 `<` 字符（如 `1 < n <= 52`）转义为 `&lt;`，防止 Qt `QTextBrowser` 的严格 HTML 解析器将其误判为无效标签导致内容截断，同时保留真正的 HTML 标签（`<p>`、`<pre>` 等）。
 - **代码提交**：`submitCode(problemUrl, sourceCode, languageId)` 先 GET 提交页面（`problemUrl/submit/`），解析隐藏字段 contestId、problemNumber 和 language radio 值，手动拼接 POST body（百分号编码，不使用 QUrlQuery 以避免 `+` → 空格问题），POST 到 `/api/solution/submitv2/`。发送原始源码而非 base64 编码，以避免某些竞赛实例的 base64 解码 bug 导致源码为空。
 - **结果轮询**：解析 JSON 响应中的 `redirect` URL 作为 `m_pollStatusUrl`，通过 QTimer（2s 间隔，最多 15 次 = 30s 超时）轮询解决方案页面。`doPollSubmissionStatus()` 提取 body 纯文本，用正则解析 `状态: Accepted`、`时间: 23ms`、`内存: 7272kB`。检测到 CE 时自动获取编译错误详情。
 - 静态工具方法 `decodeHtmlEntities()` 和 `stripHtmlTags()`（public static），供 `OpenJudgeWidget` 的样例提取使用。
@@ -1168,9 +1167,9 @@
 
 **信号**：
 - `loginSuccess()` / `loginFailed(const QString &error)`
-- `mainPageReady(const QList<HomeworkItem> &ongoing, const QList<HomeworkItem> &past, const PageInfo &pastPage)`
+- `mainPageReady(const QList<HomeworkItem> &ongoing, const QList<HomeworkItem> &past, const PageInfo &pastPage, const QString &groupTitle)`
 - `pastPageReady(const QList<HomeworkItem> &past, const PageInfo &pageInfo)`
-- `homeworkProblemsReady(const QString &homeworkTitle, const QList<HomeworkItem> &problems)`
+- `homeworkProblemsReady(const QString &homeworkTitle, const QList<HomeworkItem> &problems, const PageInfo &pageInfo)`
 - `problemDetailReady(const ProblemDetail &detail)`
 - `networkError(const QString &error)`
 - `submissionResultReady(const SubmissionResult &result)` / `submissionFailed(const QString &error)` / `submitPollTimeout()`
@@ -1208,13 +1207,15 @@
 **文件**：`openjudgewidget.h` / `openjudgewidget.cpp`
 
 **职责**：
-- `QWidget`（原为独立 `QMainWindow`），作为标签页直接嵌入 `TabManager`（非独立窗口），提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时背景、Toolbar、分隔线、列表控件、章节导航和题目内容实时同步。
+- `QWidget`（原为独立 `QMainWindow`），作为标签页直接嵌入 `TabManager`（非独立窗口），提供 OpenJudge 题目浏览与样例选择功能，全面接入主题系统（`refreshStyle()` 连接 `ThemeManager::themeChanged`），切换主题时背景、Toolbar、分隔线、列表控件、章节导航、题目内容、标题栏（列表页 + 详情页）实时同步。
 - 顶部工具栏（`m_toolbar`）：[选择此题目] [显示栏目/隐藏栏目] [← 返回] [stretch] [刷新] [用户名标签] [登录/退出登录]。Toolbar 背景使用 `activityBar.background`，选择按钮仅在题目详情页可见，使用 `badge.background` 突出显示。点击后切换为"已选择"状态（颜色变为 `button.background` 亮化），再次点击或查看其他题目时取消选中状态。"显示栏目/隐藏栏目"按钮（`m_toggleSidebarBtn`）仅在题目详情页可见，点击触发 `onToggleSidebar()` 切换 `m_sectionList` 可见性，文字随状态更新。
 - **登录状态管理**：`m_loginBtn` 同时作为"登录"和"退出登录"按钮，根据 `m_isLoggedIn` 状态切换文本。登录成功后显示绿色 `m_userLabel`（`用户: xxx`），`m_isLoggedIn = true`，emit `loginStateChanged(true, username)`。登录失败弹出警告。退出登录时调用 `Crawler::clearCookies()` 清除会话，同时清除自动登录凭据，匿名重新加载主页。
 - **自动登录**：构造函数接收 `SettingsManager*` 用于读写自动登录配置。`onReLogin()` 优先调用 `tryAutoLogin()` 尝试自动登录：若配置中 `autoLogin=true` 且凭据存在，直接调用 `Crawler::login()` 异步登录，不弹出对话框。登录成功后在 `onLoginSuccess()` 中将对话框勾选的凭据持久化（Base64 混淆）。自动登录失败时清除凭据并回退到手动登录对话框。退出登录时自动禁用 autoLogin 并清除凭据。
 - **服务器URL设置同步**：构造函数中读取 `SettingsManager::settingOverride("open_judge.base_url")` 并调用 `Crawler::setBaseUrl()` 应用覆盖；`onRefresh()` 刷新前也读取最新覆盖值，实现设置面板中"服务器URL"修改后点击刷新时使用新 URL。
+- **列表页标题栏**（`m_titleBar`）：列表页顶部显示当前上下文标题——作业列表页显示小组名（如"CS101"），题目列表页显示作业名（如"计算思维算法实践"）。底部带 `input.border` 颜色分隔线，12pt 粗体，非交互式。
 - 作业列表页（`OJ_HOMEWORK_LIST`）：展示"进行中的作业"和"已结束的作业"两个分区，使用 `HomeworkDelegate` 在右侧灰色显示截止日期。已结束作业优先使用主页解析的条目立即显示，同时异步获取 `/contests/past` 分页数据，异步返回非空时自动替换为完整列表；支持分页导航（上一页/下一页）。
-- 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
+- 题目列表页（`OJ_PROBLEM_LIST`）：展示指定作业下的所有题目，显示题目数量。支持分页导航（从 `PageInfo` 读取分页状态），多页时显示上一页/下一页/页码，单页时自动隐藏翻页控件。点击题目时自动判断作业是否进行中（对比 URL 与 `m_ongoingItems`），设置 `m_currentHomeworkOngoing` 标志。
+- **题目详情标题栏**（`m_detailTitleBar`）：详情页顶部显示题目名（已自动剥离 "OpenJudge - " 前缀），12pt 粗体，底部带分隔线，风格与列表页标题栏一致。
 - 题目详情页（`OJ_PROBLEM_DETAIL`）：左侧章节导航（`m_sectionList`，固定 100px，**默认隐藏**，通过工具栏"显示栏目"按钮切换可见性）+ 右侧连续滚动内容（`QTextBrowser`），无间隔紧凑布局。所有章节（描述、输入、输出、样例等）通过 `buildCombinedHtml()` 拼接为单个 HTML 文档一次性渲染，每节上方添加 `<h2>` 标题（与左侧一致），节间以 `<hr>` 分隔。**联动导航**：点击左侧栏目通过 `scrollToAnchor("section-N")` 跳转到对应位置；滚动右侧内容时通过 `onContentScrolled()` 实现 scroll-spy——根据 `m_sectionYOffsets` 记录的锚点 Y 偏移检测当前可见章节，自动更新左侧高亮（`m_scrollingFromClick` 防反馈锁避免循环触发）。`recordSectionPositions()` 在首次渲染、主题切换和侧栏显示时通过 `QTextDocument::find()` 顺序搜索各章节标题，记录 block 像素偏移。主题切换时 `refreshStyle()` 重建全文并恢复当前滚动位置。`onToggleSidebar()` 切换侧栏可见性并在显示时重新记录锚点位置以适应宽度变化。
 - 样例提取（`extractSamples()`）：从 `ProblemDetail.sections` 中匹配章节标题含"样例"+"输入"或"样例"+"输出"的章节，正则 `<pre[^>]*>(.*?)</pre>` 提取文本，`decodeHtmlEntities` 解码 HTML 实体，按 1:1 配对输入输出。
 - 样例缓存（`samplesCacheDir()` / `hasCachedSamples()` / `writeSamplesToCache()`）：按题目独立缓存，目录为 `{TempLocation}/SM-OJ-Cache/samples/{sanitizeFileName(title)}/`，参照 IDE 代码缓存的逐题隔离模式。`samplesCacheDir()` 返回当前题目的缓存子目录路径。`hasCachedSamples()` 检测该目录下是否已有 `.in` 文件，避免重复提取。`writeSamplesToCache()` 写入前仅清空当前题目子目录（不影响其他题目的缓存），文件命名 `testN.in` / `testN.out`，返回缓存目录路径。`onSelectClicked()` 选择题目时先通过 `hasCachedSamples()` 检测已有缓存，存在则直接复用，无需重新抓取页面提取样例。

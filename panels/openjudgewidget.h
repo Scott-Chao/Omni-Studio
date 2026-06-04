@@ -56,11 +56,13 @@ private slots:
     void onLoginFailed(const QString &error);
     void onMainPageReady(const QList<HomeworkItem> &ongoing,
                          const QList<HomeworkItem> &past,
-                         const PageInfo &pastPage);
+                         const PageInfo &pastPage,
+                         const QString &groupTitle);
     void onPastPageReady(const QList<HomeworkItem> &past,
                          const PageInfo &pageInfo);
     void onHomeworkProblemsReady(const QString &homeworkTitle,
-                                 const QList<HomeworkItem> &problems);
+                                 const QList<HomeworkItem> &problems,
+                                 const PageInfo &pageInfo);
     void onProblemDetailReady(const ProblemDetail &detail);
     void onNetworkError(const QString &error);
     void onItemClicked(QListWidgetItem *item);
@@ -139,6 +141,8 @@ private:
     QPushButton *m_nextPageBtn;
     QLabel *m_pageLabel;
     QWidget *m_paginationBar;
+    QLabel *m_titleBar = nullptr;
+    QLabel *m_detailTitleBar = nullptr;
 
     QWidget *m_toolbar = nullptr;
     QFrame *m_separator = nullptr;
@@ -167,8 +171,11 @@ private:
     QList<HomeworkItem> m_problemItems;
     ProblemDetail m_currentProblem;
     PageInfo m_pastPageInfo;
+    PageInfo m_homeworkPageInfo;
     QString m_currentHomeworkTitle;
     QString m_currentHomeworkUrl;
+    QString m_homeworkBaseUrl;
+    QString m_groupTitle;
     QString m_currentProblemUrl;
     bool m_currentHomeworkOngoing = false;
     bool m_currentProblemSelected = false;

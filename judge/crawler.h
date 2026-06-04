@@ -70,10 +70,13 @@ signals:
     void homeworkListReady(const QList<HomeworkItem> &items);
     void mainPageReady(const QList<HomeworkItem> &ongoing,
                        const QList<HomeworkItem> &past,
-                       const PageInfo &pastPage);
+                       const PageInfo &pastPage,
+                       const QString &groupTitle);
     void pastPageReady(const QList<HomeworkItem> &past,
                        const PageInfo &pageInfo);
-    void homeworkProblemsReady(const QString &homeworkTitle, const QList<HomeworkItem> &problems);
+    void homeworkProblemsReady(const QString &homeworkTitle,
+                               const QList<HomeworkItem> &problems,
+                               const PageInfo &pageInfo);
     void problemDetailReady(const ProblemDetail &detail);
     void networkError(const QString &error);
 
@@ -102,7 +105,8 @@ private:
     void parseMainPage(const QString &html,
                        QList<HomeworkItem> &ongoing,
                        QList<HomeworkItem> &past,
-                       PageInfo &pastPage);
+                       PageInfo &pastPage,
+                       QString &groupTitle);
     ProblemDetail parseProblemDetail(const QString &html);
 
     QTimer *m_pollTimer = nullptr;
