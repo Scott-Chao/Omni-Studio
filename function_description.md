@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.21）
+## 功能说明文档（v0.15.22）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,9 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增 v0.15.21
-- Markdown 默认预览模式：设置面板 → 编辑器 → 预览 → "默认打开方式"下拉框（不预览/预览/分屏预览）。打开新 Markdown 文件时自动应用所选预览状态，已打开文件不受影响。
+### 新增 v0.15.22
+- **标签拖拽预览闪烁修复**：修复拖拽标签页重排时 Markdown 预览窗口闪烁显示其他文件内容的问题。根因是 `CustomTabBar` 的 `mouseMoveEvent` 拦截了鼠标事件自行调用 `moveTab`，导致 Qt 内部拖拽状态机无法正确跟踪拖拽进度；释放鼠标时 Qt 以过期状态处理，触发了错误的 widget 切换。修复方式：将钳制坐标后的鼠标事件转发给 `QTabBar::mouseMoveEvent()` 以保持 Qt 拖拽状态机同步，`CustomTabBar` 仅通过 `DragOverlay` 负责浮动标签的视觉渲染，标签重排完全由 Qt 内部 `moveTab` 处理（与 v0.2 架构一致）。
+- **`DragOverlay` 渲染优化**：直接通过 `paintEvent` 在 widget 表面绘制标签和关闭按钮（使用 `QStylePainter` + `QWidget::render()`），替代预渲染到 `QPixmap` 的方案。确保文字使用 ClearType 子像素渲染，消除锯齿感。
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -270,11 +271,11 @@
 - 监听每个编辑器的 `modificationChanged` 和 `fileSaved` 信号，自动更新对应标签标题（修改时添加 `*` 号）。
 - 在关闭标签页时，检查编辑器是否已修改，弹出自定义保存提示对话框（显示当前文件名、自定义按钮文字"保存"、"不保存"、"取消"）。
 - 提供 `closeAllTabs()` 方法，用于主窗口关闭时逐个尝试关闭所有标签页，若任一用户取消则返回 `false` 阻止退出。
-- 使用自定义子类 `CustomTabBar` 替换默认标签栏，支持等宽/非等宽两种模式，默认非等宽（`setExpanding(false)`、`setElideMode(Qt::ElideNone)`）。通过 `setEqualWidth(bool)` 方法切换模式，实时生效。拖拽功能完全由 `CustomTabBar` 自行管理，不依赖 Qt 内置拖拽机制：
+- 使用自定义子类 `CustomTabBar` 替换默认标签栏，支持等宽/非等宽两种模式，默认非等宽（`setExpanding(false)`、`setElideMode(Qt::ElideNone)`）。通过 `setEqualWidth(bool)` 方法切换模式，实时生效。拖拽标签重排由 `CustomTabBar` 结合 Qt 内置拖拽机制与自定义视觉层实现（v0.15.22 起：`mouseMoveEvent` 将钳制坐标后的鼠标事件转发给 `QTabBar::mouseMoveEvent()` 以同步 Qt 拖拽状态机，避免预览窗口闪烁）：
   - **setEqualWidth**：等宽模式开启 `setExpanding(true)` + `setElideMode(Qt::ElideRight)`；非等宽模式关闭两者。切换后立即 `updateGeometry()` + `update()` 重绘。
   - **tabSizeHint**：等宽模式固定 140px 宽度；非等宽模式使用 `QTabBar::tabSizeHint` 原生值，标签按内容自适应宽度。
-  - **DragOverlay**：`QWidget` 子控件（`WA_TransparentForMouseEvents`），z-order 高于所有关闭按钮 widget。paintEvent 将 `CE_TabBarTab` + 关闭按钮 `QWidget::render()` 合成到 `QPixmap` 并显示于鼠标位置，实现浮动标签不被任何按钮遮挡。
-  - **mouseMoveEvent**：不再转发给 `QTabBar::mouseMoveEvent`（避免 Qt 内部拖拽幻影），改为手动 `moveTab`。等宽模式交换条件：拖拽中心完全退出当前标签 rect（滞回）+ 鼠标移动超过标签宽度 1/3（冷却距离）。非等宽模式交换条件：拖拽标签的边界超过目标标签中心 + 鼠标移动超过标签宽度 1/4（冷却距离）。
+  - **DragOverlay**：`QWidget` 子控件（`WA_TransparentForMouseEvents`），z-order 高于所有关闭按钮 widget。paintEvent 直接使用 `QStylePainter` 绘制 `CE_TabBarTab`，关闭按钮通过 `QWidget::render()` 就地渲染，无需预合成到 `QPixmap`，确保文字 ClearType 子像素渲染。拖拽开始时创建并显示，释放时销毁。
+  - **mouseMoveEvent**：将钳制坐标（标签整体不超出栏边界）后的鼠标事件构造副本转发给 `QTabBar::mouseMoveEvent()`，由 Qt 内部拖拽状态机处理标签重排。`CustomTabBar` 仅通过 `DragOverlay` + `paintEvent` ghost 提供视觉反馈，不再手动调用 `moveTab`。
   - **paintEvent**：开头 `fillRect(rect(), tab.inactiveBackground)` 填充整个标签栏背景。等宽模式：清除 option.text 后通过 style 绘制背景，再手动 `painter.drawText` 左对齐绘制文字（`tab.activeForeground` / `tab.inactiveForeground` 区分选中/非选中颜色），右侧省略号截断。非等宽预览标签（斜体）：同样手动绘制文字以利用标签完整宽度，避免 Qt style 内部文字区域过窄导致斜体被裁切。被拖标签原位以 30% 透明度 ghost 形式显示。标签循环之后：绘制相邻未激活标签间 1px 分割竖线（`tab.inactiveSeparator`，上下各留 6px）；绘制激活标签底部 2px 蓝色指示线（`tab.activeIndicator`）。DragOverlay 内同样绘制蓝色指示线。
   - **initStyleOption override**：为预览标签页设置 italic `fontMetrics`。
 - **`TabManager::paintEvent` override**：在 QTabWidget 级别绘制标签页栏水平条背景 —— `fillRect(0, 0, width(), tabBar()->geometry().bottom(), tab.inactiveBackground)`，覆盖全宽（包括无文件时和标签右侧空白）。`TabManager` 构造时 `setTabBar(new CustomTabBar(this))`。

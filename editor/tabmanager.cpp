@@ -586,45 +586,13 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
             clampedPos.setX(qBound(leftBound, clampedPos.x(), rightBound));
             m_dragCurrentPos = clampedPos;
 
-            int dragCenterX = clampedPos.x() - m_dragOffsetX + m_dragTabWidth / 2;
-            int targetIdx = tabAt(QPoint(dragCenterX, clampedPos.y()));
-
-            if (targetIdx >= 0 &&
-                qAbs(dragCenterX - m_lastMoveCenterX) >= (m_equalWidth ? m_dragTabWidth / 3 : m_dragTabWidth / 4)) {
-                const TabManager *tm = qobject_cast<const TabManager*>(parent());
-                if (tm && m_dragWidget) {
-                    int currentIdx = -1;
-                    for (int i = 0; i < count(); ++i) {
-                        if (tm->widget(i) == m_dragWidget) {
-                            currentIdx = i;
-                            break;
-                        }
-                    }
-                    if (currentIdx >= 0 && currentIdx != targetIdx) {
-                        bool pastThreshold = false;
-                        if (m_equalWidth) {
-                            // 等宽模式：滞回，拖拽中心必须完全退出当前标签 rect 才允许交换
-                            QRect curR = tabRect(currentIdx);
-                            if (targetIdx > currentIdx)
-                                pastThreshold = (dragCenterX > curR.right());
-                            else
-                                pastThreshold = (dragCenterX < curR.left());
-                        } else {
-                            // 非等宽模式：拖拽标签的边界超过目标标签中心时交换
-                            int targetCenterX = tabRect(targetIdx).center().x();
-                            if (targetIdx > currentIdx)
-                                pastThreshold = (dragCenterX + m_dragTabWidth / 2 > targetCenterX);
-                            else
-                                pastThreshold = (dragCenterX - m_dragTabWidth / 2 < targetCenterX);
-                        }
-
-                        if (pastThreshold) {
-                            moveTab(currentIdx, targetIdx);
-                            m_lastMoveCenterX = dragCenterX;
-                        }
-                    }
-                }
-            }
+            // 转发受钳制的事件给 QTabBar，使其拖拽状态机保持同步
+            QPoint globalClamped = mapToGlobal(clampedPos);
+            QMouseEvent clampedEvent(
+                event->type(), clampedPos, globalClamped,
+                event->button(), event->buttons(), event->modifiers()
+            );
+            QTabBar::mouseMoveEvent(&clampedEvent);
 
             update();
             return;
