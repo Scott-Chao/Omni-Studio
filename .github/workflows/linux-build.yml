@@ -32,41 +32,66 @@ jobs:
 
       - name: Bundle Qt libraries
         run: |
+          set -euo pipefail
           sudo apt-get install -y patchelf
 
           BIN="build/release/OmniStudio"
           DEPLOY="build/deploy"
           mkdir -p "$DEPLOY/lib" "$DEPLOY/plugins/platforms"
 
-          # Collect and copy Qt shared libs into lib/
-          for lib in $(ldd "$BIN" | grep -E 'Qt[6]' | awk '{print $3}'); do
-            [ -f "$lib" ] && cp -L "$lib" "$DEPLOY/lib/"
-          done
-
-          # Copy platform plugin (xcb) and its Qt dependencies
-          QT_PLUGIN_DIR=$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || echo "")
-          if [ -n "$QT_PLUGIN_DIR" ] && [ -f "$QT_PLUGIN_DIR/platforms/libqxcb.so" ]; then
-            cp -L "$QT_PLUGIN_DIR/platforms/libqxcb.so" "$DEPLOY/plugins/platforms/"
-            for lib in $(ldd "$QT_PLUGIN_DIR/platforms/libqxcb.so" | grep -E 'Qt[6]' | awk '{print $3}'); do
+          # Helper: copy a .so and all its Qt dependencies into lib/
+          copy_qt_deps() {
+            local lib
+            for lib in $(ldd "$1" 2>/dev/null | grep -oP '(?<==> )/\S+\.so\S*' | grep -E '/libQt6'); do
               [ -f "$lib" ] && cp -L "$lib" "$DEPLOY/lib/"
             done
+          }
+
+          # Collect Qt shared libs from the main binary
+          copy_qt_deps "$BIN"
+
+          # Use qmake6 to find canonical Qt installation paths
+          QT_PREFIX="$(qmake6 -query QT_INSTALL_PREFIX 2>/dev/null || true)"
+          QT_PLUGIN_DIR="$(qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null || true)"
+          QT_LIBEXEC_DIR="$(qmake6 -query QT_INSTALL_LIBEXECS 2>/dev/null || true)"
+
+          # Copy xcb platform plugin and its Qt dependencies
+          XCB_PLUGIN=""
+          if [ -n "$QT_PLUGIN_DIR" ] && [ -f "$QT_PLUGIN_DIR/platforms/libqxcb.so" ]; then
+            XCB_PLUGIN="$QT_PLUGIN_DIR/platforms/libqxcb.so"
+          elif [ -n "$QT_PREFIX" ] && [ -f "$QT_PREFIX/plugins/platforms/libqxcb.so" ]; then
+            XCB_PLUGIN="$QT_PREFIX/plugins/platforms/libqxcb.so"
+          fi
+          if [ -n "$XCB_PLUGIN" ]; then
+            cp -L "$XCB_PLUGIN" "$DEPLOY/plugins/platforms/"
+            copy_qt_deps "$XCB_PLUGIN"
           fi
 
-          # Copy WebEngine process and resources
-          WEBENGINE_PROC=$(find /usr/lib /usr/share -name "QtWebEngineProcess" 2>/dev/null | head -1)
-          if [ -n "$WEBENGINE_PROC" ]; then
-            cp -L "$WEBENGINE_PROC" "$DEPLOY/" 2>/dev/null || true
+          # Copy WebEngine process via canonical path, fallback to find
+          WEBENGINE_PROC=""
+          if [ -n "$QT_LIBEXEC_DIR" ] && [ -f "$QT_LIBEXEC_DIR/QtWebEngineProcess" ]; then
+            WEBENGINE_PROC="$QT_LIBEXEC_DIR/QtWebEngineProcess"
+          else
+            WEBENGINE_PROC="$(find /usr/lib /usr/share -name "QtWebEngineProcess" 2>/dev/null | head -1 || true)"
           fi
-          WEBENGINE_RES=$(find /usr/lib /usr/share -path "*/qt6/resources" -type d 2>/dev/null | head -1)
-          if [ -n "$WEBENGINE_RES" ]; then
-            cp -rL "$WEBENGINE_RES" "$DEPLOY/resources" 2>/dev/null || true
+          if [ -n "$WEBENGINE_PROC" ]; then
+            cp -L "$WEBENGINE_PROC" "$DEPLOY/"
+          fi
+
+          # Copy WebEngine resources (pak files, icudtl.dat) from qmake6 data path
+          WEBENGINE_RES=""
+          if [ -n "$QT_PREFIX" ] && [ -d "$QT_PREFIX/resources" ]; then
+            WEBENGINE_RES="$QT_PREFIX/resources"
+          else
+            WEBENGINE_RES="$(find /usr/lib /usr/share -maxdepth 5 -path "*/qt6/resources" -type d 2>/dev/null | head -1 || true)"
+          fi
+          if [ -n "$WEBENGINE_RES" ] && [ "$(ls -A "$WEBENGINE_RES" 2>/dev/null)" ]; then
+            cp -rL "$WEBENGINE_RES" "$DEPLOY/resources"
           fi
 
           # qt.conf tells Qt6 to look for plugins in the plugins/ subdirectory
-          cat > "$DEPLOY/qt.conf" << 'EOF'
-[Paths]
-Plugins = plugins
-EOF
+          echo '[Paths]' > "$DEPLOY/qt.conf"
+          echo 'Plugins = plugins' >> "$DEPLOY/qt.conf"
 
           # Copy binary and set rpath so it finds libs in ./lib/
           cp "$BIN" "$DEPLOY/"
