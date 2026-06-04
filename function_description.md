@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.15）
+## 功能说明文档（v0.15.16）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增 v0.15.15
-- **SMD Markdown Cell 代码块语法高亮**：SMD Markdown Cell 的渲染管线改用 `EditorWidget::preparePreviewContent(content(), false)` 替代原始 `content()` 直传，复用与 MD 预览完全一致的 C++ 端语法高亮管线（`preHighlightCodeBlocks` → `highlightCodeBlock`），代码块支持 C++/Python 启发式高亮着色；`no-cell` 关键字自动剥离（语言标签不再显示 `no-cell`）；`showRunButtons=false` 参数禁止 Cell 内代码块显示 ▶ Run 按钮（Markdown Cell 为非可执行上下文）。`preparePreviewContent`、`preHighlightCodeBlocks`、`highlightCodeBlock`、`processWikiLinks`、`injectHeadingAnchors` 改为 `public static`，供 `SmdCell::startRenderPipeline()` 外部调用
+### 修复 v0.15.16
+- **Python 语义高亮修复**：修正 `PythonSyntaxHighlighter` 的 semantic tokens 覆盖策略，允许 Jedi 语义标记覆盖启发式 regex 规则——类名（`Circle`、`Rectangle` 等构造调用）不再被函数调用模式 `\b\w+(?=\s*\()` 误着色为黄色（`syntax.functions`），恢复为正确的类型青色/绿色（`syntax.types`）；`self`/`cls` 参数恢复为浅蓝色（`syntax.parameters`）而非近白色（`syntax.pythonSelfCls` 暗色默认 `#DCDCDC`）
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -905,7 +905,7 @@
 - `setSemanticTokens(const QList<SemanticToken> &tokens)`：接收 CodeEditor 转发来的 Python semantic tokens，按行号索引存入 `QMap<int, QList<SemanticToken>> m_semanticTokens`，然后调用 `rehighlight()`。
 - `clearSemanticTokens()`：清空 semantic tokens 并重绘。
 - `formatForTokenType(const QString &type)`：将 token 类型映射为 `QTextCharFormat`——`function`/`method` → `m_functionFormat`（`syntax.functions` 黄色），`class`/`type`/`module` → `m_builtinFormat`（`syntax.types` 青色/绿色），`parameter`/`variable`/`property` → `m_parameterFormat`（`syntax.parameters` 浅蓝色），`namespace` 返回空格式不额外高亮以避免视觉噪音。
-- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，仅当目标位置的字符尚未被设置前景色（即未被 regex 规则、注释、字符串等高亮覆盖）时才应用 semantic token 格式。确保 semantic 高亮不会覆盖关键字、字符串等基本语法着色。
+- **合并策略**：`highlightBlock()` 末尾遍历当前 block 的 semantic tokens，优先保留关键字、字符串、注释等确定性语法着色——仅当语义标记的对应位置已被启发式规则（函数调用 `\b\w+(?=\s*\()` 或 `self`/`cls` 匹配）着色时允许覆盖，使 Jedi 提供的类型/参数信息能修正启发式误判。其余情况下保持原策略，确保语义高亮不会覆盖基本语法着色。
 
 **Token 来源**（Jedi 子进程，非 LSP）：
 - `PythonCompletionProvider` 将文件代码经 `sanitizeForPython()` 规范化（替换 `\r\n`/`\r` → `\n`、替换孤立 surrogate 为 U+FFFD）后，通过 **base64 编码**发送至 `completion_helper.py` 的 `tokens` action，避免 QJsonDocument 序列化时孤立 surrogate 破坏换行符导致行列号偏移。

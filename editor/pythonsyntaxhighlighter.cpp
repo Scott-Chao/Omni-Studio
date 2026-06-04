@@ -257,8 +257,15 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
             int midPoint = token.startChar + token.length / 2;
             if (midPoint < text.length()) {
                 QTextCharFormat existing = format(midPoint);
-                if (existing.hasProperty(QTextFormat::ForegroundBrush))
-                    continue;
+                if (existing.hasProperty(QTextFormat::ForegroundBrush)) {
+                    // Allow semantic tokens (more accurate) to override heuristic
+                    // rules: function-call pattern \b\w+(?=\s*\() and self/cls pattern.
+                    // Compare by color since these are the only heuristic rules.
+                    QColor fg = existing.foreground().color();
+                    if (fg != m_functionFormat.foreground().color()
+                        && fg != m_selfFormat.foreground().color())
+                        continue;
+                }
             }
 
             setFormat(token.startChar, token.length, fmt);
