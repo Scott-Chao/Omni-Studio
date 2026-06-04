@@ -457,6 +457,9 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         cppRules.append({QRegularExpression(buildAlt(cppControlKeywords())), {ctrlColor, false}});
         // Preprocessor
         cppRules.append({QRegularExpression(QStringLiteral("^\\s*#\\s*\\w+")), {preprocColor, false}});
+        // PascalCase heuristic — uppercase-starting identifiers are likely class/type names
+        cppRules.append({QRegularExpression(
+            QStringLiteral("\\b[A-Z][a-zA-Z0-9_]*[a-z][a-zA-Z0-9_]*\\b")), {typeColor, false}});
         // Function call heuristic — names before (  [lower priority than types]
         cppRules.append({QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()")), {funcColor, false}});
         // Common types (higher priority than function calls — known types keep their color)
@@ -538,6 +541,11 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
         pyRules.append({QRegularExpression(buildAlt(pyControlKeywords)), {ctrlColor, false}});
         // Builtins
         pyRules.append({QRegularExpression(buildAlt(pyBuiltins())), {typeColor, false}});
+        // Class declaration names — class Foo → Foo gets typeColor
+        pyRules.append({QRegularExpression(QStringLiteral("(?<=\\bclass\\s+)\\w+")), {typeColor, false}});
+        // PascalCase heuristic — uppercase-starting identifiers are likely class/type names
+        pyRules.append({QRegularExpression(
+            QStringLiteral("\\b(?!(?:True|False|None)\\b)[A-Z][a-zA-Z0-9_]*[a-z][a-zA-Z0-9_]*\\b")), {typeColor, false}});
         // Function call heuristic
         pyRules.append({QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()")), {funcColor, false}});
         // Numbers

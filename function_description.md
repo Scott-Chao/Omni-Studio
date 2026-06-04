@@ -1,4 +1,4 @@
-## 功能说明文档（v0.15.19）
+## 功能说明文档（v0.15.20）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -61,13 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增/修复 v0.15.19
-- **OpenJudge 作业翻页支持**：`Crawler::fetchHomeworkProblems()` 新增 `<p class="page-bar">` 解析，检测 `<span class="pages">` 中的 `<a href="?page=N">` 链接提取最大页码，通过 `homeworkProblemsReady` 信号携带 `PageInfo` 分页状态；`OpenJudgeWidget::changePage()` 在 `OJ_PROBLEM_LIST` 状态下使用 `m_homeworkBaseUrl` + `m_homeworkPageInfo` 路由翻页请求；分页栏（上一页/下一页/页码标签）仅在多页时显示，单页作业自动隐藏。
-- **OpenJudge 作业标题修复**：`fetchHomeworkProblems()` 标题提取从 `<title>` 标签改为 `<div class="contest-title-tab">` 的第二个 `<h2>`，解决 `<title>` 固定为 "OpenJudge - OpenJudge - 题目" 的问题；回退到 `<title>` 作为 fallback。
-- **OpenJudge 题目标题修复**：`parseProblemDetail()` 对 `detail.title` 剥离 "OpenJudge - " 前缀，标题栏仅显示题目名。
-- **OpenJudge 小组标题提取**：`parseMainPage()` 新增 `<div class="group-name"><h1>` 提取小组名称，通过 `mainPageReady` 信号新增 `groupTitle` 参数传递。
-- **OpenJudge 列表页标题栏**：`OpenJudgeWidget` 新增 `m_titleBar`，在列表页顶部显示当前小组名或作业名，带底部边框分隔线，非交互式（`Qt::NoTextInteraction`）。
-- **OpenJudge 题目详情标题栏**：重构 `setupDetailPage()` 布局从 `QHBoxLayout` 改为 `QVBoxLayout`，顶端新增 `m_detailTitleBar` 显示题目标题，风格与列表页标题栏一致。
+### 新增/修复 v0.15.20
+- 新增高亮规则，使得 Markdown 代码块中的类可以正确渲染
 
 ### 1. `MainWindow` - 主窗口控制器
 
