@@ -214,7 +214,7 @@ elseif(APPLE)
     )
     if(MACDEPLOYQT)
         add_custom_command(TARGET OmniStudio POST_BUILD
-            COMMAND "${MACDEPLOYQT}" "$<TARGET_FILE:OmniStudio>"
+            COMMAND "${MACDEPLOYQT}" "$<TARGET_FILE_DIR:OmniStudio>/../.."
                 -qmldir="${CMAKE_SOURCE_DIR}" -verbose=1
             COMMENT "Deploying Qt frameworks to app bundle..."
         )
