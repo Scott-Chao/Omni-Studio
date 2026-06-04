@@ -35,8 +35,44 @@ jobs:
 
       - name: Bundle .app with Qt frameworks
         run: |
-          $(brew --prefix qt)/bin/macdeployqt build/release/OmniStudio.app \
-            -qmldir=. -verbose=2
+          APP="build/release/OmniStudio.app"
+          MACDEPLOY="$(brew --prefix qt)/bin/macdeployqt"
+
+          # First pass: deploy frameworks for main app
+          "$MACDEPLOY" "$APP" -qmldir=. -verbose=2
+
+          # Second pass: deploy missing QtQuick for QtWebEngineProcess
+          # macdeployqt doesn't recursively scan inside nested bundles
+          # (QtWebEngineCore.framework -> Helpers/QtWebEngineProcess.app)
+          WEP="$(find "$APP" -path "*/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess" | head -1 || true)"
+          if [ -n "$WEP" ]; then
+            echo "=== Deploying QtQuick for QtWebEngineProcess ==="
+            "$MACDEPLOY" "$APP" -executable="$WEP" -verbose=1
+          fi
+
+          # Fix @executable_path/../Frameworks → @rpath/ in shared binaries
+          # macdeployqt uses @executable_path/../Frameworks for framework deps.
+          # This works for the main executable but NOT for nested processes
+          # like QtWebEngineProcess (where @executable_path resolves to its
+          # own bundle, 7 levels deep). Using @rpath lets each process resolve
+          # through its own LC_RPATH entries.
+          echo "=== Fixing framework dependency paths for nested processes ==="
+          find "$APP/Contents/Frameworks" ! -path "*/Helpers/*" -type f \
+              \( -name "*.dylib" -o -name "*.so" -o -name "Qt*" \) 2>/dev/null | while read binary; do
+            for dep in $(otool -L "$binary" 2>/dev/null | grep "@executable_path/../Frameworks" | awk '{print $1}'); do
+              # Strip prefix @executable_path/../Frameworks → @rpath, keep rest of path
+              install_name_tool -change "$dep" "@rpath${dep#@executable_path/../Frameworks}" "$binary" 2>/dev/null || true
+            done
+          done
+
+          # Add rpath from nested QtWebEngineProcess up to main Frameworks/
+          # (7 levels: MacOS → Contents → .app → Helpers → A → Versions → framework → Frameworks)
+          if [ -n "$WEP" ]; then
+            install_name_tool -add_rpath \
+              "@loader_path/../../../../../../../Frameworks" "$WEP" \
+              2>/dev/null || echo "  (rpath already set or not applicable)"
+            echo "=== QtWebEngineProcess QtQuick deployment complete ==="
+          fi
 
       - name: Remove broken signatures and re-sign
         run: |
