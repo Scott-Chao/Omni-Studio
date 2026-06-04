@@ -209,4 +209,14 @@ elseif(APPLE)
     set_target_properties(OmniStudio PROPERTIES MACOSX_BUNDLE TRUE)
     target_sources(OmniStudio PRIVATE core/macoswindow.mm)
     target_link_libraries(OmniStudio PRIVATE "-framework AppKit")
+    find_program(MACDEPLOYQT macdeployqt
+        HINTS "${CMAKE_PREFIX_PATH}/bin"
+    )
+    if(MACDEPLOYQT)
+        add_custom_command(TARGET OmniStudio POST_BUILD
+            COMMAND "${MACDEPLOYQT}" "$<TARGET_FILE:OmniStudio>"
+                -qmldir="${CMAKE_SOURCE_DIR}" -verbose=1
+            COMMENT "Deploying Qt frameworks to app bundle..."
+        )
+    endif()
 endif()
