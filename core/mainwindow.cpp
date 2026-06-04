@@ -205,7 +205,7 @@ MainWindow::MainWindow(QWidget *parent)
         ThemeManager::instance().loadTheme(savedTheme);
 
     // 设置窗口标题与无边框
-    setWindowTitle(tr("Smart Markdown"));
+    setWindowTitle(tr("OmniStudio"));
 #ifdef Q_OS_MACOS
     // macOS: keep native title bar (with traffic light buttons) but hide it
     // via setTitlebarAppearsTransparent in showEvent
@@ -1223,19 +1223,19 @@ MainWindow::MainWindow(QWidget *parent)
     // ----- macOS 原生菜单栏 -----
     QMenuBar *mb = menuBar();
 
-    // Application menu (Smart Markdown) — Qt/macOS auto-places these in the app menu
-    QMenu *appMenu = mb->addMenu(tr("Smart Markdown"));
-    QAction *aboutAct = appMenu->addAction(tr("关于 Smart Markdown"));
+    // Application menu (OmniStudio) — Qt/macOS auto-places these in the app menu
+    QMenu *appMenu = mb->addMenu(tr("OmniStudio"));
+    QAction *aboutAct = appMenu->addAction(tr("关于 OmniStudio"));
     connect(aboutAct, &QAction::triggered, this, [this]() {
-        QMessageBox::about(this, tr("关于 Smart Markdown"),
-            tr("Smart Markdown v1.0\n\n智能 Markdown 编辑器"));
+        QMessageBox::about(this, tr("关于 OmniStudio"),
+            tr("OmniStudio v1.0\n\n智能 Markdown 编辑器"));
     });
     appMenu->addSeparator();
     QAction *prefAct = appMenu->addAction(tr("偏好设置..."));
     prefAct->setShortcut(QKeySequence::Preferences);
     connect(prefAct, &QAction::triggered, this, &MainWindow::toggleSettings);
     appMenu->addSeparator();
-    QAction *quitAct = appMenu->addAction(tr("退出 Smart Markdown"));
+    QAction *quitAct = appMenu->addAction(tr("退出 OmniStudio"));
     quitAct->setShortcut(QKeySequence::Quit);
     connect(quitAct, &QAction::triggered, this, &QMainWindow::close);
 

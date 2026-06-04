@@ -177,7 +177,7 @@
         "remote_debugging_port": "9222"
     },
     "translation": {
-        "prefix": "smart-markdown_",
+        "prefix": "omnistudio_",
         "path": ":/i18n/"
     },
     "appearance": {

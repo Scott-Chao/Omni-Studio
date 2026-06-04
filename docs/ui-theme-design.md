@@ -1,12 +1,12 @@
 # UI 主题与窗口框架优化设计
 
-**目标**: 将 Smart-Markdown 的 UI 对齐到 VS Code 的布局质量和 Obsidian 的可主题化能力，同时保持架构轻量和可扩展。
+**目标**: 将 OmniStudio 的 UI 对齐到 VS Code 的布局质量和 Obsidian 的可主题化能力，同时保持架构轻量和可扩展。
 
 ---
 
 ## 1. 概要
 
-Smart-Markdown 当前有 30+ 个文件包含硬编码的 `setStyleSheet()` 颜色值，没有运行时主题切换，窗口标题栏使用系统标准图标。本规范引入：
+OmniStudio 当前有 30+ 个文件包含硬编码的 `setStyleSheet()` 颜色值，没有运行时主题切换，窗口标题栏使用系统标准图标。本规范引入：
 
 - `ThemeManager` 单例 — 集中管理所有颜色 token
 - 现代自定义标题栏 — 自绘 SVG 窗口按钮
@@ -247,7 +247,7 @@ namespace ThemeSpacing {
 2. 添加内置主题（新文件：2 JSON）— 2 文件
 3. 创建 `global.qss` — 1 文件
 4. 修改 `main.cpp` 添加 Fusion + ThemeManager 初始化 — 1 文件
-5. 更新 `smart-markdown.pro` 添加新文件 + 主题 QRC — 1 文件
+5. 更新 `omnistudio.pro` 添加新文件 + 主题 QRC — 1 文件
 
 ### 第二阶段：标题栏
 6. 创建 `TitleBarButton`（新文件：2）— 2 文件
@@ -275,7 +275,7 @@ namespace ThemeSpacing {
 - 新建 `thememanager.h/cpp`，实现基础框架：`loadTheme()`, `color()`, `availableThemes()`, `themeChanged()` 信号
 - 新建 `resources/themes/dark-vscode.json`（完整 token 列表）
 - 新建 `resources/themes/light-obsidian.json`
-- 更新 `smart-markdown.pro` 添加新文件
+- 更新 `omnistudio.pro` 添加新文件
 - **验证**：写一个临时 main 输出 `ThemeManager::instance().color("workbench.background").name()` → 打印 `#1E1E1E`
 
 ### Step 2: Fusion 样式 + 全局 QSS

@@ -29,7 +29,7 @@ HelpPanel::HelpPanel(QWidget *parent)
 
     // ---- section info ----
     m_sectionInfo = {
-        {"welcome",          tr("欢迎使用"),    QStringLiteral("Smart Markdown — 帮助文档")},
+        {"welcome",          tr("欢迎使用"),    QStringLiteral("OmniStudio — 帮助文档")},
         {"file-management",  tr("文件管理"),    QStringLiteral("文件管理")},
         {"editor",           tr("编辑器"),      QStringLiteral("编辑器")},
         {"markdown-preview",  tr("Markdown 预览"), QStringLiteral("Markdown 预览")},

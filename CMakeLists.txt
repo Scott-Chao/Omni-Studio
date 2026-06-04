@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SmartMarkdown LANGUAGES CXX)
+project(OmniStudio LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -173,16 +173,16 @@ set(HEADERS
     editor/tabmanager.h
 )
 
-qt_add_executable(SmartMarkdown
+qt_add_executable(OmniStudio
     ${SOURCES}
     ${HEADERS}
     core/mainwindow.ui
     resources/resources.qrc
 )
 
-target_include_directories(SmartMarkdown PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(OmniStudio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(SmartMarkdown PRIVATE
+target_link_libraries(OmniStudio PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -194,19 +194,19 @@ target_link_libraries(SmartMarkdown PRIVATE
 )
 
 if(WIN32)
-    target_compile_options(SmartMarkdown PRIVATE /utf-8)
-    target_link_libraries(SmartMarkdown PRIVATE user32 dwmapi)
+    target_compile_options(OmniStudio PRIVATE /utf-8)
+    target_link_libraries(OmniStudio PRIVATE user32 dwmapi)
     find_program(WINDEPLOYQT windeployqt
         HINTS "${CMAKE_PREFIX_PATH}/bin"
     )
     if(WINDEPLOYQT)
-        add_custom_command(TARGET SmartMarkdown POST_BUILD
-            COMMAND "${WINDEPLOYQT}" "$<TARGET_FILE:SmartMarkdown>" --qmldir .
+        add_custom_command(TARGET OmniStudio POST_BUILD
+            COMMAND "${WINDEPLOYQT}" "$<TARGET_FILE:OmniStudio>" --qmldir .
             COMMENT "Deploying Qt runtime DLLs..."
         )
     endif()
 elseif(APPLE)
-    set_target_properties(SmartMarkdown PROPERTIES MACOSX_BUNDLE TRUE)
-    target_sources(SmartMarkdown PRIVATE core/macoswindow.mm)
-    target_link_libraries(SmartMarkdown PRIVATE "-framework AppKit")
+    set_target_properties(OmniStudio PROPERTIES MACOSX_BUNDLE TRUE)
+    target_sources(OmniStudio PRIVATE core/macoswindow.mm)
+    target_link_libraries(OmniStudio PRIVATE "-framework AppKit")
 endif()

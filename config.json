@@ -1,6 +1,6 @@
 {
   "_schema_version": 1,
-  "_comment": "Smart-Markdown Configuration File. Place next to the executable.",
+  "_comment": "OmniStudio Configuration File. Place next to the executable.",
 
   "editor": {
     "base_font_size": 14,
@@ -201,7 +201,7 @@
   },
 
   "translation": {
-    "prefix": "smart-markdown_",
+    "prefix": "omnistudio_",
     "path": ":/i18n/"
   },
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-为 Smart-Markdown 添加 AI 功能，首先实现 AI 助教面板（Phase 1），
+为 OmniStudio 添加 AI 功能，首先实现 AI 助教面板（Phase 1），
 随后实现与 Judge 系统集成的智能错题本（Phase 2）。
 AI 通过远程 LLM API 通信（优先 Anthropic，同时支持 OpenAI 兼容提供商如 DeepSeek）。
 
@@ -36,7 +36,7 @@ Phase 2 (当前)    → 智能错题本
 ### Phase 2 分步实现
 
 新增文件：`ai/errorjournal.h/cpp`, `ai/errorlistpanel.h/cpp`
-修改文件：`ai/prompttemplates.h`, `ai/aipanel.h/cpp`, `judgepanel.h/cpp`, `mainwindow.cpp`, `smart-markdown.pro`
+修改文件：`ai/prompttemplates.h`, `ai/aipanel.h/cpp`, `judgepanel.h/cpp`, `mainwindow.cpp`, `omnistudio.pro`
 
 共 7 个步骤，每步均可独立编译和测试：
 
@@ -99,7 +99,7 @@ ai/
 - `settingspanel.h/cpp` — 新增"AI 服务"设置页
 - `configmanager.h/cpp` — AI 配置项（endpoint、model、max_tokens）
 - `settingsmanager.h` — API Key 持久化存储
-- `smart-markdown.pro` — 添加新源文件
+- `omnistudio.pro` — 添加新源文件
 
 ## UI：AI 面板布局
 

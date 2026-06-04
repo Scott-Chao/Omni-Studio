@@ -659,7 +659,7 @@
 
 **职责**：
 - 创建 `QApplication` 实例。
-- 根据系统 UI 语言尝试加载并安装对应的翻译文件（`smart-markdown_<locale>.qm`）
+- 根据系统 UI 语言尝试加载并安装对应的翻译文件（`omnistudio_<locale>.qm`）
 - 创建并显示 `MainWindow` 主窗口。
 - 进入事件循环。
 

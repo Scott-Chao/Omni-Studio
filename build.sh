@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build.sh — CMake build script for Smart-Markdown
+# build.sh — CMake build script for OmniStudio
 #
 # Usage:
 #   ./build.sh              # release build (default on Linux)
@@ -102,4 +102,4 @@ cmake --build "$BUILD_DIR" $JOBS_ARG
 # ── Done ────────────────────────────────────────────────────────────────
 echo ""
 echo "Build successful!"
-echo "  Binary: ${BUILD_DIR}/SmartMarkdown"
+echo "  Binary: ${BUILD_DIR}/OmniStudio"

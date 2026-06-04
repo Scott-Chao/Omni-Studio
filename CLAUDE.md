@@ -26,10 +26,10 @@ Use `*-release` preset for Release builds. Re-run configure when QRC changes.
 ### qmake (Windows-only)
 
 Run from "x64 Native Tools Command Prompt for VS 2022".
-- **Configure**: `qmake.exe -r smart-markdown.pro` (re-run when QRC changes)
+- **Configure**: `qmake.exe -r omnistudio.pro` (re-run when QRC changes)
 - **Build**: `jom.exe -f Makefile.Release -j22` (or `nmake` as fallback)
 - **Clean**: `jom.exe -f Makefile.Release clean` (or `nmake clean`)
-- **Deploy**: `windeployqt release/smart-markdown.exe --qmldir .`
+- **Deploy**: `windeployqt release/omnistudio.exe --qmldir .`
 
 ## Code Architecture
 

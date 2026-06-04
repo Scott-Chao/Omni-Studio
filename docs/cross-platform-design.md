@@ -33,13 +33,13 @@ Each step is a standalone commit. Steps 1–2 are Windows-only safe; Steps 3–6
 
 ## Phase 1: Build System (qmake → CMake)
 
-Retain `smart-markdown.pro` for Windows users. Add `CMakeLists.txt` at project root.
+Retain `omnistudio.pro` for Windows users. Add `CMakeLists.txt` at project root.
 
 **CMake structure:**
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-project(SmartMarkdown LANGUAGES CXX)
+project(OmniStudio LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Network Pdf PdfWidgets)
@@ -48,21 +48,21 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Network P
 set(SOURCES ...)
 set(HEADERS ...)
 
-qt_add_executable(SmartMarkdown ${SOURCES} ${HEADERS})
-qt_add_resources(SmartMarkdown resources/resources.qrc)
+qt_add_executable(OmniStudio ${SOURCES} ${HEADERS})
+qt_add_resources(OmniStudio resources/resources.qrc)
 
-target_link_libraries(SmartMarkdown PRIVATE
+target_link_libraries(OmniStudio PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Pdf Qt6::PdfWidgets
 )
 
 if(WIN32)
-    target_link_libraries(SmartMarkdown PRIVATE user32 dwmapi)
-    target_compile_definitions(SmartMarkdown PRIVATE ...)
+    target_link_libraries(OmniStudio PRIVATE user32 dwmapi)
+    target_compile_definitions(OmniStudio PRIVATE ...)
 elseif(APPLE)
-    target_link_libraries(SmartMarkdown PRIVATE "-framework System")
+    target_link_libraries(OmniStudio PRIVATE "-framework System")
 elseif(UNIX)
     find_package(XCB REQUIRED)
-    target_link_libraries(SmartMarkdown PRIVATE xcb)
+    target_link_libraries(OmniStudio PRIVATE xcb)
 endif()
 ```
 
@@ -136,13 +136,13 @@ CMake condition: `if(WIN32)` / `elseif(UNIX)` / `elseif(APPLE)` for linker flags
 | File | Change |
 |------|--------|
 | `CMakeLists.txt` (new) | Full CMake build, replaces qmake for CI/non-Windows |
-| `smart-markdown.pro` | Unchanged, kept for Windows users |
+| `omnistudio.pro` | Unchanged, kept for Windows users |
 | `core/mainwindow.cpp` | Add `#elif Q_OS_LINUX` and `#elif Q_OS_MACOS` branches |
 | `editor/codeeditor.cpp` | Refactor `EscNativeFilter` to use Qt-level event on non-Windows |
 | `judge/judgeengine.cpp` | Add Linux `/proc/pid/status` and macOS `task_info` branches |
 | `runner/compilerutils.h` | Add Linux g++/clang++ detection, macOS xcrun clang++ detection |
 | `core/thememanager.cpp` | Add Linux gsettings and macOS defaults detection |
-| `smart-markdown.pro` | No changes needed |
+| `omnistudio.pro` | No changes needed |
 
 ## Risk & Mitigation
 

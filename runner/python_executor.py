@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent Python executor for Smart-Markdown SMD cells.
+"""Persistent Python executor for OmniStudio SMD cells.
 
 Provides Jupyter-like cell execution: each cell's stdout/stderr is captured
 independently, while variables, imports, and functions share a persistent

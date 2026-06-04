@@ -2,7 +2,7 @@
 
 ## 概述
 
-为 Smart-Markdown 编辑器的 CodeEditor 组件添加代码补全、悬停提示和签名帮助功能，使编辑器更接近 VS Code 的开发体验。
+为 OmniStudio 编辑器的 CodeEditor 组件添加代码补全、悬停提示和签名帮助功能，使编辑器更接近 VS Code 的开发体验。
 
 支持两种语言：C++ 和 Python。C++ 使用最小化 LSP 协议对接 clangd，Python 使用 Jedi 库。
 
@@ -222,7 +222,7 @@ clangd --fallback-style=Google
 | `hovermanager.h/cpp` | 悬停管理器 + tooltip |
 | `signaturehelpmanager.h/cpp` | 签名帮助管理器 |
 | `completione_helper.py` | Python Jedi 辅助脚本 |
-| `smart-markdown.pro` | 添加新文件 |
+| `omnistudio.pro` | 添加新文件 |
 
 ---
 

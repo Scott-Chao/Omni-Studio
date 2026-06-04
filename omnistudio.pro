@@ -176,7 +176,7 @@ RESOURCES += \
 RC_ICONS = resources/icons/icon-app.ico
 
 TRANSLATIONS += \
-    smart-markdown_zh_CN.ts
+    omnistudio_zh_CN.ts
 CONFIG += lrelease
 CONFIG += embed_translations
 

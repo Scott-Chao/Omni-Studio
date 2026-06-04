@@ -1220,7 +1220,7 @@ bool EditorWidget::saveAsFile(const QString &defaultDir)
 
     QStringList filters;
     filters << tr("Markdown文件 (*.md)")
-            << tr("Smart Markdown文件 (*.smd)")
+            << tr("OmniStudio文件 (*.smd)")
             << tr("C++ 源文件 (*.cpp)")
             << tr("C++ 头文件 (*.h)")
             << tr("Python 文件 (*.py)")

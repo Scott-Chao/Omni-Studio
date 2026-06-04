@@ -356,7 +356,7 @@ QStringList ConfigManager::judgeInputExtensions() const
 QString ConfigManager::webEngineDebuggingPort() const { return stringValue("webengine.remote_debugging_port", "9222"); }
 
 // ---- Translation ----
-QString ConfigManager::translationPrefix() const { return stringValue("translation.prefix", "smart-markdown_"); }
+QString ConfigManager::translationPrefix() const { return stringValue("translation.prefix", "omnistudio_"); }
 QString ConfigManager::translationPath() const { return stringValue("translation.path", ":/i18n/"); }
 
 // ---- Colors ----

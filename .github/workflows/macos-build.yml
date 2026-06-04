@@ -22,12 +22,12 @@ jobs:
 
       - name: Bundle .app with Qt frameworks
         run: |
-          $(brew --prefix qt)/bin/macdeployqt build/release/SmartMarkdown.app \
+          $(brew --prefix qt)/bin/macdeployqt build/release/OmniStudio.app \
             -qmldir=. -verbose=2
 
       - name: Remove broken signatures and re-sign
         run: |
-          APP="build/release/SmartMarkdown.app"
+          APP="build/release/OmniStudio.app"
 
           # Remove all existing signatures recursively
           codesign --remove-signature "$APP" 2>/dev/null || true
@@ -46,7 +46,7 @@ jobs:
 
       - name: Verify signing
         run: |
-          APP="build/release/SmartMarkdown.app"
+          APP="build/release/OmniStudio.app"
           echo "=== CodeSign status ==="
           codesign -dvvv --no-strict "$APP" 2>&1 || true
           echo "=== Verification ==="
@@ -55,10 +55,10 @@ jobs:
       - name: Package .app as zip (preserve bundle structure)
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
-            build/release/SmartMarkdown.app SmartMarkdown-macOS.zip
+            build/release/OmniStudio.app OmniStudio-macOS.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SmartMarkdown-macOS
-          path: SmartMarkdown-macOS.zip
+          name: OmniStudio-macOS
+          path: OmniStudio-macOS.zip

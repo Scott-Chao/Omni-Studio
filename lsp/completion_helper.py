@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Jedi-based completion helper for Smart-Markdown.
+"""Jedi-based completion helper for OmniStudio.
 
 Communicates via stdin/stdout JSON lines protocol:
 
