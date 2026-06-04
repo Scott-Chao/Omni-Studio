@@ -33,6 +33,7 @@ int main(int argc, char *argv[])
             ConfigManager::instance().webEngineDebuggingPort().toUtf8());
 
     QApplication a(argc, argv);
+    a.setApplicationName(QStringLiteral("OmniStudio"));
 
     // Fusion style wrapped with compact tooltip proxy
     a.setStyle(new CompactTooltipStyle(QStyleFactory::create("Fusion")));
@@ -58,8 +59,8 @@ int main(int argc, char *argv[])
 
     MainWindow w;
 
-#ifndef Q_OS_WIN
-    // 预热 Qt WebEngine（Linux/macOS）：创建一个 QWebEngineView 作为
+#if defined(Q_OS_LINUX)
+    // 预热 Qt WebEngine（Linux）：创建一个 QWebEngineView 作为
     // 主窗口的子控件，
     // 使其在首次映射时创建 Wayland 子表面并初始化 Chromium 的 EGL 上下文。
     // 子表面创建+EGL 握手的闪屏代价在启动阶段支付，而非用户首次预览时。
@@ -70,6 +71,17 @@ int main(int argc, char *argv[])
         warmup->page()->load(QUrl(QStringLiteral("about:blank")));
         QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         // 热视图作为 MainWindow 子控件持续存活，不析构
+    }
+#elif defined(Q_OS_MACOS)
+    // 预热 Qt WebEngine（macOS）：创建一个 QWebEngineView 并强制创建原生
+    // NSView，确保 WebEngine 子进程在首个预览加载前完成初始化。
+    {
+        auto *warmup = new QWebEngineView(&w);
+        warmup->resize(1, 1);
+        warmup->move(-1, -1);
+        warmup->winId(); // 强制创建 NSView，触发 WebEngine 进程初始化
+        warmup->page()->load(QUrl(QStringLiteral("about:blank")));
+        QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     }
 #endif
     w.show();

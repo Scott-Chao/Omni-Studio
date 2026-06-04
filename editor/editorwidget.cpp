@@ -336,12 +336,17 @@ void EditorWidget::setPreviewMode(bool preview)
             // 用 setFixedSize 绕过布局，强制 WebEngineView 在 setHtml 时使用正确尺寸
             QSize correctSize = m_stackedWidget->size();
             m_previewView->setFixedSize(correctSize);
-#ifdef Q_OS_WIN
-            // Windows-only: force native HWND creation at correct size
+#if defined(Q_OS_WIN)
+            // Windows: force native HWND creation at correct size
             // to prevent Chromium from initializing at the default 100x30
             // (a QStackedWidget hidden-page layout artifact), which would
             // leave white margins on subsequent stretch.
             m_previewView->setAttribute(Qt::WA_NativeWindow, true);
+            m_previewView->winId();
+#elif defined(Q_OS_MACOS)
+            // macOS: force native NSView creation so that the WebEngine
+            // process is properly initialized before setHtml(), ensuring
+            // the qrc:// custom URL scheme serves subresources correctly.
             m_previewView->winId();
 #endif
 
@@ -2062,8 +2067,10 @@ void EditorWidget::setSplitPreviewMode(bool split)
             QSize splitViewSize(previewWidth, stackedSize.height());
             m_splitPreviewView->setFixedSize(splitViewSize);
             m_splitPreviewView->setAttribute(Qt::WA_NoSystemBackground, true);
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
             m_splitPreviewView->setAttribute(Qt::WA_NativeWindow, true);
+            m_splitPreviewView->winId();
+#elif defined(Q_OS_MACOS)
             m_splitPreviewView->winId();
 #endif
 
