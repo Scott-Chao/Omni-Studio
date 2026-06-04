@@ -3,16 +3,28 @@ name: Windows Build
 on:
   workflow_dispatch:
 
+env:
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  QT_VERSION: 6.11.0
+  QT_PATH: C:\Qt\6.11.0\msvc2022_64
+
 jobs:
   build:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
       - name: Install Qt6
         run: |
           pip install aqtinstall
-          aqt install-qt windows desktop 6.11.0 win64_msvc2022_64 -O C:\Qt
+          aqt install-qt windows desktop $env:QT_VERSION win64_msvc2022_64 -O C:\Qt
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -20,7 +32,24 @@ jobs:
       - name: Configure CMake
         run: cmake --preset win32-release
         env:
-          CMAKE_PREFIX_PATH: C:\Qt\6.11.0\msvc2022_64
+          CMAKE_PREFIX_PATH: ${{ env.QT_PATH }}
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
       - name: Build
         run: cmake --build build/release --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Deploy Qt runtime
+        run: |
+          New-Item -ItemType Directory -Path deploy -Force
+          Copy-Item build/release/OmniStudio.exe deploy/
+          & "$env:QT_PATH\bin\windeployqt.exe" deploy/OmniStudio.exe --qmldir .
+
+      - name: Package
+        run: Compress-Archive -Path deploy/* -DestinationPath OmniStudio-Windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmniStudio-Windows
+          path: OmniStudio-Windows.zip
