@@ -14,6 +14,8 @@
 
 尤其适合北京大学信科课程的学习场景——学习《程序设计实习》等课程时，你不再需要在笔记软件、IDE、OJ 网页和 AI 聊天窗口之间反复切换。OmniStudio 把这些能力全部整合在一起：它是笔记软件，是代码编辑器，是 OJ 客户端，也是 AI 助教。
 
+![整体界面](assets/screenshots/workspace-layout.png)
+
 ## 功能
 
 ### SMD 笔记本
@@ -24,6 +26,8 @@
 - C++ 单元格按 `main()` 函数自动分组编译，Python 单元格通过持久化进程保留跨单元格命名空间
 - 支持与 `.md` 格式双向无损转换
 
+![SMD 笔记本](assets/screenshots/smd-notebook.png)
+
 ### OpenJudge 集成
 
 北京大学《程序设计实习》等课程使用的在线评测平台，直接嵌入桌面：
@@ -31,6 +35,8 @@
 - 题目浏览、登录凭据管理、代码提交
 - 自动获取评测结果，错误用例 AI 辅助分析
 - 支持本地错题记录与复盘
+
+![OpenJudge 评测结果](assets/screenshots/openjudge-result.png)
 
 ### AI 助手
 
@@ -41,6 +47,8 @@
 - 错题本：自动保存失败用例，可一键发送给 AI 分析
 - 与本地评测引擎联动，分析运行时错误与逻辑错误
 
+![AI 助手对话](assets/screenshots/ai-assistant.png)
+
 ### 编辑器系统
 
 - **多模式编辑器**：支持 Markdown 源码编辑、实时渲染预览、分屏编辑预览、代码编辑、PDF 阅读及 SMD 单元格编辑六种模式。
@@ -48,6 +56,8 @@
 - **数学公式渲染**：集成 KaTeX，支持行内与块级 LaTeX 公式渲染。
 - **Mermaid 图表**：支持在 Markdown 中嵌入流程图、时序图、类图、甘特图等常用图表。
 - **多文档界面 (MDI)**：标签页式文档管理，支持等宽与非等宽两种标签布局模式。
+
+![分屏编辑：Markdown 源码与实时预览](assets/screenshots/split-preview.png)
 
 ### 代码辅助
 
