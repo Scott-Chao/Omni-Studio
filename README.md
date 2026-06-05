@@ -95,24 +95,145 @@
 | 代码补全 | LSP (clangd / Jedi) |
 | 公式渲染 | KaTeX |
 | 图表渲染 | Mermaid |
-| AI 接口 | OpenAI 兼容 API |
+| AI 接口 | OpenAI / Anthropic 兼容 API |
 
 ## 构建与运行
 
-### 源码构建
+### 系统要求
 
-> **系统要求**：Qt 6.11+、CMake 3.22+、C++17 编译器
+| 平台 | 编译器 | 构建工具 | Qt 6 |
+|------|--------|----------|------|
+| **Linux** | GCC 12+ / Clang 16+ | CMake 3.22+ + Make | [`qt6-base-dev`, `qt6-webengine-dev`, `qt6-pdf-dev`, `qt6-svg-dev`](https://doc.qt.io/qt-6/linux.html) |
+| **macOS** | Apple Clang (Xcode 15+) | CMake 3.22+ + Make | `brew install qt`（keg-only，需配置 `CMAKE_PREFIX_PATH`） |
+| **Windows** | MSVC 2022 (VS 2022) | CMake 3.22+ + Ninja | [在线安装](https://www.qt.io/download-qt-installer) 或 `aqtinstall` |
+
+> 所有平台均需 **CMake 3.22+** 和 **C++17 编译器**。Qt 版本要求 **6.10+**。
+
+### 依赖安装
+
+<details>
+<summary><b>Linux (Ubuntu/Debian)</b></summary>
 
 ```bash
-# macOS / Linux
-./build.sh
+sudo apt-get update
+sudo apt-get install -y qt6-base-dev qt6-webengine-dev qt6-pdf-dev qt6-svg-dev \
+    cmake g++
 
-# Windows (VS 2022 x64 Native Tools Command Prompt)
-cmake --preset win32-release
-cmake --build --preset win32-release
+# 可选：Wayland 支持
+sudo apt-get install -y qt6-wayland
+```
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+
+```bash
+# 安装 Xcode Command Line Tools
+xcode-select --install
+
+# 安装 Qt 6（keg-only，安装后需记录路径）
+brew install qt
+
+# CMake 可通过 Homebrew 或从 https://cmake.org/download/ 安装
+brew install cmake
 ```
 
-产物输出到 `./release/`。
+> Homebrew 将 Qt 安装为 keg-only 包，配置 CMake 时需指定路径：
+> ```bash
+> # 在 cmake 配置命令前添加
+> export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+> ```
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+**方式一：Qt 在线安装器（推荐）**
+1. 从 [qt.io/download-qt-installer](https://www.qt.io/download-qt-installer) 下载安装器
+2. 安装时勾选 **Qt 6.10+ → MSVC 2022 64-bit**，以及 `Qt WebEngine`、`Qt PDF`、`Qt SVG` 模块
+3. 安装 [Visual Studio 2022](https://visualstudio.microsoft.com/)（选择"使用 C++ 的桌面开发"工作负载）
+4. 安装 [Ninja](https://github.com/ninja-build/ninja/releases) 并加入 `PATH`
+
+**方式二：aqtinstall（CI/自动化）**
+
+```bash
+pip install aqtinstall
+aqt install-qt windows desktop 6.10.3 win64_msvc2022_64 -m qtwebengine qtpdf qtsvg
+```
+</details>
+
+### CMake 构建（跨平台，推荐）
+
+项目使用 CMake Presets 管理不同平台和构建类型。产物输出到 `./release/`。
+
+| 平台 | 构建类型 | Configure 命令 |
+|------|----------|---------------|
+| **Linux** | Release | `cmake --preset linux-release` |
+| | Debug | `cmake --preset linux-debug` |
+| **macOS** | Release | `cmake --preset macos-release` |
+| | Debug | `cmake --preset macos-debug` |
+| **Windows** (VS 2022 + Ninja) | Release | `cmake --preset win32-release` |
+| | Debug | `cmake --preset win32-debug` |
+
+**Release 构建示例：**
+
+```bash
+# 配置
+cmake --preset linux-release            # Linux
+CMAKE_PREFIX_PATH="$(brew --prefix qt)" cmake --preset macos-release   # macOS
+
+# Windows（需在 VS 2022 x64 Native Tools Command Prompt 中执行）
+cmake --preset win32-release
+
+# 构建
+cmake --build build/release -j$(nproc)                    # Linux / macOS
+cmake --build build/release -j $env:NUMBER_OF_PROCESSORS  # Windows
+```
+
+**Debug 构建**将 `*-release` 替换为对应的 `*-debug` 预设即可。
+
+> **注意**：修改 `.qrc` 资源文件后需重新执行 configure 步骤。
+
+### 便捷脚本（macOS / Linux）
+
+`build.sh` 自动检测平台并选择合适的 CMake Preset：
+
+```bash
+./build.sh              # Release 构建（默认）
+./build.sh debug        # Debug 构建
+./build.sh clean        # 删除 build 目录
+./build.sh rebuild      # 清理后重新构建
+```
+
+### qmake 构建（仅 Windows）
+
+在 **VS 2022 x64 Native Tools Command Prompt** 中执行：
+
+```bash
+qmake.exe -r omnistudio.pro
+jom.exe -f Makefile.Release -j22   # 或 nmake 作为备选
+```
+
+### 运行
+
+构建产物路径：
+
+| 平台 | 可执行文件 |
+|------|-----------|
+| **Linux** | `build/release/OmniStudio` |
+| **macOS** | `build/release/OmniStudio.app` |
+| **Windows** | `build/release/OmniStudio.exe` |
+
+macOS 上首次运行前需进行 ad-hoc 签名（QtWebEngine 要求）：
+
+```bash
+codesign --force --deep --sign - build/release/OmniStudio.app
+open build/release/OmniStudio.app
+```
+
+其他平台双击可执行文件或在终端中直接运行。
+
+> **提示**：AI 功能依赖 OpenAI / Anthropic 兼容 API。启动后进入设置面板配置 API Endpoint 与 Key。
 
 ## 许可证
 

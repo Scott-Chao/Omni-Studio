@@ -85,10 +85,20 @@ if [ "$PLATFORM" = "linux" ]; then
     fi
 fi
 
+# ── Platform-specific CMake args ──────────────────────────────────────
+CMAKE_ARGS=()
+if [ "$PLATFORM" = "macos" ]; then
+    # Homebrew installs Qt as keg-only — CMake can't find it without the prefix
+    QT_PREFIX="$(brew --prefix qt 2>/dev/null || true)"
+    if [ -n "$QT_PREFIX" ]; then
+        CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=$QT_PREFIX")
+    fi
+fi
+
 # ── CMake configure ────────────────────────────────────────────────────
 echo ""
 echo ">> Configuring..."
-cmake --preset "$PRESET" "$ROOT_DIR"
+cmake --preset "$PRESET" "${CMAKE_ARGS[@]}" "$ROOT_DIR"
 
 # ── CMake build ─────────────────────────────────────────────────────────
 echo ""
