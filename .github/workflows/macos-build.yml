@@ -2,6 +2,9 @@ name: macOS Build
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 env:
   CCACHE_BASEDIR: ${{ github.workspace }}
