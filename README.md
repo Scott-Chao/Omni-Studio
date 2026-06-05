@@ -1,12 +1,19 @@
 <div align="center">
 
+<img src="resources/icons/icon-app.svg" width="80" height="80" alt="OmniStudio">
+
 # OmniStudio
 
-[![Windows](https://img.shields.io/badge/Windows-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/your-org/omni-studio)
-[![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/your-org/omni-studio)
-[![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/your-org/omni-studio)
+[![Windows](https://img.shields.io/badge/Windows-0078D4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/s11phere/Omni-Studio)
+[![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/s11phere/Omni-Studio)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/s11phere/Omni-Studio)
 [![Qt](https://img.shields.io/badge/Qt-6.11-41CD52?style=flat-square&logo=qt&logoColor=white)](https://www.qt.io)
+[![C++17](https://img.shields.io/badge/C++-17-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![License](https://img.shields.io/badge/License-GPLv3-181717?style=flat-square)](LICENSE)
+
+[![Linux Build](https://img.shields.io/github/actions/workflow/status/s11phere/Omni-Studio/linux-build.yml?style=flat-square&label=Linux%20Build&logo=linux&logoColor=white&color=FCC624)](https://github.com/s11phere/Omni-Studio/actions/workflows/linux-build.yml)
+[![macOS Build](https://img.shields.io/github/actions/workflow/status/s11phere/Omni-Studio/macos-build.yml?style=flat-square&label=macOS%20Build&logo=apple&logoColor=white&color=000000)](https://github.com/s11phere/Omni-Studio/actions/workflows/macos-build.yml)
+[![Windows Build](https://img.shields.io/github/actions/workflow/status/s11phere/Omni-Studio/windows-build.yml?style=flat-square&label=Windows%20Build&logo=windows11&logoColor=white&color=0078D4)](https://github.com/s11phere/Omni-Studio/actions/workflows/windows-build.yml)
 
 </div>
 
@@ -243,6 +250,10 @@ open build/release/OmniStudio.app
 其他平台双击可执行文件或在终端中直接运行。
 
 > **提示**：AI 功能依赖 OpenAI / Anthropic 兼容 API。启动后进入设置面板配置 API Endpoint 与 Key。
+
+## 贡献
+
+欢迎 ⭐ Star、🐛 Issue 与 🔀 PR。
 
 ## 许可证
 
