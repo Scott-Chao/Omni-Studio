@@ -61,9 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增 v0.15.22
-- **标签拖拽预览闪烁修复**：修复拖拽标签页重排时 Markdown 预览窗口闪烁显示其他文件内容的问题。根因是 `CustomTabBar` 的 `mouseMoveEvent` 拦截了鼠标事件自行调用 `moveTab`，导致 Qt 内部拖拽状态机无法正确跟踪拖拽进度；释放鼠标时 Qt 以过期状态处理，触发了错误的 widget 切换。修复方式：将钳制坐标后的鼠标事件转发给 `QTabBar::mouseMoveEvent()` 以保持 Qt 拖拽状态机同步，`CustomTabBar` 仅通过 `DragOverlay` 负责浮动标签的视觉渲染，标签重排完全由 Qt 内部 `moveTab` 处理（与 v0.2 架构一致）。
-- **`DragOverlay` 渲染优化**：直接通过 `paintEvent` 在 widget 表面绘制标签和关闭按钮（使用 `QStylePainter` + `QWidget::render()`），替代预渲染到 `QPixmap` 的方案。确保文字使用 ClearType 子像素渲染，消除锯齿感。
+### 新增
+- 更新帮助文档
 
 ### 1. `MainWindow` - 主窗口控制器
 
