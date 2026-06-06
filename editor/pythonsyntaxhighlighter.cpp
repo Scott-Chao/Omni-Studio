@@ -47,6 +47,15 @@ void PythonSyntaxHighlighter::initFormats()
         m_rules.append(rule);
     }
 
+    // --- Function call format (before keywords/builtins so they can override it) ---
+    m_functionFormat.setForeground(cfg.syntaxFunctions());
+    {
+        HighlightingRule rule;
+        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
+        rule.format = m_functionFormat;
+        m_rules.append(rule);
+    }
+
     // --- Keyword format ---
     m_keywordFormat.setForeground(cfg.syntaxKeywords());
 
@@ -82,15 +91,6 @@ void PythonSyntaxHighlighter::initFormats()
         HighlightingRule rule;
         rule.pattern = QRegularExpression(QStringLiteral("\\b%1\\b").arg(b));
         rule.format = m_builtinFormat;
-        m_rules.append(rule);
-    }
-
-    // --- Function call format ---
-    m_functionFormat.setForeground(cfg.syntaxFunctions());
-    {
-        HighlightingRule rule;
-        rule.pattern = QRegularExpression(QStringLiteral("\\b(\\w+)(?=\\s*\\()"));
-        rule.format = m_functionFormat;
         m_rules.append(rule);
     }
 
@@ -258,13 +258,19 @@ void PythonSyntaxHighlighter::highlightBlock(const QString &text)
             if (midPoint < text.length()) {
                 QTextCharFormat existing = format(midPoint);
                 if (existing.hasProperty(QTextFormat::ForegroundBrush)) {
-                    // Allow semantic tokens (more accurate) to override heuristic
-                    // rules: function-call pattern \b\w+(?=\s*\() and self/cls pattern.
-                    // Compare by color since these are the only heuristic rules.
                     QColor fg = existing.foreground().color();
-                    if (fg != m_functionFormat.foreground().color()
-                        && fg != m_selfFormat.foreground().color())
+                    if (fg == m_functionFormat.foreground().color()) {
+                        // Function call heuristic (regex): only let semantic
+                        // function/method tokens override it. Undefined names
+                        // before '(' keep the yellow function color.
+                        if (token.type != QStringLiteral("function")
+                            && token.type != QStringLiteral("method"))
+                            continue;
+                    } else if (fg != m_selfFormat.foreground().color()) {
+                        // Not function-call and not self/cls → preserve
+                        // keyword/builtin/comment/string colors.
                         continue;
+                    }
                 }
             }
 
