@@ -483,11 +483,7 @@ bool FileExplorerWidget::eventFilter(QObject *obj, QEvent *event)
                 // 更新悬停文件夹索引
                 QModelIndex proxyIdx = m_treeView->indexAt(de->position().toPoint());
                 if (proxyIdx.isValid()) {
-                    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIdx);
-                    if (m_fileModel->isDir(srcIdx))
-                        m_dropTargetIndex = proxyIdx;
-                    else
-                        m_dropTargetIndex = QModelIndex();
+                    m_dropTargetIndex = proxyIdx;
                 } else {
                     m_dropTargetIndex = QModelIndex();
                 }
@@ -1057,11 +1053,8 @@ bool FileExplorerWidget::isDropTargetFolder(const QModelIndex &proxyIndex) const
 {
     if (!proxyIndex.isValid() || !m_dropTargetIndex.isValid())
         return false;
-    // 必须同一个索引且源模型对应的是目录
-    if (proxyIndex != m_dropTargetIndex)
-        return false;
-    QModelIndex srcIdx = m_sortProxy->mapToSource(proxyIndex);
-    return m_fileModel->isDir(srcIdx);
+    // 必须同一个索引（不需要是目录；拖拽到文件上表示放入同一父目录）
+    return proxyIndex == m_dropTargetIndex;
 }
 
 void FileExplorerWidget::refreshTree()

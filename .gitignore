@@ -99,6 +99,7 @@ settings.local.json
 
 # Temporary files
 *.tmp
+Testing/
 
 # Claude Code
 .claude/
