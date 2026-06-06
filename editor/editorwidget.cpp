@@ -12,6 +12,7 @@
 #include "config/settingsmanager.h"
 #include <QFile>
 #include <QTextStream>
+#include <QBuffer>
 #include <QUuid>
 #include <QStandardPaths>
 #include <QDir>
@@ -1105,7 +1106,19 @@ bool EditorWidget::loadFile(const QString &filePath)
         m_stackedWidget->setCurrentIndex(m_stackedWidget->indexOf(m_pdfView));
         applyZoom();
         setModified(false);
-        m_pdfDocument->load(filePath);
+        // 将 PDF 数据读入内存后关闭文件句柄，避免 QPdfDocument 保持文件锁定，
+        // 导致文件树中无法重命名或删除已打开的 PDF。
+        {
+            QFile file(filePath);
+            if (file.open(QIODevice::ReadOnly)) {
+                QByteArray pdfData = file.readAll();
+                file.close();
+                auto *buffer = new QBuffer;
+                buffer->setData(pdfData);
+                buffer->open(QIODevice::ReadOnly);
+                m_pdfDocument->load(buffer); // QPdfDocument 接管 buffer 所有权
+            }
+        }
         emit fileLoaded(filePath);
         return true;
     }
@@ -1743,6 +1756,8 @@ void EditorWidget::setFilePath(const QString &newPath) {
     EditorMode newMode;
     if (ext == QStringLiteral("smd"))
         newMode = SmdEdit;
+    else if (ext == QStringLiteral("pdf"))
+        newMode = PdfView;
     else
         newMode = LanguageUtils::languageForExtension(ext).isEmpty()
                       ? MarkdownEdit : CodeEdit;
@@ -1754,7 +1769,11 @@ void EditorWidget::setFilePath(const QString &newPath) {
     // signals so setPlainText doesn't flash an unsaved indicator.
     m_loading = true;
     {
-        if (newMode == SmdEdit) {
+        if (newMode == PdfView) {
+            // PDF: switch back to pdfView without reloading — data is held
+            // in memory via QBuffer and is unaffected by the rename.
+            m_stackedWidget->setCurrentWidget(m_pdfView);
+        } else if (newMode == SmdEdit) {
             m_smdEditor->setFilePath(normalized);
             if (modeChanged) m_smdEditor->setPlainText(oldContent);
             m_stackedWidget->setCurrentWidget(m_smdEditor);
