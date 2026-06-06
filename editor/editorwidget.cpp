@@ -2060,12 +2060,15 @@ void EditorWidget::setSplitPreviewMode(bool split)
         if (!m_splitPreviewReady) {
             // 关键修复：确保分屏预览的 QWebEngineView 在 setHtml 前有正确的尺寸
             // 与全屏预览相同的问题：QStackedWidget 不会为隐藏页面更新子控件尺寸
+            // 注意：只用 setFixedWidth 固定宽度，不固定高度。
+            // 固定高度会抬高 splitter 的 minimumHeight → 堆叠至 MainWindow 抬高窗口最小高度，
+            // 而 loadFinished 释放后窗口不会自动收缩回原尺寸，导致反复进入/退出分屏时
+            // 窗口底部每次向下扩展若干像素。
             QSize stackedSize = m_stackedWidget->size();
             int ratio = SettingsManager::instance().value("preview.split_preview_ratio",
                            ConfigManager::instance().previewSplitPreviewRatio()).toInt();
             int previewWidth = qMax(stackedSize.width() * ratio / 100, 100);
-            QSize splitViewSize(previewWidth, stackedSize.height());
-            m_splitPreviewView->setFixedSize(splitViewSize);
+            m_splitPreviewView->setFixedWidth(previewWidth);
             m_splitPreviewView->setAttribute(Qt::WA_NoSystemBackground, true);
 #if defined(Q_OS_WIN)
             m_splitPreviewView->setAttribute(Qt::WA_NativeWindow, true);
