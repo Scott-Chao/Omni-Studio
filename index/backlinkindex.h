@@ -28,7 +28,8 @@ public:
     static BacklinkData buildFromPath(const QString &rootPath,
                                       const QMap<QString, QStringList> &fileIndex);
     static QString resolveTarget(const QString &linkName, const QString &rootPath,
-                                 const QMap<QString, QStringList> &fileIndex);
+                                 const QMap<QString, QStringList> &fileIndex,
+                                 const QString &currentDir = {});
 
 private:
     // target absolute path → list of source file paths that link to it

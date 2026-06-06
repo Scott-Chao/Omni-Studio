@@ -62,7 +62,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
 ### 修复
-- 修复打开的 PDF 文件无法正常关闭或重命名的问题
+- 修复反向链接构建错误
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -524,7 +524,7 @@
 - `void onFileRenamed(const QString &oldPath, const QString &newPath)`：迁移索引中的路径信息。同步更新 `m_backlinks` 的 target key 和值列表中的 source 路径引用，以及 `m_forwardLinks` 值列表中的 target 路径引用，确保后续 `rebuildFile → removeFile` 能找到正确的 target 进行清理。
 - `void onFileDeleted(const QString &path)`：从索引中移除已删除文件，O(1)。
 - `QStringList backlinksFor(const QString &filePath) const`：查询指定文件的来源列表，O(1)。
-- `static QString resolveTarget(const QString &linkName, const QString &rootPath, const QMap<QString, QStringList> &fileIndex)`：静态方法，将 WikiLink 文本解析为目标文件绝对路径（不依赖实例状态，可在后台线程安全调用）。
+- `static QString resolveTarget(const QString &linkName, const QString &rootPath, const QMap<QString, QStringList> &fileIndex, const QString &currentDir = {})`：静态方法，将 WikiLink 文本解析为目标文件绝对路径（不依赖实例状态，可在后台线程安全调用）。按优先级依次尝试：当前目录精确匹配 → 根目录精确匹配 → 全局索引 baseName 查找 → 最短路径决胜。
 
 **内部数据结构**：
 - `QMap<QString, QStringList> m_backlinks`：目标绝对路径 → 来源绝对路径列表。

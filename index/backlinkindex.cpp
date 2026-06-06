@@ -47,9 +47,11 @@ BacklinkIndex::BacklinkData BacklinkIndex::buildFromPath(const QString &rootPath
 
         QSet<QString> targets;
         QRegularExpressionMatchIterator mit = wikiRegExp.globalMatch(content);
+        QFileInfo fi(filePath);
+        QString currentDir = fi.absolutePath();
         while (mit.hasNext()) {
             QRegularExpressionMatch match = mit.next();
-            QString resolved = resolveTarget(match.captured(1), rootPath, fileIndex);
+            QString resolved = resolveTarget(match.captured(1), rootPath, fileIndex, currentDir);
             if (!resolved.isEmpty() && resolved != filePath)
                 targets.insert(resolved);
         }
@@ -157,10 +159,12 @@ void BacklinkIndex::addFileLinks(const QString &filePath, const QString &rootPat
 
     QSet<QString> targets;
     QRegularExpressionMatchIterator it = wikiRegExp.globalMatch(content);
+    QFileInfo fi(filePath);
+    QString currentDir = fi.absolutePath();
     while (it.hasNext()) {
         QRegularExpressionMatch match = it.next();
         QString linkName = match.captured(1);
-        QString resolved = resolveTarget(linkName, rootPath, fileIndex);
+        QString resolved = resolveTarget(linkName, rootPath, fileIndex, currentDir);
         if (!resolved.isEmpty() && resolved != filePath) {
             targets.insert(resolved);
         }
@@ -176,17 +180,28 @@ void BacklinkIndex::addFileLinks(const QString &filePath, const QString &rootPat
 }
 
 QString BacklinkIndex::resolveTarget(const QString &linkName, const QString &rootPath,
-                                      const QMap<QString, QStringList> &fileIndex)
+                                      const QMap<QString, QStringList> &fileIndex,
+                                      const QString &currentDir)
 {
-    // 1. Exact path under root - try known text extensions
     const QStringList exts = TextFileUtils::textExtensions();
+
+    // 1. Check current directory first (prefer files co-located with the source)
+    if (!currentDir.isEmpty()) {
+        for (const QString &ext : exts) {
+            QString localPath = currentDir + "/" + linkName + "." + ext;
+            if (QFile::exists(localPath))
+                return QDir::cleanPath(localPath);
+        }
+    }
+
+    // 2. Exact path under root
     for (const QString &ext : exts) {
         QString directPath = rootPath + "/" + linkName + "." + ext;
         if (QFile::exists(directPath))
             return QDir::cleanPath(directPath);
     }
 
-    // 2. Index lookup by base name (same logic as MainWindow::findWikiTarget)
+    // 3. Index lookup by base name
     QString baseName = QFileInfo(linkName).completeBaseName();
     if (!fileIndex.contains(baseName)) return {};
 
@@ -194,7 +209,7 @@ QString BacklinkIndex::resolveTarget(const QString &linkName, const QString &roo
     if (candidates.isEmpty()) return {};
     if (candidates.size() == 1) return candidates.first();
 
-    // 3. Multiple matches → deterministic shortest-path tiebreaker
+    // 4. Multiple matches → deterministic shortest-path tiebreaker
     QString best = candidates.first();
     int minDepth = best.count('/');
     for (const QString &path : candidates) {
