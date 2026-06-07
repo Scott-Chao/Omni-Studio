@@ -34,6 +34,11 @@
 #include <QAbstractTextDocumentLayout>
 #include <QTextBlock>
 #include <QMouseEvent>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QEventLoop>
+#include <QPixmap>
 
 // ===== HomeworkDelegate: draws deadline right-aligned =====
 class HomeworkDelegate : public QStyledItemDelegate {
@@ -480,9 +485,43 @@ void OpenJudgeWidget::showDetailPage(const ProblemDetail &detail)
     if (!detail.sections.isEmpty()) {
         m_sectionList->setCurrentRow(0);
         m_currentSectionIndex = 0;
-        m_sectionContent->setHtml(buildCombinedHtml(detail));
+
+        QString html = buildCombinedHtml(detail);
+        m_sectionContent->setHtml(html);
         m_sectionContent->scrollToAnchor(QStringLiteral("section-0"));
         QTimer::singleShot(0, this, [this]() { recordSectionPositions(); });
+
+        // Asynchronously fetch remote images so they render in QTextBrowser
+        {
+            QRegularExpression imgRe(QStringLiteral("<img[^>]*src=\"([^\"]+)\""),
+                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+            auto imgIt = imgRe.globalMatch(html);
+            while (imgIt.hasNext()) {
+                QUrl url(imgIt.next().captured(1));
+                if (url.scheme() == "http" || url.scheme() == "https") {
+                    auto *mgr = new QNetworkAccessManager(this);
+                    QNetworkRequest req(url);
+                    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                                     QNetworkRequest::NoLessSafeRedirectPolicy);
+                    QNetworkReply *reply = mgr->get(req);
+                    connect(reply, &QNetworkReply::finished, this,
+                        [this, reply, url]() {
+                            if (reply->error() == QNetworkReply::NoError) {
+                                QPixmap pixmap;
+                                if (pixmap.loadFromData(reply->readAll())) {
+                                    m_sectionContent->document()->addResource(
+                                        QTextDocument::ImageResource, url, pixmap);
+                                    m_sectionContent->document()->markContentsDirty(
+                                        0, m_sectionContent->document()->characterCount());
+                                    m_sectionContent->viewport()->update();
+                                }
+                            }
+                            reply->deleteLater();
+                            reply->manager()->deleteLater();
+                        });
+                }
+            }
+        }
     }
 
     // Exit IDE mode when switching to a new problem
