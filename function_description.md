@@ -61,8 +61,8 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增
-- OpenJudge 题目浏览可以正常加载图片
+### 修复
+- Markdown 预览模式同一行内容会优先占据视图宽度
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -327,7 +327,7 @@
   内部维护一份保存/加载时的原始内容副本，当文本内容变化且停止输入 300ms 后自动与原始内容比对；若两者一致则自动清除修改标记，避免"输入再删除"导致的误标记。
 - 支持从文件加载内容 (`loadFile`) 和将内容保存到文件 (`saveFile` / `saveAsFile`)。
 - 发出 `fileLoaded`、`fileSaved` 和 `modificationChanged` 信号，便于标签管理器监听状态变化（例如更新标签标题中的星号）。
-- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 `QWebEngineView::setZoomFactor()` 整体缩放页面（含 SVG 图表和数学公式）。
+- 内置字体缩放功能：维护缩放因子，提供 `zoomIn`/`zoomOut`/`zoomReset` 方法。编辑器缩放通过 `QFont` 与 `QTextCursor::mergeCharFormat` 保证全文包括代码块字号同步；代码编辑模式下缩放后调用 `CodeEditor::refreshLineNumberArea()` 同步更新行号区域；预览缩放通过 JavaScript 设置 `document.body.style.zoom` CSS 属性实现（替代 `QWebEngineView::setZoomFactor()`，因为 Chromium ZoomController 缩小后不触发重排，CSS zoom 是同步 DOM 变更，始终触发正确重排），整体缩放页面（含 SVG 图表和数学公式）。
   缩放操作通过临时阻断文档信号并在完成后恢复修改状态，确保不会导致文件被错误标记为已修改。
 - 预览内容预处理：`preparePreviewContent()` 统一编排预处理管线——先调用 `preHighlightCodeBlocks()` 对 fenced 代码块进行 C++ 端语法高亮（`highlightCodeBlock()` 使用直接正则匹配 + ConfigManager 颜色生成内联样式 HTML，经 Base64 编码后以 ````highlighted``` 自定义围栏块形式交给 marked.js 解码透传），再调用 `processWikiLinks()` 将 `[[Name]]` 转换为 `<a href="wikilink:编码目标">`（使用递归正则 `\[\[((?:[^\[\]]|\[(?1)\])*)\]\]`，链接目标通过 `QUrl::toPercentEncoding` 编码），接着通过 `TagIndex::processTagsForPreview()` 将 `#tag` 转换为 `<a href="tag:tag">#tag</a>`，最后转义 `</script>` 防止 HTML 注入。自定义 `PreviewPage`（继承 `QWebEnginePage`）重写 `acceptNavigationRequest()` 拦截 `wikilink:`、`tag:`、`runblock:` scheme 的导航请求并发出对应信号，外部链接交由系统浏览器打开。
 - LaTeX 数学公式支持：通过 KaTeX 自动渲染 `$...$`（行内）和 `$$...$$`（块级）数学公式，支持 `\(...\)` 和 `\[...\]` 备用定界符。
@@ -380,7 +380,7 @@
 - 主窗口通过 `setPreviewMode` 控制预览状态，并将预览按钮的勾选状态与当前编辑器同步。
 - 在构造函数中对 `m_textEdit` 的 **viewport** 和 `m_codeEditor` 的 **viewport** 安装事件过滤器，拦截 `QWheelEvent`（Ctrl修饰）和 `QNativeGestureEvent`（缩放手势），统一转向 `zoomIn()`/`zoomOut()`。`m_previewView` 的事件过滤器在 `ensurePreviewView()` 创建时安装，通过 `QTimer::singleShot` 延迟安装到其 `focusProxy()`（Chromium 内部输入控件），并在首次页面 `loadFinished` 后重新安装，确保预览区的 Ctrl+滚轮缩放也能被正确拦截。
 - WebEngine 视图采用懒创建（`ensurePreviewView()`）并在退出预览时释放（`destroyPreviewView()` / `destroySplitPreviewWidgets()`），避免无预览时占用 Chromium 进程内存。所有 WebEngine 指针访问均做 null 检查，`loadFinished` 回调包含 `m_previewView` 判空保护，`refreshPreviewTheme()` 在无预览时静默跳过。
-- `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 `QWebEngineView::setZoomFactor()` 缩放整个预览页面（含 SVG 图表和数学公式）。
+- `applyZoom` 在模式切换或缩放变化时同步编辑区的字体，并通过 JavaScript 设置 `document.body.style.zoom` 缩放整个预览页面（替代 `QWebEngineView::setZoomFactor()`，CSS zoom 为同步 DOM 变更，缩放前后均正确触发重排）。
 
 ---
 
@@ -1931,7 +1931,7 @@ enum class MessageRole { User, Assistant, System };
 
 **相关文件**：
 - `compilererrorparser.h`（新增）：编译器/Python 错误解析器
-- `preview-template.html`（修改）：CSS 波浪线样式 + JS `applyBlockDiagnostics`/`clearBlockDiagnostics` + blockIndex 传递
+- `preview-template.html`（修改）：CSS 波浪线样式 + JS `applyBlockDiagnostics`/`clearBlockDiagnostics` + blockIndex 传递。文本换行修复：移除 body `max-width:960px` 限制使内容填满视区宽度；`marked.use({breaks:false})` 防止 markdown 源文件硬换行产生虚假 `<br>` 导致行无法合并
 - `mainwindow.h/.cpp`（修改）：`m_mdDiagnostics`/`m_isRunningCodeBlock`/`m_processManuallyStopped` 等状态，`parseAndShowBlockDiagnostics()`/`loadMdDiagnosticsForCurrentTab()` 方法，`currentChanged` 标签切换 MD 逻辑
 - `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
 

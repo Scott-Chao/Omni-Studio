@@ -1590,11 +1590,18 @@ void EditorWidget::applyZoom()
         cursor.mergeCharFormat(fmt);
     }
 
+    auto applyCssZoom = [](QWebEngineView *view, qreal factor) {
+        if (view && view->page()) {
+            QString js = QString("document.body.style.zoom = '%1'")
+                             .arg(factor, 0, 'f', 2);
+            view->page()->runJavaScript(js);
+        }
+    };
     if (m_previewMode && m_previewView) {
-        m_previewView->setZoomFactor(m_zoomFactor);
+        applyCssZoom(m_previewView, m_zoomFactor);
     }
     if (m_splitPreview && m_splitPreviewView) {
-        m_splitPreviewView->setZoomFactor(m_zoomFactor);
+        applyCssZoom(m_splitPreviewView, m_zoomFactor);
     }
 
     doc->setModified(wasModified);
