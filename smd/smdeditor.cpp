@@ -1342,6 +1342,14 @@ void SmdEditor::executePythonCell(SmdCell *cell)
     item.cell = cell;
     item.jumpAfterExecute = m_jumpAfterExecute;
     m_pyExecQueue.append(item);
+
+    // If the process is already running (i.e. the started signal fired
+    // before we queued the cell), process the queue now so this cell
+    // doesn't get stuck waiting for a second execution.
+    if (!m_pyExecStarting && m_pyExecProcess
+        && m_pyExecProcess->state() == QProcess::Running) {
+        processPyExecQueue();
+    }
 }
 
 void SmdEditor::startPythonExecProcess()
