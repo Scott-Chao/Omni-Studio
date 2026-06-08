@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QKeyEvent>
+#include <QShowEvent>
 #include <QCoreApplication>
 #include <QScrollBar>
 #include <QApplication>
@@ -294,6 +295,14 @@ bool SmdEditor::loadFile(const QString &filePath)
     setPlainText(text);
     m_originalContent = toPlainText();
     emit fileLoaded(m_filePath);
+
+    // Deferred focus with enough delay for the parent tab switch
+    // (addTab + setCurrentIndex in TabManager) and file tree focus
+    // release to settle before we steal focus for the editor.
+    QTimer::singleShot(100, this, [this]() {
+        setFocus();
+    });
+
     return true;
 }
 
@@ -972,12 +981,23 @@ void SmdEditor::startAutoRender()
             m_autoRenderTimer->deleteLater();
             m_autoRenderTimer = nullptr;
             m_autoRenderQueue.clear();
+            // Restore the correct mode on the active cell so it stays
+            // in edit mode (not command mode) after auto-render.
+            if (m_activeCellIndex >= 0 && m_activeCellIndex < m_cells.size()) {
+                m_cells[m_activeCellIndex]->setCommandMode(m_commandMode);
+                // During auto-render, startRenderPipeline() calls
+                // processEvents() which lets QWebEngineView/Chrome
+                // windows steal focus — restore it here unconditionally
+                // by focusing SmdEditor itself (consistent with the
+                // loadFile deferred focus behaviour).
+                if (!m_commandMode)
+                    setFocus();
+            }
             return;
         }
         SmdCell *cell = m_autoRenderQueue[m_autoRenderIndex];
         if (cell) {
             cell->setRendered(true);
-            cell->setCommandMode(true);
         }
         ++m_autoRenderIndex;
     });
@@ -1897,6 +1917,14 @@ void SmdEditor::resizeEvent(QResizeEvent *event)
                 cell->updateEditorHeight();
         }
     });
+}
+
+void SmdEditor::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    // Ensure keyboard focus when the widget becomes visible
+    // (initial tab switch, tab re-selection, window restore).
+    setFocus();
 }
 
 void SmdEditor::toggleDiagnosticsPanel()
