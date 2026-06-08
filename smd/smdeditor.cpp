@@ -1712,6 +1712,7 @@ void SmdEditor::keyPressEvent(QKeyEvent *event)
                     emit contentChanged();
                 } else if (cell->isRendered()) {
                     cell->setRendered(false);
+                    emit contentChanged();
                 }
             }
             return;
@@ -1861,6 +1862,7 @@ bool SmdEditor::eventFilter(QObject *obj, QEvent *event)
                                 emit contentChanged();
                             } else if (cell->isRendered()) {
                                 cell->setRendered(false);
+                                emit contentChanged();
                             }
                         }
                         return true;
