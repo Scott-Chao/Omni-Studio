@@ -62,7 +62,7 @@
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
 ### 修复
-- PDF 导出时代码块的背景和高亮与主题同步
+- 清理调试代码
 
 ### 1. `MainWindow` - 主窗口控制器
 
@@ -1157,7 +1157,6 @@
 - **代码提交**：`submitCode(problemUrl, sourceCode, languageId)` 先 GET 提交页面（`problemUrl/submit/`），解析隐藏字段 contestId、problemNumber 和 language radio 值，手动拼接 POST body（百分号编码，不使用 QUrlQuery 以避免 `+` → 空格问题），POST 到 `/api/solution/submitv2/`。发送原始源码而非 base64 编码，以避免某些竞赛实例的 base64 解码 bug 导致源码为空。
 - **结果轮询**：解析 JSON 响应中的 `redirect` URL 作为 `m_pollStatusUrl`，通过 QTimer（2s 间隔，最多 15 次 = 30s 超时）轮询解决方案页面。`doPollSubmissionStatus()` 提取 body 纯文本，用正则解析 `状态: Accepted`、`时间: 23ms`、`内存: 7272kB`。检测到 CE 时自动获取编译错误详情。
 - 静态工具方法 `decodeHtmlEntities()` 和 `stripHtmlTags()`（public static），供 `OpenJudgeWidget` 的样例提取使用。
-- 调试日志写入 `crawler_debug.log`（启动时自动清空），记录 HTML 长度、关键标签匹配数、章节提取结果、POST 数据等。
 - `clearCookies()` 替换 CookieJar 实现清除会话；`stopPolling()` 停止结果轮询定时器。
 
 **信号**：

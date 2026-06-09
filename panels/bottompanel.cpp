@@ -2,7 +2,6 @@
 #include "outputpanel.h"
 #include "editor/diagnosticsection.h"
 #include "editor/codeeditor.h"
-#include "core/utilities.h"
 #include "core/thememanager.h"
 #include "widgets/tabbuttongroup.h"
 
@@ -147,9 +146,7 @@ void BottomPanel::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
         if (d.severity == 1) errCount++;
         else if (d.severity == 2) warnCount++;
     }
-    debugLog(QString("BottomPanel::setDiagnostics: %1 total, %2 errors, %3 warnings")
-        .arg(diagnostics.size()).arg(errCount).arg(warnCount));
-    m_diagnostics = diagnostics;
+m_diagnostics = diagnostics;
     rebuildDiagnostics();
 }
 

@@ -95,7 +95,6 @@ public:
     int openJudgePollIntervalMs() const;
     int openJudgeMaxPollAttempts() const;
     int openJudgeLoginDialogDelayMs() const;
-    QString openJudgeDebugLogFile() const;
     QMap<QString, int> openJudgeSubmissionLanguageMap() const;
 
     // ---- Compiler ----

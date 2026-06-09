@@ -1,13 +1,11 @@
 #include "keywordcompletionprovider.h"
 #include "../lsp/keywords.h"
-#include <QDebug>
 #include <QRegularExpression>
 
 KeywordCompletionProvider::KeywordCompletionProvider(const QString &languageId, QObject *parent)
     : CompletionProvider(parent)
     , m_languageId(languageId)
 {
-    qDebug() << "KeywordCompletionProvider: created for" << languageId;
 }
 
 void KeywordCompletionProvider::requestCompletion(const QString &text, int cursorPos)
@@ -67,7 +65,6 @@ void KeywordCompletionProvider::requestCompletion(const QString &text, int curso
     if (items.size() > 50)
         items = items.mid(0, 50);
 
-    qDebug() << "KeywordCompletionProvider:" << items.size() << "items for prefix" << prefix;
     emit completionReady(items);
 }
 

@@ -18,26 +18,12 @@ static const QByteArray &ua()
     return v;
 }
 
-// Debug logging – delegates to shared debugLog/clearLog via ConfigManager path
-#include "core/utilities.h"
-
-static void crawlerLog(const QString &msg)
-{
-    ::debugLog(msg, ConfigManager::instance().openJudgeDebugLogFile());
-}
-static void crawlerClearLog()
-{
-    ::clearLog(ConfigManager::instance().openJudgeDebugLogFile());
-}
-
 Crawler::Crawler(QObject *parent)
     : QObject(parent)
     , m_manager(new QNetworkAccessManager(this))
     , m_baseUrl(ConfigManager::instance().openJudgeBaseUrl())
 {
     m_manager->setCookieJar(new QNetworkCookieJar(m_manager));
-    crawlerClearLog();
-    crawlerLog(QStringLiteral("=== Crawler started ==="));
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +35,7 @@ void Crawler::login(const QString &username, const QString &password)
     m_username = username;
     m_password = password;
 
-    crawlerLog(QStringLiteral("login: fetching login page to establish session"));
+    
 
     // Step 1: fetch the login page to get session cookie (PHPSESSID)
     QString loginPageUrl = m_baseUrl + QStringLiteral("/auth/login/");
@@ -62,12 +48,12 @@ void Crawler::login(const QString &username, const QString &password)
         pageReply->deleteLater();
 
         if (pageReply->error() != QNetworkReply::NoError) {
-            crawlerLog(QStringLiteral("login: login page error: %1").arg(pageReply->errorString()));
+            
             emit loginFailed(QStringLiteral("无法访问登录页面: ") + pageReply->errorString());
             return;
         }
 
-        crawlerLog(QStringLiteral("login: login page loaded, session cookie established"));
+        
 
         // Step 2: POST credentials to JSON API
         QUrl apiUrl(m_baseUrl + QStringLiteral("/api/auth/login/"));
@@ -83,7 +69,7 @@ void Crawler::login(const QString &username, const QString &password)
         query.addQueryItem(QStringLiteral("password"), m_password);
 
         QByteArray postData = query.toString(QUrl::FullyEncoded).toUtf8();
-        crawlerLog(QStringLiteral("login: POSTing credentials to /api/auth/login/"));
+        
 
         QNetworkReply *lr = m_manager->post(apiReq, postData);
         connect(lr, &QNetworkReply::finished, this, [this, lr]() {
@@ -310,14 +296,14 @@ void Crawler::fetchProblemDetail(const QString &url)
     request.setRawHeader("User-Agent", ua());
     request.setTransferTimeout(ConfigManager::instance().openJudgeProblemDetailTimeoutMs());
 
-    crawlerLog(QStringLiteral("fetchProblemDetail: %1").arg(url));
+    
 
     QNetworkReply *reply = m_manager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
-            crawlerLog(QStringLiteral("fetchProblemDetail error: %1").arg(reply->errorString()));
+            
             if (reply->error() == QNetworkReply::OperationCanceledError
                 || reply->error() == QNetworkReply::TimeoutError)
                 emit networkError(QStringLiteral("请求超时: ") + url);
@@ -453,8 +439,8 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        crawlerLog(QStringLiteral("onLoginPageFinished: NETWORK ERROR getting /login/ -- %1").arg(reply->errorString()));
-        crawlerLog(QStringLiteral("onLoginPageFinished: falling back to main page login flow"));
+        
+        
         QUrl url(m_baseUrl);
         QNetworkRequest request(url);
         request.setRawHeader("User-Agent", ua());
@@ -466,7 +452,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
             QString csrf = extractCsrfToken(html);
 
             if (!csrf.isEmpty()) {
-                crawlerLog(QStringLiteral("onLoginPageFinished fallback: CSRF found on main page, POSTing login"));
+                
                 QUrlQuery query;
                 query.addQueryItem(QStringLiteral("username"), m_username);
                 query.addQueryItem(QStringLiteral("password"), m_password);
@@ -485,7 +471,7 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
                     onLoginFinished(lr);
                 });
             } else {
-                crawlerLog(QStringLiteral("onLoginPageFinished fallback: no CSRF found on main page, treating as public content"));
+                
                 // No login form – content is public
                 QList<HomeworkItem> ongoing, past;
                 PageInfo pastPage;
@@ -500,11 +486,10 @@ void Crawler::onLoginPageFinished(QNetworkReply *reply)
         return;
     }
 
-    crawlerLog(QStringLiteral("onLoginPageFinished: /login/ page loaded OK, replyUrl=%1").arg(reply->url().toString()));
+    
     QString html = QString::fromUtf8(reply->readAll());
     QString csrf = extractCsrfToken(html);
-    crawlerLog(QStringLiteral("onLoginPageFinished: CSRF token found=%1, token=%2")
-        .arg(!csrf.isEmpty()).arg(csrf.left(20)));
+    
 
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("username"), m_username);
@@ -530,21 +515,20 @@ void Crawler::onLoginFinished(QNetworkReply *reply)
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        crawlerLog(QStringLiteral("onLoginFinished: NETWORK ERROR: %1").arg(reply->errorString()));
+        
         emit loginFailed(QStringLiteral("网络错误: ") + reply->errorString());
         return;
     }
 
     QByteArray data = reply->readAll();
-    crawlerLog(QStringLiteral("onLoginFinished: response='%1'")
-        .arg(QString::fromUtf8(data.left(200))));
+    
 
     // Parse JSON response
     QJsonParseError parseError;
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
 
     if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        crawlerLog(QStringLiteral("onLoginFinished: JSON parse error: %1").arg(parseError.errorString()));
+        
         emit loginFailed(QStringLiteral("登录返回数据异常"));
         return;
     }
@@ -553,7 +537,7 @@ void Crawler::onLoginFinished(QNetworkReply *reply)
     QString result = obj.value(QStringLiteral("result")).toString();
 
     if (result == QStringLiteral("SUCCESS")) {
-        crawlerLog(QStringLiteral("onLoginFinished: login SUCCESS"));
+        
         emit loginSuccess();
 
         // Fetch the main page to populate the contest list
@@ -569,7 +553,7 @@ void Crawler::onLoginFinished(QNetworkReply *reply)
         QString message = obj.value(QStringLiteral("message")).toString();
         if (message.isEmpty())
             message = QStringLiteral("登录失败，请检查用户名和密码");
-        crawlerLog(QStringLiteral("onLoginFinished: login FAILED: %1").arg(message));
+        
         emit loginFailed(message);
     }
 }
@@ -604,22 +588,21 @@ void Crawler::onMainPageFinished(QNetworkReply *reply)
                                     || html.contains(QStringLiteral(">注销<"))
                                     || html.contains(QStringLiteral(">退出登录<"))
                                     || html.contains(QStringLiteral(">注销用户<"));
-        crawlerLog(QStringLiteral("onMainPageFinished: urlPath=%1, urlIsLogin=%2, hasLoginError=%3, hasLoginForm=%4, hasLoggedInIndicator=%5")
-            .arg(redirectedUrl.path()).arg(urlIsLogin).arg(hasLoginError).arg(hasLoginForm).arg(hasLoggedInIndicator));
+        
 
         if (urlIsLogin || hasLoginError) {
-            crawlerLog(QStringLiteral("onMainPageFinished: login FAILED (url or error)"));
+            
             emit loginFailed(QStringLiteral("登录失败，请检查用户名和密码"));
             return;
         }
 
         if (hasLoginForm && !hasLoggedInIndicator) {
-            crawlerLog(QStringLiteral("onMainPageFinished: login FAILED (form without login)"));
+            
             emit loginFailed(QStringLiteral("登录失败，请检查用户名和密码"));
             return;
         }
 
-        crawlerLog(QStringLiteral("onMainPageFinished: login SUCCESS"));
+        
         emit loginSuccess();
     }
 
@@ -724,10 +707,8 @@ void Crawler::parseMainPage(const QString &html,
         }
     };
 
-    crawlerLog(QStringLiteral("parseMainPage: HTML len=%1").arg(html.length()));
-    crawlerLog(QStringLiteral("  contains 'current-contest'=%1, contains 'past-contest'=%2")
-        .arg(html.contains(QStringLiteral("current-contest")))
-        .arg(html.contains(QStringLiteral("past-contest"))));
+    
+    
 
     // A quick check: log the 200 chars around "contest" to verify class names used
     {
@@ -737,7 +718,7 @@ void Crawler::parseMainPage(const QString &html,
         int sample = 0;
         while (it2.hasNext() && sample < 3) {
             QRegularExpressionMatch m2 = it2.next();
-            crawlerLog(QStringLiteral("  sample contest tag: %1").arg(m2.captured(0).left(120)));
+            
             sample++;
         }
     }
@@ -761,13 +742,11 @@ void Crawler::parseMainPage(const QString &html,
             int before = ongoing.size();
             extractLinks(sectionHtml, ongoing);
             int after = ongoing.size();
-            crawlerLog(QStringLiteral("  current-contress section #%1: captured len=%2, links found=%3")
-                .arg(sectionCount).arg(sm.captured(1).length()).arg(after - before));
+            
         }
-        crawlerLog(QStringLiteral("  total current-contest sections=%1, ongoing items=%2")
-            .arg(sectionCount).arg(ongoing.size()));
+        
         for (const auto &o : ongoing)
-            crawlerLog(QStringLiteral("    '%1' deadline='%2'").arg(o.title).arg(o.deadline));
+            
     }
 
     // Extract past-contest section items and pagination URL
@@ -873,13 +852,9 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             detail.title = detail.title.mid(12);
     }
 
-    crawlerLog(QStringLiteral("parseProblemDetail title=%1").arg(detail.title));
-    crawlerLog(QStringLiteral("  contains &lt;dt&gt;=%1, contains &lt;h3&gt;=%2, contains &lt;pre&gt;=%3")
-        .arg(html.contains(QStringLiteral("<dt")))
-        .arg(html.contains(QStringLiteral("<h3")))
-        .arg(html.contains(QStringLiteral("<pre"))));
+    
 
-    // Helper: map OJ language string identifiers to internal numeric IDs
+// Helper: map OJ language string identifiers to internal numeric IDs
     static const auto mapOJLangName = [](const QString &s) -> int {
         // Try numeric first
         bool ok = false;
@@ -903,7 +878,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
         QRegularExpressionMatch selM = selRx.match(html);
         if (selM.hasMatch()) {
-            crawlerLog(QStringLiteral("  PROBLEM PAGE select name='language'"));
+            
             QRegularExpression optRx(QStringLiteral("<option[^>]*value=\"([^\"]*)\"[^>]*>([^<]+)"),
                 QRegularExpression::CaseInsensitiveOption);
             QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(1));
@@ -912,8 +887,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                 int id = mapOJLangName(optM.captured(1));
                 if (id >= 0 && !detail.availableLanguages.contains(id)) {
                     detail.availableLanguages.append(id);
-                    crawlerLog(QStringLiteral("    option value='%1' mapped to id=%2 text='%3'")
-                        .arg(optM.captured(1)).arg(id).arg(optM.captured(2).trimmed()));
+                    
                 }
             }
         } else {
@@ -927,8 +901,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
                 int id = mapOJLangName(radioM.captured(1));
                 if (id >= 0 && !detail.availableLanguages.contains(id)) {
                     detail.availableLanguages.append(id);
-                    crawlerLog(QStringLiteral("  PROBLEM PAGE language radio value='%1' mapped to id=%2")
-                        .arg(radioM.captured(1)).arg(id));
+                    
                 }
             }
         }
@@ -940,8 +913,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             while (formIt.hasNext()) {
                 QRegularExpressionMatch formM = formIt.next();
                 if (!formM.captured(1).contains(QLatin1String("search")))
-                    crawlerLog(QStringLiteral("  PROBLEM PAGE form action='%1' method=%2")
-                        .arg(formM.captured(1)).arg(formM.captured(2)));
+                    
             }
         }
     }
@@ -1031,18 +1003,15 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
 
             detail.sections.append({headings[i].heading, contentHtml.trimmed()});
 
-            crawlerLog(QStringLiteral("  section[%1] '%2': rawHtml len=%3, hasDd=%4, contentHtml len=%5, hasPre=%6")
-                .arg(i).arg(headings[i].heading).arg(rawHtml.length()).arg(ddMatch.hasMatch())
-                .arg(contentHtml.trimmed().length())
-                .arg(contentHtml.contains(QStringLiteral("<pre"))));
+            
         }
     }
 
-    crawlerLog(QStringLiteral("  Strategy 1 (dt/dd) found %1 sections").arg(detail.sections.size()));
+    
 
     // --- Strategy 2: <h3> pattern (fallback) ---
     if (detail.sections.isEmpty()) {
-        crawlerLog(QStringLiteral("  Using Strategy 2 (h3)"));
+        
         QRegularExpression h3Rx(QStringLiteral("<h3[^>]*>(.*?)</h3>"),
             QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
         QRegularExpressionMatchIterator h3It = h3Rx.globalMatch(html);
@@ -1086,11 +1055,9 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
     }
     detail.sections = filtered;
 
-    crawlerLog(QStringLiteral("  final sections=%1").arg(detail.sections.size()));
+    
     for (const auto &sec : detail.sections)
-        crawlerLog(QStringLiteral("    '%1': len=%2 hasPre=%3")
-            .arg(sec.heading).arg(sec.contentHtml.length())
-            .arg(sec.contentHtml.contains(QStringLiteral("<pre"))));
+        
 
     return detail;
 }
@@ -1101,7 +1068,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
 
 void Crawler::submitCode(const QString &problemUrl, const QString &sourceCode, int languageId)
 {
-    crawlerLog(QStringLiteral("submitCode: problemUrl=%1 lang=%2").arg(problemUrl).arg(languageId));
+    
 
     QString submitUrl = problemUrl;
     if (!submitUrl.endsWith(QLatin1Char('/')))
@@ -1124,7 +1091,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        crawlerLog(QStringLiteral("onSubmitPageFinished error: %1").arg(reply->errorString()));
+        
         emit submissionFailed(QStringLiteral("无法访问提交页面: ") + reply->errorString());
         return;
     }
@@ -1132,7 +1099,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
     QString html = QString::fromUtf8(reply->readAll());
     QString csrf = extractCsrfToken(html);
 
-    crawlerLog(QStringLiteral("onSubmitPageFinished: CSRF found=%1").arg(!csrf.isEmpty()));
+    
 
     // Log the submit page form fields to understand expected parameter names
     {
@@ -1140,7 +1107,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             QRegularExpression::CaseInsensitiveOption);
         QRegularExpressionMatch taM = taRx.match(html);
         if (taM.hasMatch())
-            crawlerLog(QStringLiteral("  textarea name='%1'").arg(taM.captured(1)));
+            
 
         // Log ALL <select> elements and their options
         QRegularExpression selRx(QStringLiteral("<select[^>]*>(.*?)</select>"),
@@ -1152,15 +1119,14 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
                 QRegularExpression::CaseInsensitiveOption);
             QRegularExpressionMatch nameM = nameRx.match(selM.captured(0));
             QString selName = nameM.hasMatch() ? nameM.captured(1) : "(unnamed)";
-            crawlerLog(QStringLiteral("  select name='%1'").arg(selName));
+            
             QRegularExpression optRx(QStringLiteral("<option[^>]*value=\"([^\"]*)\"[^>]*>([^<]+)"),
                 QRegularExpression::CaseInsensitiveOption);
             QRegularExpressionMatchIterator optIt = optRx.globalMatch(selM.captured(0));
             while (optIt.hasNext()) {
                 QRegularExpressionMatch optM = optIt.next();
                 bool selected = optM.captured(0).contains(QLatin1String("selected"));
-                crawlerLog(QStringLiteral("    option value='%1'%2 text='%3'")
-                    .arg(optM.captured(1), selected ? QStringLiteral(" [SELECTED]") : QString(), optM.captured(2).trimmed()));
+                
             }
         }
 
@@ -1184,8 +1150,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
                 QRegularExpression::CaseInsensitiveOption);
             QRegularExpressionMatch valM = valRx.match(tag);
             if (valM.hasMatch()) value = valM.captured(1);
-            crawlerLog(QStringLiteral("  input name='%1' type='%2' value='%3'")
-                .arg(name, type, value.left(40)));
+            
         }
 
         // Find ALL forms (not just the submit form)
@@ -1195,8 +1160,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
         while (formIt.hasNext()) {
             QRegularExpressionMatch formM = formIt.next();
             if (!formM.captured(1).contains(QLatin1String("search")))
-                crawlerLog(QStringLiteral("  form action='%1' method=%2")
-                    .arg(formM.captured(1)).arg(formM.captured(2)));
+                
         }
     }
     // PHP-based OpenJudge (PHPSESSID) uses /api/solution/submitv2/ with base64-encoded source
@@ -1225,9 +1189,9 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
                 QString snippet = html.mid(start, end - start);
                 snippet.replace(QLatin1Char('\n'), QLatin1Char(' '));
                 snippet.replace(QLatin1Char('\r'), QLatin1Char(' '));
-                crawlerLog(QStringLiteral("  language input raw HTML: ...%1...").arg(snippet.trimmed()));
+                
             } else {
-                crawlerLog(QStringLiteral("  'name=\"language\"' NOT FOUND in HTML"));
+                
             }
         }
         QRegularExpression langRx(QStringLiteral(
@@ -1242,15 +1206,15 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             if (firstLangValue.isEmpty()) firstLangValue = val;
             if (tag.contains(QLatin1String("checked"))) {
                 languageValue = val;
-                crawlerLog(QStringLiteral("  language radio (checked) value='%1'").arg(val));
+                
             } else {
-                crawlerLog(QStringLiteral("  language radio value='%1'").arg(val));
+                
             }
         }
         if (languageValue.isEmpty()) {
             languageValue = firstLangValue;
             if (!languageValue.isEmpty())
-                crawlerLog(QStringLiteral("  using first language radio value='%1'").arg(languageValue));
+                
         }
         if (languageValue.isEmpty()) {
             // Fallback: more flexible regex - just find name="language" and capture value
@@ -1259,12 +1223,12 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             QRegularExpressionMatch fallbackM = fallbackRx.match(html);
             if (fallbackM.hasMatch()) {
                 languageValue = fallbackM.captured(1);
-                crawlerLog(QStringLiteral("  using fallback language value='%1'").arg(languageValue));
+                
             }
         }
         if (languageValue.isEmpty()) {
             // Fallback: use caller-provided languageId
-            crawlerLog(QStringLiteral("  no language radio found, using caller lang=%1").arg(languageId));
+            
             languageValue = QString::number(languageId);
         }
     }
@@ -1288,23 +1252,21 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
     postData += "&contestId=" + QUrl::toPercentEncoding(contestId);
     postData += "&problemNumber=" + QUrl::toPercentEncoding(problemNumber);
     postData += "&language=" + QUrl::toPercentEncoding(languageValue);
-    crawlerLog(QStringLiteral("onSubmitPageFinished: POSTing code to %1 (contest=%2, problem=%3, lang=%4)")
-        .arg(apiUrl, contestId, problemNumber, languageValue));
-    crawlerLog(QStringLiteral("  raw POST data: %1").arg(QString::fromUtf8(postData.left(500))));
+    
+    
 
     QNetworkReply *postReply = m_manager->post(apiReq, postData);
     connect(postReply, &QNetworkReply::finished, this, [this, postReply, problemUrl]() {
         postReply->deleteLater();
 
         if (postReply->error() != QNetworkReply::NoError) {
-            crawlerLog(QStringLiteral("submitCode POST error: %1").arg(postReply->errorString()));
+            
             emit submissionFailed(QStringLiteral("提交失败: ") + postReply->errorString());
             return;
         }
 
         QByteArray responseData = postReply->readAll();
-        crawlerLog(QStringLiteral("submitCode POST done: url=%1 response='%2'")
-            .arg(postReply->url().toString(), QString::fromUtf8(responseData.left(300))));
+        
 
         // Parse JSON response (PHP API returns JSON)
         QJsonParseError jsonErr;
@@ -1312,13 +1274,13 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
         if (jsonErr.error == QJsonParseError::NoError && doc.isObject()) {
             QJsonObject obj = doc.object();
             QString result = obj.value(QStringLiteral("result")).toString();
-            crawlerLog(QStringLiteral("submitCode API: result=%1").arg(result));
+            
             if (result == QStringLiteral("SUCCESS")) {
                 // Use the redirect URL from API response to track the submission
                 QString redirectUrl = obj.value(QStringLiteral("redirect")).toString();
                 if (!redirectUrl.isEmpty()) {
                     m_pollStatusUrl = redirectUrl;
-                    crawlerLog(QStringLiteral("submitCode: using redirect URL for polling: %1").arg(m_pollStatusUrl));
+                    
                 } else {
                     // Fallback: construct status URL
                     QUrl base(problemUrl);
@@ -1329,7 +1291,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
                     if (lastSlash > 0)
                         path = path.left(lastSlash);
                     m_pollStatusUrl = base.scheme() + QStringLiteral("://") + base.host() + path + QStringLiteral("/status/");
-                    crawlerLog(QStringLiteral("submitCode: constructed statusUrl=%1").arg(m_pollStatusUrl));
+                    
                 }
                 m_pollCount = 0;
                 m_pendingRunId.clear();
@@ -1344,7 +1306,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             } else {
                 QString msg = obj.value(QStringLiteral("message")).toString();
                 if (msg.isEmpty()) msg = QStringLiteral("提交被拒绝");
-                crawlerLog(QStringLiteral("submitCode API ERROR: %1").arg(msg));
+                
                 emit submissionFailed(msg);
                 return;
             }
@@ -1367,7 +1329,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             statusUrl = base.scheme() + QStringLiteral("://") + base.host() + path + QStringLiteral("/status/");
         }
 
-        crawlerLog(QStringLiteral("submitCode: statusUrl=%1").arg(statusUrl));
+        
 
         m_pollStatusUrl = statusUrl;
         m_pollCount = 0;
@@ -1386,7 +1348,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
 
 void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
 {
-    crawlerLog(QStringLiteral("fetchSubmissionStatus: %1").arg(statusPageUrl));
+    
 
     QNetworkRequest request(statusPageUrl);
     request.setRawHeader("User-Agent", ua());
@@ -1397,7 +1359,7 @@ void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
-            crawlerLog(QStringLiteral("fetchSubmissionStatus error: %1").arg(reply->errorString()));
+            
             return;
         }
 
@@ -1478,7 +1440,7 @@ void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
                 m_pendingCeUrl = ceMatch.captured(1);
                 if (m_pendingCeUrl.startsWith(QLatin1Char('/')))
                     m_pendingCeUrl = m_baseUrl + m_pendingCeUrl;
-                crawlerLog(QStringLiteral("CE url found: %1").arg(m_pendingCeUrl));
+                
             }
 
             break;
@@ -1503,8 +1465,7 @@ void Crawler::fetchSubmissionStatus(const QString &statusPageUrl)
 void Crawler::doPollSubmissionStatus()
 {
     m_pollCount++;
-    crawlerLog(QStringLiteral("doPollSubmissionStatus: attempt %1/%2")
-        .arg(m_pollCount).arg(ConfigManager::instance().openJudgeMaxPollAttempts()));
+    
 
     if (m_pollCount > ConfigManager::instance().openJudgeMaxPollAttempts()) {
         m_pollTimer->stop();
@@ -1521,7 +1482,7 @@ void Crawler::doPollSubmissionStatus()
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
-            crawlerLog(QStringLiteral("doPollSubmissionStatus network error: %1").arg(reply->errorString()));
+            
             return;
         }
 
@@ -1542,9 +1503,9 @@ void Crawler::doPollSubmissionStatus()
                 text = decodeHtmlEntities(text);
                 text.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
                 text = text.trimmed();
-                crawlerLog(QStringLiteral("  BODY_TEXT=%1").arg(text.left(500)));
+                
             } else {
-                crawlerLog(QStringLiteral("  BODY not found in HTML"));
+                
             }
         }
 
@@ -1560,7 +1521,7 @@ void Crawler::doPollSubmissionStatus()
             if (statusM.hasMatch()) {
                 QString statusText = statusM.captured(1).trimmed();
 
-                crawlerLog(QStringLiteral("  raw status='%1'").arg(statusText));
+                
 
                 // Check if still pending
                 if (statusText.contains(QStringLiteral("Waiting"))
@@ -1573,7 +1534,7 @@ void Crawler::doPollSubmissionStatus()
                 result.status = statusText;
                 found = true;
             } else {
-                crawlerLog(QStringLiteral("  status not found in text"));
+                
             }
         }
 
@@ -1615,7 +1576,7 @@ void Crawler::doPollSubmissionStatus()
                         m_pendingCeUrl = hrefM.captured(1);
                         if (m_pendingCeUrl.startsWith(QLatin1Char('/')))
                             m_pendingCeUrl = m_baseUrl + m_pendingCeUrl;
-                        crawlerLog(QStringLiteral("  CE url=%1").arg(m_pendingCeUrl));
+                        
                     }
                 }
             }
@@ -1641,13 +1602,13 @@ void Crawler::onCompileErrorPageFinished(QNetworkReply *reply, SubmissionResult 
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        crawlerLog(QStringLiteral("onCompileErrorPageFinished error: %1").arg(reply->errorString()));
+        
         emit submissionResultReady(result);
         return;
     }
 
     QString html = QString::fromUtf8(reply->readAll());
-    crawlerLog(QStringLiteral("onCompileErrorPageFinished: html len=%1").arg(html.length()));
+    
 
     QRegularExpression preRx(QStringLiteral("<pre[^>]*>(.*?)</pre>"),
         QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
@@ -1658,7 +1619,7 @@ void Crawler::onCompileErrorPageFinished(QNetworkReply *reply, SubmissionResult 
         result.compileError = stripHtmlTags(html);
     }
 
-    crawlerLog(QStringLiteral("CE error text: %1 chars").arg(result.compileError.size()));
+    
     emit submissionResultReady(result);
 }
 

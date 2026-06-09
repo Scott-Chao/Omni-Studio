@@ -276,7 +276,6 @@ int ConfigManager::openJudgeProblemDetailTimeoutMs() const { return intValue("op
 int ConfigManager::openJudgePollIntervalMs() const { return intValue("open_judge.poll_interval_ms", 2000); }
 int ConfigManager::openJudgeMaxPollAttempts() const { return intValue("open_judge.max_poll_attempts", 15); }
 int ConfigManager::openJudgeLoginDialogDelayMs() const { return intValue("open_judge.login_dialog_delay_ms", 200); }
-QString ConfigManager::openJudgeDebugLogFile() const { return stringValue("open_judge.debug_log_file", "crawler_debug.log"); }
 QMap<QString, int> ConfigManager::openJudgeSubmissionLanguageMap() const { return mapStringIntValue("open_judge.submission_language_map"); }
 
 // ---- Compiler ----

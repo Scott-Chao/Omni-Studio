@@ -241,7 +241,7 @@ QWidget with two views: list (filtered error records) and detail (expanded recor
 QWidget embedded as a non-EditorWidget tab in TabManager. Three states: homework list → problem list → problem detail. Sample extraction via \<pre\> pairing. Auto-login via SettingsManager (base64-obfuscated). TabManager::openOpenJudge() creates/switches to the singleton tab; findOpenJudgeWidget() locates it. closeTab() removes directly without save prompts (qobject_cast<EditorWidget*> returns nullptr). When active, MainWindow disables save/save-as actions.
 
 ### Crawler (`judge/crawler.h/cpp`)
-HTTP crawler for cxsjsx.openjudge.cn. QNetworkAccessManager + cookie jar. Login via JSON API. Submit posts raw source (percent-encoded, avoids `+`→space corruption), polls 30s for result. Debug log to `crawler_debug.log`.
+HTTP crawler for cxsjsx.openjudge.cn. QNetworkAccessManager + cookie jar. Login via JSON API. Submit posts raw source (percent-encoded, avoids `+`→space corruption), polls 30s for result.
 
 ### SubmitResultPanel (`panels/submissionpanel.h/cpp`)
 Dark-themed result display. Color-coded status (AC green, WA/RE red, etc.) + time/memory + collapsible CE error log.
