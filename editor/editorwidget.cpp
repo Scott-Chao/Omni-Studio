@@ -424,7 +424,8 @@ QString EditorWidget::highlightCodeBlock(const QString &code, const QString &lan
     const auto &cfg = ConfigManager::instance();
     QString html;
     html += QStringLiteral("<pre style=\"padding:16px;border-radius:0 0 6px 6px;"
-                           "overflow-x:auto;margin:0;\">");
+                           "overflow-x:auto;margin:0;color:%1;\">")
+        .arg(cfg.editorForeground().name());
     html += QStringLiteral("<code style=\"background:none;padding:0;"
                            "font-family:Consolas,'Courier New',monospace;font-size:0.9em;\">");
 
@@ -904,18 +905,27 @@ void EditorWidget::exportToPdf(const QString &filePath, const QPageLayout &layou
     // 3. Inject content into template
     tmpl.replace(QStringLiteral("{{MARKDOWN_CONTENT}}"), processedContent);
 
-    // 4. Override CSS variables to light/print-friendly theme (PDF needs white bg, dark text)
+    // 4. Override CSS variables — page keeps white/print-friendly, but
+    //    code block colors follow current theme for dark-mode export.
+    auto pdfColor = [&](const QString &token, const QString &fallback) {
+        QColor c = ThemeManager::instance().color(token);
+        return c.isValid() ? c.name() : fallback;
+    };
     tmpl.replace(QStringLiteral("{{PREVIEW_BG}}"),        QStringLiteral("#ffffff"));
     tmpl.replace(QStringLiteral("{{PREVIEW_FG}}"),        QStringLiteral("#1e1e1e"));
-    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_BG}}"),   QStringLiteral("#f5f5f5"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_BG}}"),   pdfColor("preview.codeBackground",               QStringLiteral("#f5f5f5")));
     tmpl.replace(QStringLiteral("{{PREVIEW_BORDER}}"),    QStringLiteral("#dddddd"));
     tmpl.replace(QStringLiteral("{{PREVIEW_LINK}}"),      QStringLiteral("#1a73e8"));
     tmpl.replace(QStringLiteral("{{PREVIEW_HEADING}}"),   QStringLiteral("#000000"));
     tmpl.replace(QStringLiteral("{{PREVIEW_BLOCKQUOTE}}"),QStringLiteral("#666666"));
     tmpl.replace(QStringLiteral("{{PREVIEW_TH_BG}}"),     QStringLiteral("#f0f0f0"));
     tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        QStringLiteral("#cccccc"));
-    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      QStringLiteral("#e8e8e8"));
-    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  QStringLiteral("#666666"));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      pdfColor("preview.codeBlockHeaderBackground",      QStringLiteral("#e8e8e8")));
+    tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  pdfColor("preview.codeBlockLangLabelForeground",  QStringLiteral("#666666")));
+    // Keep inline <code> light (inherits body color #1e1e1e) while <pre> code
+    // blocks use the dark theme background from {{PREVIEW_CODE_BG}}.
+    tmpl.replace(QStringLiteral("</style>"),
+        QStringLiteral("code:not(pre code){background:#f5f5f5;}</style>"));
 
     // 5. Create a hidden, off-screen WebEngine view for rendering
     QWebEngineView *pdfView = new QWebEngineView();
