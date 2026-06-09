@@ -745,8 +745,6 @@ void Crawler::parseMainPage(const QString &html,
             
         }
         
-        for (const auto &o : ongoing)
-            
     }
 
     // Extract past-contest section items and pagination URL
@@ -913,7 +911,7 @@ ProblemDetail Crawler::parseProblemDetail(const QString &html)
             while (formIt.hasNext()) {
                 QRegularExpressionMatch formM = formIt.next();
                 if (!formM.captured(1).contains(QLatin1String("search")))
-                    
+                    ;
             }
         }
     }
@@ -1107,7 +1105,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
             QRegularExpression::CaseInsensitiveOption);
         QRegularExpressionMatch taM = taRx.match(html);
         if (taM.hasMatch())
-            
+            ;
 
         // Log ALL <select> elements and their options
         QRegularExpression selRx(QStringLiteral("<select[^>]*>(.*?)</select>"),
@@ -1160,7 +1158,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
         while (formIt.hasNext()) {
             QRegularExpressionMatch formM = formIt.next();
             if (!formM.captured(1).contains(QLatin1String("search")))
-                
+                ;
         }
     }
     // PHP-based OpenJudge (PHPSESSID) uses /api/solution/submitv2/ with base64-encoded source
@@ -1214,7 +1212,7 @@ void Crawler::onSubmitPageFinished(QNetworkReply *reply, const QString &problemU
         if (languageValue.isEmpty()) {
             languageValue = firstLangValue;
             if (!languageValue.isEmpty())
-                
+                ;
         }
         if (languageValue.isEmpty()) {
             // Fallback: more flexible regex - just find name="language" and capture value

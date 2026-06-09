@@ -922,10 +922,24 @@ void EditorWidget::exportToPdf(const QString &filePath, const QPageLayout &layou
     tmpl.replace(QStringLiteral("{{PREVIEW_HR}}"),        QStringLiteral("#cccccc"));
     tmpl.replace(QStringLiteral("{{PREVIEW_CODE_HEADER_BG}}"),      pdfColor("preview.codeBlockHeaderBackground",      QStringLiteral("#e8e8e8")));
     tmpl.replace(QStringLiteral("{{PREVIEW_CODE_LANG_LABEL_FG}}"),  pdfColor("preview.codeBlockLangLabelForeground",  QStringLiteral("#666666")));
+    // For non-highlighted code blocks (no language fence), the text color
+    // inherits from body --fg (#1e1e1e). When the code background is dark
+    // (dark-mode export), use the theme's editor foreground so text is visible.
+    QColor codeBgColor = ThemeManager::instance().color(QStringLiteral("preview.codeBackground"));
+    QString codeFg;
+    if (codeBgColor.isValid() && codeBgColor.lightness() < 128) {
+        QColor edFg = ThemeManager::instance().color(QStringLiteral("editor.foreground"));
+        codeFg = edFg.isValid() ? edFg.name() : QStringLiteral("#d4d4d4");
+    } else {
+        codeFg = QStringLiteral("#1e1e1e");
+    }
     // Keep inline <code> light (inherits body color #1e1e1e) while <pre> code
     // blocks use the dark theme background from {{PREVIEW_CODE_BG}}.
+    // .code-block-wrapper>pre targets non-highlighted blocks; highlighted
+    // blocks have an inline color style that beats this CSS rule.
     tmpl.replace(QStringLiteral("</style>"),
-        QStringLiteral("code:not(pre code){background:#f5f5f5;}</style>"));
+        (QStringLiteral(".code-block-wrapper>pre{color:%1;}code:not(pre code){background:#f5f5f5;}</style>"))
+            .arg(codeFg));
 
     // 5. Create a hidden, off-screen WebEngine view for rendering
     QWebEngineView *pdfView = new QWebEngineView();
