@@ -376,9 +376,17 @@ MainWindow::MainWindow(QWidget *parent)
         m_bottomPanel->hide();
     });
     connect(m_bottomPanel, &BottomPanel::diagnosticsLineClicked, this, [this](int line) {
-        EditorWidget *editor = m_tabManager->currentEditor();
-        if (editor && editor->isCodeEdit())
-            editor->navigateEditorToLine(line);
+        // Normal editor tab
+        if (auto *editor = m_tabManager->currentEditor()) {
+            if (editor->isCodeEdit())
+                editor->navigateEditorToLine(line);
+            return;
+        }
+        // OpenJudge IDE editor (not an EditorWidget)
+        if (auto *ce = m_bottomPanel->currentEditor()) {
+            ce->setOutlineHighlightLine(line);
+            ce->scrollToLine(line);
+        }
     });
 
     // 右侧垂直分割线：编辑器在上，输出面板在下
@@ -435,8 +443,12 @@ MainWindow::MainWindow(QWidget *parent)
             if (!ideMode && m_compileRunMgr->isRunning())
                 m_compileRunMgr->stop();
         }
-        if (!ideMode)
+        if (ideMode) {
+            // OpenJudge tab is current — wire up diagnostics for the IDE editor
+            updateCurrentEditorDiagnostics();
+        } else {
             m_bottomPanel->hide();
+        }
     });
     connect(m_openJudgeMgr, &OpenJudgeManager::diagnosticsToggleRequested,
             m_compileRunMgr, &CompileRunManager::toggleDiagnostics);
@@ -1332,6 +1344,24 @@ void MainWindow::updateCurrentEditorDiagnostics()
                 &CompletionProvider::diagnosticsUpdated,
                 m_bottomPanel, &BottomPanel::setDiagnostics);
             m_bottomPanel->setDiagnostics(ce->diagnostics());
+        }
+    } else if (auto *oj = qobject_cast<OpenJudgeWidget*>(
+                   m_tabManager->currentWidget())) {
+        if (oj->isIdeMode() && oj->ideCodeEditor()) {
+            CodeEditor *ce = oj->ideCodeEditor();
+            if (ce->completionProvider()) {
+                m_bottomPanel->setCurrentEditor(ce);
+                disconnect(m_diagnosticsProviderConnection);
+                m_diagnosticsProviderConnection = connect(
+                    ce->completionProvider(),
+                    &CompletionProvider::diagnosticsUpdated,
+                    m_bottomPanel, &BottomPanel::setDiagnostics);
+                m_bottomPanel->setDiagnostics(ce->diagnostics());
+            }
+        } else {
+            disconnect(m_diagnosticsProviderConnection);
+            m_bottomPanel->setCurrentEditor(nullptr);
+            m_bottomPanel->clearDiagnostics();
         }
     } else {
         disconnect(m_diagnosticsProviderConnection);

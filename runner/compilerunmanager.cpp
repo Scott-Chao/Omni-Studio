@@ -289,6 +289,12 @@ void CompileRunManager::toggleDiagnostics()
             || m_bottomPanel->currentTab() != BottomPanel::DiagnosticsTab) {
             showOutputPanel();
             m_bottomPanel->showDiagnosticsTab();
+            // Push current cached diagnostics from the IDE editor,
+            // so the panel is populated immediately even if the
+            // signal connection was established after LSP had already
+            // published diagnostics.
+            if (auto *ce = oj->ideCodeEditor())
+                m_bottomPanel->setDiagnostics(ce->diagnostics());
         } else {
             m_bottomPanel->hide();
         }
