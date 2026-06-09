@@ -1305,6 +1305,10 @@ MainWindow::MainWindow(QWidget *parent)
     helpMenu->addAction(m_helpAction);
 #endif
 
+    // 同步 ActivityBar 状态：启动时左面板（文件浏览）默认可见
+    if (!m_leftStack->isHidden())
+        m_activityBar->setExplorerActive(m_leftStack->currentIndex() == 0);
+
 }
 
 MainWindow::~MainWindow()
