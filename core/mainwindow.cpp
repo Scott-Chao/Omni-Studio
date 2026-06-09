@@ -1101,8 +1101,19 @@ MainWindow::MainWindow(QWidget *parent)
 
         // 代码编辑器诊断连接（交由统一函数处理，与 onFileSelected 共享逻辑）
         updateCurrentEditorDiagnostics();
-        if (editor && !editor->isCodeEdit()) {
-            // Non-code file: auto-close the run panel
+
+        // 判断当前标签是否为「代码编辑」类：普通代码文件 或 OpenJudge IDE
+        bool isCodeEdit = false;
+        if (editor && editor->isCodeEdit()) {
+            isCodeEdit = true;
+        } else if (auto *oj = qobject_cast<OpenJudgeWidget*>(
+                       m_tabManager->currentWidget())) {
+            isCodeEdit = oj->isIdeMode();
+        }
+        if (!isCodeEdit) {
+            // 非代码标签：自动关闭底部面板
+            disconnect(m_diagnosticsProviderConnection);
+            m_bottomPanel->setCurrentEditor(nullptr);
             if (m_compileRunMgr && m_compileRunMgr->isRunning())
                 m_compileRunMgr->stop();
             QPointer<BottomPanel> bp = m_bottomPanel;
