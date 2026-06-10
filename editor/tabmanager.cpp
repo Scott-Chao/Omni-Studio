@@ -474,12 +474,14 @@ DragOverlay::DragOverlay(QWidget *parent)
 }
 
 void DragOverlay::setRenderData(const QStyleOptionTab &opt,
-                                QWidget *closeBtn, const QPoint &closeBtnOffset,
+                                bool hasCloseButton, const QPoint &closeBtnOffset,
+                                const QSize &closeBtnSize,
                                 bool isSelected, const QFont &font)
 {
     m_opt = opt;
-    m_closeBtn = closeBtn;
+    m_hasCloseButton = hasCloseButton;
     m_closeBtnOffset = closeBtnOffset;
+    m_closeBtnSize = closeBtnSize;
     m_isSelected = isSelected;
     m_font = font;
     update();
@@ -495,11 +497,15 @@ void DragOverlay::paintEvent(QPaintEvent *)
     style()->drawControl(QStyle::CE_TabBarTabShape, &opt, &p, parentWidget());
 
     // 手动计算文字区域（左侧留空以适应 style 的内边距，右侧避开关闭按钮）
+    QSize closeSize = m_closeBtnSize.isValid() ? m_closeBtnSize : QSize(16, 16);
+    QRect closeRect(rect().right() - closeSize.width() - 6,
+                    (rect().height() - closeSize.height()) / 2,
+                    closeSize.width(), closeSize.height());
+
     QRect textRect = rect().adjusted(12, 0, -4, 0);
-    if (m_closeBtn) {
-        int btnLeft = m_closeBtnOffset.x();
-        if (textRect.right() >= btnLeft - 4)
-            textRect.setRight(btnLeft - 4);
+    if (m_hasCloseButton) {
+        if (textRect.right() >= closeRect.left() - 4)
+            textRect.setRight(closeRect.left() - 4);
     }
 
     if (textRect.width() > 0) {
@@ -512,9 +518,21 @@ void DragOverlay::paintEvent(QPaintEvent *)
         p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, elided);
     }
 
-    // 将关闭按钮渲染在文字之上
-    if (m_closeBtn)
-        m_closeBtn->render(&p, m_closeBtnOffset, QRegion(), QWidget::DrawChildren);
+    // Draw the close icon directly on a transparent background. Rendering the
+    // real close-button widget during drag can carry an opaque platform bg.
+    if (m_hasCloseButton) {
+        QPoint center = closeRect.center();
+        int arm = qMax(3, qMin(closeRect.width(), closeRect.height()) / 5);
+        QColor closeColor = ThemeManager::instance().color(
+            (m_opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground");
+
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(QPen(closeColor, 1.6, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(center.x() - arm, center.y() - arm, center.x() + arm, center.y() + arm);
+        p.drawLine(center.x() + arm, center.y() - arm, center.x() - arm, center.y() + arm);
+        p.restore();
+    }
 
     // 激活标签底部蓝色指示线
     if (m_isSelected) {
@@ -541,8 +559,143 @@ void CustomTabBar::setEqualWidth(bool enabled)
     update();
 }
 
+const TabManager* CustomTabBar::tabManager() const
+{
+    return qobject_cast<const TabManager*>(parent());
+}
+
+int CustomTabBar::draggedTabIndex() const
+{
+    const TabManager *tm = tabManager();
+    return (tm && m_dragWidget) ? tm->indexOf(m_dragWidget) : -1;
+}
+
+void CustomTabBar::updateDragOverlay()
+{
+    const TabManager *tm = tabManager();
+    int draggedIdx = draggedTabIndex();
+    if (!tm || draggedIdx < 0 || !m_dragOverlay)
+        return;
+
+    QRect tabR = tabRect(draggedIdx);
+    QStyleOptionTab opt;
+    initStyleOption(&opt, draggedIdx);
+
+    QFont dragFont = font();
+    EditorWidget *dragEditor = qobject_cast<EditorWidget*>(m_dragWidget);
+    if (dragEditor && tm->isPreviewEditor(dragEditor))
+        dragFont.setItalic(true);
+
+    QWidget *btn = tabButton(draggedIdx, QTabBar::RightSide);
+    if (!btn)
+        btn = tabButton(draggedIdx, QTabBar::LeftSide);
+
+    QPoint btnOffset;
+    if (btn)
+        btnOffset = btn->pos() - tabR.topLeft();
+
+    QSize btnSize = btn ? btn->size() : QSize();
+    QRect oldOverlayRect = m_dragOverlay->geometry();
+    QRect newOverlayRect(m_dragCurrentPos.x() - m_dragOffsetX, tabR.top(),
+                         m_dragTabWidth, tabR.height());
+
+    m_dragOverlay->setRenderData(opt, btn != nullptr, btnOffset, btnSize,
+                                 opt.state & QStyle::State_Selected, dragFont);
+    m_dragOverlay->setGeometry(newOverlayRect);
+    m_dragOverlay->raise();
+
+    update(oldOverlayRect.adjusted(-2, -2, 2, 2));
+    update(newOverlayRect.adjusted(-2, -2, 2, 2));
+    if (m_dragSourceRect.isValid())
+        update(m_dragSourceRect.adjusted(-2, -2, 2, 2));
+}
+
+void CustomTabBar::suppressNativeDragWidget()
+{
+    if (!m_dragInProgress)
+        return;
+
+    const auto childrenWidgets = findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget *child : childrenWidgets) {
+        if (!child || child == m_dragOverlay)
+            continue;
+        if (!child->isVisible())
+            continue;
+
+        bool isKnownTabButton = false;
+        for (int i = 0; i < count() && !isKnownTabButton; ++i) {
+            isKnownTabButton = (child == tabButton(i, QTabBar::LeftSide)
+                                || child == tabButton(i, QTabBar::RightSide));
+        }
+        if (isKnownTabButton)
+            continue;
+
+        if (qobject_cast<QAbstractButton*>(child)) {
+            QRect source = m_dragSourceRect.adjusted(-8, -8, 8, 8);
+            if (!source.isValid() || !source.intersects(child->geometry()))
+                continue;
+        }
+
+        if (!m_nativeDragWidgets.contains(child))
+            m_nativeDragWidgets.append(child);
+        child->hide();
+    }
+}
+
+void CustomTabBar::hideDraggedTabButton()
+{
+    int draggedIdx = draggedTabIndex();
+    if (draggedIdx < 0)
+        return;
+
+    QWidget *button = tabButton(draggedIdx, QTabBar::RightSide);
+    if (!button)
+        button = tabButton(draggedIdx, QTabBar::LeftSide);
+    if (!button)
+        return;
+
+    for (const QPointer<QWidget> &hiddenButton : m_dragHiddenButtons) {
+        if (hiddenButton == button) {
+            button->hide();
+            return;
+        }
+    }
+
+    if (button->isVisible())
+        m_dragHiddenButtons.append(button);
+    button->hide();
+}
+
+void CustomTabBar::restoreDraggedTabButton()
+{
+    for (const QPointer<QWidget> &button : m_dragHiddenButtons) {
+        if (button && !button->isVisible())
+            button->show();
+    }
+    m_dragHiddenButtons.clear();
+}
+
+void CustomTabBar::clearDragState()
+{
+    restoreDraggedTabButton();
+    m_nativeDragWidgets.clear();
+
+    delete m_dragOverlay;
+    m_dragOverlay = nullptr;
+
+    m_dragStarted = false;
+    m_dragInProgress = false;
+    m_dragIndex = -1;
+    m_dragWidget = nullptr;
+    m_dragSourceRect = QRect();
+    m_lastMoveCenterX = 0;
+}
+
 void CustomTabBar::mousePressEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::LeftButton)
+        clearDragState();
+
     QTabBar::mousePressEvent(event);
 
     if (event->button() == Qt::LeftButton) {
@@ -553,8 +706,9 @@ void CustomTabBar::mousePressEvent(QMouseEvent *event)
             QRect currentTabRect = tabRect(m_dragIndex);
             m_dragTabWidth = currentTabRect.width();
             m_dragOffsetX = m_dragPressPos.x() - currentTabRect.left();
+            m_dragSourceRect = currentTabRect;
 
-            const TabManager *tm = qobject_cast<const TabManager*>(parent());
+            const TabManager *tm = tabManager();
             m_dragWidget = tm ? tm->widget(m_dragIndex) : nullptr;
 
             m_dragStarted = false;
@@ -562,6 +716,7 @@ void CustomTabBar::mousePressEvent(QMouseEvent *event)
         } else {
             m_dragIndex = -1;
             m_dragWidget = nullptr;
+            m_dragSourceRect = QRect();
         }
     }
 }
@@ -577,6 +732,8 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
             m_dragOverlay = new DragOverlay(this);
             m_dragOverlay->show();
             m_dragOverlay->raise();
+
+            hideDraggedTabButton();
         }
 
         if (m_dragInProgress) {
@@ -586,13 +743,15 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
             clampedPos.setX(qBound(leftBound, clampedPos.x(), rightBound));
             m_dragCurrentPos = clampedPos;
 
-            // 转发受钳制的事件给 QTabBar，使其拖拽状态机保持同步
             QPoint globalClamped = mapToGlobal(clampedPos);
             QMouseEvent clampedEvent(
                 event->type(), clampedPos, globalClamped,
                 event->button(), event->buttons(), event->modifiers()
             );
             QTabBar::mouseMoveEvent(&clampedEvent);
+            hideDraggedTabButton();
+            suppressNativeDragWidget();
+            updateDragOverlay();
 
             update();
             return;
@@ -604,7 +763,7 @@ void CustomTabBar::mouseMoveEvent(QMouseEvent *event)
 void CustomTabBar::initStyleOption(QStyleOptionTab *option, int tabIndex) const
 {
     QTabBar::initStyleOption(option, tabIndex);
-    const TabManager *tm = qobject_cast<const TabManager*>(parent());
+    const TabManager *tm = tabManager();
     if (tm) {
         EditorWidget *editor = qobject_cast<EditorWidget*>(tm->widget(tabIndex));
         if (editor && tm->isPreviewEditor(editor)) {
@@ -630,18 +789,12 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
     QFont italicFont = normalFont;
     italicFont.setItalic(true);
 
-    int draggedIdx = -1;
-    if (m_dragInProgress && m_dragWidget) {
-        for (int i = 0; i < count(); ++i) {
-            if (tm->widget(i) == m_dragWidget) {
-                draggedIdx = i;
-                break;
-            }
-        }
-    }
+    int draggedIdx = m_dragInProgress ? draggedTabIndex() : -1;
 
-    // 绘制所有标签，被拖标签在原位以低透明度 ghost 形式显示
     for (int i = 0; i < count(); ++i) {
+        if (i == draggedIdx)
+            continue;
+
         QStyleOptionTab opt;
         initStyleOption(&opt, i);
 
@@ -651,10 +804,7 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
         else
             painter.setFont(normalFont);
 
-        if (i == draggedIdx)
-            painter.setOpacity(0.3);
-        else
-            painter.setOpacity(1.0);
+        painter.setOpacity(1.0);
 
         if (m_equalWidth) {
             // 等宽模式：先绘制无文字的标签背景，再左对齐绘制文字
@@ -693,6 +843,9 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
 
     // 相邻未激活标签之间绘制分割线（不完全贯穿，上下留空）
     for (int i = 0; i < count() - 1; ++i) {
+        if (i == draggedIdx || i + 1 == draggedIdx)
+            continue;
+
         QStyleOptionTab optA, optB;
         initStyleOption(&optA, i);
         initStyleOption(&optB, i + 1);
@@ -708,6 +861,9 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
 
     // 激活标签底部蓝色指示线
     for (int i = 0; i < count(); ++i) {
+        if (i == draggedIdx)
+            continue;
+
         QStyleOptionTab opt;
         initStyleOption(&opt, i);
         if (opt.state & QStyle::State_Selected) {
@@ -716,31 +872,6 @@ void CustomTabBar::paintEvent(QPaintEvent *event)
             painter.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom());
             break;
         }
-    }
-
-    // 拖拽中：在 overlay widget 上直接渲染（而非预渲染到 QPixmap），
-    // 确保文字使用 ClearType 子像素渲染（直绘 widget 表面而非 alpha QPixmap）
-    if (draggedIdx >= 0 && m_dragOverlay) {
-        QRect tabR = tabRect(draggedIdx);
-
-        QStyleOptionTab opt;
-        initStyleOption(&opt, draggedIdx);
-
-        // 确定被拖标签使用的字体（预览标签使用斜体）
-        EditorWidget *dragEditor = qobject_cast<EditorWidget*>(m_dragWidget);
-        QFont dragFont = (dragEditor && tm->isPreviewEditor(dragEditor)) ? italicFont : normalFont;
-
-        QWidget *btn = tabButton(draggedIdx, QTabBar::RightSide);
-        if (!btn) btn = tabButton(draggedIdx, QTabBar::LeftSide);
-        QPoint btnOffset;
-        if (btn)
-            btnOffset = btn->pos() - tabR.topLeft();
-
-        m_dragOverlay->setRenderData(opt, btn, btnOffset,
-                                     opt.state & QStyle::State_Selected, dragFont);
-        m_dragOverlay->setGeometry(m_dragCurrentPos.x() - m_dragOffsetX, tabR.top(),
-                                   m_dragTabWidth, tabR.height());
-        m_dragOverlay->raise();
     }
 }
 
@@ -754,15 +885,8 @@ QSize CustomTabBar::tabSizeHint(int index) const
 
 void CustomTabBar::mouseReleaseEvent(QMouseEvent *event)
 {
-    delete m_dragOverlay;
-    m_dragOverlay = nullptr;
-
     QTabBar::mouseReleaseEvent(event);
-    m_dragStarted = false;
-    m_dragInProgress = false;
-    m_dragIndex = -1;
-    m_dragWidget = nullptr;
-    m_lastMoveCenterX = 0;
+    clearDragState();
 
     update();
 }

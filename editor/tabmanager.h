@@ -6,8 +6,11 @@
 #include <QTabBar>
 #include <QMouseEvent>
 #include <QApplication>
+#include <QList>
 #include <QPointer>
 #include <QStyleOptionTab>
+
+class TabManager;
 
 
 // 拖拽时在关闭按钮 widget 之上渲染被拖标签的覆盖层
@@ -17,14 +20,16 @@ class DragOverlay : public QWidget
 public:
     explicit DragOverlay(QWidget *parent);
     void setRenderData(const QStyleOptionTab &opt,
-                       QWidget *closeBtn, const QPoint &closeBtnOffset,
+                       bool hasCloseButton, const QPoint &closeBtnOffset,
+                       const QSize &closeBtnSize,
                        bool isSelected, const QFont &font);
 protected:
     void paintEvent(QPaintEvent *) override;
 private:
     QStyleOptionTab m_opt;
-    QPointer<QWidget> m_closeBtn;
+    bool m_hasCloseButton = false;
     QPoint m_closeBtnOffset;
+    QSize m_closeBtnSize;
     QFont m_font;
     bool m_isSelected = false;
 };
@@ -48,14 +53,25 @@ protected:
     QSize tabSizeHint(int index) const override;
 
 private:
+    const TabManager* tabManager() const;
+    int draggedTabIndex() const;
+    void updateDragOverlay();
+    void suppressNativeDragWidget();
+    void hideDraggedTabButton();
+    void restoreDraggedTabButton();
+    void clearDragState();
+
     bool m_dragStarted = false;
     bool m_dragInProgress = false;
     int  m_dragIndex = -1;
     QPoint m_dragPressPos;
     int  m_dragTabWidth = 0;
     int  m_dragOffsetX = 0;
+    QRect m_dragSourceRect;
     QPoint m_dragCurrentPos;
     QWidget *m_dragWidget = nullptr;
+    QList<QPointer<QWidget>> m_dragHiddenButtons;
+    QList<QPointer<QWidget>> m_nativeDragWidgets;
     int  m_lastMoveCenterX = 0;
     DragOverlay *m_dragOverlay = nullptr;
     bool m_equalWidth = false;
