@@ -498,9 +498,12 @@ void DragOverlay::paintEvent(QPaintEvent *)
 
     // 手动计算文字区域（左侧留空以适应 style 的内边距，右侧避开关闭按钮）
     QSize closeSize = m_closeBtnSize.isValid() ? m_closeBtnSize : QSize(16, 16);
-    QRect closeRect(rect().right() - closeSize.width() - 6,
-                    (rect().height() - closeSize.height()) / 2,
-                    closeSize.width(), closeSize.height());
+    QRect closeRect(m_closeBtnOffset, closeSize);
+    if (!m_hasCloseButton || !m_closeBtnSize.isValid()) {
+        closeRect = QRect(rect().right() - closeSize.width() - 6,
+                          (rect().height() - closeSize.height()) / 2,
+                          closeSize.width(), closeSize.height());
+    }
 
     QRect textRect = rect().adjusted(12, 0, -4, 0);
     if (m_hasCloseButton) {
@@ -521,14 +524,17 @@ void DragOverlay::paintEvent(QPaintEvent *)
     // Draw the close icon directly on a transparent background. Rendering the
     // real close-button widget during drag can carry an opaque platform bg.
     if (m_hasCloseButton) {
-        QPoint center = closeRect.center();
-        int arm = qMax(3, qMin(closeRect.width(), closeRect.height()) / 5);
+        constexpr qreal closeIconInset = 2.5;
+        QRectF iconRect(closeRect);
+        iconRect.adjust(closeIconInset, closeIconInset, -closeIconInset, -closeIconInset);
+        QPointF center = iconRect.center();
+        qreal arm = qMax<qreal>(2.5, qMin(iconRect.width(), iconRect.height()) * 0.23);
         QColor closeColor = ThemeManager::instance().color(
             (m_opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground");
 
         p.save();
         p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(closeColor, 1.6, Qt::SolidLine, Qt::RoundCap));
+        p.setPen(QPen(closeColor, 1.5, Qt::SolidLine, Qt::RoundCap));
         p.drawLine(center.x() - arm, center.y() - arm, center.x() + arm, center.y() + arm);
         p.drawLine(center.x() + arm, center.y() - arm, center.x() - arm, center.y() + arm);
         p.restore();
@@ -586,20 +592,12 @@ void CustomTabBar::updateDragOverlay()
     if (dragEditor && tm->isPreviewEditor(dragEditor))
         dragFont.setItalic(true);
 
-    QWidget *btn = tabButton(draggedIdx, QTabBar::RightSide);
-    if (!btn)
-        btn = tabButton(draggedIdx, QTabBar::LeftSide);
-
-    QPoint btnOffset;
-    if (btn)
-        btnOffset = btn->pos() - tabR.topLeft();
-
-    QSize btnSize = btn ? btn->size() : QSize();
     QRect oldOverlayRect = m_dragOverlay->geometry();
     QRect newOverlayRect(m_dragCurrentPos.x() - m_dragOffsetX, tabR.top(),
                          m_dragTabWidth, tabR.height());
 
-    m_dragOverlay->setRenderData(opt, btn != nullptr, btnOffset, btnSize,
+    m_dragOverlay->setRenderData(opt, m_dragHasCloseButton,
+                                 m_dragCloseButtonOffset, m_dragCloseButtonSize,
                                  opt.state & QStyle::State_Selected, dragFont);
     m_dragOverlay->setGeometry(newOverlayRect);
     m_dragOverlay->raise();
@@ -688,6 +686,9 @@ void CustomTabBar::clearDragState()
     m_dragIndex = -1;
     m_dragWidget = nullptr;
     m_dragSourceRect = QRect();
+    m_dragHasCloseButton = false;
+    m_dragCloseButtonOffset = QPoint();
+    m_dragCloseButtonSize = QSize();
     m_lastMoveCenterX = 0;
 }
 
@@ -711,12 +712,24 @@ void CustomTabBar::mousePressEvent(QMouseEvent *event)
             const TabManager *tm = tabManager();
             m_dragWidget = tm ? tm->widget(m_dragIndex) : nullptr;
 
+            QWidget *closeButton = tabButton(m_dragIndex, QTabBar::RightSide);
+            if (!closeButton)
+                closeButton = tabButton(m_dragIndex, QTabBar::LeftSide);
+            m_dragHasCloseButton = closeButton != nullptr;
+            m_dragCloseButtonOffset = m_dragHasCloseButton
+                ? closeButton->pos() - currentTabRect.topLeft()
+                : QPoint();
+            m_dragCloseButtonSize = m_dragHasCloseButton ? closeButton->size() : QSize();
+
             m_dragStarted = false;
             m_dragInProgress = false;
         } else {
             m_dragIndex = -1;
             m_dragWidget = nullptr;
             m_dragSourceRect = QRect();
+            m_dragHasCloseButton = false;
+            m_dragCloseButtonOffset = QPoint();
+            m_dragCloseButtonSize = QSize();
         }
     }
 }

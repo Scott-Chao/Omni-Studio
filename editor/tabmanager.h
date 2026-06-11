@@ -69,6 +69,9 @@ private:
     int  m_dragOffsetX = 0;
     QRect m_dragSourceRect;
     QPoint m_dragCurrentPos;
+    bool m_dragHasCloseButton = false;
+    QPoint m_dragCloseButtonOffset;
+    QSize m_dragCloseButtonSize;
     QWidget *m_dragWidget = nullptr;
     QList<QPointer<QWidget>> m_dragHiddenButtons;
     QList<QPointer<QWidget>> m_nativeDragWidgets;
