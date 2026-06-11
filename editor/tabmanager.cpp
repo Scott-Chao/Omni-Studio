@@ -529,8 +529,9 @@ void DragOverlay::paintEvent(QPaintEvent *)
         iconRect.adjust(closeIconInset, closeIconInset, -closeIconInset, -closeIconInset);
         QPointF center = iconRect.center();
         qreal arm = qMax<qreal>(2.5, qMin(iconRect.width(), iconRect.height()) * 0.23);
-        QColor closeColor = ThemeManager::instance().color(
-            (m_opt.state & QStyle::State_Selected) ? "tab.activeForeground" : "tab.inactiveForeground");
+        QColor closeColor = ThemeManager::instance().color(QStringLiteral("tab.closeForeground"));
+        if (!closeColor.isValid())
+            closeColor = QColor(QStringLiteral("#CCCCCC"));
 
         p.save();
         p.setRenderHint(QPainter::Antialiasing, true);
