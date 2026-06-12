@@ -42,6 +42,7 @@ protected:
 #include "panels/rightpanelcontainer.h"
 #include "panels/outputpanel.h"
 #include "panels/bottompanel.h"
+#include "panels/terminalpanel.h"
 #include "editor/codeeditor.h"
 #include "runner/compilerunmanager.h"
 #include "runner/codeblockrunner.h"
@@ -390,11 +391,44 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // 右侧垂直分割线：编辑器在上，输出面板在下
+    m_terminalPanel = new TerminalPanel(this);
+    m_terminalPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
+    m_terminalPanel->setWorkingDirectoryProvider([this]() {
+        return m_explorer ? m_explorer->rootPath() : QString();
+    });
+    m_terminalPanel->hide();
+    connect(m_terminalPanel, &TerminalPanel::closeRequested, this, [this]() {
+        m_terminalPanel->hide();
+        if (m_activityBar)
+            m_activityBar->setTerminalActive(false);
+        if (m_toggleTerminalAction)
+            m_toggleTerminalAction->setChecked(false);
+    });
+
+    m_toggleTerminalAction = new QAction(tr("Terminal"), this);
+    m_toggleTerminalAction->setCheckable(true);
+    m_toggleTerminalAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_terminal", "Ctrl+`")));
+    connect(m_toggleTerminalAction, &QAction::triggered, this, [this]() {
+        if (m_terminalPanel->isVisible()) {
+            m_terminalPanel->hide();
+        } else {
+            m_terminalPanel->show();
+            m_terminalPanel->ensureTerminal();
+        }
+        const bool visible = m_terminalPanel->isVisible();
+        if (m_activityBar)
+            m_activityBar->setTerminalActive(visible);
+        m_toggleTerminalAction->setChecked(visible);
+    });
+    addAction(m_toggleTerminalAction);
+
     m_rightSplitter = new QSplitter(Qt::Vertical, this);
     m_rightSplitter->addWidget(m_tabManager);
     m_rightSplitter->addWidget(m_bottomPanel);
+    m_rightSplitter->addWidget(m_terminalPanel);
     m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
+    m_rightSplitter->setStretchFactor(2, ConfigManager::instance().rightSplitterOutputStretch());
 
     // ----- 编译运行管理器（ProcessRunner + 编译/运行/终止）-----
     m_compileRunMgr = new CompileRunManager(
@@ -926,6 +960,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_shortcutActions["toggle_backlinks"] = m_toggleBacklinksAction;
     m_shortcutActions["toggle_search"] = toggleSearchAction;
     m_shortcutActions["toggle_explorer"] = m_toggleExplorerAction;
+    m_shortcutActions["toggle_terminal"] = m_toggleTerminalAction;
     m_shortcutActions["toggle_judge"] = m_toggleJudgeAction;
     m_shortcutActions["toggle_preview"] = m_previewAction;
     m_shortcutActions["toggle_split_preview"] = m_splitPreviewAction;
@@ -1152,6 +1187,10 @@ MainWindow::MainWindow(QWidget *parent)
         else
             showLeftPanel(2);
     });
+    connect(m_activityBar, &ActivityBar::terminalClicked, this, [this]() {
+        if (m_toggleTerminalAction)
+            m_toggleTerminalAction->trigger();
+    });
     connect(m_activityBar, &ActivityBar::aiClicked, this, [this]() {
         if (m_dockAi->isVisible()) {
             m_dockAi->hide();
@@ -1281,6 +1320,7 @@ MainWindow::MainWindow(QWidget *parent)
     viewMenu->addAction(toggleSearchAction);
     viewMenu->addAction(m_toggleAiAction);
     viewMenu->addAction(m_toggleJudgeAction);
+    viewMenu->addAction(m_toggleTerminalAction);
     viewMenu->addSeparator();
     viewMenu->addAction(toggleRightPanelAction);
     viewMenu->addAction(m_toggleHistoryAction);

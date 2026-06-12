@@ -20,6 +20,7 @@ ActivityBar::ActivityBar(QWidget *parent)
     m_settingsBtn  = createButton(QIcon(":/icons/settings"),  tr("设置 (Ctrl+,)"));
     m_exportPdfBtn = createButton(QIcon(":/icons/pdf"),       tr("导出 PDF (Ctrl+E)"));
     m_exportPdfBtn->setVisible(false);
+    m_terminalBtn  = createButton(QIcon(":/icons/terminal"),  tr("Terminal (Ctrl+`)"));
     m_judgeBtn     = createButton(QIcon(":/icons/judge"),     tr("评测 (Ctrl+Shift+J)"));
 
     layout->addWidget(m_explorerBtn);
@@ -28,6 +29,7 @@ ActivityBar::ActivityBar(QWidget *parent)
     layout->addWidget(m_judgeBtn);
     layout->addWidget(m_exportPdfBtn);
     layout->addStretch(1);
+    layout->addWidget(m_terminalBtn);
     layout->addWidget(m_settingsBtn);
 
     connect(m_explorerBtn, &QPushButton::clicked, this, &ActivityBar::explorerClicked);
@@ -36,6 +38,7 @@ ActivityBar::ActivityBar(QWidget *parent)
     connect(m_settingsBtn,  &QPushButton::clicked, this, &ActivityBar::settingsClicked);
     connect(m_exportPdfBtn, &QPushButton::clicked, this, &ActivityBar::exportPdfClicked);
     connect(m_judgeBtn,     &QPushButton::clicked, this, &ActivityBar::judgeClicked);
+    connect(m_terminalBtn,  &QPushButton::clicked, this, &ActivityBar::terminalClicked);
 
     ThemeManager::watchTheme(this, &ActivityBar::refreshStyle);
     refreshStyle();
@@ -57,6 +60,7 @@ void ActivityBar::refreshStyle()
     m_settingsBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/settings", fg, iconSize));
     m_exportPdfBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/pdf", fg, iconSize));
     m_judgeBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/judge", fg, iconSize));
+    m_terminalBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/terminal", fg, iconSize));
 
     updateButtonStyle(m_explorerBtn, m_explorerActive);
     updateButtonStyle(m_searchBtn, m_searchActive);
@@ -64,6 +68,7 @@ void ActivityBar::refreshStyle()
     updateButtonStyle(m_settingsBtn, m_settingsActive);
     updateButtonStyle(m_exportPdfBtn, false);
     updateButtonStyle(m_judgeBtn, m_judgeActive);
+    updateButtonStyle(m_terminalBtn, m_terminalActive);
 }
 
 QPushButton *ActivityBar::createButton(const QIcon &icon, const QString &tooltip)
@@ -126,6 +131,7 @@ void ActivityBar::setSearchActive(bool active) { m_searchActive = active; update
 void ActivityBar::setAiActive(bool active)    { m_aiActive = active; updateButtonStyle(m_aiBtn, active); }
 void ActivityBar::setSettingsActive(bool active) { m_settingsActive = active; updateButtonStyle(m_settingsBtn, active); }
 void ActivityBar::setJudgeActive(bool active)  { m_judgeActive = active; updateButtonStyle(m_judgeBtn, active); }
+void ActivityBar::setTerminalActive(bool active) { m_terminalActive = active; updateButtonStyle(m_terminalBtn, active); }
 
 void ActivityBar::setExportPdfVisible(bool visible)
 {

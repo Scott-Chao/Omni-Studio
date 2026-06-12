@@ -40,6 +40,7 @@
     <file alias="ai">icons/icon-ai.svg</file>
     <file alias="settings">icons/icon-settings.svg</file>
     <file alias="judge">icons/icon-judge.svg</file>
+    <file alias="terminal">icons/icon-terminal.svg</file>
     <file alias="new">icons/icon-new.svg</file>
     <file alias="save">icons/icon-save.svg</file>
     <file alias="history">icons/icon-history.svg</file>

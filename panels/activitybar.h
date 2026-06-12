@@ -17,6 +17,7 @@ public:
     void setAiActive(bool active);
     void setSettingsActive(bool active);
     void setExplorerActive(bool active);
+    void setTerminalActive(bool active);
     void setExportPdfVisible(bool visible);
 
 signals:
@@ -26,6 +27,7 @@ signals:
     void exportPdfClicked();
     void judgeClicked();
     void aiClicked();
+    void terminalClicked();
 
 private:
     QPushButton *createButton(const QIcon &icon, const QString &tooltip);
@@ -39,12 +41,14 @@ private:
     QPushButton *m_settingsBtn;
     QPushButton *m_exportPdfBtn;
     QPushButton *m_judgeBtn;
+    QPushButton *m_terminalBtn;
 
     bool m_explorerActive = false;
     bool m_searchActive = false;
     bool m_aiActive = false;
     bool m_settingsActive = false;
     bool m_judgeActive = false;
+    bool m_terminalActive = false;
 };
 
 #endif // ACTIVITYBAR_H

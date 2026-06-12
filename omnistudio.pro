@@ -70,7 +70,10 @@ SOURCES += \
     panels/submissionpanel.cpp \
     panels/smddiagnosticspanel.cpp \
     panels/smdoutputwidget.cpp \
+    panels/terminalpanel.cpp \
     widgets/tabbuttongroup.cpp \
+    terminal/terminalsession.cpp \
+    terminal/terminalview.cpp \
     panels/windowdraghelper.cpp \
     runner/processrunner.cpp \
     editor/pythonsyntaxhighlighter.cpp \
@@ -151,7 +154,10 @@ HEADERS += \
     panels/submissionpanel.h \
     panels/smddiagnosticspanel.h \
     panels/smdoutputwidget.h \
+    panels/terminalpanel.h \
     widgets/tabbuttongroup.h \
+    terminal/terminalsession.h \
+    terminal/terminalview.h \
     panels/windowdraghelper.h \
     smd/smddiagnostic.h \
     runner/processrunner.h \
