@@ -14,6 +14,7 @@
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTextBlock>
+#include <QTimer>
 
 TerminalView::TerminalView(QWidget *parent)
     : QPlainTextEdit(parent)
@@ -23,7 +24,9 @@ TerminalView::TerminalView(QWidget *parent)
     setUndoRedoEnabled(false);
     setLineWrapMode(QPlainTextEdit::NoWrap);
     setWordWrapMode(QTextOption::NoWrap);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setMaximumBlockCount(20000);
+    document()->setDocumentMargin(0);
     setReadOnly(true);
     setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     setCursorWidth(8);
@@ -32,6 +35,7 @@ TerminalView::TerminalView(QWidget *parent)
     QFont mono(ConfigManager::instance().outputPanelFontFamily(),
                ConfigManager::instance().outputPanelFontSize());
     mono.setStyleHint(QFont::Monospace);
+    mono.setFixedPitch(true);
     setFont(mono);
 
     auto &tm = ThemeManager::instance();
@@ -85,15 +89,47 @@ void TerminalView::appendTerminalData(const QByteArray &data)
 int TerminalView::terminalColumns() const
 {
     QFontMetrics fm(font());
-    const int charWidth = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
-    return qMax(1, viewport()->width() / charWidth);
+    int charWidth = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
+    charWidth = qMax(charWidth, fm.horizontalAdvance(QLatin1Char('W')));
+    charWidth = qMax(charWidth, fm.horizontalAdvance(QLatin1Char(' ')));
+    constexpr int widthPaddingPx = 10;
+    constexpr int safetyColumns = 4;
+    const int availableWidth = qMax(1, viewport()->width() - widthPaddingPx);
+    return qMax(1, availableWidth / charWidth - safetyColumns);
 }
 
 int TerminalView::terminalRows() const
 {
     QFontMetrics fm(font());
     const int charHeight = qMax(1, fm.lineSpacing());
-    return qMax(1, viewport()->height() / charHeight);
+    constexpr int heightPaddingPx = 2;
+    constexpr int safetyRows = 1;
+    const int availableHeight = qMax(1, viewport()->height() - heightPaddingPx);
+    return qMax(1, availableHeight / charHeight - safetyRows);
+}
+
+void TerminalView::syncTerminalSize()
+{
+    if (m_alternateScreen) {
+        const int rows = terminalRows();
+        while (m_lines.size() > rows)
+            m_lines.removeLast();
+        while (m_lines.size() < rows)
+            m_lines << QString();
+        m_cursorRow = qBound(0, m_cursorRow, qMax(0, rows - 1));
+    }
+    m_lastColumns = 0;
+    m_lastRows = 0;
+    emitSizeIfChanged();
+    renderBuffer();
+}
+
+void TerminalView::scheduleTerminalSizeSync()
+{
+    QTimer::singleShot(0, this, &TerminalView::syncTerminalSize);
+    QTimer::singleShot(80, this, &TerminalView::syncTerminalSize);
+    QTimer::singleShot(250, this, &TerminalView::syncTerminalSize);
+    QTimer::singleShot(600, this, &TerminalView::syncTerminalSize);
 }
 
 void TerminalView::keyPressEvent(QKeyEvent *event)
@@ -118,6 +154,8 @@ void TerminalView::keyPressEvent(QKeyEvent *event)
     QByteArray sequence = keySequenceForEvent(event);
     if (!sequence.isEmpty()) {
         emit inputGenerated(sequence);
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+            scheduleTerminalSizeSync();
         return;
     }
 
@@ -128,6 +166,7 @@ void TerminalView::resizeEvent(QResizeEvent *event)
 {
     QPlainTextEdit::resizeEvent(event);
     emitSizeIfChanged();
+    QTimer::singleShot(0, this, &TerminalView::syncTerminalSize);
 }
 
 void TerminalView::contextMenuEvent(QContextMenuEvent *event)
@@ -157,7 +196,12 @@ void TerminalView::insertTerminalChar(QChar ch)
     ensureCursorLine();
 
     if (ch == QLatin1Char('\n')) {
-        ++m_cursorRow;
+        const int rows = terminalRows();
+        if (m_alternateScreen && m_cursorRow >= rows - 1) {
+            scrollUpOneLine();
+        } else {
+            ++m_cursorRow;
+        }
         m_cursorColumn = 0;
         ensureCursorLine();
         trimScrollback();
@@ -210,7 +254,16 @@ void TerminalView::handleChar(QChar ch)
         } else if (ch == QLatin1Char(']')) {
             m_state = ParserState::Osc;
         } else if (ch == QLatin1Char('c')) {
-            clear();
+            resetScreenBuffer();
+            m_state = ParserState::Normal;
+        } else if (ch == QLatin1Char('7')) {
+            m_savedCursorRow = m_cursorRow;
+            m_savedCursorColumn = m_cursorColumn;
+            m_state = ParserState::Normal;
+        } else if (ch == QLatin1Char('8')) {
+            m_cursorRow = m_savedCursorRow;
+            m_cursorColumn = m_savedCursorColumn;
+            ensureCursorLine();
             m_state = ParserState::Normal;
         } else {
             m_state = ParserState::Normal;
@@ -309,6 +362,29 @@ void TerminalView::handleCsi(const QString &sequence)
         m_cursorRow = qMax(0, m_cursorRow - csiParamOrDefault(params, 1));
         m_cursorColumn = 0;
         break;
+    case 'd':
+        m_cursorRow = qMax(0, csiParamOrDefault(params, 1) - 1);
+        ensureCursorLine();
+        break;
+    case 'e':
+        m_cursorRow += csiParamOrDefault(params, 1);
+        ensureCursorLine();
+        break;
+    case 'L': {
+        int count = csiParamOrDefault(params, 1);
+        ensureCursorLine();
+        for (int i = 0; i < count; ++i)
+            m_lines.insert(m_cursorRow, QString());
+        break;
+    }
+    case 'M': {
+        int count = csiParamOrDefault(params, 1);
+        ensureCursorLine();
+        while (count-- > 0 && m_cursorRow < m_lines.size())
+            m_lines.removeAt(m_cursorRow);
+        ensureCursorLine();
+        break;
+    }
     case 's':
         m_savedCursorRow = m_cursorRow;
         m_savedCursorColumn = m_cursorColumn;
@@ -319,8 +395,27 @@ void TerminalView::handleCsi(const QString &sequence)
         ensureCursorLine();
         break;
     case 'm':
+        break;
     case 'h':
+        if (params.contains(QStringLiteral("1049"))
+            || params.contains(QStringLiteral("1047"))
+            || params.contains(QStringLiteral("47"))) {
+            m_alternateScreen = true;
+            setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            resetScreenBuffer();
+            scheduleTerminalSizeSync();
+        }
+        break;
     case 'l':
+        if (params.contains(QStringLiteral("1049"))
+            || params.contains(QStringLiteral("1047"))
+            || params.contains(QStringLiteral("47"))) {
+            m_alternateScreen = false;
+            setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            resetScreenBuffer();
+            scheduleTerminalSizeSync();
+        }
+        break;
     case '?':
         break;
     default:
@@ -364,6 +459,10 @@ void TerminalView::ensureCursorLine()
 {
     if (m_lines.isEmpty())
         m_lines << QString();
+
+    if (m_alternateScreen)
+        m_cursorRow = qBound(0, m_cursorRow, qMax(0, terminalRows() - 1));
+
     while (m_cursorRow >= m_lines.size())
         m_lines << QString();
     if (m_cursorRow < 0)
@@ -372,6 +471,15 @@ void TerminalView::ensureCursorLine()
 
 void TerminalView::trimScrollback()
 {
+    if (m_alternateScreen) {
+        const int rows = terminalRows();
+        while (m_lines.size() > rows)
+            m_lines.removeLast();
+        while (m_lines.size() < rows)
+            m_lines << QString();
+        return;
+    }
+
     constexpr int maxLines = 20000;
     if (m_lines.size() <= maxLines)
         return;
@@ -382,24 +490,75 @@ void TerminalView::trimScrollback()
     m_savedCursorRow = qMax(0, m_savedCursorRow - removeCount);
 }
 
+void TerminalView::resetScreenBuffer()
+{
+    const int rows = m_alternateScreen ? terminalRows() : 1;
+    m_lines.clear();
+    for (int i = 0; i < rows; ++i)
+        m_lines << QString();
+    m_cursorRow = 0;
+    m_cursorColumn = 0;
+    m_savedCursorRow = 0;
+    m_savedCursorColumn = 0;
+}
+
+void TerminalView::scrollUpOneLine()
+{
+    ensureCursorLine();
+    if (!m_lines.isEmpty())
+        m_lines.removeFirst();
+    m_lines << QString();
+    m_cursorRow = qMax(0, terminalRows() - 1);
+}
+
 void TerminalView::renderBuffer()
 {
+    trimScrollback();
     QSignalBlocker blocker(this);
-    const QString text = m_lines.join(QLatin1Char('\n'));
+    const QStringList visibleLines = displayLines();
+    const QString text = visibleLines.join(QLatin1Char('\n'));
     if (toPlainText() != text)
         setPlainText(text);
 
     QTextBlock block = document()->findBlockByNumber(m_cursorRow);
     QTextCursor cursor(document());
     if (block.isValid()) {
-        int column = qMin(m_cursorColumn, block.text().length());
+        int column = qMin(m_cursorColumn, qMin(block.text().length(), terminalColumns() - 1));
         cursor.setPosition(block.position() + column);
     } else {
         cursor.movePosition(QTextCursor::End);
     }
     setTextCursor(cursor);
     ensureCursorVisible();
-    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    horizontalScrollBar()->setValue(0);
+    if (m_alternateScreen)
+        verticalScrollBar()->setValue(0);
+}
+
+QStringList TerminalView::displayLines() const
+{
+    QStringList result;
+    result.reserve(m_lines.size());
+    for (const QString &line : m_lines)
+        result << trimDisplayLine(line);
+
+    if (!m_alternateScreen) {
+        const int minSize = qMax(1, m_cursorRow + 1);
+        while (result.size() > minSize && result.last().isEmpty())
+            result.removeLast();
+    }
+
+    return result;
+}
+
+QString TerminalView::trimDisplayLine(QString line) const
+{
+    const int columns = terminalColumns();
+    if (line.length() > columns)
+        line.truncate(columns);
+    while (!line.isEmpty() && line.back() == QLatin1Char(' '))
+        line.chop(1);
+    return line;
 }
 
 void TerminalView::eraseInLine(int mode)
@@ -422,9 +581,7 @@ void TerminalView::eraseInLine(int mode)
 void TerminalView::eraseInDisplay(int mode)
 {
     if (mode == 2 || mode == 3) {
-        m_lines = { QString() };
-        m_cursorRow = 0;
-        m_cursorColumn = 0;
+        resetScreenBuffer();
         return;
     }
 
@@ -472,7 +629,7 @@ QByteArray TerminalView::keySequenceForEvent(QKeyEvent *event) const
     case Qt::Key_Enter:
         return QByteArray("\r", 1);
     case Qt::Key_Backspace:
-        return QByteArray("\x08", 1);
+        return QByteArray("\x7f", 1);
     case Qt::Key_Tab:
         return QByteArray("\t", 1);
     case Qt::Key_Escape:

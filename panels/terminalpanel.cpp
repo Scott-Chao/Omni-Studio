@@ -84,6 +84,13 @@ void TerminalPanel::openTerminal()
     QTimer::singleShot(0, view, [view, cwd]() {
         if (TerminalSession *session = view->session())
             session->start(cwd, view->terminalColumns(), view->terminalRows());
+        view->syncTerminalSize();
+    });
+    QTimer::singleShot(80, view, [view]() {
+        view->syncTerminalSize();
+    });
+    QTimer::singleShot(250, view, [view]() {
+        view->syncTerminalSize();
     });
 }
 

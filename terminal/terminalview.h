@@ -21,6 +21,8 @@ public:
     void appendTerminalData(const QByteArray &data);
     int terminalColumns() const;
     int terminalRows() const;
+    void syncTerminalSize();
+    void scheduleTerminalSizeSync();
 
 signals:
     void inputGenerated(const QByteArray &data);
@@ -47,6 +49,7 @@ private:
     int m_cursorColumn = 0;
     int m_savedCursorRow = 0;
     int m_savedCursorColumn = 0;
+    bool m_alternateScreen = false;
 
     void insertTerminalText(const QString &text);
     void insertTerminalChar(QChar ch);
@@ -56,7 +59,11 @@ private:
     QList<int> csiParams(const QString &params) const;
     void ensureCursorLine();
     void trimScrollback();
+    void resetScreenBuffer();
+    void scrollUpOneLine();
     void renderBuffer();
+    QStringList displayLines() const;
+    QString trimDisplayLine(QString line) const;
     void eraseInLine(int mode);
     void eraseInDisplay(int mode);
     void sendText(const QString &text);
