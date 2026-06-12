@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 TerminalPanel::TerminalPanel(QWidget *parent)
@@ -80,6 +81,10 @@ void TerminalPanel::openTerminal()
     int index = m_tabs->addTab(view, tr("PowerShell %1").arg(m_nextTerminalId++));
     m_tabs->setCurrentIndex(index);
     view->setFocus();
+    QTimer::singleShot(0, view, [view, cwd]() {
+        if (TerminalSession *session = view->session())
+            session->start(cwd, view->terminalColumns(), view->terminalRows());
+    });
 }
 
 int TerminalPanel::terminalCount() const
@@ -92,7 +97,7 @@ TerminalView *TerminalPanel::createTerminalView(const QString &workingDirectory)
     auto *view = new TerminalView(m_tabs);
     auto *session = new TerminalSession(view);
     view->attachSession(session);
-    session->start(workingDirectory, 100, 30);
+    Q_UNUSED(workingDirectory)
     return view;
 }
 

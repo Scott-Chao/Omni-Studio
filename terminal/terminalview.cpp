@@ -12,6 +12,7 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QTextBlock>
 
 TerminalView::TerminalView(QWidget *parent)
@@ -23,8 +24,10 @@ TerminalView::TerminalView(QWidget *parent)
     setLineWrapMode(QPlainTextEdit::NoWrap);
     setWordWrapMode(QTextOption::NoWrap);
     setMaximumBlockCount(20000);
-    setTextInteractionFlags(Qt::TextEditorInteraction);
+    setReadOnly(true);
+    setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     setCursorWidth(8);
+    m_lines << QString();
 
     QFont mono(ConfigManager::instance().outputPanelFontFamily(),
                ConfigManager::instance().outputPanelFontSize());
@@ -76,8 +79,21 @@ void TerminalView::appendTerminalData(const QByteArray &data)
     for (QChar ch : text)
         handleChar(ch);
 
-    ensureCursorVisible();
-    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+    renderBuffer();
+}
+
+int TerminalView::terminalColumns() const
+{
+    QFontMetrics fm(font());
+    const int charWidth = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
+    return qMax(1, viewport()->width() / charWidth);
+}
+
+int TerminalView::terminalRows() const
+{
+    QFontMetrics fm(font());
+    const int charHeight = qMax(1, fm.lineSpacing());
+    return qMax(1, viewport()->height() / charHeight);
 }
 
 void TerminalView::keyPressEvent(QKeyEvent *event)
@@ -129,10 +145,33 @@ void TerminalView::contextMenuEvent(QContextMenuEvent *event)
 
 void TerminalView::insertTerminalText(const QString &text)
 {
-    QTextCursor cursor = textCursor();
-    cursor.movePosition(QTextCursor::End);
-    cursor.insertText(text);
-    setTextCursor(cursor);
+    for (QChar ch : text)
+        insertTerminalChar(ch);
+}
+
+void TerminalView::insertTerminalChar(QChar ch)
+{
+    if (ch != QLatin1Char('\n'))
+        m_pendingCarriageReturn = false;
+
+    ensureCursorLine();
+
+    if (ch == QLatin1Char('\n')) {
+        ++m_cursorRow;
+        m_cursorColumn = 0;
+        ensureCursorLine();
+        trimScrollback();
+        return;
+    }
+
+    QString &line = m_lines[m_cursorRow];
+    if (line.length() < m_cursorColumn)
+        line += QString(m_cursorColumn - line.length(), QLatin1Char(' '));
+    if (m_cursorColumn < line.length())
+        line[m_cursorColumn] = ch;
+    else
+        line += ch;
+    ++m_cursorColumn;
 }
 
 void TerminalView::handleChar(QChar ch)
@@ -140,23 +179,28 @@ void TerminalView::handleChar(QChar ch)
     switch (m_state) {
     case ParserState::Normal:
         if (ch == QChar(0x1b)) {
+            m_pendingCarriageReturn = false;
             m_state = ParserState::Escape;
         } else if (ch == QLatin1Char('\r')) {
-            QTextCursor cursor = textCursor();
-            cursor.movePosition(QTextCursor::End);
-            cursor.movePosition(QTextCursor::StartOfBlock);
-            setTextCursor(cursor);
+            m_cursorColumn = 0;
+            m_pendingCarriageReturn = true;
         } else if (ch == QLatin1Char('\b')) {
-            QTextCursor cursor = textCursor();
-            cursor.movePosition(QTextCursor::End);
-            cursor.deletePreviousChar();
-            setTextCursor(cursor);
+            if (m_cursorColumn > 0)
+                --m_cursorColumn;
+            m_pendingCarriageReturn = false;
         } else if (ch == QLatin1Char('\a')) {
+            m_pendingCarriageReturn = false;
             QApplication::beep();
         } else if (ch == QLatin1Char('\n')) {
-            insertTerminalText(QStringLiteral("\n"));
+            if (m_pendingCarriageReturn) {
+                QTextCursor cursor = textCursor();
+                cursor.movePosition(QTextCursor::EndOfBlock);
+                setTextCursor(cursor);
+                m_pendingCarriageReturn = false;
+            }
+            insertTerminalChar(ch);
         } else if (!ch.isNull()) {
-            insertTerminalText(QString(ch));
+            insertTerminalChar(ch);
         }
         break;
     case ParserState::Escape:
@@ -199,41 +243,80 @@ void TerminalView::handleCsi(const QString &sequence)
 
     const QChar command = sequence.back();
     const QString params = sequence.left(sequence.size() - 1);
-    QTextCursor cursor = textCursor();
-    cursor.movePosition(QTextCursor::End);
+    const QList<int> values = csiParams(params);
 
     switch (command.unicode()) {
     case 'J':
-        if (params.isEmpty() || params == QStringLiteral("2") || params == QStringLiteral("3"))
-            clear();
+        eraseInDisplay(values.isEmpty() ? 0 : values.first());
         break;
     case 'K':
-        cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-        cursor.removeSelectedText();
-        setTextCursor(cursor);
+        eraseInLine(values.isEmpty() ? 0 : values.first());
         break;
     case 'H':
     case 'f':
-        if (params.isEmpty() || params == QStringLiteral(";") || params == QStringLiteral("1;1")) {
-            cursor.movePosition(QTextCursor::Start);
-            setTextCursor(cursor);
-        }
+        m_cursorRow = qMax(0, (values.size() >= 1 ? values[0] : 1) - 1);
+        m_cursorColumn = qMax(0, (values.size() >= 2 ? values[1] : 1) - 1);
+        ensureCursorLine();
         break;
     case 'A':
-        cursor.movePosition(QTextCursor::Up);
-        setTextCursor(cursor);
+        m_cursorRow = qMax(0, m_cursorRow - csiParamOrDefault(params, 1));
         break;
     case 'B':
-        cursor.movePosition(QTextCursor::Down);
-        setTextCursor(cursor);
+        m_cursorRow += csiParamOrDefault(params, 1);
+        ensureCursorLine();
         break;
     case 'C':
-        cursor.movePosition(QTextCursor::Right);
-        setTextCursor(cursor);
+        m_cursorColumn += csiParamOrDefault(params, 1);
         break;
     case 'D':
-        cursor.movePosition(QTextCursor::Left);
-        setTextCursor(cursor);
+        m_cursorColumn = qMax(0, m_cursorColumn - csiParamOrDefault(params, 1));
+        break;
+    case 'G':
+        m_cursorColumn = qMax(0, csiParamOrDefault(params, 1) - 1);
+        break;
+    case 'P': {
+        ensureCursorLine();
+        QString &line = m_lines[m_cursorRow];
+        int count = csiParamOrDefault(params, 1);
+        if (m_cursorColumn < line.length())
+            line.remove(m_cursorColumn, count);
+        break;
+    }
+    case '@': {
+        ensureCursorLine();
+        QString &line = m_lines[m_cursorRow];
+        int count = csiParamOrDefault(params, 1);
+        if (line.length() < m_cursorColumn)
+            line += QString(m_cursorColumn - line.length(), QLatin1Char(' '));
+        line.insert(m_cursorColumn, QString(count, QLatin1Char(' ')));
+        break;
+    }
+    case 'X': {
+        ensureCursorLine();
+        QString &line = m_lines[m_cursorRow];
+        int count = csiParamOrDefault(params, 1);
+        if (line.length() < m_cursorColumn + count)
+            line += QString(m_cursorColumn + count - line.length(), QLatin1Char(' '));
+        line.replace(m_cursorColumn, count, QString(count, QLatin1Char(' ')));
+        break;
+    }
+    case 'E':
+        m_cursorRow += csiParamOrDefault(params, 1);
+        m_cursorColumn = 0;
+        ensureCursorLine();
+        break;
+    case 'F':
+        m_cursorRow = qMax(0, m_cursorRow - csiParamOrDefault(params, 1));
+        m_cursorColumn = 0;
+        break;
+    case 's':
+        m_savedCursorRow = m_cursorRow;
+        m_savedCursorColumn = m_cursorColumn;
+        break;
+    case 'u':
+        m_cursorRow = m_savedCursorRow;
+        m_cursorColumn = m_savedCursorColumn;
+        ensureCursorLine();
         break;
     case 'm':
     case 'h':
@@ -242,6 +325,117 @@ void TerminalView::handleCsi(const QString &sequence)
         break;
     default:
         break;
+    }
+}
+
+int TerminalView::csiParamOrDefault(const QString &params, int defaultValue) const
+{
+    QList<int> values = csiParams(params);
+    if (values.isEmpty())
+        return defaultValue;
+    int value = values.first();
+    return value > 0 ? value : defaultValue;
+}
+
+QList<int> TerminalView::csiParams(const QString &params) const
+{
+    QList<int> values;
+    QString cleaned = params;
+    cleaned.remove(QLatin1Char('?'));
+    cleaned.remove(QLatin1Char('>'));
+    cleaned.remove(QLatin1Char('='));
+    if (cleaned.isEmpty())
+        return values;
+
+    const QStringList parts = cleaned.split(QLatin1Char(';'));
+    for (const QString &part : parts) {
+        if (part.isEmpty()) {
+            values << 0;
+            continue;
+        }
+        bool ok = false;
+        int value = part.toInt(&ok);
+        values << (ok ? value : 0);
+    }
+    return values;
+}
+
+void TerminalView::ensureCursorLine()
+{
+    if (m_lines.isEmpty())
+        m_lines << QString();
+    while (m_cursorRow >= m_lines.size())
+        m_lines << QString();
+    if (m_cursorRow < 0)
+        m_cursorRow = 0;
+}
+
+void TerminalView::trimScrollback()
+{
+    constexpr int maxLines = 20000;
+    if (m_lines.size() <= maxLines)
+        return;
+
+    int removeCount = m_lines.size() - maxLines;
+    m_lines.erase(m_lines.begin(), m_lines.begin() + removeCount);
+    m_cursorRow = qMax(0, m_cursorRow - removeCount);
+    m_savedCursorRow = qMax(0, m_savedCursorRow - removeCount);
+}
+
+void TerminalView::renderBuffer()
+{
+    QSignalBlocker blocker(this);
+    const QString text = m_lines.join(QLatin1Char('\n'));
+    if (toPlainText() != text)
+        setPlainText(text);
+
+    QTextBlock block = document()->findBlockByNumber(m_cursorRow);
+    QTextCursor cursor(document());
+    if (block.isValid()) {
+        int column = qMin(m_cursorColumn, block.text().length());
+        cursor.setPosition(block.position() + column);
+    } else {
+        cursor.movePosition(QTextCursor::End);
+    }
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    verticalScrollBar()->setValue(verticalScrollBar()->maximum());
+}
+
+void TerminalView::eraseInLine(int mode)
+{
+    ensureCursorLine();
+    QString &line = m_lines[m_cursorRow];
+    if (mode == 2) {
+        line.clear();
+        m_cursorColumn = 0;
+    } else if (mode == 1) {
+        int count = qMin(m_cursorColumn + 1, line.length());
+        if (count > 0)
+            line.replace(0, count, QString(count, QLatin1Char(' ')));
+    } else {
+        if (m_cursorColumn < line.length())
+            line.truncate(m_cursorColumn);
+    }
+}
+
+void TerminalView::eraseInDisplay(int mode)
+{
+    if (mode == 2 || mode == 3) {
+        m_lines = { QString() };
+        m_cursorRow = 0;
+        m_cursorColumn = 0;
+        return;
+    }
+
+    if (mode == 0) {
+        eraseInLine(0);
+        while (m_lines.size() > m_cursorRow + 1)
+            m_lines.removeLast();
+    } else if (mode == 1) {
+        for (int row = 0; row < m_cursorRow && row < m_lines.size(); ++row)
+            m_lines[row].clear();
+        eraseInLine(1);
     }
 }
 
@@ -278,7 +472,7 @@ QByteArray TerminalView::keySequenceForEvent(QKeyEvent *event) const
     case Qt::Key_Enter:
         return QByteArray("\r", 1);
     case Qt::Key_Backspace:
-        return QByteArray("\x7f", 1);
+        return QByteArray("\x08", 1);
     case Qt::Key_Tab:
         return QByteArray("\t", 1);
     case Qt::Key_Escape:
@@ -314,11 +508,8 @@ QByteArray TerminalView::keySequenceForEvent(QKeyEvent *event) const
 
 void TerminalView::emitSizeIfChanged()
 {
-    QFontMetrics fm(font());
-    const int charWidth = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
-    const int charHeight = qMax(1, fm.lineSpacing());
-    int columns = qMax(1, viewport()->width() / charWidth);
-    int rows = qMax(1, viewport()->height() / charHeight);
+    int columns = terminalColumns();
+    int rows = terminalRows();
 
     if (columns == m_lastColumns && rows == m_lastRows)
         return;

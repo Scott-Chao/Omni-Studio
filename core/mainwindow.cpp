@@ -413,6 +413,14 @@ MainWindow::MainWindow(QWidget *parent)
             m_terminalPanel->hide();
         } else {
             m_terminalPanel->show();
+            const int totalHeight = qMax(1, m_rightSplitter->height());
+            const int terminalHeight = qMax(m_terminalPanel->minimumHeight(), totalHeight / 3);
+            const int outputHeight = m_bottomPanel->isVisible() ? m_bottomPanel->height() : 0;
+            m_rightSplitter->setSizes({
+                qMax(100, totalHeight - terminalHeight - outputHeight),
+                outputHeight,
+                terminalHeight
+            });
             m_terminalPanel->ensureTerminal();
         }
         const bool visible = m_terminalPanel->isVisible();
