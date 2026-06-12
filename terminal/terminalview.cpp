@@ -8,13 +8,18 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetrics>
+#include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTextBlock>
+#include <QTextCharFormat>
 #include <QTimer>
+
+#include <algorithm>
 
 TerminalView::TerminalView(QWidget *parent)
     : QPlainTextEdit(parent)
@@ -29,14 +34,19 @@ TerminalView::TerminalView(QWidget *parent)
     document()->setDocumentMargin(0);
     setReadOnly(true);
     setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
-    setCursorWidth(8);
     m_lines << QString();
 
-    QFont mono(ConfigManager::instance().outputPanelFontFamily(),
-               ConfigManager::instance().outputPanelFontSize());
+    const QString configuredFamily = ConfigManager::instance().outputPanelFontFamily();
+    const QStringList availableFamilies = QFontDatabase::families();
+    const QString fontFamily = availableFamilies.contains(QStringLiteral("Cascadia Mono"))
+        ? QStringLiteral("Cascadia Mono")
+        : configuredFamily;
+    QFont mono(fontFamily, ConfigManager::instance().outputPanelFontSize());
     mono.setStyleHint(QFont::Monospace);
     mono.setFixedPitch(true);
+    mono.setKerning(false);
     setFont(mono);
+    setCursorWidth(qMax(1, qRound(terminalCellWidth())));
 
     auto &tm = ThemeManager::instance();
     setStyleSheet(QStringLiteral(
@@ -88,35 +98,36 @@ void TerminalView::appendTerminalData(const QByteArray &data)
 
 int TerminalView::terminalColumns() const
 {
-    QFontMetrics fm(font());
-    int charWidth = qMax(1, fm.horizontalAdvance(QLatin1Char('M')));
-    charWidth = qMax(charWidth, fm.horizontalAdvance(QLatin1Char('W')));
-    charWidth = qMax(charWidth, fm.horizontalAdvance(QLatin1Char(' ')));
-    constexpr int widthPaddingPx = 10;
-    constexpr int safetyColumns = 4;
+    const qreal charWidth = terminalCellWidth();
+    constexpr int widthPaddingPx = 1;
     const int availableWidth = qMax(1, viewport()->width() - widthPaddingPx);
-    return qMax(1, availableWidth / charWidth - safetyColumns);
+    return qMax(1, int(availableWidth / charWidth));
 }
 
 int TerminalView::terminalRows() const
 {
     QFontMetrics fm(font());
     const int charHeight = qMax(1, fm.lineSpacing());
-    constexpr int heightPaddingPx = 2;
-    constexpr int safetyRows = 1;
+    constexpr int heightPaddingPx = 1;
     const int availableHeight = qMax(1, viewport()->height() - heightPaddingPx);
-    return qMax(1, availableHeight / charHeight - safetyRows);
+    return qMax(1, availableHeight / charHeight);
 }
 
 void TerminalView::syncTerminalSize()
 {
     if (m_alternateScreen) {
         const int rows = terminalRows();
-        while (m_lines.size() > rows)
+        while (m_lines.size() > rows) {
             m_lines.removeLast();
-        while (m_lines.size() < rows)
+            if (!m_lineStyles.isEmpty())
+                m_lineStyles.removeLast();
+        }
+        while (m_lines.size() < rows) {
             m_lines << QString();
+            m_lineStyles.append(QVector<CellStyle>());
+        }
         m_cursorRow = qBound(0, m_cursorRow, qMax(0, rows - 1));
+        ensureLineStorage();
     }
     m_lastColumns = 0;
     m_lastRows = 0;
@@ -185,17 +196,17 @@ void TerminalView::contextMenuEvent(QContextMenuEvent *event)
 void TerminalView::insertTerminalText(const QString &text)
 {
     for (QChar ch : text)
-        insertTerminalChar(ch);
+        handleChar(ch);
 }
 
-void TerminalView::insertTerminalChar(QChar ch)
+void TerminalView::insertTerminalCell(const QString &cell)
 {
-    if (ch != QLatin1Char('\n'))
+    if (cell != QLatin1String("\n"))
         m_pendingCarriageReturn = false;
 
     ensureCursorLine();
 
-    if (ch == QLatin1Char('\n')) {
+    if (cell == QLatin1String("\n")) {
         const int rows = terminalRows();
         if (m_alternateScreen && m_cursorRow >= rows - 1) {
             scrollUpOneLine();
@@ -209,12 +220,23 @@ void TerminalView::insertTerminalChar(QChar ch)
     }
 
     QString &line = m_lines[m_cursorRow];
-    if (line.length() < m_cursorColumn)
-        line += QString(m_cursorColumn - line.length(), QLatin1Char(' '));
-    if (m_cursorColumn < line.length())
-        line[m_cursorColumn] = ch;
-    else
-        line += ch;
+    QVector<CellStyle> &styles = m_lineStyles[m_cursorRow];
+    const int currentCells = cellCount(line);
+    if (currentCells < m_cursorColumn)
+        line += QString(m_cursorColumn - currentCells, QLatin1Char(' '));
+    while (styles.size() < m_cursorColumn)
+        styles.append(CellStyle());
+    const int stringIndex = cellToStringIndex(line, m_cursorColumn);
+    if (m_cursorColumn < cellCount(line)) {
+        line.replace(stringIndex, cellCharLengthAt(line, stringIndex), cell);
+        if (m_cursorColumn < styles.size())
+            styles[m_cursorColumn] = m_currentStyle;
+        else
+            styles.append(m_currentStyle);
+    } else {
+        line += cell;
+        styles.append(m_currentStyle);
+    }
     ++m_cursorColumn;
 }
 
@@ -222,6 +244,19 @@ void TerminalView::handleChar(QChar ch)
 {
     switch (m_state) {
     case ParserState::Normal:
+        if (!m_pendingHighSurrogate.isNull()) {
+            if (ch.isLowSurrogate()) {
+                QString cell;
+                cell.append(m_pendingHighSurrogate);
+                cell.append(ch);
+                m_pendingHighSurrogate = QChar();
+                insertTerminalCell(cell);
+                break;
+            }
+            insertTerminalCell(QString(m_pendingHighSurrogate));
+            m_pendingHighSurrogate = QChar();
+        }
+
         if (ch == QChar(0x1b)) {
             m_pendingCarriageReturn = false;
             m_state = ParserState::Escape;
@@ -242,9 +277,12 @@ void TerminalView::handleChar(QChar ch)
                 setTextCursor(cursor);
                 m_pendingCarriageReturn = false;
             }
-            insertTerminalChar(ch);
+            insertTerminalCell(QString(ch));
         } else if (!ch.isNull()) {
-            insertTerminalChar(ch);
+            if (ch.isHighSurrogate())
+                m_pendingHighSurrogate = ch;
+            else
+                insertTerminalCell(QString(ch));
         }
         break;
     case ParserState::Escape:
@@ -255,6 +293,7 @@ void TerminalView::handleChar(QChar ch)
             m_state = ParserState::Osc;
         } else if (ch == QLatin1Char('c')) {
             resetScreenBuffer();
+            m_currentStyle = CellStyle();
             m_state = ParserState::Normal;
         } else if (ch == QLatin1Char('7')) {
             m_savedCursorRow = m_cursorRow;
@@ -330,27 +369,47 @@ void TerminalView::handleCsi(const QString &sequence)
     case 'P': {
         ensureCursorLine();
         QString &line = m_lines[m_cursorRow];
+        QVector<CellStyle> &styles = m_lineStyles[m_cursorRow];
         int count = csiParamOrDefault(params, 1);
-        if (m_cursorColumn < line.length())
-            line.remove(m_cursorColumn, count);
+        if (m_cursorColumn < cellCount(line)) {
+            const int start = cellToStringIndex(line, m_cursorColumn);
+            const int end = cellToStringIndex(line, m_cursorColumn + count);
+            line.remove(start, end - start);
+        }
+        if (m_cursorColumn < styles.size())
+            styles.remove(m_cursorColumn, qMin(count, styles.size() - m_cursorColumn));
         break;
     }
     case '@': {
         ensureCursorLine();
         QString &line = m_lines[m_cursorRow];
+        QVector<CellStyle> &styles = m_lineStyles[m_cursorRow];
         int count = csiParamOrDefault(params, 1);
-        if (line.length() < m_cursorColumn)
-            line += QString(m_cursorColumn - line.length(), QLatin1Char(' '));
-        line.insert(m_cursorColumn, QString(count, QLatin1Char(' ')));
+        const int currentCells = cellCount(line);
+        if (currentCells < m_cursorColumn)
+            line += QString(m_cursorColumn - currentCells, QLatin1Char(' '));
+        while (styles.size() < m_cursorColumn)
+            styles.append(CellStyle());
+        line.insert(cellToStringIndex(line, m_cursorColumn), QString(count, QLatin1Char(' ')));
+        for (int i = 0; i < count; ++i)
+            styles.insert(m_cursorColumn, CellStyle());
         break;
     }
     case 'X': {
         ensureCursorLine();
         QString &line = m_lines[m_cursorRow];
+        QVector<CellStyle> &styles = m_lineStyles[m_cursorRow];
         int count = csiParamOrDefault(params, 1);
-        if (line.length() < m_cursorColumn + count)
-            line += QString(m_cursorColumn + count - line.length(), QLatin1Char(' '));
-        line.replace(m_cursorColumn, count, QString(count, QLatin1Char(' ')));
+        const int currentCells = cellCount(line);
+        if (currentCells < m_cursorColumn + count)
+            line += QString(m_cursorColumn + count - currentCells, QLatin1Char(' '));
+        while (styles.size() < m_cursorColumn + count)
+            styles.append(CellStyle());
+        const int start = cellToStringIndex(line, m_cursorColumn);
+        const int end = cellToStringIndex(line, m_cursorColumn + count);
+        line.replace(start, end - start, QString(count, QLatin1Char(' ')));
+        for (int i = 0; i < count && m_cursorColumn + i < styles.size(); ++i)
+            styles[m_cursorColumn + i] = CellStyle();
         break;
     }
     case 'E':
@@ -373,15 +432,20 @@ void TerminalView::handleCsi(const QString &sequence)
     case 'L': {
         int count = csiParamOrDefault(params, 1);
         ensureCursorLine();
-        for (int i = 0; i < count; ++i)
+        for (int i = 0; i < count; ++i) {
             m_lines.insert(m_cursorRow, QString());
+            m_lineStyles.insert(m_cursorRow, QVector<CellStyle>());
+        }
         break;
     }
     case 'M': {
         int count = csiParamOrDefault(params, 1);
         ensureCursorLine();
-        while (count-- > 0 && m_cursorRow < m_lines.size())
+        while (count-- > 0 && m_cursorRow < m_lines.size()) {
             m_lines.removeAt(m_cursorRow);
+            if (m_cursorRow < m_lineStyles.size())
+                m_lineStyles.removeAt(m_cursorRow);
+        }
         ensureCursorLine();
         break;
     }
@@ -395,6 +459,7 @@ void TerminalView::handleCsi(const QString &sequence)
         ensureCursorLine();
         break;
     case 'm':
+        handleSgr(params);
         break;
     case 'h':
         if (params.contains(QStringLiteral("1049"))
@@ -420,6 +485,73 @@ void TerminalView::handleCsi(const QString &sequence)
         break;
     default:
         break;
+    }
+}
+
+void TerminalView::handleSgr(const QString &params)
+{
+    const QList<int> values = sgrParams(params);
+    for (int i = 0; i < values.size(); ++i) {
+        const int value = values[i];
+        if (value == 0) {
+            m_currentStyle = CellStyle();
+        } else if (value == 1) {
+            m_currentStyle.bold = true;
+        } else if (value == 3) {
+            m_currentStyle.italic = true;
+        } else if (value == 4) {
+            m_currentStyle.underline = true;
+        } else if (value == 7) {
+            m_currentStyle.inverse = true;
+        } else if (value == 22) {
+            m_currentStyle.bold = false;
+        } else if (value == 23) {
+            m_currentStyle.italic = false;
+        } else if (value == 24) {
+            m_currentStyle.underline = false;
+        } else if (value == 27) {
+            m_currentStyle.inverse = false;
+        } else if (value == 39) {
+            m_currentStyle.foreground = QColor();
+            m_currentStyle.hasForeground = false;
+        } else if (value == 49) {
+            m_currentStyle.background = QColor();
+            m_currentStyle.hasBackground = false;
+        } else if (value >= 30 && value <= 37) {
+            m_currentStyle.foreground = ansiColor(value - 30);
+            m_currentStyle.hasForeground = true;
+        } else if (value >= 40 && value <= 47) {
+            m_currentStyle.background = ansiColor(value - 40);
+            m_currentStyle.hasBackground = true;
+        } else if (value >= 90 && value <= 97) {
+            m_currentStyle.foreground = ansiColor(value - 90 + 8);
+            m_currentStyle.hasForeground = true;
+        } else if (value >= 100 && value <= 107) {
+            m_currentStyle.background = ansiColor(value - 100 + 8);
+            m_currentStyle.hasBackground = true;
+        } else if ((value == 38 || value == 48) && i + 1 < values.size()) {
+            const bool foreground = value == 38;
+            const int mode = values[++i];
+            QColor color;
+            if (mode == 5 && i + 1 < values.size()) {
+                color = ansiColor(values[++i]);
+            } else if (mode == 2 && i + 3 < values.size()) {
+                const int red = qBound(0, values[++i], 255);
+                const int green = qBound(0, values[++i], 255);
+                const int blue = qBound(0, values[++i], 255);
+                color = QColor(red, green, blue);
+            }
+
+            if (color.isValid()) {
+                if (foreground) {
+                    m_currentStyle.foreground = color;
+                    m_currentStyle.hasForeground = true;
+                } else {
+                    m_currentStyle.background = color;
+                    m_currentStyle.hasBackground = true;
+                }
+            }
+        }
     }
 }
 
@@ -455,6 +587,16 @@ QList<int> TerminalView::csiParams(const QString &params) const
     return values;
 }
 
+QList<int> TerminalView::sgrParams(const QString &params) const
+{
+    if (params.isEmpty())
+        return {0};
+
+    QString cleaned = params;
+    cleaned.replace(QLatin1Char(':'), QLatin1Char(';'));
+    return csiParams(cleaned);
+}
+
 void TerminalView::ensureCursorLine()
 {
     if (m_lines.isEmpty())
@@ -467,16 +609,67 @@ void TerminalView::ensureCursorLine()
         m_lines << QString();
     if (m_cursorRow < 0)
         m_cursorRow = 0;
+    ensureLineStorage();
+}
+
+void TerminalView::ensureLineStorage()
+{
+    while (m_lineStyles.size() < m_lines.size())
+        m_lineStyles.append(QVector<CellStyle>());
+    while (m_lineStyles.size() > m_lines.size())
+        m_lineStyles.removeLast();
+}
+
+int TerminalView::cellToStringIndex(const QString &line, int cellColumn) const
+{
+    int index = 0;
+    int column = 0;
+    while (index < line.length() && column < cellColumn) {
+        index += cellCharLengthAt(line, index);
+        ++column;
+    }
+    return index;
+}
+
+int TerminalView::cellCount(const QString &line) const
+{
+    int count = 0;
+    int index = 0;
+    while (index < line.length()) {
+        index += cellCharLengthAt(line, index);
+        ++count;
+    }
+    return count;
+}
+
+int TerminalView::cellCharLengthAt(const QString &line, int stringIndex) const
+{
+    if (stringIndex + 1 < line.length()
+        && line.at(stringIndex).isHighSurrogate()
+        && line.at(stringIndex + 1).isLowSurrogate()) {
+        return 2;
+    }
+    return 1;
+}
+
+QString TerminalView::lineLeftCells(const QString &line, int cellCount) const
+{
+    return line.left(cellToStringIndex(line, cellCount));
 }
 
 void TerminalView::trimScrollback()
 {
     if (m_alternateScreen) {
         const int rows = terminalRows();
-        while (m_lines.size() > rows)
+        while (m_lines.size() > rows) {
             m_lines.removeLast();
-        while (m_lines.size() < rows)
+            if (!m_lineStyles.isEmpty())
+                m_lineStyles.removeLast();
+        }
+        while (m_lines.size() < rows) {
             m_lines << QString();
+            m_lineStyles.append(QVector<CellStyle>());
+        }
         return;
     }
 
@@ -486,6 +679,7 @@ void TerminalView::trimScrollback()
 
     int removeCount = m_lines.size() - maxLines;
     m_lines.erase(m_lines.begin(), m_lines.begin() + removeCount);
+    m_lineStyles.erase(m_lineStyles.begin(), m_lineStyles.begin() + qMin(removeCount, m_lineStyles.size()));
     m_cursorRow = qMax(0, m_cursorRow - removeCount);
     m_savedCursorRow = qMax(0, m_savedCursorRow - removeCount);
 }
@@ -494,8 +688,10 @@ void TerminalView::resetScreenBuffer()
 {
     const int rows = m_alternateScreen ? terminalRows() : 1;
     m_lines.clear();
+    m_lineStyles.clear();
     for (int i = 0; i < rows; ++i)
         m_lines << QString();
+    ensureLineStorage();
     m_cursorRow = 0;
     m_cursorColumn = 0;
     m_savedCursorRow = 0;
@@ -505,9 +701,13 @@ void TerminalView::resetScreenBuffer()
 void TerminalView::scrollUpOneLine()
 {
     ensureCursorLine();
-    if (!m_lines.isEmpty())
+    if (!m_lines.isEmpty()) {
         m_lines.removeFirst();
+        if (!m_lineStyles.isEmpty())
+            m_lineStyles.removeFirst();
+    }
     m_lines << QString();
+    m_lineStyles.append(QVector<CellStyle>());
     m_cursorRow = qMax(0, terminalRows() - 1);
 }
 
@@ -517,14 +717,16 @@ void TerminalView::renderBuffer()
     QSignalBlocker blocker(this);
     const QStringList visibleLines = displayLines();
     const QString text = visibleLines.join(QLatin1Char('\n'));
-    if (toPlainText() != text)
+    const bool textChanged = toPlainText() != text;
+    if (textChanged)
         setPlainText(text);
+    applyTextFormats(visibleLines);
 
     QTextBlock block = document()->findBlockByNumber(m_cursorRow);
     QTextCursor cursor(document());
     if (block.isValid()) {
-        int column = qMin(m_cursorColumn, qMin(block.text().length(), terminalColumns() - 1));
-        cursor.setPosition(block.position() + column);
+        const int column = qMin(m_cursorColumn, terminalColumns() - 1);
+        cursor.setPosition(block.position() + cellToStringIndex(block.text(), column));
     } else {
         cursor.movePosition(QTextCursor::End);
     }
@@ -533,6 +735,145 @@ void TerminalView::renderBuffer()
     horizontalScrollBar()->setValue(0);
     if (m_alternateScreen)
         verticalScrollBar()->setValue(0);
+}
+
+void TerminalView::applyTextFormats(const QStringList &visibleLines)
+{
+    QTextCursor cursor(document());
+    cursor.beginEditBlock();
+
+    const QTextCharFormat defaultFormat;
+    cursor.select(QTextCursor::Document);
+    cursor.setCharFormat(defaultFormat);
+
+    const int lineCount = qMin(visibleLines.size(), m_lineStyles.size());
+    for (int row = 0; row < lineCount; ++row) {
+        const int visibleLength = displayLineLength(visibleLines[row]);
+        if (visibleLength <= 0)
+            continue;
+
+        const QVector<CellStyle> &styles = m_lineStyles[row];
+        int column = 0;
+        while (column < visibleLength && column < styles.size()) {
+            const CellStyle style = styles[column];
+            int runEnd = column + 1;
+            while (runEnd < visibleLength
+                   && runEnd < styles.size()
+                   && styles[runEnd] == style) {
+                ++runEnd;
+            }
+
+            const bool hasExplicitStyle = style.hasForeground
+                || style.hasBackground
+                || style.bold
+                || style.italic
+                || style.underline
+                || style.inverse;
+            if (hasExplicitStyle) {
+                QTextBlock block = document()->findBlockByNumber(row);
+                if (block.isValid()) {
+                    const int start = cellToStringIndex(block.text(), column);
+                    const int end = cellToStringIndex(block.text(), runEnd);
+                    QTextCursor runCursor(block);
+                    runCursor.setPosition(block.position() + start);
+                    runCursor.setPosition(block.position() + end, QTextCursor::KeepAnchor);
+                    runCursor.setCharFormat(textFormatForStyle(style));
+                }
+            }
+
+            column = runEnd;
+        }
+    }
+
+    cursor.endEditBlock();
+}
+
+QTextCharFormat TerminalView::textFormatForStyle(const CellStyle &style) const
+{
+    QTextCharFormat format;
+    const QColor foreground = foregroundForStyle(style);
+    const QColor background = backgroundForStyle(style);
+
+    format.setForeground(foreground);
+    if (style.hasBackground || style.inverse)
+        format.setBackground(background);
+    format.setFontWeight(style.bold ? QFont::Bold : QFont::Normal);
+    format.setFontItalic(style.italic);
+    format.setFontUnderline(style.underline);
+    return format;
+}
+
+QColor TerminalView::ansiColor(int index) const
+{
+    static const QColor basicColors[] = {
+        QColor(0, 0, 0),
+        QColor(205, 49, 49),
+        QColor(13, 188, 121),
+        QColor(229, 229, 16),
+        QColor(36, 114, 200),
+        QColor(188, 63, 188),
+        QColor(17, 168, 205),
+        QColor(229, 229, 229),
+        QColor(102, 102, 102),
+        QColor(241, 76, 76),
+        QColor(35, 209, 139),
+        QColor(245, 245, 67),
+        QColor(59, 142, 234),
+        QColor(214, 112, 214),
+        QColor(41, 184, 219),
+        QColor(255, 255, 255),
+    };
+
+    if (index >= 0 && index < int(sizeof(basicColors) / sizeof(basicColors[0])))
+        return basicColors[index];
+
+    if (index >= 16 && index <= 231) {
+        int value = index - 16;
+        const int blue = value % 6;
+        value /= 6;
+        const int green = value % 6;
+        const int red = value / 6;
+        auto component = [](int color) {
+            return color == 0 ? 0 : 55 + color * 40;
+        };
+        return QColor(component(red), component(green), component(blue));
+    }
+
+    if (index >= 232 && index <= 255) {
+        const int level = 8 + (index - 232) * 10;
+        return QColor(level, level, level);
+    }
+
+    return QColor();
+}
+
+qreal TerminalView::terminalCellWidth() const
+{
+    QFontMetricsF fm(font());
+    qreal charWidth = fm.horizontalAdvance(QLatin1Char(' '));
+    if (charWidth <= 1.0)
+        charWidth = fm.horizontalAdvance(QLatin1Char('0'));
+    return qMax<qreal>(1.0, charWidth);
+}
+
+QColor TerminalView::foregroundForStyle(const CellStyle &style) const
+{
+    auto &tm = ThemeManager::instance();
+    QColor foreground = style.hasForeground ? style.foreground : tm.color("output.foreground");
+    QColor background = style.hasBackground ? style.background : tm.color("output.background");
+    if (style.inverse)
+        std::swap(foreground, background);
+    return foreground;
+}
+
+QColor TerminalView::backgroundForStyle(const CellStyle &style) const
+{
+    auto &tm = ThemeManager::instance();
+    QColor foreground = style.hasForeground ? style.foreground : tm.color("output.foreground");
+    QColor background = style.hasBackground ? style.background : tm.color("output.background");
+    if (style.inverse)
+        std::swap(foreground, background);
+    return background;
 }
 
 QStringList TerminalView::displayLines() const
@@ -553,28 +894,43 @@ QStringList TerminalView::displayLines() const
 
 QString TerminalView::trimDisplayLine(QString line) const
 {
-    const int columns = terminalColumns();
-    if (line.length() > columns)
-        line.truncate(columns);
-    while (!line.isEmpty() && line.back() == QLatin1Char(' '))
-        line.chop(1);
-    return line;
+    return lineLeftCells(line, displayLineLength(line));
+}
+
+int TerminalView::displayLineLength(const QString &line) const
+{
+    int length = qMin(cellCount(line), terminalColumns());
+    while (length > 0) {
+        const int index = cellToStringIndex(line, length - 1);
+        if (index >= line.length() || line.at(index) != QLatin1Char(' '))
+            break;
+        --length;
+    }
+    return length;
 }
 
 void TerminalView::eraseInLine(int mode)
 {
     ensureCursorLine();
     QString &line = m_lines[m_cursorRow];
+    QVector<CellStyle> &styles = m_lineStyles[m_cursorRow];
     if (mode == 2) {
         line.clear();
+        styles.clear();
         m_cursorColumn = 0;
     } else if (mode == 1) {
-        int count = qMin(m_cursorColumn + 1, line.length());
-        if (count > 0)
-            line.replace(0, count, QString(count, QLatin1Char(' ')));
+        int count = qMin(m_cursorColumn + 1, cellCount(line));
+        if (count > 0) {
+            const int end = cellToStringIndex(line, count);
+            line.replace(0, end, QString(count, QLatin1Char(' ')));
+            for (int i = 0; i < count && i < styles.size(); ++i)
+                styles[i] = CellStyle();
+        }
     } else {
-        if (m_cursorColumn < line.length())
-            line.truncate(m_cursorColumn);
+        if (m_cursorColumn < cellCount(line)) {
+            line.truncate(cellToStringIndex(line, m_cursorColumn));
+            styles.resize(qMin(styles.size(), m_cursorColumn));
+        }
     }
 }
 
@@ -587,11 +943,17 @@ void TerminalView::eraseInDisplay(int mode)
 
     if (mode == 0) {
         eraseInLine(0);
-        while (m_lines.size() > m_cursorRow + 1)
+        while (m_lines.size() > m_cursorRow + 1) {
             m_lines.removeLast();
+            if (!m_lineStyles.isEmpty())
+                m_lineStyles.removeLast();
+        }
     } else if (mode == 1) {
-        for (int row = 0; row < m_cursorRow && row < m_lines.size(); ++row)
+        for (int row = 0; row < m_cursorRow && row < m_lines.size(); ++row) {
             m_lines[row].clear();
+            if (row < m_lineStyles.size())
+                m_lineStyles[row].clear();
+        }
         eraseInLine(1);
     }
 }

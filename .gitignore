@@ -104,3 +104,6 @@ Testing/
 # Claude Code
 .claude/
 compile_commands.json
+
+# codex
+AGENTS.md
