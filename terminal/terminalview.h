@@ -1,17 +1,19 @@
 #ifndef TERMINALVIEW_H
 #define TERMINALVIEW_H
 
-#include <QPlainTextEdit>
 #include <QByteArray>
 #include <QColor>
+#include <QPoint>
 #include <QStringDecoder>
 #include <QStringList>
-#include <QTextCharFormat>
+#include <QVariant>
 #include <QVector>
+#include <QWidget>
 
+class QScrollBar;
 class TerminalSession;
 
-class TerminalView : public QPlainTextEdit
+class TerminalView : public QWidget
 {
     Q_OBJECT
 
@@ -26,15 +28,24 @@ public:
     int terminalRows() const;
     void syncTerminalSize();
     void scheduleTerminalSizeSync();
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
 signals:
     void inputGenerated(const QByteArray &data);
     void terminalResized(int columns, int rows);
 
 protected:
+    bool event(QEvent *event) override;
+    void inputMethodEvent(QInputMethodEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
 
 private:
     enum class ParserState { Normal, Escape, Csi, Osc, OscEscape };
@@ -62,6 +73,7 @@ private:
         }
     };
 
+    QScrollBar *m_scrollBar = nullptr;
     TerminalSession *m_session = nullptr;
     ParserState m_state = ParserState::Normal;
     QString m_csi;
@@ -73,12 +85,33 @@ private:
     bool m_pendingCarriageReturn = false;
     QStringList m_lines;
     QVector<QVector<CellStyle>> m_lineStyles;
+    QStringList m_savedNormalLines;
+    QVector<QVector<CellStyle>> m_savedNormalLineStyles;
     CellStyle m_currentStyle;
+    int m_screenTopRow = 0;
+    int m_savedNormalScreenTopRow = 0;
     int m_cursorRow = 0;
     int m_cursorColumn = 0;
+    int m_savedNormalCursorRow = 0;
+    int m_savedNormalCursorColumn = 0;
     int m_savedCursorRow = 0;
     int m_savedCursorColumn = 0;
     bool m_alternateScreen = false;
+    bool m_hasSavedNormalScreen = false;
+    bool m_mouseSelecting = false;
+    bool m_mouseTracking = false;
+    bool m_mouseButtonTracking = false;
+    bool m_mouseAnyTracking = false;
+    bool m_sgrMouseMode = false;
+    bool m_hasSelection = false;
+    QPoint m_selectionAnchor;
+    QPoint m_selectionEnd;
+    int m_cellHeight = 1;
+    int m_cellWidth = 1;
+
+    // Layout helpers
+    int contentWidth() const;
+    int contentHeight() const;
 
     void insertTerminalText(const QString &text);
     void insertTerminalCell(const QString &cell);
@@ -89,23 +122,28 @@ private:
     QList<int> csiParams(const QString &params) const;
     QList<int> sgrParams(const QString &params) const;
     void ensureCursorLine();
+    void ensureScreenBuffer();
     void ensureLineStorage();
+    void clampCursorToScreen();
+    int screenTopRow() const;
+    int absoluteCursorRow() const;
     int cellToStringIndex(const QString &line, int cellColumn) const;
     int cellCount(const QString &line) const;
     int cellCharLengthAt(const QString &line, int stringIndex) const;
+    int cellDisplayWidth(const QString &cell) const;
+    int cellDisplayWidthAt(const QString &line, int stringIndex) const;
+    bool isWideCodepoint(uint codepoint) const;
+    bool isContinuationCell(const QString &line, int cellColumn) const;
     QString lineLeftCells(const QString &line, int cellCount) const;
     void trimScrollback();
     void resetScreenBuffer();
     void scrollUpOneLine();
     void renderBuffer();
-    void applyTextFormats(const QStringList &visibleLines);
-    QTextCharFormat textFormatForStyle(const CellStyle &style) const;
     QColor ansiColor(int index) const;
-    qreal terminalCellWidth() const;
+    int terminalCellWidth() const;
+    int terminalCellHeight() const;
     QColor foregroundForStyle(const CellStyle &style) const;
     QColor backgroundForStyle(const CellStyle &style) const;
-    QStringList displayLines() const;
-    QString trimDisplayLine(QString line) const;
     int displayLineLength(const QString &line) const;
     void eraseInLine(int mode);
     void eraseInDisplay(int mode);
@@ -113,6 +151,23 @@ private:
     void pasteClipboard();
     QByteArray keySequenceForEvent(QKeyEvent *event) const;
     void emitSizeIfChanged();
+    void updateMetrics();
+    void updateScrollBar(bool followCursor);
+    int firstVisibleRow() const;
+    int bufferRowFromViewportY(int y) const;
+    int columnFromViewportX(int x) const;
+    QPoint gridPositionFromPoint(const QPoint &point) const;
+    void clearSelection();
+    bool hasSelection() const;
+    bool isCellSelected(int row, int column) const;
+    QString selectedText() const;
+    QString cellTextAt(int row, int column) const;
+    CellStyle cellStyleAt(int row, int column) const;
+    QRect cellRect(int row, int column) const;
+    QRect cursorRect() const;
+    void copySelection();
+    void paintTerminal(QPainter &painter);
+    void sendMouseEvent(int buttonCode, const QPoint &gridPos);
 };
 
 #endif // TERMINALVIEW_H
