@@ -43,6 +43,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    bool focusNextPrevChild(bool next) override;
     void resizeEvent(QResizeEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
@@ -103,9 +104,15 @@ private:
     bool m_mouseButtonTracking = false;
     bool m_mouseAnyTracking = false;
     bool m_sgrMouseMode = false;
+    bool m_cursorVisible = true;
+    bool m_cursorHiddenDuringOutput = false;
+    bool m_outputCursorHideSuppressed = false;
+    int m_outputCursorHideGeneration = 0;
     bool m_hasSelection = false;
+    bool m_selectionAutoScrollActive = false;
     QPoint m_selectionAnchor;
     QPoint m_selectionEnd;
+    QPoint m_lastMousePos;
     int m_cellHeight = 1;
     int m_cellWidth = 1;
 
@@ -148,6 +155,7 @@ private:
     void eraseInLine(int mode);
     void eraseInDisplay(int mode);
     void sendText(const QString &text);
+    void markUserInput();
     void pasteClipboard();
     QByteArray keySequenceForEvent(QKeyEvent *event) const;
     void emitSizeIfChanged();
@@ -157,6 +165,10 @@ private:
     int bufferRowFromViewportY(int y) const;
     int columnFromViewportX(int x) const;
     QPoint gridPositionFromPoint(const QPoint &point) const;
+    void updateSelectionFromPoint(const QPoint &point);
+    void updateSelectionAutoScroll(const QPoint &point);
+    void stopSelectionAutoScroll();
+    void selectionAutoScrollTick();
     void clearSelection();
     bool hasSelection() const;
     bool isCellSelected(int row, int column) const;

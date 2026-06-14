@@ -139,6 +139,17 @@ void TerminalView::attachSession(TerminalSession *session)
 
 void TerminalView::appendTerminalData(const QByteArray &data)
 {
+    if (!m_outputCursorHideSuppressed) {
+        m_cursorHiddenDuringOutput = true;
+        const int generation = ++m_outputCursorHideGeneration;
+        QTimer::singleShot(120, this, [this, generation]() {
+            if (generation == m_outputCursorHideGeneration) {
+                m_cursorHiddenDuringOutput = false;
+                update();
+            }
+        });
+    }
+
     const QString text = m_decoder.decode(data);
     for (QChar ch : text)
         handleChar(ch);
@@ -219,6 +230,11 @@ bool TerminalView::event(QEvent *event)
         || event->type() == QEvent::KeyPress
         || event->type() == QEvent::KeyRelease) {
         auto *keyEvent = static_cast<QKeyEvent*>(event);
+        if (event->type() == QEvent::ShortcutOverride
+            && (keyEvent->key() == Qt::Key_Tab || keyEvent->key() == Qt::Key_Backtab)) {
+            event->accept();
+            return true;
+        }
         if (isPureModifierKey(keyEvent)) {
             event->ignore();
             return false;
@@ -262,6 +278,7 @@ void TerminalView::keyPressEvent(QKeyEvent *event)
 
     QByteArray sequence = keySequenceForEvent(event);
     if (!sequence.isEmpty()) {
+        markUserInput();
         clearSelection();
         emit inputGenerated(sequence);
         if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
@@ -293,9 +310,11 @@ void TerminalView::mousePressEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton) {
         m_mouseSelecting = true;
+        m_lastMousePos = event->pos();
         m_selectionAnchor = gridPos;
         m_selectionEnd = gridPos;
         m_hasSelection = false;
+        updateSelectionAutoScroll(event->pos());
         update();
         event->accept();
         return;
@@ -318,9 +337,8 @@ void TerminalView::mouseMoveEvent(QMouseEvent *event)
     }
 
     if (m_mouseSelecting) {
-        m_selectionEnd = gridPos;
-        m_hasSelection = m_selectionAnchor != m_selectionEnd;
-        update();
+        updateSelectionFromPoint(event->pos());
+        updateSelectionAutoScroll(event->pos());
         event->accept();
         return;
     }
@@ -343,8 +361,8 @@ void TerminalView::mouseReleaseEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton && m_mouseSelecting) {
         m_mouseSelecting = false;
-        m_selectionEnd = gridPos;
-        m_hasSelection = m_selectionAnchor != m_selectionEnd;
+        stopSelectionAutoScroll();
+        updateSelectionFromPoint(event->pos());
         update();
         event->accept();
         return;
@@ -356,9 +374,19 @@ void TerminalView::mouseReleaseEvent(QMouseEvent *event)
 void TerminalView::wheelEvent(QWheelEvent *event)
 {
     const int delta = event->angleDelta().y();
-    if (delta != 0)
-        m_scrollBar->setValue(m_scrollBar->value() - delta / 120 * m_scrollBar->singleStep());
+    if (delta != 0) {
+        const int lineStep = qMax(3, terminalRows() / 5);
+        int scrollLines = qRound(delta / 120.0 * lineStep);
+        if (scrollLines == 0)
+            scrollLines = delta > 0 ? 1 : -1;
+        m_scrollBar->setValue(m_scrollBar->value() - scrollLines);
+    }
     event->accept();
+}
+
+bool TerminalView::focusNextPrevChild(bool)
+{
+    return false;
 }
 
 void TerminalView::resizeEvent(QResizeEvent *event)
@@ -679,10 +707,11 @@ void TerminalView::handleCsi(const QString &sequence)
             m_currentStyle = CellStyle();
             scheduleTerminalSizeSync();
         }
-        if (params.contains(QStringLiteral("1000"))) m_mouseTracking = true;
-        if (params.contains(QStringLiteral("1002"))) m_mouseButtonTracking = true;
-        if (params.contains(QStringLiteral("1003"))) m_mouseAnyTracking = true;
-        if (params.contains(QStringLiteral("1006"))) m_sgrMouseMode = true;
+        if (values.contains(1000)) m_mouseTracking = true;
+        if (values.contains(1002)) m_mouseButtonTracking = true;
+        if (values.contains(1003)) m_mouseAnyTracking = true;
+        if (values.contains(1006)) m_sgrMouseMode = true;
+        if (params.startsWith(QLatin1Char('?')) && values.contains(25)) m_cursorVisible = true;
         break;
     case 'l':
         if (params.contains(QStringLiteral("1049"))
@@ -706,10 +735,11 @@ void TerminalView::handleCsi(const QString &sequence)
             m_currentStyle = CellStyle();
             scheduleTerminalSizeSync();
         }
-        if (params.contains(QStringLiteral("1000"))) m_mouseTracking = false;
-        if (params.contains(QStringLiteral("1002"))) m_mouseButtonTracking = false;
-        if (params.contains(QStringLiteral("1003"))) m_mouseAnyTracking = false;
-        if (params.contains(QStringLiteral("1006"))) m_sgrMouseMode = false;
+        if (values.contains(1000)) m_mouseTracking = false;
+        if (values.contains(1002)) m_mouseButtonTracking = false;
+        if (values.contains(1003)) m_mouseAnyTracking = false;
+        if (values.contains(1006)) m_sgrMouseMode = false;
+        if (params.startsWith(QLatin1Char('?')) && values.contains(25)) m_cursorVisible = false;
         break;
     case '?': break;
     default: break;
@@ -1003,6 +1033,7 @@ void TerminalView::resetScreenBuffer()
     m_cursorColumn = 0;
     m_savedCursorRow = 0;
     m_savedCursorColumn = 0;
+    m_cursorVisible = true;
     if (!m_alternateScreen)
         m_scrollBar->setValue(m_screenTopRow);
 }
@@ -1072,7 +1103,7 @@ int TerminalView::terminalCellWidth() const
 {
     QFontMetrics fm(font());
     const int advance = fm.horizontalAdvance(QStringLiteral("AAAAAAAAAA"));
-    return qMax(1, (advance + 5) / 10); // ceiling divide — avoids fractional-pixel drift
+    return qMax(1, advance / 10);
 }
 
 int TerminalView::terminalCellHeight() const
@@ -1176,8 +1207,21 @@ void TerminalView::eraseInDisplay(int mode)
 
 void TerminalView::sendText(const QString &text)
 {
-    if (!text.isEmpty())
+    if (!text.isEmpty()) {
+        markUserInput();
         emit inputGenerated(text.toUtf8());
+    }
+}
+
+void TerminalView::markUserInput()
+{
+    m_outputCursorHideSuppressed = true;
+    m_cursorHiddenDuringOutput = false;
+    ++m_outputCursorHideGeneration;
+    QTimer::singleShot(250, this, [this]() {
+        m_outputCursorHideSuppressed = false;
+    });
+    update();
 }
 
 void TerminalView::pasteClipboard()
@@ -1203,6 +1247,7 @@ QByteArray TerminalView::keySequenceForEvent(QKeyEvent *event) const
     switch (event->key()) {
     case Qt::Key_Return:    case Qt::Key_Enter:     return QByteArray("\r", 1);
     case Qt::Key_Backspace:                         return QByteArray("\x7f", 1);
+    case Qt::Key_Backtab:                           return QByteArray("\x1b[Z", 3);
     case Qt::Key_Tab:                               return QByteArray("\t", 1);
     case Qt::Key_Escape:                            return QByteArray("\x1b", 1);
     case Qt::Key_Left:                              return QByteArray("\x1b[D", 3);
@@ -1279,6 +1324,79 @@ int TerminalView::columnFromViewportX(int x) const
 QPoint TerminalView::gridPositionFromPoint(const QPoint &point) const
 {
     return QPoint(columnFromViewportX(point.x()), bufferRowFromViewportY(point.y()));
+}
+
+void TerminalView::updateSelectionFromPoint(const QPoint &point)
+{
+    m_lastMousePos = point;
+    m_selectionEnd = gridPositionFromPoint(point);
+    m_hasSelection = m_selectionAnchor != m_selectionEnd;
+    update();
+}
+
+void TerminalView::updateSelectionAutoScroll(const QPoint &point)
+{
+    if (!m_mouseSelecting || m_alternateScreen) {
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    const bool outOfBounds = point.y() < 0 || point.y() >= contentHeight();
+    const bool canScrollUp = m_scrollBar->value() > m_scrollBar->minimum();
+    const bool canScrollDown = m_scrollBar->value() < m_scrollBar->maximum();
+    const bool shouldScroll = outOfBounds
+        && ((point.y() < 0 && canScrollUp) || (point.y() >= contentHeight() && canScrollDown));
+
+    if (!shouldScroll) {
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    if (m_selectionAutoScrollActive)
+        return;
+
+    m_selectionAutoScrollActive = true;
+    QTimer::singleShot(45, this, &TerminalView::selectionAutoScrollTick);
+}
+
+void TerminalView::stopSelectionAutoScroll()
+{
+    m_selectionAutoScrollActive = false;
+}
+
+void TerminalView::selectionAutoScrollTick()
+{
+    if (!m_selectionAutoScrollActive || !m_mouseSelecting) {
+        m_selectionAutoScrollActive = false;
+        return;
+    }
+
+    const int viewportHeight = contentHeight();
+    int overflow = 0;
+    if (m_lastMousePos.y() < 0)
+        overflow = m_lastMousePos.y();
+    else if (m_lastMousePos.y() >= viewportHeight)
+        overflow = m_lastMousePos.y() - viewportHeight + 1;
+
+    if (overflow == 0) {
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    const int distanceRows = qMax(1, qAbs(overflow) / qMax(1, m_cellHeight));
+    const int scrollLines = qBound(1, distanceRows, 6);
+    const int direction = overflow < 0 ? -1 : 1;
+    const int oldValue = m_scrollBar->value();
+    m_scrollBar->setValue(oldValue + direction * scrollLines);
+
+    if (m_scrollBar->value() == oldValue) {
+        updateSelectionFromPoint(m_lastMousePos);
+        stopSelectionAutoScroll();
+        return;
+    }
+
+    updateSelectionFromPoint(m_lastMousePos);
+    QTimer::singleShot(45, this, &TerminalView::selectionAutoScrollTick);
 }
 
 void TerminalView::clearSelection()
@@ -1437,7 +1555,7 @@ void TerminalView::paintTerminal(QPainter &painter)
     }
 
     // 4. Cursor
-    if (!hasSelection()) {
+    if (m_cursorVisible && !m_cursorHiddenDuringOutput && !hasSelection()) {
         const QRect r = cursorRect();
         if (contentRect.intersects(r)) {
             painter.fillRect(r.adjusted(0, 0, -1, -1), tm.color("output.foreground"));
