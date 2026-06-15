@@ -51,8 +51,8 @@ jobs:
       - name: Package
         run: Compress-Archive -Path deploy/* -DestinationPath OmniStudio-Windows.zip
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
         with:
-          name: OmniStudio-Windows
-          path: OmniStudio-Windows.zip
+          files: OmniStudio-Windows.zip
+          generate_release_notes: true
