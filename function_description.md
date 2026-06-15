@@ -1,4 +1,4 @@
-## 功能说明文档（v1.0.1）
+## 功能说明文档（v1.0.2）
 
 ### 已实现的主要功能
 - 打开指定根目录，并以树视图呈现文件
@@ -21,7 +21,7 @@
 - SMD LSP 代码智能*：`.smd` 文件中 C++/Python 单元格共享一个 LSP 后端（每种语言一个 clangd/Jedi 进程，而非每 cell 一个），通过 **虚拟文档拼接** 技术实现跨 cell 类型解析、代码补全、悬停提示和函数签名帮助。C++ 虚拟文档按 `main()` 函数边界**自动分组**，仅向 clangd 发送当前聚焦 cell 所在程序组的代码，避免多 `main()` 冲突。编辑器显示 **红色/黄色诊断波浪线**（错误/警告），cell 头部标签显示错误计数。切换 cell 时自动切换诊断上下文并缓存各组诊断结果。
 - 文件树预览标签页：单击文件以临时标签页（斜体标题）预览，多次单击复用同一标签页；双击永久打开；编辑临时标签页内容后自动提升为永久标签页。
 - 文件树与标签页联动：切换标签页时，文件树自动选中对应的文件，并展开折叠的父级目录，确保文件在树中可见。
-- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。C/C++ 调用 g++ 或 MSVC 编译后运行；Python 调用解释器直接执行。按 F6（单独编译）对 Python 文件显示提示"Python 不需要编译"；按 F7（单独运行）若无可执行文件则自动转为编译运行流程。**OpenJudge IDE 模式下**，编译运行使用 IDE 嵌入编辑器中的代码（通过 `oj->ideCacheFilePath()` 获取临时文件），语言由 IDE 语言选择器决定，其余流程与普通代码编辑模式一致。输出面板嵌入编辑器下方（右侧分割区），不延伸至文件树区域，与其他侧边面板互不遮挡。首次显示时自动调整高度为窗口高度的 1/3（通过 `QTimer::singleShot` 延迟设置 QSplitter 尺寸，避免布局递归）。**切换至非代码文件时自动关闭面板**（通过 `currentChanged` 和 `fileLoaded` 双信号覆盖），若进程运行中则先终止后隐藏。支持标准输入交互。手动隐藏输出面板时若进程运行中则自动终止并恢复按钮状态。
+- 编译运行：在代码编辑模式下，可通过工具栏或快捷键（F5 编译运行、F6 编译、F7 运行）编译运行 C/C++ 文件，或直接运行 Python 文件。**非代码文件（如 Markdown）时按钮完全隐藏**，快捷键同步失效。编译运行改为通过 `TerminalPanel::openCommandTerminal()` 在 PowerShell 终端标签页中执行，使用 `psInvoke()` 构建命令行（`& 'g++' 'file.cpp' ...`），支持 `cppReuseKey` 按源码文件复用终端标签页。F5（编译运行）组合编译与运行命令 `compile; if ($LASTEXITCODE -eq 0) { run }`，F6（编译）仅执行编译器命令，F7（运行）运行已编译的可执行文件或 Python 解释器。**OpenJudge IDE 模式下**使用 IDE 内置编辑器代码（通过 `oj->ideCacheFilePath()`），其余流程一致。输出显示在底部面板的「终端」标签页中的 PowerShell 终端，支持彩色输出和标准输入交互。首次显示时自动调整高度为窗口高度的 1/3。**切换至非代码文件时清空诊断数据但不自动关闭面板**。手动隐藏面板时若进程运行中则自动终止。
 - 面包屑路径栏：文件树顶部展示当前根目录的完整路径，每个文件夹段可点击快速跳转。路径自动换行不撑宽左侧面板，根目录切换时同步更新。其下方为文件树工具栏，显示当前文件夹名称及操作按钮。工具栏右侧新增"新建文件"和"新建文件夹"按钮（文件/文件夹图标右下角带加号 badge），置于折叠/刷新按钮左侧，功能与右键菜单完全一致，点击后内联创建并进入重命名状态，确认后自动永久打开，图标颜色随主题自动更新。
 - 异步索引构建：全量扫描（切换目录时）通过 `startAsyncIndexBuild` 在后台线程依次执行文件索引、反向链接扫描与标签索引扫描（Phase 1/2/3），UI 保持响应。增量更新（重命名/删除/另存为）通过 `buildFileIndexAsync` 仅重建文件索引，回调中执行依赖项。两者使用**独立的取消令牌和代际计数器**（`m_scanCancelled`/`m_scanId` 与 `m_fileIdxCancelled`/`m_fileIdxScanId`），增量更新不会取消全量扫描，避免启动时反向链接数据丢失。支持快速切换取消旧扫描，仅最后选中的目录结果生效。
 - 本地评测（Local Judge）：在代码编辑模式下，可通过评测面板（Ctrl+Shift+J）选择测试用例文件夹，一键批量运行所有测试用例，显示 OJ 风格结果（AC/WA/RE/TLE/MLE）和耗时/内存，点击失败行查看预期输出与实际输出对比。自动跳过空的 `.out` 文件；编译后先预热运行一次消除冷启动计时偏差；内存通过启动时同步捕获 + 退出时补充读取 + 定时轮询三重机制确保准确检测。支持 Python 评测。
@@ -29,8 +29,11 @@
 - OpenJudge 登录管理：OpenJudge 标签页工具栏登录/退出登录按钮，登录成功后按钮变为"退出登录"，显示绿色用户名标签；登录失败弹出错误提示。退出登录时清除 Cookie 并匿名重新加载主页。支持自动登录：登录对话框中提供"自动登录"复选框，勾选并登录成功后自动保存凭据到配置文件，下次未登录时自动登录无需手动输入。用户退出登录后自动清除自动登录凭据。
 - OpenJudge 代码提交：评测面板新增"提交到OpenJudge"按钮，将当前代码文件直接提交到 OpenJudge 标签页中选定的题目。自动映射文件扩展名到对应语言（.c→GCC, .cpp/.cc/.cxx→G++, .py/.pyw→Python3）。提交前检查登录状态、代码有效性、题目选择状态及作业是否进行中，不满足时弹出相应提示。提交失败（非 AC 非 CE）时自动记入错题本（`ErrorJournal`），CE 不记入。**IDE 模式下**：提交内容来自 IDE 内置编辑器，语言由语言选择器指定，无需依赖外部代码文件。
 - OpenJudge IDE 模式：题目详情页顶部工具栏新增"IDE"切换按钮，点击进入 IDE 模式，再次点击退出。IDE 模式下页面中间为水平分隔条，左侧为题目内容，右侧为嵌入式代码编辑器（`CodeEditor`，完整支持语法高亮、LSP 补全、悬停提示、签名帮助、诊断波浪线）。分隔条拖拽范围限制 3:7 ~ 7:3。工具栏显示语言选择下拉框（C++/Python），语言默认选择逻辑：①题目仅支持一种 IDE 语言时自动选中该语言；②否则优先使用该题目上次提交/切换的语言（`lang_prefs.json` 按题目持久化）；③兜底选第一项（C++）。语言切换通过 `m_ideLangChanging` 布尔守卫防止重入，避免快速切换导致 LSP 子进程堆积和信号竞争引发卡死闪退；`setupIdeMode()` 填充下拉框时使用 `blockSignals(true)` 阻止 `currentIndexChanged` 误触发。题目可用语言由 `Crawler::parseProblemDetail()` 从问题页 HTML 解析（`<select name="language">` 或 `<input type="radio" name="language">`），通过 `mapOJLangName` 将 OJ 字符串标识（如 `"Python3"`、`"G++"`）映射为内部数值 ID，存入 `ProblemDetail::availableLanguages`。代码自动缓存至 `{TempLocation}/SM-OJ-Cache/oj_ide/{题目标题}.{ext}`，退出 IDE 模式或切换语言时自动保存，重新进入时自动恢复。IDE 模式下编译运行（F5/F6/F7）、本地评测、OpenJudge 提交均使用编辑器当前内容。`Ctrl+D` 可切换底部诊断面板。
-- 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板占据右侧分割区 1/3 高度，替换底部面板位置，可手动隐藏。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步，子标签使用 `background: transparent` 确保内容区与背景区颜色统一，消除深色模式下的色块分隔感。
+- 提交结果面板：提交后自动显示评测结果面板，大号彩色状态文字（AC 绿色、WA 红色、TLE 蓝色、MLE 紫色、RE 红色、PE 深橙、OLE 粉红、CE 橙色），显示用时(ms)和内存(KB)，CE 时展示编译错误日志。结果面板由 `BottomPanel` 的评测标签页托管，取代此前独立插入右侧分割区的方式。首次显示时自动将底部面板高度调整为窗口高度的 1/3。面板已接入主题系统（`SubmitResultPanel::refreshStyle()`），切换主题时背景色（`editor.background`）和子控件样式实时同步。
 - OpenJudge 提交错题自动本地复测：提交失败后，`MainWindow::onSubmissionResultReady()` 存储 OpenJudge 状态并调用 `runLocalTestsForOJError()`。该方法检查评测面板缓存的样例文件夹（用户在"选择此题目"时写入），若存在 `.in`/`.out` 文件则创建后台 `JudgeEngine`（`m_ojErrorJudgeEngine`）静默运行本地评测；若无样例则回退至直接记录无 I/O 数据的错题条目。本地评测完成后 `onOJErrorLocalTestsFinished()` 收集结果：每个失败用例通过 `ErrorJournal::recordOpenJudgeFailure(TestResult)` 重载记录（含输入、预期输出、实际输出）；若全部通过但 OpenJudge 判定失败，则通过 `SubmissionResult` 重载记录一条无 I/O 数据的条目（表明隐藏测试用例未通过）。
+- **底部面板三标签页**：底部面板从旧的两标签（输出/诊断）重构为三标签结构——**诊断**（代码错误/警告列表）、**终端**（多标签 PowerShell 终端 + 编译运行输出）、**评测**（OpenJudge 提交结果）。28px 标题栏包含三个标签按钮（加粗激活态）、[+] 新建终端按钮和 [×] 关闭按钮（SVG icon，hover 红色 `#E81123`）。标签按钮固定宽度 = 文本宽度 + 24px 内边距。使用 `TabButtonGroup` 管理 tab 切换，通过静态 `tabButtonStyle()` 生成主题感知样式。不再包含旧 `OutputPanel`。
+- **多标签 PowerShell 终端**：底部面板集成多标签终端组件（`TerminalPanel`），使用 `StableWidthTabBar` 防止标签标题在常规/加粗状态切换时的宽度抖动。`Ctrl+\`` 切换终端标签页显示。终端标签栏支持 hover 高亮、激活标签顶部蓝色指示线、主题 SVG 关闭按钮。`openTerminal()` 新建 PowerShell 标签页，`openCommandTerminal(title, command, cwd, reuseKey)` 创建/复用命令执行标签（`cppReuseKey` 按源码文件绝对路径复用）。编译/运行输出显示在 PowerShell 终端中而非旧 `OutputPanel`，支持彩色 ANSI 输出和标准输入交互。`ensureTerminal()` 自动回退到已有终端标签页。
+- **编译运行输出重构**：旧 `OutputPanel` 组件被移除，`RunTerminalPanel`（基于 `TerminalView` 的终端渲染组件）替代。`TerminalView` 新增 `clearTerminal()` 清空终端缓冲区、`setLocalEchoEnabled()` 控制本地回显模式、`echoInputData()` 将输入回显到终端。`CompileRunManager` 不再通过 `ProcessRunner` 启动编译运行，而是构造 PowerShell 命令（`psInvoke/psQuote` 辅助函数）通过 `openCommandTerminal()` 执行。`ProcessRunner` 仅保留用于 MD 代码块 stderr 缓冲。
 - Markdown 预览代码块语法高亮：预览模式下的代码块使用 C++ 端预处理方案，通过 `highlighted` 自定义围栏块绕过 marked.js 处理。完整复用 `CppSyntaxHighlighter` / `PythonSyntaxHighlighter` 的启发式高亮规则（包括控制流关键字紫色、基础类型蓝色、函数调用启发、类声明名/作用域限定类型色、include 路径字符串色、raw string 字面量等），与代码编辑器保持一致的 token 层级着色。代码块头部（语言标签 + ▶ Run 按钮）和代码背景色通过 CSS 变量响应主题切换。主题切换时自动重渲染预览内容以同步语法颜色。支持 `no-cell` 关键字——fence 语言标识含 `no-cell` 时自动剥离，预览语言标签和运行按钮使用纯净语言名
 - 分屏预览模式：在 Markdown 编辑模式下，可通过工具栏按钮或快捷键 `Ctrl+P` 进入分屏预览。编辑器区域被可拖拽的竖直分隔条分为左右两部分：左侧为 Markdown 源码，右侧为渲染预览。分屏预览与全屏预览模式互斥（开启一个自动关闭另一个），切换文件时自动记忆各标签页的预览状态。右侧预览采用防抖延迟更新策略（默认 500ms），仅在文本变化后才刷新，减少不必要的渲染开销。两侧字体大小与全局缩放同步。预览区域的 wikilink、tag、代码块运行等功能与全屏预览一致。
 - 自定义标题栏与无边框窗口 + 工具栏重组：隐藏系统原生标题栏，QToolBar 上移至标题栏位置。左侧 **[文件 ▼]** 按钮（文字右侧 SVG chevron 箭头，`spacing: -2px` 紧凑间距，点击手动弹出菜单并限制左侧不超出屏幕边界），中间 Expanding spacer 拖拽区域（双击最大化/还原），右侧 **[▶ 运行][▼]** 按钮组（绿色运行按钮 + 独立 chevron 下拉按钮，仅代码文件可见，按钮状态由 `CompileRunManager::runToolAction()` 的 `changed` 信号驱动同步）。最右侧最小化/最大化/关闭按钮（`TitleBarButton` 类，通过 `QStyleFactory::create("windowsvista")` 获取 Windows 11 原生图标，`QIcon::paint()` 直接居中绘制避免 Fusion 样式干扰，hover 背景自绘）。支持拖拽空白区域移动窗口、双击最大化/还原、边缘 10px 缩放、Aero Snap 贴靠。
@@ -61,34 +64,36 @@
   - 诊断面板：`Ctrl+D`（编辑模式）切换 `SmdDiagnosticsPanel`，分区展示错误和警告，点击跳转至对应 cell 和行号（通过 `SmdEditor::scrollCellToLine()` 坐标映射滚动）
 - `.md` ↔ `.smd` 双向转换：`Ctrl+T` 一键转换，保留光标位置映射（通过行→单元格映射），源文件修改状态保持不变。支持 `no-cell` 关键字标记不拆分的代码块（见 v0.15.14）
 
-### 新增/修复 v1.0.1
+### 新增/修复 v1.0.2
 
-**编辑器与预览**
-- Markdown 预览模式同一行内容会优先占据视图宽度
-- 修复进入分屏预览后窗口底部小幅下移的问题
-- 修复打开的 PDF 文件无法正常关闭或重命名的问题
-- Python 高亮优先级修复，`if (...)` 可以正确高亮
-- 修复 SMD 撤销 MD 块渲染时，未保存标识显示错误
+**底部面板重构**
+- 底部面板从旧的两标签（输出/诊断）重构为三标签结构：诊断、终端、评测
+- 28px 标题栏：三个标签按钮（加粗激活态）、[+] 新建终端按钮、[×] 关闭按钮（SVG icon hover 红色）
+- 标签按钮固定宽度 = 文本宽度 + 24px，使用 `TabButtonGroup` 和静态 `tabButtonStyle()` 管理切换
+- 不再包含旧 `OutputPanel`
 
-**SMD 编辑器**
-- SMD 执行队列修复，防止首次启动进程时无法执行
-- 修复 SMD 打开时焦点未正确设置
+**终端系统**
+- 集成多标签 PowerShell 终端（`TerminalPanel`），使用 `StableWidthTabBar` 防止标签文字宽度抖动
+- `Ctrl+\`` 切换终端标签页，终端标签栏支持 hover 高亮、激活顶部蓝色指示线
+- `openCommandTerminal(title, command, cwd, reuseKey)` 创建/复用命令执行标签
+- `cppReuseKey` 按源码文件绝对路径复用标签页
+- `TerminalView` 新增 `clearTerminal()`、`setLocalEchoEnabled()`、`echoInputData()`
+- `ensureTerminal()` 自动回退到已有终端标签页
 
-**OpenJudge**
-- 修复代码文件切换到 OpenJudge 浏览界面时诊断面板不关闭的问题
-- 修复 OpenJudge IDE 模式下，诊断面板无法显示信息的问题
-- OpenJudge 题目浏览可以正常加载图片
+**编译运行**
+- `CompileRunManager` 不再通过 `ProcessRunner` 启动编译运行
+- 构造 PowerShell 命令（`psInvoke/psQuote` 辅助函数），通过 `openCommandTerminal()` 执行
+- F5 组合 `compile; if ($LASTEXITCODE -eq 0) { run }` 管道命令
+- `ProcessRunner` 仅保留用于 MD 代码块 stderr 缓冲
+- `RunTerminalPanel` 替代旧 `OutputPanel`，基于 `TerminalView` 渲染
 
-**UI/UX**
-- 修复启动程序时左侧状态栏激活状态未同步的问题
-- 修复反向链接构建错误
-- 文件树拖动文件时，目标位置都能正常显示高亮
+**OpenJudge 提交**
+- 提交结果面板由 `BottomPanel` 评测标签页托管，不再独立插入右侧分割区
+- `OpenJudgeManager` 构造参数从 `QSplitter*` 改为 `BottomPanel*`
 
-**导出**
-- PDF 导出时代码块的背景和高亮与主题同步
-
-**其他**
-- 清理调试代码
+**行为变化**
+- 切换至非代码文件时清空诊断数据但不自动关闭面板
+- 关闭面板时更新 ActivityBar 和 toggle 动作的选中状态
 
 ### 1. `MainWindow` - 主窗口控制器
 
