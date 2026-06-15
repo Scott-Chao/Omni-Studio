@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 env:
   CCACHE_BASEDIR: ${{ github.workspace }}
 
