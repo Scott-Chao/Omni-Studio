@@ -1,14 +1,23 @@
 #include "bottompanel.h"
-#include "outputpanel.h"
-#include "editor/diagnosticsection.h"
-#include "editor/codeeditor.h"
-#include "core/thememanager.h"
-#include "widgets/tabbuttongroup.h"
 
-#include <QVBoxLayout>
+#include "core/thememanager.h"
+#include "editor/codeeditor.h"
+#include "editor/diagnosticsection.h"
+#include "panels/runterminalpanel.h"
+#include "panels/submissionpanel.h"
+#include "panels/terminalpanel.h"
+#include "widgets/tabbuttongroup.h"
+#include "core/utilities.h"
+
+#include <QIcon>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QScrollArea>
+#include <QSplitter>
+#include <QTimer>
+#include <QVBoxLayout>
 
 BottomPanel::BottomPanel(QWidget *parent)
     : QWidget(parent)
@@ -19,47 +28,50 @@ BottomPanel::BottomPanel(QWidget *parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // ---- Header bar ----
     m_headerBar = new QWidget(this);
     m_headerBar->setFixedHeight(28);
     auto *headerLayout = new QHBoxLayout(m_headerBar);
-    headerLayout->setContentsMargins(4, 0, 4, 0);
-    headerLayout->setSpacing(2);
-
-    m_runTabBtn = new QPushButton(tr("输出"), m_headerBar);
-    m_runTabBtn->setFlat(true);
-    m_runTabBtn->setCursor(Qt::PointingHandCursor);
-    m_runTabBtn->setFixedHeight(22);
-    m_runTabBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    headerLayout->setContentsMargins(6, 0, 6, 0);
+    headerLayout->setSpacing(4);
 
     m_diagnosticsTabBtn = new QPushButton(tr("诊断"), m_headerBar);
-    m_diagnosticsTabBtn->setFlat(true);
-    m_diagnosticsTabBtn->setCursor(Qt::PointingHandCursor);
-    m_diagnosticsTabBtn->setFixedHeight(22);
-    m_diagnosticsTabBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    m_terminalTabBtn = new QPushButton(tr("终端"), m_headerBar);
+    m_judgeTabBtn = new QPushButton(tr("评测"), m_headerBar);
+    for (auto *button : {m_diagnosticsTabBtn, m_terminalTabBtn, m_judgeTabBtn}) {
+        button->setFlat(true);
+        button->setCursor(Qt::PointingHandCursor);
+        QFont boldFont = button->font();
+        boldFont.setBold(true);
+        button->setFixedWidth(QFontMetrics(boldFont).horizontalAdvance(button->text()) + 24);
+        button->setFixedHeight(24);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        headerLayout->addWidget(button);
+    }
 
-    headerLayout->addWidget(m_runTabBtn);
-    headerLayout->addWidget(m_diagnosticsTabBtn);
     headerLayout->addStretch();
 
-    m_closeBtn = new QPushButton(QStringLiteral("✕"), m_headerBar);
-    m_closeBtn->setFixedSize(20, 20);
+    m_newTerminalBtn = new QPushButton(QStringLiteral("+"), m_headerBar);
+    m_newTerminalBtn->setFixedSize(28, 24);
+    m_newTerminalBtn->setFlat(true);
+    m_newTerminalBtn->setCursor(Qt::PointingHandCursor);
+    m_newTerminalBtn->setToolTip(tr("新建终端"));
+    headerLayout->addWidget(m_newTerminalBtn);
+
+    m_closeBtn = new QPushButton(m_headerBar);
+    m_closeBtn->setIcon(QIcon(QStringLiteral(":/icons/close")));
+    m_closeBtn->setIconSize(QSize(16, 16));
+    m_closeBtn->setFixedSize(28, 24);
     m_closeBtn->setFlat(true);
+    m_closeBtn->setCursor(Qt::PointingHandCursor);
+    m_closeBtn->setToolTip(tr("关闭面板"));
     connect(m_closeBtn, &QPushButton::clicked, this, &BottomPanel::closeRequested);
     headerLayout->addWidget(m_closeBtn);
 
     mainLayout->addWidget(m_headerBar);
 
-    // ---- Stacked content ----
     m_stack = new QStackedWidget(this);
 
-    // Page 0: OutputPanel
-    m_outputPanel = new OutputPanel(m_stack);
-    m_stack->addWidget(m_outputPanel); // index 0
-
-    // Page 1: Diagnostics view
     m_diagnosticsPage = new QWidget(m_stack);
-
     auto *diagLayout = new QVBoxLayout(m_diagnosticsPage);
     diagLayout->setContentsMargins(0, 0, 0, 0);
     diagLayout->setSpacing(0);
@@ -85,13 +97,9 @@ BottomPanel::BottomPanel(QWidget *parent)
     m_emptyLabel->setAlignment(Qt::AlignCenter);
 
     connect(m_errorSection, &DiagnosticSection::lineClicked,
-            this, [this](int /*cellIndex*/, int line) {
-                emit diagnosticsLineClicked(line + 1);
-            });
+            this, [this](int, int line) { emit diagnosticsLineClicked(line + 1); });
     connect(m_warningSection, &DiagnosticSection::lineClicked,
-            this, [this](int /*cellIndex*/, int line) {
-                emit diagnosticsLineClicked(line + 1);
-            });
+            this, [this](int, int line) { emit diagnosticsLineClicked(line + 1); });
 
     contentLayout->addWidget(m_emptyLabel);
     contentLayout->addWidget(m_errorSection);
@@ -100,53 +108,62 @@ BottomPanel::BottomPanel(QWidget *parent)
 
     contentArea->setWidget(contentWidget);
     diagLayout->addWidget(contentArea);
+    m_stack->addWidget(m_diagnosticsPage);
 
-    m_stack->addWidget(m_diagnosticsPage); // index 1
+    m_terminalPanel = new TerminalPanel(m_stack);
+    m_stack->addWidget(m_terminalPanel);
+
+    m_submitResultPanel = new SubmitResultPanel(m_stack);
+    m_stack->addWidget(m_submitResultPanel);
 
     mainLayout->addWidget(m_stack);
 
-    // ---- Tab button group ----
     m_tabGroup = new TabButtonGroup(m_stack, this);
-    m_tabGroup->addTab(m_runTabBtn, RunTab);
     m_tabGroup->addTab(m_diagnosticsTabBtn, DiagnosticsTab);
+    m_tabGroup->addTab(m_terminalTabBtn, TerminalTab);
+    m_tabGroup->addTab(m_judgeTabBtn, JudgeTab);
     m_tabGroup->setStyleProvider(&BottomPanel::tabButtonStyle);
-    m_tabGroup->setCurrentIndex(RunTab);
+    m_tabGroup->setCurrentIndex(TerminalTab);
+
+    connect(m_tabGroup, &TabButtonGroup::currentChanged, this, [this](int index) {
+        m_newTerminalBtn->setVisible(index == TerminalTab);
+    });
+    connect(m_newTerminalBtn, &QPushButton::clicked, this, [this]() {
+        if (m_terminalPanel)
+            m_terminalPanel->openTerminal();
+    });
+    connect(m_submitResultPanel, &SubmitResultPanel::hideRequested, this, [this]() {
+        hide();
+    });
 
     ThemeManager::watchTheme(this, &BottomPanel::refreshStyle);
     refreshStyle();
 }
 
-// ── Static tab button style provider ──
-
-QString BottomPanel::tabButtonStyle(int /*index*/, bool active)
+QString BottomPanel::tabButtonStyle(int, bool active)
 {
     auto &tm = ThemeManager::instance();
     if (active) {
         return QStringLiteral(
             "QPushButton { background: %1; border: none; border-radius: 3px; "
             "color: %2; font-size: 11px; font-weight: bold; padding: 2px 10px; }"
-            "QPushButton:hover { background: %3; }"
-        ).arg(tm.color("titleBar.background").name(),
-              tm.color("workbench.foreground").name(),
-              tm.color("tab.hoverBackground").name());
+            "QPushButton:hover { background: %3; }")
+            .arg(tm.color("titleBar.background").name(),
+                 tm.color("workbench.foreground").name(),
+                 tm.color("tab.hoverBackground").name());
     }
     return QStringLiteral(
         "QPushButton { background: transparent; border: none; border-radius: 3px; "
         "color: %1; font-size: 11px; padding: 2px 10px; }"
-        "QPushButton:hover { background: %2; color: %3; }"
-    ).arg(tm.color("editorLineNumber.foreground").name(),
-          tm.color("list.hoverBackground").name(),
-          tm.color("workbench.foreground").name());
+        "QPushButton:hover { background: %2; color: %3; }")
+        .arg(tm.color("editorLineNumber.foreground").name(),
+             tm.color("list.hoverBackground").name(),
+             tm.color("workbench.foreground").name());
 }
 
 void BottomPanel::setDiagnostics(const QList<SmdDiagnostic> &diagnostics)
 {
-    int errCount = 0, warnCount = 0;
-    for (const auto &d : diagnostics) {
-        if (d.severity == 1) errCount++;
-        else if (d.severity == 2) warnCount++;
-    }
-m_diagnostics = diagnostics;
+    m_diagnostics = diagnostics;
     rebuildDiagnostics();
 }
 
@@ -161,16 +178,56 @@ void BottomPanel::setCurrentEditor(CodeEditor *editor)
     m_currentEditor = editor;
 }
 
+RunTerminalPanel *BottomPanel::runTerminal() const
+{
+    return m_terminalPanel ? m_terminalPanel->runTerminal() : nullptr;
+}
+
+void BottomPanel::showTerminalTab()
+{
+    m_tabGroup->setCurrentIndex(TerminalTab);
+}
+
+void BottomPanel::showSubmissionResult(const SubmissionResult &result)
+{
+    if (!m_submitResultPanel)
+        return;
+
+    const bool shouldResize = !property("bottomPanelSizedOnce").toBool();
+    m_submitResultPanel->showResult(result);
+    setVisible(true);
+    showJudgeTab();
+
+    QTimer::singleShot(0, this, [this, shouldResize]() {
+        if (!shouldResize)
+            return;
+        auto *splitter = qobject_cast<QSplitter*>(parentWidget());
+        if (!splitter)
+            return;
+        const int totalHeight = splitter->height();
+        if (totalHeight <= 0)
+            return;
+        const int panelHeight = totalHeight / 3;
+        splitter->setSizes({totalHeight - panelHeight, panelHeight});
+        setProperty("bottomPanelSizedOnce", true);
+    });
+}
+
+void BottomPanel::setWorkingDirectoryProvider(std::function<QString()> provider)
+{
+    if (m_terminalPanel)
+        m_terminalPanel->setWorkingDirectoryProvider(std::move(provider));
+}
+
 void BottomPanel::rebuildDiagnostics()
 {
-    // Use cellIndex = 0 for flat-file diagnostics
     m_errorSection->setDiagnostics(0, m_diagnostics);
     m_warningSection->setDiagnostics(0, m_diagnostics);
 
     m_errorSection->setVisible(m_errorSection->count() > 0);
     m_warningSection->setVisible(m_warningSection->count() > 0);
 
-    bool any = (m_errorSection->count() > 0 || m_warningSection->count() > 0);
+    const bool any = (m_errorSection->count() > 0 || m_warningSection->count() > 0);
     m_emptyLabel->setVisible(!any);
 }
 
@@ -179,38 +236,46 @@ void BottomPanel::refreshStyle()
     auto &tm = ThemeManager::instance();
 
     setStyleSheet(QStringLiteral(
-        "#bottomPanel { background-color: %1; }"
-    ).arg(tm.color("output.background").name()));
+        "#bottomPanel { background-color: %1; }")
+        .arg(tm.color("output.background").name()));
 
     m_headerBar->setStyleSheet(QStringLiteral(
-        "background: %1; border-bottom: 1px solid %2;"
-    ).arg(tm.color("tab.inactiveBackground").name(),
-          tm.color("panel.border").name()));
+        "background: %1; border-bottom: 1px solid %2;")
+        .arg(tm.color("tab.inactiveBackground").name(),
+             tm.color("panel.border").name()));
 
-    m_closeBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: transparent; border: none; color: %1; font-size: 12px; }"
-        "QPushButton:hover { color: %2; background: %3; border-radius: 2px; }"
-    ).arg(tm.color("editorLineNumber.foreground").name(),
-          tm.color("workbench.foreground").name(),
-          tm.color("list.hoverBackground").name()));
+    const QColor iconColor = tm.color("editorLineNumber.foreground");
+    m_closeBtn->setIcon(IconUtils::coloredSvgIcon(":/icons/close", iconColor, 16));
+
+    const QString iconButtonStyle = QStringLiteral(
+        "QPushButton { background: transparent; border: none; border-radius: 3px; "
+        "color: %1; font-size: 16px; font-weight: 500; padding-bottom: 2px; }"
+        "QPushButton:hover { background: %2; color: %3; }")
+        .arg(iconColor.name(),
+             tm.color("button.hoverBackground").name(),
+             tm.color("workbench.foreground").name());
+    const QString closeButtonStyle = QStringLiteral(
+        "QPushButton { background: transparent; border: none; border-radius: 3px; }"
+        "QPushButton:hover { background: #E81123; }");
+    m_newTerminalBtn->setStyleSheet(iconButtonStyle);
+    m_closeBtn->setStyleSheet(closeButtonStyle);
 
     m_diagnosticsPage->setStyleSheet(QStringLiteral(
-        "background-color: %1;"
-    ).arg(tm.color("output.background").name()));
+        "background-color: %1;")
+        .arg(tm.color("output.background").name()));
 
     m_diagScrollArea->setStyleSheet(QStringLiteral(
-        "QScrollArea { background: %1; border: none; }"
-    ).arg(tm.color("output.background").name()));
+        "QScrollArea { background: %1; border: none; }")
+        .arg(tm.color("output.background").name()));
 
     m_emptyLabel->setStyleSheet(QStringLiteral(
-        "QLabel { color: %1; font-size: 11px; padding: 8px; }"
-    ).arg(tm.color("editorLineNumber.foreground").name()));
+        "QLabel { color: %1; font-size: 11px; padding: 8px; }")
+        .arg(tm.color("editorLineNumber.foreground").name()));
 
-    // Refresh diagnostic section headers + border color, then rebuild entry
-    // widgets so existing entries pick up the new theme colors.
     m_errorSection->refreshStyle();
     m_warningSection->refreshStyle();
     rebuildDiagnostics();
 
     m_tabGroup->refreshStyles();
+    m_newTerminalBtn->setVisible(currentTab() == TerminalTab);
 }

@@ -7,6 +7,7 @@
 class QTabWidget;
 class QPushButton;
 class TerminalView;
+class RunTerminalPanel;
 
 class TerminalPanel : public QWidget
 {
@@ -19,15 +20,14 @@ public:
     void setWorkingDirectoryProvider(std::function<QString()> provider);
     void ensureTerminal();
     void openTerminal();
+    void openCommandTerminal(const QString &title, const QString &command,
+                             const QString &workingDirectory, const QString &reuseKey = QString());
     int terminalCount() const;
-
-signals:
-    void closeRequested();
+    RunTerminalPanel *runTerminal() const { return m_runTerminal; }
 
 private:
     QTabWidget *m_tabs = nullptr;
-    QPushButton *m_newTerminalBtn = nullptr;
-    QPushButton *m_closePanelBtn = nullptr;
+    RunTerminalPanel *m_runTerminal = nullptr;
     std::function<QString()> m_workingDirectoryProvider;
     int m_nextTerminalId = 1;
 

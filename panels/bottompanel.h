@@ -5,15 +5,19 @@
 #include <QStackedWidget>
 #include <QList>
 #include <QLabel>
+#include <functional>
 
 #include "smd/smddiagnostic.h"
 #include "widgets/tabbuttongroup.h"
 
 class QPushButton;
-class OutputPanel;
 class DiagnosticSection;
 class CodeEditor;
 class QScrollArea;
+class TerminalPanel;
+class RunTerminalPanel;
+class SubmitResultPanel;
+struct SubmissionResult;
 
 class BottomPanel : public QWidget
 {
@@ -22,13 +26,18 @@ class BottomPanel : public QWidget
 public:
     explicit BottomPanel(QWidget *parent = nullptr);
 
-    enum Tab { RunTab, DiagnosticsTab };
+    enum Tab { DiagnosticsTab, TerminalTab, JudgeTab };
 
-    OutputPanel *outputPanel() const { return m_outputPanel; }
+    TerminalPanel *terminalPanel() const { return m_terminalPanel; }
+    RunTerminalPanel *runTerminal() const;
+    SubmitResultPanel *submitResultPanel() const { return m_submitResultPanel; }
 
     Tab currentTab() const { return static_cast<Tab>(m_tabGroup->currentIndex()); }
-    void showRunTab() { m_tabGroup->setCurrentIndex(RunTab); }
     void showDiagnosticsTab() { m_tabGroup->setCurrentIndex(DiagnosticsTab); }
+    void showTerminalTab();
+    void showJudgeTab() { m_tabGroup->setCurrentIndex(JudgeTab); }
+    void showSubmissionResult(const SubmissionResult &result);
+    void setWorkingDirectoryProvider(std::function<QString()> provider);
 
     void setDiagnostics(const QList<SmdDiagnostic> &diagnostics);
     void clearDiagnostics();
@@ -41,12 +50,15 @@ signals:
     void diagnosticsLineClicked(int line);
 
 private:
-    QPushButton *m_runTabBtn;
     QPushButton *m_diagnosticsTabBtn;
+    QPushButton *m_terminalTabBtn;
+    QPushButton *m_judgeTabBtn;
+    QPushButton *m_newTerminalBtn;
     QPushButton *m_closeBtn;
     QStackedWidget *m_stack;
     TabButtonGroup *m_tabGroup;
-    OutputPanel *m_outputPanel;
+    TerminalPanel *m_terminalPanel;
+    SubmitResultPanel *m_submitResultPanel;
     QWidget *m_headerBar = nullptr;
     QScrollArea *m_diagScrollArea = nullptr;
 

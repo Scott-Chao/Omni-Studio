@@ -5,10 +5,9 @@
 
 class TabManager;
 class JudgePanel;
-class QSplitter;
 class SettingsManager;
 class OpenJudgeWidget;
-class SubmitResultPanel;
+class BottomPanel;
 class JudgeEngine;
 struct SubmissionResult;
 
@@ -17,7 +16,7 @@ class OpenJudgeManager : public QObject
     Q_OBJECT
 public:
     OpenJudgeManager(TabManager *tabManager, JudgePanel *judgePanel,
-                     QSplitter *rightSplitter, QObject *parent = nullptr);
+                     BottomPanel *bottomPanel, QObject *parent = nullptr);
     ~OpenJudgeManager() override;
 
     void open(SettingsManager *settings);
@@ -38,9 +37,7 @@ private:
 
     TabManager *m_tabManager = nullptr;
     JudgePanel *m_judgePanel = nullptr;
-    QSplitter *m_rightSplitter = nullptr;
-
-    SubmitResultPanel *m_submitResultPanel = nullptr;
+    BottomPanel *m_bottomPanel = nullptr;
     JudgeEngine *m_ojErrorJudgeEngine = nullptr;
     QString m_lastSubmitSourceFile;
     QString m_lastSubmitSourceCode;

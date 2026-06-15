@@ -3,7 +3,7 @@
 #include "panels/judgepanel.h"
 #include "judgeengine.h"
 #include "panels/openjudgewidget.h"
-#include "panels/submissionpanel.h"
+#include "panels/bottompanel.h"
 #include "config/settingsmanager.h"
 #include "config/configmanager.h"
 #include "editor/editorwidget.h"
@@ -12,16 +12,15 @@
 
 #include <QMessageBox>
 #include <QTimer>
-#include <QSplitter>
 #include <QFileInfo>
 #include <QDir>
 
 OpenJudgeManager::OpenJudgeManager(TabManager *tabManager, JudgePanel *judgePanel,
-                                   QSplitter *rightSplitter, QObject *parent)
+                                   BottomPanel *bottomPanel, QObject *parent)
     : QObject(parent)
     , m_tabManager(tabManager)
     , m_judgePanel(judgePanel)
-    , m_rightSplitter(rightSplitter)
+    , m_bottomPanel(bottomPanel)
 {
 }
 
@@ -154,22 +153,10 @@ void OpenJudgeManager::onLoginStateChanged(bool /*loggedIn*/, const QString & /*
 
 void OpenJudgeManager::onSubmissionResultReady(const SubmissionResult &result)
 {
-    if (!m_rightSplitter || !m_tabManager)
+    if (!m_bottomPanel || !m_tabManager)
         return;
 
-    // Create the submit result panel on first use
-    if (!m_submitResultPanel) {
-        m_submitResultPanel = new SubmitResultPanel(qobject_cast<QWidget*>(parent()));
-        // Insert at position 1 (after editor TabManager, before BottomPanel)
-        m_rightSplitter->insertWidget(1, m_submitResultPanel);
-        connect(m_submitResultPanel, &SubmitResultPanel::hideRequested, this, [this]() {
-            if (m_submitResultPanel)
-                m_submitResultPanel->hide();
-        });
-    }
-
-    m_submitResultPanel->showResult(result);
-    m_submitResultPanel->setVisible(true);
+    m_bottomPanel->showSubmissionResult(result);
 
     // Record non-Accepted, non-CE OpenJudge results to error journal
     bool isAccepted = (result.status == QStringLiteral("Accepted")
@@ -181,25 +168,6 @@ void OpenJudgeManager::onSubmissionResultReady(const SubmissionResult &result)
         runLocalTestsForOJError();
     }
 
-    // Resize splitter
-    double ratio = ConfigManager::instance().submissionResultHeightRatio();
-    int total = m_rightSplitter->height();
-    if (total > 0) {
-        int panelH = qRound(total * ratio);
-        int editorH = total - panelH;
-        QList<int> sizes;
-        sizes.reserve(m_rightSplitter->count());
-        for (int i = 0; i < m_rightSplitter->count(); ++i) {
-            QWidget *w = m_rightSplitter->widget(i);
-            if (w == m_submitResultPanel)
-                sizes.append(panelH);
-            else if (qobject_cast<TabManager*>(w))
-                sizes.append(editorH);
-            else
-                sizes.append(0);
-        }
-        m_rightSplitter->setSizes(sizes);
-    }
 }
 
 void OpenJudgeManager::runLocalTestsForOJError()

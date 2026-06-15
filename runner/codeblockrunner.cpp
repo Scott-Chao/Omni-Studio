@@ -1,8 +1,8 @@
-#include "codeblockrunner.h"
+﻿#include "codeblockrunner.h"
 #include "editor/tabmanager.h"
 #include "editor/editorwidget.h"
 #include "panels/bottompanel.h"
-#include "panels/outputpanel.h"
+#include "panels/runterminalpanel.h"
 #include "compilerunmanager.h"
 #include "processrunner.h"
 #include "compilererrorparser.h"
@@ -93,17 +93,17 @@ void CodeBlockRunner::runCodeBlock(const QString &language, const QString &code,
             m_compileRunMgr->showOutputPanel();
         } else {
             m_bottomPanel->setVisible(true);
-            m_bottomPanel->showRunTab();
+            m_bottomPanel->showTerminalTab();
         }
     };
 
     if (normalizedLang.isEmpty()) {
         m_isRunningCodeBlock = false;
         showPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->appendOutput(
-            tr("不支持的语言: %1\n当前支持: python, cpp\n").arg(language), true);
-        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
+        m_bottomPanel->runTerminal()->clearOutput();
+        m_bottomPanel->runTerminal()->appendOutput(
+            tr("涓嶆敮鎸佺殑璇█: %1\n褰撳墠鏀寔: python, cpp\n").arg(language), true);
+        m_bottomPanel->runTerminal()->setStatus(tr("閿欒"), true);
         return;
     }
 
@@ -111,28 +111,28 @@ void CodeBlockRunner::runCodeBlock(const QString &language, const QString &code,
     if (filePath.isEmpty()) {
         m_isRunningCodeBlock = false;
         showPanel();
-        m_bottomPanel->outputPanel()->clearOutput();
-        m_bottomPanel->outputPanel()->appendOutput(
-            tr("错误: 无法创建临时文件。\n"), true);
-        m_bottomPanel->outputPanel()->setStatus(tr("错误"), true);
+        m_bottomPanel->runTerminal()->clearOutput();
+        m_bottomPanel->runTerminal()->appendOutput(
+            tr("閿欒: 鏃犳硶鍒涘缓涓存椂鏂囦欢銆俓n"), true);
+        m_bottomPanel->runTerminal()->setStatus(tr("閿欒"), true);
         return;
     }
 
     showPanel();
-    m_bottomPanel->outputPanel()->clearOutput();
+    m_bottomPanel->runTerminal()->clearOutput();
 
     ProcessRunner *pr = m_compileRunMgr ? m_compileRunMgr->processRunner() : nullptr;
     if (!pr) return;
 
     if (normalizedLang == QStringLiteral("python")) {
-        m_bottomPanel->outputPanel()->appendOutput(
-            QStringLiteral("--- ") + tr("运行 Python 代码块 ---\n"), false);
-        m_bottomPanel->outputPanel()->setStatus(tr("运行中..."));
+        m_bottomPanel->runTerminal()->appendOutput(
+            QStringLiteral("--- ") + tr("杩愯 Python 浠ｇ爜鍧?---\n"), false);
+        m_bottomPanel->runTerminal()->setStatus(tr("杩愯涓?.."));
         pr->startRunPython(filePath);
     } else if (normalizedLang == QStringLiteral("cpp")) {
-        m_bottomPanel->outputPanel()->appendOutput(
-            QStringLiteral("--- ") + tr("编译运行 C++ 代码块 ---\n"), false);
-        m_bottomPanel->outputPanel()->setStatus(tr("编译中..."));
+        m_bottomPanel->runTerminal()->appendOutput(
+            QStringLiteral("--- ") + tr("缂栬瘧杩愯 C++ 浠ｇ爜鍧?---\n"), false);
+        m_bottomPanel->runTerminal()->setStatus(tr("缂栬瘧涓?.."));
         pr->startCompileAndRun(filePath);
     }
 }

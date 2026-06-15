@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #ifdef Q_OS_WIN
 #include <dwmapi.h>
@@ -40,9 +40,9 @@ protected:
 #include "utilities.h"
 #include "panels/activitybar.h"
 #include "panels/rightpanelcontainer.h"
-#include "panels/outputpanel.h"
 #include "panels/bottompanel.h"
 #include "panels/terminalpanel.h"
+#include "panels/runterminalpanel.h"
 #include "editor/codeeditor.h"
 #include "runner/compilerunmanager.h"
 #include "runner/codeblockrunner.h"
@@ -369,12 +369,19 @@ MainWindow::MainWindow(QWidget *parent)
     // ----- 底部统一面板（输出 + 诊断）-----
     m_bottomPanel = new BottomPanel(this);
     m_bottomPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
+    m_bottomPanel->setWorkingDirectoryProvider([this]() {
+        return m_explorer ? m_explorer->rootPath() : QString();
+    });
     m_bottomPanel->hide();
 
     connect(m_bottomPanel, &BottomPanel::closeRequested, this, [this]() {
         if (m_compileRunMgr && m_compileRunMgr->isRunning())
             m_compileRunMgr->stop();
         m_bottomPanel->hide();
+        if (m_activityBar)
+            m_activityBar->setTerminalActive(false);
+        if (m_toggleTerminalAction)
+            m_toggleTerminalAction->setChecked(false);
     });
     connect(m_bottomPanel, &BottomPanel::diagnosticsLineClicked, this, [this](int line) {
         // Normal editor tab
@@ -390,40 +397,28 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // 右侧垂直分割线：编辑器在上，输出面板在下
-    m_terminalPanel = new TerminalPanel(this);
-    m_terminalPanel->setMinimumHeight(ConfigManager::instance().outputPanelMinHeight());
-    m_terminalPanel->setWorkingDirectoryProvider([this]() {
-        return m_explorer ? m_explorer->rootPath() : QString();
-    });
-    m_terminalPanel->hide();
-    connect(m_terminalPanel, &TerminalPanel::closeRequested, this, [this]() {
-        m_terminalPanel->hide();
-        if (m_activityBar)
-            m_activityBar->setTerminalActive(false);
-        if (m_toggleTerminalAction)
-            m_toggleTerminalAction->setChecked(false);
-    });
-
     m_toggleTerminalAction = new QAction(tr("Terminal"), this);
     m_toggleTerminalAction->setCheckable(true);
     m_toggleTerminalAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_terminal", "Ctrl+`")));
     connect(m_toggleTerminalAction, &QAction::triggered, this, [this]() {
-        if (m_terminalPanel->isVisible()) {
-            m_terminalPanel->hide();
+        if (m_bottomPanel->isVisible() && m_bottomPanel->currentTab() == BottomPanel::TerminalTab) {
+            m_bottomPanel->hide();
         } else {
-            m_terminalPanel->show();
-            const int totalHeight = qMax(1, m_rightSplitter->height());
-            const int terminalHeight = qMax(m_terminalPanel->minimumHeight(), totalHeight / 3);
-            const int outputHeight = m_bottomPanel->isVisible() ? m_bottomPanel->height() : 0;
-            m_rightSplitter->setSizes({
-                qMax(100, totalHeight - terminalHeight - outputHeight),
-                outputHeight,
-                terminalHeight
-            });
-            m_terminalPanel->ensureTerminal();
+            m_bottomPanel->show();
+            m_bottomPanel->showTerminalTab();
+            if (!m_bottomPanel->property("bottomPanelSizedOnce").toBool()) {
+                const int totalHeight = qMax(1, m_rightSplitter->height());
+                const int terminalHeight = qMax(m_bottomPanel->minimumHeight(), totalHeight / 3);
+                m_rightSplitter->setSizes({
+                    qMax(100, totalHeight - terminalHeight),
+                    terminalHeight
+                });
+                m_bottomPanel->setProperty("bottomPanelSizedOnce", true);
+            }
+            m_bottomPanel->terminalPanel()->ensureTerminal();
         }
-        const bool visible = m_terminalPanel->isVisible();
+        const bool visible = m_bottomPanel->isVisible()
+            && m_bottomPanel->currentTab() == BottomPanel::TerminalTab;
         if (m_activityBar)
             m_activityBar->setTerminalActive(visible);
         m_toggleTerminalAction->setChecked(visible);
@@ -433,10 +428,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_rightSplitter = new QSplitter(Qt::Vertical, this);
     m_rightSplitter->addWidget(m_tabManager);
     m_rightSplitter->addWidget(m_bottomPanel);
-    m_rightSplitter->addWidget(m_terminalPanel);
     m_rightSplitter->setStretchFactor(0, ConfigManager::instance().rightSplitterEditorStretch());
     m_rightSplitter->setStretchFactor(1, ConfigManager::instance().rightSplitterOutputStretch());
-    m_rightSplitter->setStretchFactor(2, ConfigManager::instance().rightSplitterOutputStretch());
 
     // ----- 编译运行管理器（ProcessRunner + 编译/运行/终止）-----
     m_compileRunMgr = new CompileRunManager(
@@ -454,7 +447,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ----- OpenJudge 提交管理 -----
     m_openJudgeMgr = new OpenJudgeManager(m_tabManager, m_judgePanel,
-                                           m_rightSplitter, this);
+                                           m_bottomPanel, this);
 
     m_toggleJudgeAction = new QAction(tr("显示/隐藏代码评测"), this);
     m_toggleJudgeAction->setShortcut(QKeySequence(ConfigManager::instance().shortcut("toggle_judge", "Ctrl+Shift+J")));
@@ -489,7 +482,8 @@ MainWindow::MainWindow(QWidget *parent)
             // OpenJudge tab is current — wire up diagnostics for the IDE editor
             updateCurrentEditorDiagnostics();
         } else {
-            m_bottomPanel->hide();
+            m_bottomPanel->setCurrentEditor(nullptr);
+            m_bottomPanel->clearDiagnostics();
         }
     });
     connect(m_openJudgeMgr, &OpenJudgeManager::diagnosticsToggleRequested,
@@ -867,14 +861,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_settingsPanel, &SettingsPanel::outputPanelSettingChanged, this, [this](const QString &key, const QVariant &value) {
         m_settingsHandler->handleOutputPanelSetting(key, value);
-        // OutputPanel is a UI widget owned by MainWindow, apply directly
-        if (key == "output_panel.font.size") {
-            QFont font = m_bottomPanel->outputPanel()->font();
-            font.setPointSize(value.toInt());
-            m_bottomPanel->outputPanel()->setOutputFont(font);
-        } else if (key == "output_panel.max_blocks") {
-            m_bottomPanel->outputPanel()->setMaxBlocks(value.toInt());
-        }
+        Q_UNUSED(key)
+        Q_UNUSED(value)
     });
     connect(m_settingsPanel, &SettingsPanel::previewSettingChanged, m_settingsHandler, &SettingsChangeHandler::handlePreviewSetting);
     connect(m_settingsPanel, &SettingsPanel::searchSettingChanged, m_settingsHandler, &SettingsChangeHandler::handleSearchSetting);
@@ -885,23 +873,18 @@ MainWindow::MainWindow(QWidget *parent)
         m_settingsPanel->setDefaultZoom(ConfigManager::instance().zoomDefault());
         m_settingsPanel->syncFromSettings(*m_settings);
         applyEqualWidthTab(false);
-        // Reset output panel
         auto &cfg = ConfigManager::instance();
-        OutputPanel *op = m_bottomPanel->outputPanel();
-        QFont opFont = op->font();
-        opFont.setPointSize(cfg.outputPanelFontSize());
-        op->setOutputFont(opFont);
-        op->setMaxBlocks(cfg.outputPanelMaxBlocks());
-        op->reloadShortcuts();
+        if (m_bottomPanel && m_bottomPanel->runTerminal())
+            m_bottomPanel->runTerminal()->reloadShortcuts();
         // Reset preview on current editor
         if (auto *editor = m_tabManager->currentEditor())
             editor->setSplitPreviewDebounceMs(cfg.previewSplitDebounceMs());
     });
     connect(m_settingsPanel, &SettingsPanel::shortcutChanged, this, [this](const QString &actionKey, const QString &seq) {
         m_settingsHandler->handleShortcutChanged(actionKey, seq, m_shortcutActions);
-        // OutputPanel and Explorer shortcuts need MainWindow-owned widget references
+        // Bottom terminal and Explorer shortcuts need MainWindow-owned widget references
         if (m_bottomPanel)
-            m_bottomPanel->outputPanel()->reloadShortcuts();
+            m_bottomPanel->runTerminal()->reloadShortcuts();
         if (m_explorer)
             m_explorer->reloadShortcuts();
     });
@@ -1110,16 +1093,12 @@ MainWindow::MainWindow(QWidget *parent)
                 m_exportPdfAction->setVisible(isMd);
                 m_activityBar->setExportPdfVisible(isMd);
 
-                // Auto-close output panel for non-code files
                 if (!current->isCodeEdit()) {
                     disconnect(m_diagnosticsProviderConnection);
                     m_bottomPanel->setCurrentEditor(nullptr);
+                    m_bottomPanel->clearDiagnostics();
                     if (m_compileRunMgr && m_compileRunMgr->isRunning())
                         m_compileRunMgr->stop();
-                    QPointer<BottomPanel> bp = m_bottomPanel;
-                    QTimer::singleShot(0, this, [bp]() {
-                        if (bp) bp->hide();
-                    });
                 }
             });
         }
@@ -1154,15 +1133,11 @@ MainWindow::MainWindow(QWidget *parent)
             isCodeEdit = oj->isIdeMode();
         }
         if (!isCodeEdit) {
-            // 非代码标签：自动关闭底部面板
             disconnect(m_diagnosticsProviderConnection);
             m_bottomPanel->setCurrentEditor(nullptr);
+            m_bottomPanel->clearDiagnostics();
             if (m_compileRunMgr && m_compileRunMgr->isRunning())
                 m_compileRunMgr->stop();
-            QPointer<BottomPanel> bp = m_bottomPanel;
-            QTimer::singleShot(0, this, [bp]() {
-                if (bp) bp->hide();
-            });
         }
     });
 

@@ -31,11 +31,8 @@ class QMenu;
 class RightPanelContainer;
 class SearchPanel;
 class BottomPanel;
-class OutputPanel;
-class TerminalPanel;
 class JudgePanel;
 class OpenJudgeWidget;
-class SubmitResultPanel;
 struct SubmissionResult;
 class JudgeEngine;
 class QStackedWidget;
@@ -156,7 +153,6 @@ private:
     // 编译运行管理
     CompileRunManager *m_compileRunMgr = nullptr;
     BottomPanel *m_bottomPanel;
-    TerminalPanel *m_terminalPanel = nullptr;
     QAction *m_toggleTerminalAction = nullptr;
     QSplitter *m_rightSplitter;
 

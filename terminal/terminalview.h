@@ -24,6 +24,8 @@ public:
     void attachSession(TerminalSession *session);
     TerminalSession *session() const { return m_session; }
     void appendTerminalData(const QByteArray &data);
+    void clearTerminal();
+    void setLocalEchoEnabled(bool enabled);
     int terminalColumns() const;
     int terminalRows() const;
     void syncTerminalSize();
@@ -107,6 +109,7 @@ private:
     bool m_cursorVisible = true;
     bool m_cursorHiddenDuringOutput = false;
     bool m_outputCursorHideSuppressed = false;
+    bool m_localEchoEnabled = false;
     int m_outputCursorHideGeneration = 0;
     bool m_hasSelection = false;
     bool m_selectionAutoScrollActive = false;
@@ -155,6 +158,7 @@ private:
     void eraseInLine(int mode);
     void eraseInDisplay(int mode);
     void sendText(const QString &text);
+    void echoInputData(const QByteArray &data);
     void markUserInput();
     void pasteClipboard();
     QByteArray keySequenceForEvent(QKeyEvent *event) const;

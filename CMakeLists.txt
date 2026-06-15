@@ -69,6 +69,7 @@ set(SOURCES
     panels/outlinepanel.cpp
     panels/outputpanel.cpp
     panels/rightpanelcontainer.cpp
+    panels/runterminalpanel.cpp
     panels/searchpanel.cpp
     panels/settingspanel.cpp
     panels/sidebarpanels.cpp
@@ -153,6 +154,7 @@ set(HEADERS
     panels/outlinepanel.h
     panels/outputpanel.h
     panels/rightpanelcontainer.h
+    panels/runterminalpanel.h
     panels/searchpanel.h
     panels/settingspanel.h
     panels/sidebarpanels.h

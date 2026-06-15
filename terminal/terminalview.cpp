@@ -156,6 +156,22 @@ void TerminalView::appendTerminalData(const QByteArray &data)
     renderBuffer();
 }
 
+void TerminalView::clearTerminal()
+{
+    resetScreenBuffer();
+    m_savedNormalLines.clear();
+    m_savedNormalLineStyles.clear();
+    m_hasSavedNormalScreen = false;
+    m_hasSelection = false;
+    m_decoder = QStringDecoder(QStringDecoder::Utf8);
+    renderBuffer();
+}
+
+void TerminalView::setLocalEchoEnabled(bool enabled)
+{
+    m_localEchoEnabled = enabled;
+}
+
 int TerminalView::contentWidth() const
 {
     return qMax(1, width() - m_scrollBar->sizeHint().width());
@@ -1209,8 +1225,22 @@ void TerminalView::sendText(const QString &text)
 {
     if (!text.isEmpty()) {
         markUserInput();
-        emit inputGenerated(text.toUtf8());
+        const QByteArray data = text.toUtf8();
+        if (m_localEchoEnabled)
+            echoInputData(data);
+        emit inputGenerated(data);
     }
+}
+
+void TerminalView::echoInputData(const QByteArray &data)
+{
+    if (data.isEmpty())
+        return;
+
+    QByteArray normalized = data;
+    normalized.replace("\r\n", "\n");
+    normalized.replace('\r', '\n');
+    appendTerminalData(normalized);
 }
 
 void TerminalView::markUserInput()
