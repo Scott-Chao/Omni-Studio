@@ -68,7 +68,7 @@ core/mainwindow.*        → frameless orchestrator (Win/Lin) / native title bar
  ├── ai/aipanel.*              → AI assistant (ActionBar, ChatArea, InputBar, HistoryList)
  ├── panels/searchpanel.*      → full-text search (left dock)
  ├── panels/judgepanel.* + judge/judgeengine.* → local OJ-style judge (left dock)
- ├── panels/bottompanel.*      → Output + Diagnostics tabs
+ ├── panels/bottompanel.*      → Terminal + Diagnostics + Judge 三标签页
  ├── panels/settingspanel.*    → floating settings overlay
  └── panels/helppanel.*        → floating help overlay, F1 toggle
 ```

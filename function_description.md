@@ -124,7 +124,7 @@
   通过 `QApplication::focusChanged` + `QTimer::singleShot(0)` 实现点击编辑器区域自动隐藏面板；标签页切换时自动查询反链索引并刷新面板显示；文件保存后增量更新反链索引并刷新面板。`showLeftPanel` 不再强制关闭右侧面板。
 - 管理搜索面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+F`）。搜索面板不自动隐藏（持久侧边栏行为）。
   搜索结果显示文件名、行号和上下文片段；单击结果时以预览标签页打开文件并高亮匹配关键词，双击结果永久打开，编辑预览内容自动转为永久标签。
-- 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含两个标签页：**输出**（`OutputPanel`，编译/运行输出和 stdin 交互）和**诊断**（`DiagnosticsTab`，代码诊断信息列表）。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏。标签页切换时通过 `updateCurrentEditorDiagnostics()` 统一管理诊断 provider 连接：切换到代码文件时清空旧 provider 连接、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动清空诊断数据并隐藏面板。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
+- 管理底部统一面板（`BottomPanel`）：嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，不延伸至文件树区域。默认隐藏，首次显示时自动设置高度为右侧分割器的 1/3。包含三个标签页：**诊断**（代码诊断信息列表）、**终端**（多标签 PowerShell 终端 + 编译运行输出）、**评测**（OpenJudge 提交结果）。不再包含 `OutputPanel`。编译运行输出通过 `TerminalPanel::openCommandTerminal()` 在 PowerShell 终端标签页中执行和显示。提供编译运行按钮的可见性控制：仅在代码编辑模式下显示，非代码模式完全隐藏（快捷键同步失效）。`m_toggleTerminalAction`（`Ctrl+\``）切换底部面板的终端标签页。连接 `closeRequested` 信号，关闭面板时若进程运行中则先终止进程再隐藏，同时更新 ActivityBar 和 toggle 动作的选中状态。标签页切换时通过 `updateCurrentEditorDiagnostics()` 统一管理诊断 provider 连接：切换到代码文件时清空旧 provider 连接、连接新 provider 并立即从 `CodeEditor::diagnostics()` 缓存恢复诊断；切换到非代码文件时自动清空诊断数据（调用 `clearDiagnostics()` 而非隐藏面板）。`diagnosticsLineClicked` 信号连接至编辑器行跳转。
 - 管理评测面板（包装在 `QStackedWidget` 中，带自定义标题栏 + SVG 关闭按钮悬停红色高亮），在工具栏提供显示/隐藏面板的按钮（快捷键 `Ctrl+Shift+J`）。评测面板默认隐藏，启动评测时自动显示并保持在可见状态。
 - 管理帮助面板（`HelpPanel` + `m_helpOverlay`，`OverlayWidget` 顶层遮罩层）：工具栏帮助按钮（快捷键 `F1`）调用 `toggleHelp()` 切换显示/隐藏。遮罩层为独立顶层 `Qt::Tool` 窗口（`WA_TranslucentBackground` + `paintEvent` 绘制半透明黑色背景），覆盖整个主窗口，面板居中显示。通过事件过滤器监听顶层 overlay 的 `MouseButtonPress` 实现点击遮罩层背景关闭面板。`resizeEvent()` 和 `moveEvent()` 中通过 `positionOverlay()` 跟踪 overlay 位置同步，`changeEvent()` 中最小化时自动隐藏。
 - 跳转与创建逻辑：处理 `wikiLinkClicked` 信号，搜索匹配文件并提供文件不存在时的自动创建交互。
@@ -199,26 +199,35 @@
 **文件**：`compilerunmanager.h` / `compilerunmanager.cpp`
 
 **职责**：
-- 封装编译/运行/终止的完整生命周期，管理 `ProcessRunner` 实例。
+- 封装编译/运行/终止的完整生命周期，原先管理 `ProcessRunner` 实例，重构后改为通过 PowerShell 终端命令执行。
 - 处理 F5（编译运行）、F6（编译）、F7（运行）和 Ctrl+Break（终止）快捷键。
 - **IDE 模式路由**：当 OpenJudge IDE 模式激活时，编译/运行操作使用 IDE 内置编辑器的缓存代码（`oj->ideCacheFilePath()`）而非当前编辑器文件。
-- **输出面板管理**：调用 `showOutputPanel()`（`public`）自动显示 `BottomPanel`，通过 `QTimer::singleShot(0, ...)` 延迟设置右侧分割器尺寸，使输出面板高度为窗口高度的 1/3（编辑器 2/3 + 面板 1/3）。`showOutputPanel()` 同时生成详细调试日志（写入应用目录 `debug.log` 和 `%TEMP%/smd-debug/log.txt`）。
-- **操作按钮状态**：`updateActions()` 根据当前编辑器是否为代码文件和进程是否运行中控制编译/运行/终止按钮的启用/可见性。
+- **终端路由**：`compile()` 构造 PowerShell 编译器调用命令（`psInvoke(compilerPath, args)`），通过 `TerminalPanel::openCommandTerminal()` 在终端标签页中执行。`run()` 同理运行可执行文件或 Python 解释器。`compileAndRun()` 组合为 `compile; if ($LASTEXITCODE -eq 0) { run }` 管道命令。**不再通过 `ProcessRunner::startCompile/startRun` 启动编译运行**。`ProcessRunner` 保留仅用于 `CodeBlockRunner` 的 MD 代码块 stderr 缓冲。
+- **终端标签复用**：每源码文件使用 `cppReuseKey()` 生成唯一键，`openCommandTerminal()` 按 key 复用已有终端标签页，避免重复开标签。
+- **面板显示**：`showOutputPanel()` 自动显示 `BottomPanel` 并切换到终端标签页，通过 `QTimer::singleShot(0, ...)` 延迟设置右侧分割器尺寸至 1/3 窗口高度。增加 `bottomPanelSizedOnce` 属性防止首次显示后反复调整尺寸。
+- **操作按钮状态**：`updateActions()` 根据当前编辑器是否为代码文件和进程是否运行中控制 Compile/Run/Compile and Run/Stop 按钮的启用/可见性。
 - 提供 `saveEditorToTempFile()` 静态方法供 Judge/OpenJudge 等组件使用。
-- 通过信号（`compileFinished`、`runFinished`、`processStarted`、`processStopped`）通知其他组件编译运行状态。
+- 通过信号（`compileFinished`、`runFinished`、`processStarted`、`processStopped`）通知其他组件编译运行状态（仍由 `ProcessRunner` 发出，主要用于 CodeBlockRunner 诊断解析）。
+
+**辅助工具（匿名命名空间）**：
+- `psQuote(value)`：PowerShell 单引号转义，用于安全拼接命令行
+- `shellArgs(args)`：处理包含空格的参数，按需用 `QProcess::splitCommand` 拆分
+- `psInvoke(program, args)`：生成 `& 'path\to\program' 'arg1' 'arg2'` 格式的 PowerShell 调用
+- `cppReuseKey(sourceFile)`：按源码文件绝对路径生成标签复用 key
 
 **主要接口**：
 - `void compile()` / `void run()` / `void compileAndRun()` / `void stop()`
 - `void toggleDiagnostics()`：切换底部诊断面板显示
-- `void showOutputPanel()`：公开方法，显示输出面板并设置 1/3 窗口高度比例，供 `CodeBlockRunner` 统一调用
-- `ProcessRunner *processRunner() const`：暴露 ProcessRunner 供 `CodeBlockRunner` 连接 stderr 缓冲信号
+- `void showOutputPanel()`：公开方法，显示底部面板并切换到终端标签页，供 `CodeBlockRunner` 统一调用
+- `ProcessRunner *processRunner() const`：暴露 ProcessRunner 供 `CodeBlockRunner` 连接 stderr 缓冲信号（不再用于主编译运行）
 - `bool isRunning() const` / `bool isManualStop() const`
 
 **协作关系**：
 - 由 `MainWindow` 创建并持有，作为 `QObject` 子对象。构造时接收已正确初始化的 `QSplitter *`（`m_rightSplitter` 已在 `MainWindow` 构造函数中提前创建）。
-- 编译/运行按钮的 Action 对象由 `CompileRunManager` 创建（`runToolAction()`），MainWindow 通过 `changed` 信号同步状态到标题栏的两个独立按钮（`m_toolbarRunAction` + `m_toolbarDropdownAction`）。
-- `ProcessRunner` 生命周期完全由 `CompileRunManager` 管理。
+- 编译/运行按钮的 Action 对象由 `CompileRunManager` 创建（`runToolAction()`），MainWindow 通过 `changed` 信号同步状态到标题栏的两个独立按钮（`m_toolbarRunAction` + `m_toolbarDropdownAction`）。Action 文本为英文（Compile/Run/Compile and Run/Stop）。
+- `ProcessRunner` 生命周期完全由 `CompileRunManager` 管理，但仅用于 MD 代码块 stderr 缓冲和信号转发的兼容层。
 - `CodeBlockRunner` 通过 `processRunner()` 获取 `ProcessRunner*` 用于 MD 代码块 stderr 缓冲。
+- 编译输出现在通过 `TerminalPanel::openCommandTerminal()` 显示在终端标签页（`RunTerminalPanel`），而非旧 `OutputPanel`。
 
 ---
 
@@ -228,7 +237,7 @@
 
 **职责**：
 - 处理 Markdown 预览模式 ▶ 按钮触发的代码块执行。
-- **执行流程**：`runCodeBlock()` → 调用内部 `showPanel` lambda → 委托 `CompileRunManager::showOutputPanel()`（统一面板显示逻辑，含 1/3 高度调整）→ 保存临时文件 → 通过 `CompileRunManager::processRunner()` 启动编译运行。不再直接操作 `m_bottomPanel->setVisible()`，所有面板显示统一经 `CompileRunManager` 路由。
+- **执行流程**：`runCodeBlock()` → 调用内部 `showPanel` lambda → 委托 `CompileRunManager::showOutputPanel()`（统一面板显示逻辑，含 1/3 高度调整）→ 保存临时文件 → 通过 `CompileRunManager::processRunner()` 启动编译运行（MD 代码块仍使用 ProcessRunner 的原始编译运行路径）。不再直接操作 `m_bottomPanel->setVisible()`，所有面板显示统一经 `CompileRunManager` 路由。输出现在显示在 `BottomPanel` 的终端标签页内嵌 `RunTerminalPanel` 中（通过 `m_bottomPanel->runTerminal()->appendOutput()`）而非旧 `OutputPanel`。
 - **stderr 缓冲**：连接 `ProcessRunner::outputReceived` 信号，在代码块执行期间仅缓冲 stderr，通过 `m_isRunningCodeBlock` 标志防止影响普通编译运行。
 - **诊断解析**：编译/运行完成后调用 `CompilerErrorParser::parseCompileErrors()` 或 `parsePythonTraceback()` 解析 stderr 为 `SmdDiagnostic` 列表。
 - **诊断缓存**：按文件路径 + block 索引维护 `m_mdDiagnostics` 缓存，tab 切换时通过 `loadDiagnosticsForCurrentTab()` 恢复。
@@ -252,7 +261,7 @@
 **职责**：
 - **标签页管理**：`open()` 方法创建或切换到 OpenJudge 标签页，首次创建时连接所有需要的信号。
 - **代码提交**：`submit()` 方法处理 IDE 模式（从内置编辑器获取代码）和普通模式（从当前编辑器标签页获取）的完整提交流程，包括登录检查、题目选择检查、文件扩展名到语言 ID 映射。
-- **提交结果显示**：首次使用时创建 `SubmitResultPanel` 并插入右侧分割区，显示评测状态、用时和内存，CE 时展示编译错误日志。
+- **提交结果显示**：通过 `BottomPanel::showSubmissionResult()` 在底部面板的评测标签页中显示（不再自行创建 `SubmitResultPanel` 或插入右侧分割区）。显示评测状态、用时和内存，CE 时展示编译错误日志。首次显示时将底部面板高度调整为窗口高度的 1/3。
 - **失败回测**：非 AC 非 CE 的提交失败后自动运行本地评测（通过 `JudgeEngine`），若缓存中有样例数据则每个失败用例记录到 `ErrorJournal`（含输入/预期输出/实际输出），无样例时记录无 I/O 数据的条目。
 - 跨领域信号通过 Qt 信号发射由 `MainWindow` 连接处理（`submissionFailed` → `QMessageBox`，`ideModeChanged` → `CompileRunManager` + `BottomPanel`，`diagnosticsToggleRequested` → `CompileRunManager`）。
 
@@ -261,7 +270,7 @@
 - `void submit(const QString &rootPath)`：提交通用入口
 
 **协作关系**：
-- 依赖 `TabManager`（标签页操作）、`JudgePanel`（本地评测/样例文件夹）、`QSplitter`（SubmitResultPanel 插入）。
+- 依赖 `TabManager`（标签页操作）、`JudgePanel`（本地评测/样例文件夹）、`BottomPanel`（提交结果显示，构造函数参数已从 `QSplitter*` 改为 `BottomPanel*`）。
 - `MainWindow` 将 `JudgePanel::submitToOpenJudgeRequested` 信号转发到 `OpenJudgeManager::submit()`。
 - 错误回测结果记录到 `ErrorJournal` 单例。
 
@@ -985,64 +994,120 @@
 
 ---
 
-### 17. `OutputPanel` — 输出面板
-
-**文件**：`outputpanel.h` / `outputpanel.cpp`
-
-`OutputPanel` 现在是 `BottomPanel` 的子组件，嵌入 BottomPanel 的「输出」标签页中。
-
-**职责**：
-- 深色终端风格（`QPlainTextEdit`，Consolas 10pt，背景 `#1E1E1E`），显示编译信息和程序运行输出，同时支持运行时标准输入交互。stdout 白色（`#D4D4D4`），stderr 红色（`#F48771`）。
-- 进程运行时，输出区域自动变为可编辑，支持终端式直接输入：
-  - 键盘输入：字符实时回显到输出区域，同时缓冲到 `m_inputBuffer`
-  - Enter：将缓冲行通过 `sendInput` 信号发送到进程 stdin，光标换行
-  - Backspace：从缓冲区删除最后一个字符，同时从输出区域移除
-  - Ctrl+V / 右键：直接粘贴（无菜单），支持多行文本。粘贴内容逐行发送（20ms 间隔），每行发送后调用 `processEvents()` 使程序输出交错显示。最后一行无尾部换行符时，回显并放入输入缓冲区，用户可编辑后按 Enter 发送
-  - Ctrl+C：终止正在运行的进程（emit `stopRequested()`）
-  - 屏蔽方向键、Ctrl+Z 等编辑快捷键，防止破坏输出内容；粘贴发送期间也屏蔽按键
-- 编译阶段完全禁用交互（`NoTextInteraction`，吞噬按键事件）；运行结束后恢复文本选中但保持只读；进程结束后焦点移至编辑器，下次运行需手动点击终端
-- 底部工具栏：状态标签（编译成功绿色/失败红色）+ 终止按钮 + 清除按钮。隐藏按钮已移至 `BottomPanel` 标题栏。
-- `appendOutput(text, isStderr)`：追加输出到面板，stdout 不添加人工换行。
-- `setStatus(status, isError)`：更新状态标签文字和颜色。
-- `setRunning(running)`：控制输入模式（设置 `m_acceptingInput`、切换编辑器只读状态、清空输入缓冲/粘贴队列/定时器）。运行阶段启用 `TextEditorInteraction`，结束后设为 `TextSelectableByMouse`。
-- `setMaxBlocks(int max)`：动态更新输出面板的最大行数限制，从 `SettingsManager` 覆盖值读取。
-
-**快捷键（可配置）**：
-- `stop_in_output`（默认 `Ctrl+C`）：终止运行
-- `paste_in_output`（默认 `Ctrl+V`）：粘贴到终端
-
-**信号**：
-- `stopRequested()`：用户点击终止按钮或按 Ctrl+C 时发出。
-- `sendInput(const QString &text)`：用户输入一行数据时发出，由 MainWindow 转发到 ProcessRunner 写入进程 stdin。
-
----
-
-### 17b. `BottomPanel` — 底部统一面板（输出 + 诊断）
+### 17. `BottomPanel` — 底部统一面板（诊断 + 终端 + 评测）
 
 **文件**：`bottompanel.h` / `bottompanel.cpp`
 
 **职责**：
-- 统一底部面板，替代原来的独立 `OutputPanel`。通过标题栏标签页切换：「输出」（编译/运行结果和 stdin 交互）和「诊断」（代码诊断列表）。
-- 标题栏：28px 高度，#2d2d2d 背景。左侧标签页按钮（输出/诊断，当前激活加粗高亮），右侧 ✕ 关闭按钮（emit `closeRequested`）。
-- 内容区使用 `QStackedWidget`：索引 0 为 `OutputPanel`，索引 1 为诊断页面。
+- 统一底部面板，位于右侧垂直分割器（`rightSplitter`）底部。通过标题栏三标签页切换：「诊断」（代码诊断列表）、「终端」（多标签 PowerShell 终端 + 编译运行输出）、「评测」（OpenJudge 提交结果）。
+- 标题栏：28px 高度。左侧三个标签按钮（诊断/终端/评测，激活态加粗高亮），中间 [+] 新建终端按钮，右侧 [×] 关闭按钮（SVG 图标，hover 红色 `#E81123`）。按钮固定宽度 = `QFontMetrics::horizontalAdvance(text) + 24`。
+- 内容区使用 `QStackedWidget`：
+  - **索引 0**：诊断页面（`m_diagnosticsPage`）
+  - **索引 1**：`TerminalPanel`（多标签终端 + `RunTerminalPanel` 编译运行输出子部件）
+  - **索引 2**：`SubmitResultPanel`（OpenJudge 提交结果）
+- 不再包含 `OutputPanel`。
 - 诊断页面（`m_diagnosticsPage`）：
-  - `QScrollArea` 包含两个 `DiagnosticSection`（错误 / 警告），分别以红色（`#F44747`）和黄色（`#CCA700`）标注。
-  - `setDiagnostics(const QList<SmdDiagnostic> &diagnostics)`：按 severity 分组统计并重建诊断条目。每条诊断显示行号和消息，点击发射 `diagnosticsLineClicked(line)`（1-based 行号）。
+  - `QScrollArea` 包含两个 `DiagnosticSection`（错误/警告），分别以红色（`#F44747`）和黄色（`#CCA700`）标注。
+  - `setDiagnostics(diagnostics)`：按 severity 分组并重建诊断条目。每条显示行号和消息，点击发射 `diagnosticsLineClicked(line)`（1-based）。
   - `clearDiagnostics()`：清空所有诊断。
-  - `setCurrentEditor(CodeEditor *editor)`：记录当前编辑器引用（供后续使用）。
-  - `rebuildDiagnostics()`：自动隐藏诊断条目数为 0 的分区，全部为空时显示"无诊断信息"占位文本。
-- 切换标签页时自动管理 provider 连接：`MainWindow` 在 `currentChanged` 和 `onFileSelected` 中调用 `updateCurrentEditorDiagnostics()` 统一处理——切换到代码文件时 `disconnect` 旧 provider → `connect` 新 provider → 通过 `CodeEditor::diagnostics()` 立即恢复缓存诊断；切换到非代码文件时 `clearDiagnostics()` 清空面板数据。切换到 `.md` 文件时加载该文件缓存代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）。v0.13.21 新增：`EditorWidget::loadFile()` 中加载代码文件时调用 `clearDiagnostics()` 清除预览复用时残留的旧诊断；`onFileSelected()` 新增诊断更新调用。`updateCurrentEditorDiagnostics()` 封装统一逻辑，消除 `currentChanged` 与预览模式间提供器连接不同步的问题。
+  - `rebuildDiagnostics()`：自动隐藏条目数为 0 的分区，全部为空显示「无诊断信息」占位文本。
+- `showSubmissionResult(result)`：在评测标签页中显示 OpenJudge 提交结果，首次调用时自动将底部面板高度调整为窗口高度的 1/3（通过 `bottomPanelSizedOnce` 属性守卫）。
+- `showTerminalTab()` / `showDiagnosticsTab()` / `showJudgeTab()`：标签页切换。
+- `runTerminal()` / `terminalPanel()`：访问子组件。
+- `setWorkingDirectoryProvider(provider)`：为终端面板设置工作目录回调。
+- 使用 `TabButtonGroup` 管理标签切换，通过静态 `tabButtonStyle()` 生成激活/非激活样式。
 
 **信号**：
-- `closeRequested()`：标题栏关闭按钮点击。
+- `closeRequested()`：标题栏关闭按钮点击，MainWindow 连接后隐藏面板并更新 ActivityBar 和 toggle 动作状态。
 - `diagnosticsLineClicked(int line)`：诊断条目点击，MainWindow 连接至 `EditorWidget::navigateEditorToLine()`。
 
-**内部类 `DiagnosticSection`**（定义于 `diagnosticsection.h`）：
-- 继承 `QWidget`，带标题和边框色的分区容器。`setDiagnostics()` 过滤指定 severity 的诊断，按行号排序后填充可点击条目。每条诊断显示行号和消息，通过 `eventFilter()` 拦截 `MouseButtonRelease` 事件，以 `setProperty` 动态属性传递行号和 cell 索引，emit `lineClicked(cellIndex, line)`。条目支持 hover 高亮（`editor.lineHighlightBackground`）。`count()` 返回当前条目数。支持展开/折叠。
+**切换至非代码文件的行为**（在 `MainWindow::updateCurrentEditorDiagnostics()` 中处理）：
+- 切换到代码文件：`disconnect` 旧 provider → `connect` 新 provider → 立即通过 `CodeEditor::diagnostics()` 恢复缓存诊断
+- 切换到非代码文件：调用 `clearDiagnostics()` 清空面板数据（不再隐藏面板）
+- 切换到 `.md` 文件：加载该文件缓存的代码块诊断（通过 `loadMdDiagnosticsForCurrentTab()`）
 
 ---
 
-### 18. `FlowLayout` - 流式布局组件
+### 18. `TerminalPanel` — 多标签终端面板
+
+**文件**：`terminalpanel.h` / `terminalpanel.cpp`
+
+**职责**：
+- 多标签 PowerShell 终端组件，位于 `BottomPanel` 的终端标签页中。
+- 使用 `TerminalTabWidget`（继承 `QTabWidget`，内部使用 `StableWidthTabBar` 防止标签标题在常规/加粗状态切换时的文字抖动）。
+- 标签栏样式：激活标签有顶部蓝色指示线（2px），hover 态有背景高亮，close-button 使用主题资源中的关闭图标。
+- 不再拥有自己的标题栏（`+` / `×` 按钮移到 `BottomPanel` 标题栏）。
+- 拥有 `RunTerminalPanel* m_runTerminal` 子部件（默认隐藏），供编译运行输出使用。
+
+**新方法 `openCommandTerminal(title, command, cwd, reuseKey)`**：
+- 在终端标签页中执行指定 PowerShell 命令。
+- 支持按 `reuseKey`（如 `cppReuseKey(sourceFile)` 按源码文件绝对路径）复用已有标签页——若存在同 key 标签则复用并发送命令，否则创建新标签。
+- 创建新标签时启动会话、延迟发送命令（180ms 等待 shell 就绪），配合 `syncTerminalSize()` 确保布局正确。
+
+**主要接口**：
+- `void openTerminal()`：创建新的终端标签页
+- `void openCommandTerminal(title, command, cwd, reuseKey)`：创建/复用命令终端标签
+- `void ensureTerminal()`：确保至少一个终端标签页存在并聚焦；若当前 widget 不是 `TerminalView` 则查找已有终端标签
+- `int terminalCount()`：当前标签数量
+- `RunTerminalPanel *runTerminal() const`：访问编译运行输出子部件
+
+**协作关系**：
+- 由 `BottomPanel` 创建并持有（作为 `QStackedWidget` 的索引 1）。
+- `CompileRunManager::compile()/run()/compileAndRun()` 通过 `openCommandTerminal()` 路由编译运行命令。
+- 内部 `TerminalView` 通过 `TerminalSession` 与 PowerShell 进程通信。
+
+---
+
+### 19. `RunTerminalPanel` — 编译运行输出面板
+
+**文件**：`runterminalpanel.h` / `runterminalpanel.cpp`
+
+**职责**：
+- 替代旧的 `OutputPanel`，基于 `TerminalView` 的终端渲染输出组件。
+- 用于 MD 代码块执行时的输出显示（stdout/stderr）。
+- 顶部 `TerminalView` 组件显示输出，底部 `QHBoxLayout` 工具栏包含停止和清空按钮。
+- `appendOutput(text, isStderr)`：追加输出文本，stderr 自动添加 ANSI 红色转义码 `\x1b[31m`。
+- `setStatus(status, isError)`：在输出末尾添加绿色（正常）或红色（错误）状态标签。
+- `setRunning(bool)`：控制停止按钮的启用/禁用状态。
+- `setInputEnabled(bool)`：控制本地回显（`TerminalView::setLocalEchoEnabled`）。
+- `clearOutput()`：清空终端缓冲区。
+- 主题感知样式：`QPushButton` 样式更新通过 `refreshStyle()` 实现，禁用状态使用 `panel.border` 颜色。
+
+**主要接口**：
+- `void appendOutput(const QString &text, bool isStderr)`
+- `void clearOutput()`
+- `void setStatus(const QString &status, bool isError = false)`
+- `void setRunning(bool running)` / `void setInputEnabled(bool enabled)`
+
+**信号**：
+- `stopRequested()`：停止按钮点击
+- `sendRawInput(const QString &text)`：用户输入转发到进程
+
+---
+
+### 20. `TerminalView` — 终端视图组件
+
+**文件**：`terminalview.h` / `terminalview.cpp`
+
+**职责**：
+- 完整的终端仿真器组件，渲染 ANSI/XTerm 转义序列，支持 256 色和 SGR 样式。
+- 基于 `QWidget` 的自绘控件，逐帧渲染字符网格。
+- 支持 alternate screen buffer、滚动缓冲区截断、光标显示/隐藏、选中复制。
+- 通过 `TerminalSession` 与真正的 shell 进程（PowerShell）通信。
+
+**新增方法（v0.14.x 重构）**：
+- `void clearTerminal()`：完全清空终端屏幕缓冲区，重置状态（清除 `m_savedNormalLines`、`m_hasSavedNormalScreen` 标志和 `QStringDecoder`），触发重新渲染。
+- `void setLocalEchoEnabled(bool enabled)`：设置本地回显模式（`m_localEchoEnabled`）。启用后，用户键盘输入在发送到进程的同时直接在终端中回显，用于运行输出场景（如 MD 代码块执行）而非交互式终端。
+- `void echoInputData(const QByteArray &data)`（private）：本地回显实现——标准化换行符后调用 `appendTerminalData()` 将输入回显到终端显示。
+
+**协作关系**：
+- 由 `TerminalPanel` 创建并 attach `TerminalSession`。
+- `RunTerminalPanel` 使用 `TerminalView` 作为输出显示组件。
+- 输入事件通过 `inputGenerated(const QByteArray &data)` 信号转发。
+
+---
+
+### 21. `FlowLayout` - 流式布局组件
 
 **文件**：`flowlayout.h` / `flowlayout.cpp`
 
@@ -1065,7 +1130,7 @@
 
 ---
 
-### 19. `JudgeEngine` — 评测引擎
+### 22. `JudgeEngine` — 评测引擎
 
 **文件**：`judgeengine.h` / `judgeengine.cpp`
 
@@ -1090,7 +1155,7 @@
 
 ---
 
-### 20. `JudgePanel` — 评测面板 UI
+### 23. `JudgePanel` — 评测面板 UI
 
 **文件**：`judgepanel.h` / `judgepanel.cpp`
 
@@ -1169,7 +1234,7 @@
 
 ---
 
-### 21. `Crawler` — OpenJudge 网络爬虫引擎
+### 24. `Crawler` — OpenJudge 网络爬虫引擎
 
 **文件**：`crawler.h` / `crawler.cpp`
 
@@ -1207,7 +1272,7 @@
 
 ---
 
-### 22. `LoginDialog` — OpenJudge 登录对话框
+### 25. `LoginDialog` — OpenJudge 登录对话框
 
 **文件**：`logindialog.h` / `logindialog.cpp`
 
@@ -1222,7 +1287,7 @@
 
 ---
 
-### 23. `OpenJudgeWidget` — OpenJudge 题目浏览标签页
+### 26. `OpenJudgeWidget` — OpenJudge 题目浏览标签页
 
 **文件**：`openjudgewidget.h` / `openjudgewidget.cpp`
 
@@ -1265,7 +1330,7 @@
 
 ---
 
-### 24. `SettingsPanel` — 设置面板
+### 27. `SettingsPanel` — 设置面板
 
 **文件**：`settingspanel.h` / `settingspanel.cpp`
 
@@ -1312,7 +1377,7 @@
 
 ---
 
-### 25. `SmdFormat` — SMD 文件格式解析/序列化
+### 28. `SmdFormat` — SMD 文件格式解析/序列化
 
 **文件**：`smdformat.h`
 
@@ -1342,7 +1407,7 @@
 
 ---
 
-### 26. `SmdCell` — SMD 单元格控件
+### 29. `SmdCell` — SMD 单元格控件
 
 **文件**：`smdcell.h` / `smdcell.cpp`
 
@@ -1398,7 +1463,7 @@
 
 ---
 
-### 27. `SmdEditor` — SMD 单元格编辑器主控件
+### 30. `SmdEditor` — SMD 单元格编辑器主控件
 
 **文件**：`smdeditor.h` / `smdeditor.cpp`
 
@@ -1566,7 +1631,7 @@
 
 ---
 
-### 28. `SmdOutputWidget` — SMD 输出控件
+### 31. `SmdOutputWidget` — SMD 输出控件
 
 **文件**：`smdoutputwidget.h` / `smdoutputwidget.cpp`
 
@@ -1593,7 +1658,7 @@
 - 内容通过 `SmdEditor::toPlainText()` 序列化（HTML 格式的 base64 编码存入文件元数据），通过 `SmdEditor::setPlainText()` 恢复。HTML 格式保留了 stderr 红色、截断提示灰色等字符格式信息，使保存后重新打开仍能显示彩色输出。
 
 
-### 29. `SmdLspManager` — SMD 共享 LSP 管理器
+### 32. `SmdLspManager` — SMD 共享 LSP 管理器
 
 **文件**：`smdlspmanager.h` / `smdlspmanager.cpp`
 
@@ -1699,7 +1764,7 @@
 - 引用 `LspClient`（C++ 端）和 `QProcess`（Python 端）管理 LSP 进程。
 
 
-### 30. `SmdDiagnosticsPanel` — SMD 诊断面板
+### 33. `SmdDiagnosticsPanel` — SMD 诊断面板
 
 **文件**：`smddiagnosticspanel.h` / `smddiagnosticspanel.cpp`
 
@@ -1717,7 +1782,7 @@
 
 ---
 
-### 31. `ScrollbarHider` — 滚动条自动隐藏控制器
+### 34. `ScrollbarHider` — 滚动条自动隐藏控制器
 
 **文件**：`scrollbarhider.h` / `scrollbarhider.cpp`
 
@@ -1743,7 +1808,7 @@
 - 被管理的区域销毁时自动清理（`QObject::destroyed` 连接），避免悬空指针。
 
 
-### 32. `HelpPanel` — 帮助面板
+### 35. `HelpPanel` — 帮助面板
 
 **文件**：`helppanel.h` / `helppanel.cpp`
 
@@ -1778,7 +1843,7 @@
 - 全局事件过滤器：点击遮罩层外部区域自动关闭帮助面板。
 
 
-### 33. `ThemeManager` — 主题管理器
+### 36. `ThemeManager` — 主题管理器
 
 **文件**：`thememanager.h` / `thememanager.cpp`
 
@@ -1814,7 +1879,7 @@
 - `watchTheme` 模板被项目中约 30+ 个 widget 使用，已逐步替换原有的手动连接模式。
 
 
-### 34. `StringUtils` — 通用字符串工具命名空间
+### 37. `StringUtils` — 通用字符串工具命名空间
 
 **文件**：`utilities.h`
 
@@ -1832,7 +1897,7 @@
 - `completionKindToString()` 被 `CppCompletionProvider` 和 `SmdLspManager` 调用，用于将 LSP 补全项类型显示在弹出列表中。
 
 
-### 35. `MessageRole` — AI 消息角色统一枚举
+### 38. `MessageRole` — AI 消息角色统一枚举
 
 **文件**：`ai/aiproviders.h`
 
@@ -1850,7 +1915,7 @@ enum class MessageRole { User, Assistant, System };
 - `ChatBubble::Role` 已完全替换为 `MessageRole`，删除旧枚举。
 
 
-### 36. `TabButtonGroup` — Tab 按钮组控制器
+### 39. `TabButtonGroup` — Tab 按钮组控制器
 
 **文件**：`tabbuttongroup.h` / `tabbuttongroup.cpp`
 
@@ -1874,7 +1939,7 @@ enum class MessageRole { User, Assistant, System };
 - `BottomPanel` 注入 lambda 样式提供器，根据标签页切换生成活跃/非活跃 QSS 字符串。
 
 
-### 37. `WindowDragHelper` — 无边框窗口拖拽辅助
+### 40. `WindowDragHelper` — 无边框窗口拖拽辅助
 
 **文件**：`windowdraghelper.h` / `windowdraghelper.cpp`
 
@@ -1893,7 +1958,7 @@ enum class MessageRole { User, Assistant, System };
 - 对应的 `mousePressEvent()` `mouseMoveEvent()` `mouseReleaseEvent()` 重写中将事件直接委托给 helper，消除重复的位置跟踪和几何计算代码。
 
 
-### 38. `CompilerErrorParser` — 编译器/Python 错误解析器
+### 41. `CompilerErrorParser` — 编译器/Python 错误解析器
 
 **文件**：`compilererrorparser.h`
 
@@ -1909,7 +1974,7 @@ enum class MessageRole { User, Assistant, System };
 - 被 `MainWindow::parseAndShowBlockDiagnostics()` 调用，根据 `m_currentBlockLanguage`（`"cpp"` / `"python"`）选择对应的解析函数。
 
 
-### 39. MD 代码块诊断（Preview Code Block Diagnostics）
+### 42. MD 代码块诊断（Preview Code Block Diagnostics）
 
 **概述**：
 - MD 文件预览模式下，点击代码块的 ▶ Run 按钮运行代码后，底部面板诊断标签页显示当前代码块的编译器/运行时错误诊断。预览中的代码块对应行通过 JS 注入红色/黄色波浪线（与 `CodeEditor` 的 `WaveUnderline` 样式一致）。
@@ -1961,7 +2026,7 @@ enum class MessageRole { User, Assistant, System };
 - `editorwidget.h/.cpp`（修改）：`runCodeBlockRequested(lang, code, blockIndex)` 信号，`applyBlockDiagnostics()`/`clearBlockDiagnostics()`/`extractCodeBlockContents()` 方法
 
 
-### 40. `AiConversation` / `AiMessage` — 对话数据结构
+### 43. `AiConversation` / `AiMessage` — 对话数据结构
 
 **文件**：`aiconversation.h`
 
@@ -1986,7 +2051,7 @@ enum class MessageRole { User, Assistant, System };
 - 被 `AiHistoryListWidget` 用于构建历史列表 UI。
 
 
-### 41. `AiHistoryManager` — 对话历史管理器
+### 44. `AiHistoryManager` — 对话历史管理器
 
 **文件**：`aihistorymanager.h` / `aihistorymanager.cpp`
 
@@ -2013,7 +2078,7 @@ enum class MessageRole { User, Assistant, System };
 - `AiHistoryListWidget` 通过信号 `conversationSelected` / `renameRequested` / `deleteRequested` / `exportRequested` 间接操作管理器。
 
 
-### 42. `AiHistoryListWidget` — 历史对话列表 UI
+### 45. `AiHistoryListWidget` — 历史对话列表 UI
 
 **文件**：`aihistorylistwidget.h` / `aihistorylistwidget.cpp`
 
@@ -2041,7 +2106,7 @@ enum class MessageRole { User, Assistant, System };
 - `AiHistoryManager::conversationListChanged` 信号触发 `MainWindow::filterAiHistoryByCurrentFile()` 刷新列表。
 - 切换到历史标签页时（`AiPanel::historyListVisibilityChanged`），同样刷新列表并更新活跃对话绿色圆点。
 
-### 43. `AiRequestHandler` — AI 请求管理器
+### 46. `AiRequestHandler` — AI 请求管理器
 
 **文件**：`ai/airequesthandler.h` / `ai/airequesthandler.cpp`
 
@@ -2062,7 +2127,7 @@ enum class MessageRole { User, Assistant, System };
 - 由 `MainWindow` 创建并持有，接收 `AiPanel`、`TabManager`、`SettingsManager` 依赖注入。
 - `AiPanel` 的 `sendMessage`/`actionTriggered`/`clearRequested`/`newConversationRequested` 信号通过 MainWindow 路由到 handler。
 
-### 44. `IndexManager` — 索引管理器
+### 47. `IndexManager` — 索引管理器
 
 **文件**：`indexmanager.h` / `indexmanager.cpp`
 
@@ -2084,7 +2149,7 @@ enum class MessageRole { User, Assistant, System };
 - 由 `MainWindow` 创建并持有，接收 `TabManager` 依赖注入（用于重命名时更新编辑器标签路径）。
 - `MainWindow` 连接 `fullIndexReady` 信号刷新反链面板、标签面板和补全列表。
 
-### 45. `CrashRecoveryManager` — 崩溃恢复管理器
+### 48. `CrashRecoveryManager` — 崩溃恢复管理器
 
 **文件**：`crashrecoverymanager.h` / `crashrecoverymanager.cpp`
 
@@ -2100,7 +2165,7 @@ enum class MessageRole { User, Assistant, System };
 - `MainWindow::checkCrashRecovery()` 负责 UI 交互（QMessageBox 对话框 + TabManager 文件恢复），底层文件操作委托给该类。
 
 
-### 46. `MacOSWindow` — macOS 原生窗口桥接
+### 49. `MacOSWindow` — macOS 原生窗口桥接
 
 **文件**：`core/macoswindow.h` / `core/macoswindow.mm`
 
@@ -2115,7 +2180,7 @@ enum class MessageRole { User, Assistant, System };
 - 配合 `MainWindow` 的 `#ifdef Q_OS_MACOS` 条件编译：不使用 FramelessWindowHint，保留 Qt::Window 原生标题栏标志；`setupCustomTitleBar()` 跳过自定义最小化/最大化/关闭按钮，在 spacer 左侧预留 70px 边距放置红绿灯。
 
 
-### 47. `ChatBubble` — AI 聊天气泡
+### 50. `ChatBubble` — AI 聊天气泡
 
 **文件**：`chatbubble.h` / `chatbubble.cpp`
 
@@ -2191,7 +2256,7 @@ ChatBubble (QWidget)
 - **反向链接面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+B`）。列表项不可选中（`NoSelection`），点击可跳转至来源文件。反链为空时显示灰色占位文本"无反向链接"，面板宽度通过 `setMinimumWidth(200)` 保持稳定。与历史记录面板共享同一外部点击自动隐藏逻辑。面板标题固定为"反向链接"，不显示数字计数以保持简洁。
 - **搜索面板**：通过 `QDockWidget` 嵌入窗口左侧，默认隐藏（快捷键 `Ctrl+Shift+F`）。搜索输入框带清除按钮，输入后 300ms 自动触发搜索。结果列表每项包含文件名（粗体，显示行号）和灰色上下文片段。单击结果以预览标签页打开文件并金色高亮所有匹配关键词，双击永久打开，编辑预览内容自动转为永久标签。面板显示时自动聚焦输入框；不实现点击外部自动隐藏，方便多次点击结果。
 - **大纲面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+O`）。打开 `.md` 文件时自动解析并展示所有标题（`#` ~ `######`），按层级缩进显示。缩进量基于文件中最小标题层级（`minLevel`），顶级标题始终无缩进。文字颜色通过 `levelColor()` 函数将 `sideBar.foreground` 与 `sideBar.background` 按比例混合（h1=100%前景、h2=83%、h3=67%、h4=53%、h5=42%、h6=33%），浅色/深色主题自适应。点击标题跳转到编辑器对应行并高亮目标行（FullWidthSelection + 当前主题的搜索高亮配色）。长标题通过自定义 `ElideDelegate` 自动省略：禁用水平滚动条，delegate 在 `paint()` 中将文本右边缘夹紧到视口宽度，以 `QFontMetrics::elidedText(Qt::ElideRight)` 渲染省略号。关闭大纲面板或点击面板外部时自动清除高亮；切换主题时高亮颜色通过 `reloadEditorColors()` 实时更新，文字颜色通过 `ThemeManager::themeChanged` → `refreshStyle()` 重建所有条目以重算混合色。跳过围栏代码块。切换标签页和保存文件时自动刷新。非 Markdown 文件时面板清空。
-- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含两个标签页——「输出」（`OutputPanel`，编译/运行输出和 stdin 交互）和「诊断」（代码诊断列表，按错误/警告分区展示）。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动隐藏。输出面板在首次编译/运行时自动显示（运行标签页）。深色终端风格只读文本区域，stdout 白色、stderr 红色。标题栏包含标签页按钮（输出/诊断）+ ✕ 关闭按钮。底部工具栏包含状态标签、终止、清除按钮。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
+- **编译运行输出面板（BottomPanel）**：`BottomPanel` 嵌入右侧垂直分割区（`m_rightSplitter`），置于编辑器下方，默认隐藏。包含三个标签页——「诊断」（代码诊断列表，按错误/警告分区展示）、「终端」（多标签 PowerShell 终端 + 编译运行输出）、「评测」（OpenJudge 提交结果）。不再包含旧 `OutputPanel`，编译运行输出通过 `TerminalPanel::openCommandTerminal()` 在终端标签页中执行和显示。切换标签页时自动管理 provider 连接：代码文件连接 LSP provider，`.md` 文件加载缓存代码块诊断，其他文件自动清空诊断数据（不再隐藏面板）。标题栏包含三个标签按钮 + [+] 新建终端 + [×] 关闭按钮（SVG 图标）。运行期间通过关闭按钮关闭面板时自动终止进程。MD 文件代码块运行支持：每次点击 Run 按钮立即清空旧诊断，运行结束后解析编译/运行时错误（通过 `CompilerErrorParser`）更新诊断标签页，同时在预览代码块中通过 JS 注入红色/黄色波浪线；手动终止时不解析诊断。
 - **评测面板**：通过 `QDockWidget` 嵌入窗口右侧，默认隐藏（快捷键 `Ctrl+Shift+J`）。评测开始前需选择测试用例文件夹，评测过程中实时更新每个用例的状态。评测面板在启动评测时自动显示，评测完成后保持可见（不自动隐藏），方便用户查看结果。点击失败行可在详情区查看预期输出与实际输出对比。
 - **滚动条统一样式与自动隐藏**：所有可滚动面板（文件树、编辑器编辑区、PDF 视图、BottomPanel 输出/诊断面板、搜索/评测/历史/大纲/标签/反链面板、AI 助手对话区、设置面板、SMD 诊断面板等）使用完全一致的滚动条样式——垂直 10px 宽、水平 10px 高、5px 圆角、始终 `#555555` 手柄，无 `:hover` 变细行为。通过 `ScrollbarHider`（`QAbstractScrollArea` 通用事件过滤器 + 150ms 延迟计时器）实现鼠标进入区域时立即显示、离开区域后自动隐藏的效果，滚动条占位始终保留，不触发布局重排。
 - **代码编辑器主题**：代码编辑模式背景色跟随 `editor.background` 主题色（深色 `#191A1B`，浅色 `#FAFAFD`），前景色跟随 `editor.foreground`（深色 `#BBBEBF`，浅色 `#202020`），行号区背景与编辑区一致（不单独设色），行号颜色跟随 `editorLineNumber.foreground`（深色 `#858889`，浅色 `#606060`），当前行高亮跟随 `editor.lineHighlightBackground`（深色 `#242526`，浅色 `#EAEAEA40`）。括号补全、自动缩进、智能退格等行为由 `CodeEditor` 统一管理，受 `m_indentWidth`（默认 4 空格）控制。
